@@ -168,6 +168,24 @@ A village day is six minutes by default (adjustable), the calendar keeps running
 between visits, and a new village starts on a random day, so you may well arrive in a
 blizzard. Villagers know the date and the weather and will remark on it.
 
+**Villagers decide where to go.** This was a probability table — morning meant a 60%
+chance of work, a 30% chance of the green — which made everyone a dumb NPC in a game
+whose whole premise is that they are not. A villager who wanted a saw more than anything
+never went looking for one. A villager who had just been told the baker has bread did
+not walk to the bakery. The fact graph and the movement system did not know each other
+existed.
+
+The decision goes to the helper model now, and it gets what a person would have: their
+own goal, what they know, the hour and the weather, where they are, **who they have seen
+about the village and where**, and the places they could go. That last one matters more
+than it looks — knowing Sanna has the pack of cards is worth nothing if there is no way
+to express going to find Sanna. They answer with somewhere to be and a few words of why.
+
+They are asked only when something has changed — they arrived, the hour turned, the
+weather broke, they learned something — so a settled villager costs nothing, and there is
+a cooldown so a busy village cannot spin. With no key, or when a call fails, the old
+table is still there as a fallback, so the village never stands still.
+
 **They keep hours too.** The pull of the village green rises to midday and thins by
 dusk; at night everyone is home, and nobody stands about on the green in a blizzard.
 When two of them meet they stop, turn to face each other, and actually talk — a real
@@ -291,6 +309,19 @@ so returning a beer she poured you five minutes ago found no price and did nothi
 while she cheerfully announced the refund. What each villager has sold you is now
 remembered, and comes back at what you actually paid rather than at a trade-in rate. The
 same one cannot be returned twice, and a beer she never sold you is not refundable at all.
+
+**The till is its own record.** What a villager has sold you, bought from you, refunded,
+and every refusal, presented as a ledger with times and prices rather than folded into
+their conversational memory — where, briefly, it was filed under *"what the traveller has
+told you"*, which it plainly is not.
+
+This is meant to replace rules rather than sit alongside them. Given the record, a
+shopkeeper can work out for herself that she was paid for two drinks and handed over one,
+and ask for the difference — the way anyone behind a counter would. The instruction
+telling villagers that a return counts as a "buy" is gone, because `buy` is already
+defined as taking something and paying for it and a refund is plainly that. What stays is
+the schema itself: that `item` accepts a list is an API fact, not something to be
+reasoned out.
 
 **And the villager is told what the till did.** They used to remember only "the traveller
 bought beer" — no price, no mention of the wine — so the next turn they did arithmetic

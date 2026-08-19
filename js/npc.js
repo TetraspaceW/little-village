@@ -50,38 +50,79 @@ LG.actors = (function () {
 
   /* Villagers keep their own hours: out and about on the green by day, back to
      their own patch at night, and a slow drift between the two in between. */
-  function routine(a, dt, green) {
-    if (a.frozen) { a.route = null; return; }
-    a.routeCool -= dt;
-    if (a.routeCool > 0) return;
-    a.routeCool = 14 + Math.random() * 26;
+  /* Where the villager decides to be.
 
-    // Work first, then the green, then home — each pulls harder at its own hour
-    const phase = LG.time.phase().id;
-    const WORK  = { dawn: 0.2, morning: 0.6, midday: 0.4, afternoon: 0.5, dusk: 0.2, night: 0 };
-    const GREEN = { dawn: 0.1, morning: 0.3, midday: 0.5, afternoon: 0.4, dusk: 0.2, night: 0 };
-    // Rain, snow, sand: get under a roof. "Home" is a patch of open ground, so
-    // sheltering means the workplace or whatever public building is nearest.
-    // Whether to shelter is the weather's own business, not a reading off how
-    // grey the screen is — drizzle is worth going indoors for and barely shows.
-    const wet = !!LG.time.info.indoors;
-    const r = Math.random();
-    let want;
-    if (wet) {
-      want = (a.work && a.workBuilding && r < 0.6) ? a.work : (a.shelter || a.def.home);
-    } else {
-      const w = WORK[phase] || 0, g = GREEN[phase] || 0;
-      if (a.work && r < w) want = a.work;
-      else if (r < w + g) want = green;
-      else want = a.def.home;
+     The decision belongs to the helper model — see LG.llm.intent for why. This
+     function's job is to notice that a decision is due, ask for one, and walk
+     there. `decide` is supplied by the game so this file stays free of the API.
+
+     A decision is due when something has actually changed: they got where they
+     were going, the hour turned, the weather broke, or they learned something.
+     A villager with no reason to move does not get asked, and so costs nothing. */
+  const PHASE_TABLE = {                 // the fallback, for no key and failed calls
+    dawn:      { work: 0.2, green: 0.1 },
+    morning:   { work: 0.6, green: 0.3 },
+    midday:    { work: 0.4, green: 0.5 },
+    afternoon: { work: 0.5, green: 0.4 },
+    dusk:      { work: 0.2, green: 0.2 },
+    night:     { work: 0.0, green: 0.0 }
+  };
+
+  function byDice(a, green) {
+    const t = PHASE_TABLE[LG.time.phase().id] || PHASE_TABLE.night;
+    if (LG.time.info.indoors) {
+      return (a.work && a.workBuilding && Math.random() < 0.6) ? a.work : (a.shelter || a.def.home);
     }
-    if (want === a.patch) return;
+    const r = Math.random();
+    if (a.work && r < t.work) return a.work;
+    if (r < t.work + t.green) return green;
+    return a.def.home;
+  }
+
+  /* What has to be true for the world to be worth reconsidering. */
+  function situation(a) {
+    return LG.time.phase().id + '|' + (LG.time.info.name || '') + '|' +
+           (a.patch ? a.patch.x + ',' + a.patch.y : '-') + '|' + a.facts.length;
+  }
+
+  function routine(a, dt, green, decide) {
+    if (a.frozen) { a.route = null; return; }
+    if (a.route && a.route.length) return;          // already on their way
+
+    a.routeCool -= dt;
+    if (a.decideCool > 0) a.decideCool -= dt;
+    if (a.routeCool > 0) return;
+
+    const now = situation(a);
+    if (a.thought === now && !a.wantsGo) return;    // nothing has changed; stay put
+    a.routeCool = 6 + Math.random() * 8;
+
+    let want = a.wantsGo;                           // a decision that arrived earlier
+    if (want) { a.wantsGo = null; a.thought = now; }
+    else if (a.deciding) {
+      // A call that never comes back must not freeze someone mid-street forever.
+      a.deciding += dt;
+      if (a.deciding < 12) return;
+      a.deciding = false;
+    }
+    else {
+      a.thought = now;
+      // If they can be asked, ask; the answer lands in a.wantsGo and they walk
+      // next tick. If they were asked too recently, the table covers the gap
+      // rather than leaving them standing in the road.
+      if (decide && decide(a, green)) { a.deciding = 0.0001; return; }
+      want = byDice(a, green);
+    }
+    if (!want || want === a.patch) return;
 
     const cx = want.x + (Math.random() * want.w | 0);
     const cy = want.y + (Math.random() * want.h | 0);
     const spot = W.nearestOpen(cx, cy);
     const path = W.pathTo(a.tx, a.ty, spot.x, spot.y);
     if (path && path.length) { a.route = path; a.patch = want; }
+    // No way through — forget having thought about it, so they try again rather
+    // than standing in the road for the rest of the day.
+    else a.thought = null;
   }
 
   /* Follow a route if we are on one, otherwise potter about the current patch. */

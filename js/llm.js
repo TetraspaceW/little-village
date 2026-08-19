@@ -274,6 +274,55 @@ LG.llm = (function () {
      agree too neatly, nobody misunderstands anybody, and the second speaker never
      says anything the first did not set up. It runs on the small model precisely
      so that this is affordable: a six-turn conversation is six cheap calls. */
+  /* Where a villager goes next, and why.
+
+     This used to be a probability table — morning meant a 60% chance of work —
+     which made everyone a dumb NPC in a game whose whole premise is that they
+     are not. A villager who wants a saw more than anything never went looking
+     for one; a villager who had just been told the baker has bread did not walk
+     to the bakery. They have a goal, a memory and a helper model already; there
+     is no reason for the one decision they make all day to be a dice roll.
+
+     Asked only when something has changed — they arrived, the hour turned, the
+     weather broke, they learned something — so a settled villager costs nothing. */
+  async function intent(cfg, opts) {
+    const o = opts || {};
+    const lines = [
+      'You are ' + o.me.name + ' — ' + o.me.job + '. ' + o.me.persona,
+      o.goal ? 'What you are about: ' + o.goal : null,
+      '',
+      o.when || null,
+      'You are ' + o.here + '.',
+      '',
+      o.knows && o.knows.length ? 'What you know:\n' + o.knows.map(k => '- ' + k).join('\n') : null,
+      '',
+      /* Who is where, so that knowing Sanna has the cards is something you can
+         act on. Without it a villager can want a thing, know exactly who has it,
+         and have no way to express going to find them. */
+      o.folk && o.folk.length ? 'Who you have seen about the village:\n' +
+        o.folk.map(f => '- ' + f.name + ', ' + f.where).join('\n') : null,
+      '',
+      'Places you could go:',
+      o.places.map(p => '- ' + p.name + (p.note ? ' (' + p.note + ')' : '')).join('\n'),
+      '',
+      'Decide where to be for the next while. Somewhere you have a reason to be,',
+      'even if the reason is only that it is your own bed and it is late.',
+      '',
+      'Reply with only a JSON object:',
+      '{"go": "one of the place names above", "why": "a few words, in English"}'
+    ].filter(x => x !== null && x !== undefined).join('\n');
+    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg) };
+    const sys = 'You decide what a villager does next. Answer with JSON only.';
+    try {
+      const raw = vcfg.provider === 'anthropic'
+        ? await anthropicCall(vcfg, sys, [{ role: 'user', content: lines }])
+        : await openrouterCall(vcfg, sys, [{ role: 'user', content: lines }]);
+      const obj = parseJSON(raw);
+      if (!obj || !obj.go) return null;
+      return obj;
+    } catch (e) { return null; }
+  }
+
   async function converse(cfg, opts) {
     const o = opts || {};
     const said = (o.transcript || []).map(t => t.who + ': ' + t.say);
@@ -423,6 +472,6 @@ LG.llm = (function () {
     return obj;
   }
 
-  return { MODELS, HELPERS, VERIFIER, helperModel, speak, judge, furigana, gloss, converse, confirmTrade,
+  return { MODELS, HELPERS, VERIFIER, helperModel, speak, judge, furigana, gloss, converse, intent, confirmTrade,
            validate, parseJSON, repairJSON, salvage };
 })();

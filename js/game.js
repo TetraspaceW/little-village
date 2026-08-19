@@ -200,13 +200,14 @@ LG.game = (function () {
     const coins = n => n + (n === 1 ? ' coin' : ' coins');
     if (!atWork(npc)) return false;
 
-    npc.sold = npc.sold || {};
+    npc.sold = npc.sold || {};                 // index: what they can take back, at what price
+    npc.till = npc.till || [];                 // the record they actually get to read
 
     /* A refusal has to reach the villager. Left to narrate unaided they will
        describe the refund as done, and then be baffled when you offer the beer
        again — they have no way of knowing the till disagreed with them. */
     function refuse(note, shown) {
-      npc.memory.push(note);
+      npc.till.push({ failed: true, note: note });
       log('¤ ' + (shown || note));
       renderHUD();
       return false;
@@ -257,8 +258,9 @@ LG.game = (function () {
     // A refund is not a haggle: it is the money back, exactly.
     const refunding = priced.every(w => w.refund);
     const asking = cost;
-    if (refunding) cost = base;
-    else cost = Math.max(Math.ceil(base * 0.4), Math.min(Math.ceil(base * 2.5), cost));
+    cost = refunding
+      ? Math.min(cost, base)                                   // never more than was paid
+      : Math.max(Math.ceil(base * 0.4), Math.min(Math.ceil(base * 2.5), cost));
 
     const names = priced.map(w => LG.ITEMS[w.id].full).join(' and ');
     if (act === 'sell') {
@@ -288,12 +290,8 @@ LG.game = (function () {
     /* What the villager remembers has to be what the game actually did, or they
        do their own arithmetic from a half-memory and it drifts — quoting six,
        being paid five, and insisting next turn that you have three left. */
-    npc.memory.push(act === 'sell'
-      ? 'You sold the traveller ' + names + ' for ' + coins(cost) + '. They have ' +
-        coins(count('coins')) + ' left.'
-      : (refunding ? 'The traveller returned ' + names + ' and you refunded '
-                   : 'You bought ' + names + ' from the traveller for ') + coins(cost) +
-        '. They now have ' + coins(count('coins')) + '.');
+    npc.till.push({ act: act, refund: refunding, names: names, coins: cost,
+                    asked: asking, at: LG.time.clock() });
     renderHUD();
     return true;
   }
@@ -685,6 +683,58 @@ LG.game = (function () {
     return 0;
   }
 
+  /* Where a villager goes is theirs to decide, not a dice roll — this hands them
+     the options and files whatever they choose. The choice is made by the helper
+     model from their own goal and memory, so the baker opens up because she is
+     the baker and the woman looking for a saw goes where she heard there is one. */
+  const DECIDE_COOL = 25;
+  function placesFor(n) {
+    const out = [{ name: 'home', rect: n.def.home, note: 'your own place' }];
+    if (n.work) out.push({ name: n.workBuilding ? n.workBuilding.label : 'your work',
+                           rect: n.work,
+                           note: n.workBuilding ? 'where you work' : 'where you do your work' });
+    out.push({ name: 'the village green', rect: LG.GREEN, note: 'where people gather' });
+    W.buildings.forEach(b => {
+      if (n.workBuilding && b === n.workBuilding) return;
+      out.push({ name: b.label, rect: b.inside });
+    });
+    return out;
+  }
+
+  function decideWhereToGo(n, green) {
+    const opts = placesFor(n);
+    const done = () => { n.deciding = false; n.decideCool = DECIDE_COOL; };
+    if (n.decideCool > 0) { n.deciding = false; return false; }   // asked too recently
+    LG.llm.intent(llmConfig(), {
+      me: { name: n.def.name, job: n.def.job, persona: n.def.persona },
+      goal: (plan.roles[n.def.id] || {}).goal || '',
+      when: LG.time.describe(),
+      here: describeWhere(n),
+      folk: npcs.filter(o => o !== n && dist(n, o) < TILE * 26)
+                .slice(0, 6)
+                .map(o => ({ name: o.def.name, where: describeWhere(o) })),
+      knows: n.facts.map(id => plan.facts[id] && plan.facts[id].text).filter(Boolean).slice(0, 6),
+      places: opts.map(o => ({ name: o.name, note: o.note }))
+    }).then(res => {
+      done();
+      if (!res) return;
+      const want = opts.find(o => o.name.toLowerCase() === String(res.go).toLowerCase())
+                || opts.find(o => String(res.go).toLowerCase().indexOf(o.name.toLowerCase()) !== -1);
+      if (!want) return;
+      n.wantsGo = want.rect;
+      n.why = res.why || '';
+    }).catch(done);
+    return true;
+  }
+
+  function describeWhere(n) {
+    const b = W.buildingUnder(n);
+    if (b) return 'inside the ' + b.label;
+    if (inRect(n, LG.GREEN)) return 'on the village green';
+    if (inRect(n, n.def.home)) return 'at home';
+    return 'out in the village';
+  }
+
   /* Close enough to make out what they are saying? Only decides whether it goes
      in the log — the conversation happens either way. */
   function canOverhear(a, b) {
@@ -758,7 +808,7 @@ LG.game = (function () {
     movePlayer(dt);
 
     for (const n of npcs) {
-      A.routine(n, dt, LG.GREEN);
+      A.routine(n, dt, LG.GREEN, settings.apiKey && settings.npcChatter ? decideWhereToGo : null);
       A.walk(n, dt, 34);
       if (n.bubbleT > 0) n.bubbleT -= dt;
     }

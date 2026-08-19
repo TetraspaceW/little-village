@@ -206,10 +206,34 @@ LG.dialogue = (function () {
           w.p + (w.p === 1 ? ' coin' : ' coins') + ' [' + w.i + ']'));
       }
       lines.push('The traveller has ' + coins(LG.game.count('coins')) + ' on them.');
+
+      /* The till: what the game actually did, as its own record rather than
+         buried in the conversational memory. A villager who can read this can
+         work out for themselves that they were paid for two drinks and handed
+         over one — which is the sort of thing a shopkeeper does without needing
+         a rule written for it. */
+      const till = (npc.till || []).slice(-8);
+      if (till.length) {
+        lines.push('');
+        lines.push('# The till');
+        lines.push('What has actually changed hands between you and this traveller:');
+        till.forEach(t => {
+          if (t.failed) { lines.push('- (nothing happened: ' + t.note + ')'); return; }
+          const line = t.act === 'sell'
+            ? 'you handed over ' + t.names + ' and took ' + coins(t.coins)
+            : t.refund ? 'they gave back ' + t.names + ' and you refunded ' + coins(t.coins)
+                       : 'you took ' + t.names + ' off them for ' + coins(t.coins);
+          lines.push('- ' + t.at + ' \u2014 ' + line +
+            (t.asked !== t.coins ? ' (you said ' + t.asked + ', the till took ' + t.coins + ')' : ''));
+        });
+        const theirs = Object.keys(npc.sold || {}).filter(k => npc.sold[k].n > 0);
+        if (theirs.length) lines.push('Still in their hands, from you: ' +
+          theirs.map(k => LG.ITEMS[k].en).join(', ') + '.');
+        lines.push('This is the record. If it does not match what you thought, the record is right.');
+      }
       lines.push('Offer your goods the way you would to any customer, and haggle if it suits you.');
       lines.push('If the traveller holds out their coins, that is them paying you — take the money and hand the goods over in the same breath.');
       lines.push('Two things at once is still one sale: put both tags in "item" and the total in "price". Only list what you are actually handing over this turn.');
-      lines.push('If the traveller brings something back that you sold them, that is a "buy": take it and give them their money back.');
     }
 
     if (trade) {

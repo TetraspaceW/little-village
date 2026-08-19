@@ -109,6 +109,28 @@ displayed, and thrown away. Two things fall out of keeping it.
   faithfully. A villager who garbles a fact in the retelling is how rumours actually work
   and is the cheapest source of the misinformation the chain design keeps wanting.
 
+## Now that villagers decide things
+
+Movement went from a dice table to a decision made by the helper model. The same argument
+applies to nearly everything else still hardcoded, and it is worth being suspicious of any
+remaining rule that a person with the same information would not need:
+
+- **Gossip pairing** is still proximity plus a cooldown. Who a villager *wants* to talk to
+  — someone who might know where the saw is, someone they like — is a decision they could
+  make.
+- **What they do when they get there.** A villager who walks to the Inn to find Sanna
+  currently just stands in the Inn. Arriving with an intention, and acting on it when the
+  person is there, is the other half of the movement change.
+- **Show the reason.** Every decision comes back with a few words of why, and nothing
+  displays them. A hover, or a line in the log when you are close, would make the village
+  legible and would make it obvious when the reasoning is bad.
+- **The trade rules.** `action: "trade"` still has a hint spelling out when to fire it.
+  With the till visible, that may be derivable too.
+
+The counter-argument, worth keeping in view: every decision handed to the model is another
+call, another failure mode, and another thing that cannot be unit-tested to a fixed answer.
+The dice table is still there underneath for exactly that reason.
+
 ## Smaller things
 
 - **An economy that moves.** Buying and selling work, but prices are static and the

@@ -23,6 +23,32 @@ Browsers send `Origin: null` for `file://` pages, which the API providers' CORS
 rules reject. The game will tell you this at the front door rather than failing
 mysteriously later.
 
+## Watching what it actually does
+
+```sh
+node tools/logserver.js      # then open http://localhost:8787
+```
+
+One process that serves the village and keeps its log. Serving it over http is
+needed anyway — the providers reject `file://` origins — and doing both from the
+same place means there is no CORS to arrange and nothing to switch on.
+
+Everything lands in `logs/session-<when>.jsonl`, one JSON object per line:
+
+- **every API call**, whole — the system prompt, the messages, the raw reply
+  before any parsing, the model's own reasoning where it exposes any, the token
+  usage, the latency, and whether it was cut off at `max_tokens`;
+- **every villager decision** — who wondered where to be, where they went and
+  why, when they arrived, what they learned and from whom, what they said.
+
+The reasoning is the half worth having. A villager talking themselves into
+something daft does it in the reasoning, and it was being dropped on the floor:
+both providers return it in a field of its own, which nothing was reading.
+
+The terminal shows a terse line per entry as a live view. If the log server is
+not running the game notices on its first post, switches logging off and carries
+on — so it is never a dependency, only a window.
+
 ## Connecting a brain (⚙ button)
 
 The game asks for a key before it will start, and checks it with one tiny request —
@@ -180,6 +206,31 @@ own goal, what they know, the hour and the weather, where they are, **who they h
 about the village and where**, and the places they could go. That last one matters more
 than it looks — knowing Sanna has the pack of cards is worth nothing if there is no way
 to express going to find Sanna. They answer with somewhere to be and a few words of why.
+
+**Every call is on the record.** All API traffic funnels through two functions, so that
+is where it is audited: each call is kept whole — the system prompt, the messages, the
+**raw reply before any parsing or repair**, the model, the latency and the token usage —
+and printed as a collapsed console group you can open and read. Failures are records too,
+with the error where the reply would be, rather than a gap in the log.
+
+Raw is the point. Nearly every bug in this project has lived in the space between what
+the model returned and what the game made of it — a missing quote, furigana in brackets,
+a two-item sale rung up as one — and a log of the tidied-up version would have hidden all
+of them.
+
+```js
+LG.llm.transcript   // the records, newest last
+LG.llm.dump()       // the lot as plain text, for copying out
+LG.llm.audit = false  // stop printing (recording continues)
+```
+
+**Open the console and you can watch them think.** Every decision comes back with a
+reason, and for a while nothing did anything with it — which made the difference between a
+villager reasoning and a villager rolling dice invisible from the outside. Each one prints
+a line tagged in their own colour: what they wondered, where they decided to go and why,
+when they arrived, what they learned from whom, and what they said to each other out of
+your earshot. Most of the village happens where you are not, and this is the only window
+onto it. `LG.game.thoughts = false` turns it off.
 
 They are asked only when something has changed — they arrived, the hour turned, the
 weather broke, they learned something — so a settled villager costs nothing, and there is
@@ -432,8 +483,29 @@ hand theirs over?"), and only a yes completes the deal. Being interested, asking
 it, or promising to trade later all count as no. That keeps a confused reply from
 stranding the chain without letting you barter by waving objects at people.
 
-**Gossip costs nothing.** When two idle villagers pass each other they swap one fact
-id each, no model call involved. A rumour that starts with one villager really does
-reach the others, and you can hear it from whoever it reached.
+**There is no gossip mechanic.** There was one: two villagers in range each copied a
+random fact id to the other, and *then* a conversation was generated to describe the
+transfer that had already happened. The talk was a caption. If the pair spent the whole
+exchange on the weather the fact moved anyway; if the call failed it moved anyway; a
+villager could tell you something they had never been depicted as being told.
+
+Now they just talk. Nothing is chosen to be passed and nothing changes hands during the
+conversation. Afterwards the helper model reads what was actually said and notes what each
+of them came away with. Ilya knows he has a dog; if the dog comes up, whoever he was
+talking to now knows about the dog. If instead he talks about his back, that is what they
+remember — and they do remember it, because what someone is like is worth keeping too. A
+conversation that turns out to be nothing but weather leaves nothing behind, which is
+right.
+
+The errand chain still needs to know when one of its facts has genuinely travelled, since
+the notebook is built on those ids. So the same call reports which of the speaker's own
+facts were said out loud, and only those move. It is a record of what was said, not a
+licence: a fact nobody mentioned does not travel, and a villager cannot pass on something
+that was never theirs to know. Both are tested.
+
+The consequence worth knowing about is that **gossip is now lossy**. Two villagers can
+meet and part with nothing learned. That is how rumours work, and it is what makes the
+free-text memories interesting rather than decorative — but it does mean a fact spreads
+more slowly than it used to.
 
 `IDEAS.md` has notes on where this could go next.

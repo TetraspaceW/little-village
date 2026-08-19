@@ -1,4 +1,4 @@
-/* npc.js — the little guys: wandering, memory, gossip, and how they're drawn. */
+/* npc.js — the little guys: wandering, memory, meeting, and how they're drawn. */
 window.LG = window.LG || {};
 
 LG.actors = (function () {
@@ -12,7 +12,7 @@ LG.actors = (function () {
       tx: spot.x, ty: spot.y,
       dir: 'down', frozen: false, pauseT: 1 + Math.random() * 2,
       facts: (factIds || []).slice(),   // ids of things they know (see chain.js)
-      memory: [],                       // free-form things the player told them
+      memory: [],                       // what they have picked up, from anyone
       history: [],                      // recent dialogue turns with the player
       bubble: null, bubbleT: 0,
       gossipCool: 5 + Math.random() * 10,
@@ -79,16 +79,22 @@ LG.actors = (function () {
     return a.def.home;
   }
 
-  /* What has to be true for the world to be worth reconsidering. */
+  /* What has to be true for the world to be worth reconsidering. The last term
+     is just the passage of time: people finish what they came to do and think
+     again. Without it a villager who settles at midday stands there until dusk,
+     and a village where nobody ever changes their mind within an hour is dead. */
+  const RETHINK = 45;                             // seconds before it is worth another look
   function situation(a) {
     return LG.time.phase().id + '|' + (LG.time.info.name || '') + '|' +
-           (a.patch ? a.patch.x + ',' + a.patch.y : '-') + '|' + a.facts.length;
+           (a.patch ? a.patch.x + ',' + a.patch.y : '-') + '|' + a.facts.length +
+           '|' + Math.floor((a.lived || 0) / RETHINK);
   }
 
   function routine(a, dt, green, decide) {
     if (a.frozen) { a.route = null; return; }
     if (a.route && a.route.length) return;          // already on their way
 
+    a.lived = (a.lived || 0) + dt;
     a.routeCool -= dt;
     if (a.decideCool > 0) a.decideCool -= dt;
     if (a.routeCool > 0) return;
@@ -160,30 +166,32 @@ LG.actors = (function () {
   /* ------------------------------------------------------------- gossip
      Two nearby idle NPCs swap one fact each. This is free (no model call),
      so the village's knowledge really does spread by word of mouth. */
-  function gossip(npcs, dt, log, chatterLine, onChat) {
+  /* Two villagers run into each other and stop to talk.
+
+     There is no gossip mechanic. Nothing is picked to be transferred and nothing
+     changes hands here: they simply talk, and what either of them takes away is
+     worked out afterwards from what was actually said — see LG.llm.recall. Ilya
+     knows he has a dog; if the dog comes up, whoever he was talking to now knows
+     about the dog, and if instead he talks about his back then that is what they
+     remember. A conversation that turns out to be nothing but weather leaves
+     nothing behind, which is right. */
+  function meet(npcs, dt, log, chatterLine, onChat) {
     for (const a of npcs) a.gossipCool -= dt;
     for (let i = 0; i < npcs.length; i++) {
       for (let j = i + 1; j < npcs.length; j++) {
         const a = npcs[i], b = npcs[j];
         if (a.frozen || b.frozen || a.gossipCool > 0 || b.gossipCool > 0) continue;
+        if (a.chatting || b.chatting) continue;
         if (Math.hypot(a.px - b.px, a.py - b.py) > TILE * 2.2) continue;
         a.gossipCool = b.gossipCool = 22 + Math.random() * 25;
-        const fromA = pickFact(a), fromB = pickFact(b);
-        let said = false;
-        if (fromA && b.facts.indexOf(fromA) === -1) { b.facts.push(fromA); said = true; }
-        if (fromB && a.facts.indexOf(fromB) === -1) { a.facts.push(fromB); said = true; }
-        if (said) {
-          a.pauseT = b.pauseT = 4 + Math.random() * 3;    // stop and talk
-          a.route = b.route = null;
-          faceEachOther(a, b);
-          // If the player is near enough to overhear, let them actually say it;
-          // otherwise the news still travels, just off-page.
-          const spoken = onChat && onChat(a, b, fromA, fromB);
-          if (!spoken) {
-            a.bubble = chatterLine(); a.bubbleT = 5;
-            b.bubble = chatterLine(); b.bubbleT = 5;
-            log(a.def.name + ' and ' + b.def.name + ' swapped news.');
-          }
+        a.pauseT = b.pauseT = 4 + Math.random() * 3;      // stop and talk
+        a.route = b.route = null;
+        faceEachOther(a, b);
+        const spoken = onChat && onChat(a, b);
+        if (!spoken) {                                     // no key: they mime it
+          a.bubble = chatterLine(); a.bubbleT = 5;
+          b.bubble = chatterLine(); b.bubbleT = 5;
+          log(a.def.name + ' and ' + b.def.name + ' stopped for a word.');
         }
       }
     }
@@ -198,11 +206,6 @@ LG.actors = (function () {
       a.dir = dy > 0 ? 'down' : 'up';
       b.dir = dy > 0 ? 'up' : 'down';
     }
-  }
-
-  function pickFact(a) {
-    if (!a.facts.length) return null;
-    return a.facts[(Math.random() * a.facts.length) | 0];
   }
 
   /* ------------------------------------------------------------- drawing */
@@ -313,5 +316,5 @@ LG.actors = (function () {
     ctx.globalAlpha = 1;
   }
 
-  return { makeNPC, makeCreature, wander, walk, routine, stepTowards, gossip, drawCharacter, drawBubble, roundRect };
+  return { makeNPC, makeCreature, wander, walk, routine, stepTowards, meet, drawCharacter, drawBubble, roundRect };
 })();

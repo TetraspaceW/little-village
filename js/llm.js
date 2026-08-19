@@ -107,19 +107,165 @@ LG.llm = (function () {
     };
   }
 
+  /* ---------------------------------------------------------------- audit
+
+     Every call the game makes goes through the two functions below, so this is
+     the one place that sees all of it. Each one is recorded whole — the system
+     prompt, the messages, the raw reply before any parsing or repair, how long
+     it took and what it cost — and printed as a collapsed console group you can
+     open and read.
+
+     Raw matters: most of the failures in this game have been the difference
+     between what the model actually returned and what the game made of it, and
+     a log of the tidied-up version would have hidden every one of them.
+
+       LG.llm.audit = false     stop printing (still recorded)
+       LG.llm.transcript        the records, newest last
+       LG.llm.dump()            the lot as plain text, for copying out */
+  const KINDS = [
+    ['You are playing a character', 'villager'],
+    ['You decide what a villager does next', 'intent'],
+    ['You play one villager', 'chatter'],
+    ['You verify claims', 'notebook'],
+    ['You add furigana', 'furigana'],
+    ['You translate and romanise', 'gloss'],
+    ['You answer yes or no', 'trade']
+  ];
+  const transcript = [];
+  let audit = true, seq = 0;
+  const KEEP = 200;
+
+  function kindOf(system) {
+    const t = String(system || '');
+    for (const [head, name] of KINDS) if (t.indexOf(head) === 0) return name;
+    return 'call';
+  }
+
+  /* Who it is about, when the prompt says so — a log of twenty "villager" calls
+     is much less use than one that names them. */
+  function subjectOf(system, messages) {
+    const t = String(system || '') + '\n' + (messages || []).map(m => m.content).join('\n');
+    const named = /^Name:\s*([^—\n.]+)/m.exec(t) || /^You are ([A-Z][\w'-]*)/m.exec(t);
+    return named ? named[1].trim() : '';
+  }
+
+  function record(cfg, system, messages, out, err, ms, res) {
+    const entry = {
+      n: ++seq,
+      kind: kindOf(system),
+      who: subjectOf(system, messages),
+      model: cfg.model,
+      provider: cfg.provider,
+      ms: Math.round(ms),
+      system: system,
+      messages: messages,
+      raw: out === undefined ? null : out,
+      reasoning: (res && res.reasoning) || null,
+      usage: (res && res.usage) || null,
+      stop: (res && res.stop) || null,
+      // A reasoning model can spend the whole budget thinking and never get to the
+      // JSON. That comes back as an empty-handed success, so it is called out.
+      truncated: !!(res && (res.stop === 'max_tokens' || res.stop === 'length')),
+      error: err ? (err.message || String(err)) : null,
+      at: new Date().toISOString()
+    };
+    transcript.push(entry);
+    if (transcript.length > KEEP) transcript.shift();
+    if (LG.logbook) LG.logbook.call(entry);          // and onto the disk, if a log is running
+    if (audit && typeof console !== 'undefined' && console.log) {
+      const u = entry.usage || {};
+      const tok = (u.input_tokens || u.prompt_tokens) ?
+        '  ' + (u.input_tokens || u.prompt_tokens) + '\u2192' +
+        (u.output_tokens || u.completion_tokens || 0) + ' tok' : '';
+      const head = '%c ' + entry.kind + ' %c' + (entry.who ? ' ' + entry.who : '') +
+                   '  ' + entry.model + '  ' + entry.ms + 'ms' + tok +
+                   (entry.truncated ? '  CUT OFF (max_tokens)' : '') +
+                   (err ? '  FAILED' : '');
+      const tag = 'background:' + (err ? '#a33' : '#356') +
+                  ';color:#fff;border-radius:3px;font-weight:600';
+      const group = console.groupCollapsed || console.log;
+      group.call(console, head, tag, 'color:#888');
+      console.log('system:\n' + system);
+      (messages || []).forEach(m => console.log(m.role + ':\n' + m.content));
+      if (entry.reasoning) console.log('reasoning:\n' + entry.reasoning);
+      if (err) console.log('error: ' + entry.error);
+      else {
+        console.log('raw reply:\n' + out);
+        if (entry.truncated) console.log('*** cut off at max_tokens — the reply is incomplete ***');
+        if (entry.usage) console.log('usage: ' + JSON.stringify(entry.usage) +
+                                     (entry.stop ? '  stop: ' + entry.stop : ''));
+      }
+      if (console.groupEnd) console.groupEnd();
+    }
+    return entry;
+  }
+
+  /* Wraps a provider call so the record is written whether it returns or throws. */
+  async function audited(cfg, system, messages, run) {
+    const t0 = (typeof performance !== 'undefined' && performance.now)
+      ? performance.now() : Date.now();
+    const since = () => ((typeof performance !== 'undefined' && performance.now)
+      ? performance.now() : Date.now()) - t0;
+    try {
+      const res = await run();
+      record(cfg, system, messages, res.text, null, since(), res);
+      return res.text;
+    } catch (e) {
+      record(cfg, system, messages, undefined, e, since());
+      throw e;
+    }
+  }
+
   async function anthropicCall(cfg, system, messages) {
-    const data = await post('https://api.anthropic.com/v1/messages',
-      anthropicHeaders(cfg), anthropicBody(cfg, system, messages, 700));
-    if (data.stop_reason === 'refusal') throw new Error('The model declined to answer that.');
-    return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+    return audited(cfg, system, messages, () => anthropicSend(cfg, system, messages));
   }
 
   async function openrouterCall(cfg, system, messages) {
+    return audited(cfg, system, messages, () => openrouterSend(cfg, system, messages));
+  }
+
+  function dump() {
+    return transcript.map(e =>
+      '=== #' + e.n + '  ' + e.kind + (e.who ? '  ' + e.who : '') + '  ' + e.model +
+      '  ' + e.ms + 'ms  ' + e.at +
+      (e.usage ? '  ' + JSON.stringify(e.usage) : '') +
+      '\n--- system\n' + e.system +
+      (e.messages || []).map(m => '\n--- ' + m.role + '\n' + m.content).join('') +
+      (e.reasoning ? '\n--- reasoning\n' + e.reasoning : '') +
+      (e.truncated ? '\n--- CUT OFF at max_tokens' : '') +
+      (e.error ? '\n--- error\n' + e.error : '\n--- raw\n' + e.raw)
+    ).join('\n\n');
+  }
+
+  async function anthropicSend(cfg, system, messages) {
+    const data = await post('https://api.anthropic.com/v1/messages',
+      anthropicHeaders(cfg), anthropicBody(cfg, system, messages, 700));
+    if (data.stop_reason === 'refusal') throw new Error('The model declined to answer that.');
+    const blocks = data.content || [];
+    return { text: blocks.filter(b => b.type === 'text').map(b => b.text).join(''),
+             // the model's own working, when it shows any — this is the interesting half
+             reasoning: blocks.filter(b => b.type === 'thinking' || b.type === 'redacted_thinking')
+                              .map(b => b.thinking || '[redacted]').join('\n') || null,
+             usage: data.usage || null, stop: data.stop_reason || null };
+  }
+
+  async function openrouterSend(cfg, system, messages) {
     const data = await post('https://openrouter.ai/api/v1/chat/completions',
       openrouterHeaders(cfg),
       { model: cfg.model, messages: [{ role: 'system', content: system }].concat(messages) });
     if (data.error) throw new Error(data.error.message || 'OpenRouter error');
-    return data.choices[0].message.content || '';
+    const choice = (data.choices || [])[0] || {};
+    const m = choice.message || {};
+    /* Reasoning models return their working in a field of its own and it was
+       being dropped on the floor — which is a shame, because it is where you can
+       see a villager talk themselves into something daft. Providers disagree
+       about the name, so take whichever turns up. */
+    const think = m.reasoning ||
+      (Array.isArray(m.reasoning_details)
+        ? m.reasoning_details.map(d => d.text || d.summary || '').filter(Boolean).join('\n')
+        : null);
+    return { text: m.content || '', reasoning: think || null,
+             usage: data.usage || null, stop: choice.finish_reason || null };
   }
 
   /* A minimal round trip, so a bad key or a blocked origin is caught at the
@@ -274,6 +420,67 @@ LG.llm = (function () {
      agree too neatly, nobody misunderstands anybody, and the second speaker never
      says anything the first did not set up. It runs on the small model precisely
      so that this is affordable: a six-turn conversation is six cheap calls. */
+  /* What two villagers took away from talking to each other.
+
+     Gossip is not a mechanic here. Nothing is "shared" as a token: Ilya knows he
+     has a dog, and if he happens to mention the dog then whoever he was talking
+     to now knows about the dog. He might just as easily talk about his back, or
+     the weather, or how much he likes chocolate, and that is worth remembering
+     too if the other one found it interesting. So this is asked afterwards, of
+     the conversation that actually happened, rather than decided in advance.
+
+     `learned` exists only because the errand chain needs to know when one of its
+     facts has genuinely travelled — the notebook is built on those ids. It is a
+     record of what was said, not a licence: a fact nobody mentioned does not
+     move, however convenient that would be. */
+  async function recall(cfg, opts) {
+    const o = opts || {};
+    const side = (who, other) => [
+      who.name + ' knows these things. Which of them did ' + who.name + ' actually say out loud?',
+      who.facts.length ? who.facts.map(f => '  [' + f.id + '] ' + f.text).join('\n')
+                       : '  (they know nothing in particular, so this list is empty)'
+    ].join('\n');
+    const lines = [
+      'Two villagers have just been talking. Here is what was said:',
+      '',
+      o.transcript.map(t => t.who + ': ' + t.say).join('\n'),
+      '',
+      side(o.a, o.b),
+      '',
+      side(o.b, o.a),
+      '',
+      'The [f0]-style labels above are just ids for those statements; use them as they are.',
+      '',
+      'For each of them, write down what they would come away remembering.',
+      'Anything from the conversation worth keeping — what the other one told them,',
+      'what they are like, what is going on with them. Not everything said is worth',
+      'remembering; leave out small talk that told them nothing.',
+      'Write each memory as a short plain-English sentence from that villager’s side,',
+      'naming who it is about: "Ilya has a dog called Musya", "Mira’s back is bad again".',
+      '',
+      'Reply with only a JSON object:',
+      '{',
+      '  "' + o.a.name + '": {"remembers": ["..."], "said": ["ids ' + o.a.name + ' actually said, [] if none"]},',
+      '  "' + o.b.name + '": {"remembers": ["..."], "said": ["ids ' + o.b.name + ' actually said, [] if none"]}',
+      '}'
+    ].join('\n');
+    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg) };
+    const sys = 'You note what people took away from a conversation. Answer with JSON only.';
+    try {
+      const raw = vcfg.provider === 'anthropic'
+        ? await anthropicCall(vcfg, sys, [{ role: 'user', content: lines }])
+        : await openrouterCall(vcfg, sys, [{ role: 'user', content: lines }]);
+      const obj = parseJSON(raw);
+      if (!obj) return null;
+      const pick = n => {
+        const v = obj[n] || {};
+        return { remembers: Array.isArray(v.remembers) ? v.remembers.filter(x => typeof x === 'string') : [],
+                 said: Array.isArray(v.said) ? v.said.map(String) : [] };
+      };
+      return { a: pick(o.a.name), b: pick(o.b.name) };
+    } catch (e) { return null; }
+  }
+
   /* Where a villager goes next, and why.
 
      This used to be a probability table — morning meant a 60% chance of work —
@@ -302,14 +509,24 @@ LG.llm = (function () {
       o.folk && o.folk.length ? 'Who you have seen about the village:\n' +
         o.folk.map(f => '- ' + f.name + ', ' + f.where).join('\n') : null,
       '',
-      'Places you could go:',
-      o.places.map(p => '- ' + p.name + (p.note ? ' (' + p.note + ')' : '')).join('\n'),
+      /* The options as a JSON array of the exact strings that will be accepted.
+         A bulleted list reads as prose and gets answered in prose — "village
+         green" for "the village green" — which then matches nothing and the
+         villager quietly does not move. */
+      'Places you could go. "go" must be one of these strings exactly:',
+      JSON.stringify(o.places.map(p => p.name)),
+      o.places.some(p => p.note)
+        ? o.places.filter(p => p.note).map(p => '  ' + p.name + ' \u2014 ' + p.note).join('\n')
+        : null,
       '',
-      'Decide where to be for the next while. Somewhere you have a reason to be,',
-      'even if the reason is only that it is your own bed and it is late.',
+      /* The old version ended "even if the reason is only that it is your own bed
+         and it is late", which was meant to license a dull answer and was instead
+         picked over as a rule — one villager spent her reasoning establishing that
+         it was only the afternoon so the bed clause did not apply. */
+      'Decide where to be for the next while, and why.',
       '',
       'Reply with only a JSON object:',
-      '{"go": "one of the place names above", "why": "a few words, in English"}'
+      '{"go": "exactly one of the strings listed above", "why": "a few words, in English"}'
     ].filter(x => x !== null && x !== undefined).join('\n');
     const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg) };
     const sys = 'You decide what a villager does next. Answer with JSON only.';
@@ -331,8 +548,10 @@ LG.llm = (function () {
       'You have run into ' + o.them.name + ', ' + o.them.job + '.',
       o.when || null,
       '',
-      o.news ? 'Something you have been meaning to tell them: ' + o.news : null,
-      o.knows ? 'Other things you know, if they come up: ' + o.knows : null,
+      o.knows && o.knows.length
+        ? 'On your mind, if any of it comes up:\n' + o.knows.map(k => '- ' + k).join('\n') : null,
+      o.recent && o.recent.length
+        ? 'Lately you have picked up:\n' + o.recent.map(k => '- ' + k).join('\n') : null,
       '',
       said.length ? 'So far:\n' + said.join('\n')
                   : 'Neither of you has said anything yet.',
@@ -472,6 +691,8 @@ LG.llm = (function () {
     return obj;
   }
 
-  return { MODELS, HELPERS, VERIFIER, helperModel, speak, judge, furigana, gloss, converse, intent, confirmTrade,
+  return { MODELS, HELPERS, VERIFIER, helperModel, speak, judge, furigana, gloss, converse, intent, recall,
+           get transcript() { return transcript; }, dump,
+           get audit() { return audit; }, set audit(v) { audit = !!v; }, confirmTrade,
            validate, parseJSON, repairJSON, salvage };
 })();

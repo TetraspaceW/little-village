@@ -159,7 +159,9 @@ LG.dialogue = (function () {
     if (!npc.facts.length) lines.push('- (nothing much, beyond your own business)');
     if (npc.memory.length) {
       lines.push('');
-      lines.push('# What the traveller has told you');
+      /* Not only the traveller any more — most of what a villager picks up they
+         pick up from each other, and it is the same kind of knowing. */
+      lines.push('# What you have picked up lately');
       npc.memory.slice(-12).forEach(f => lines.push('- ' + f));
     }
     lines.push('');
@@ -643,12 +645,11 @@ LG.dialogue = (function () {
   let chatGap = 0, chatBusy = 0;
   const CHAT_GAP = 1.2, CHAT_PARALLEL = 2, CHAT_STALE = 12;
 
-  function overheard(a, b, news) {
+  function overheard(a, b, ctx) {
     if (chatQueue.length > 8) return;                  // a crowd, not a queue
     if (a.chatting || b.chatting) return;
     a.chatting = b.chatting = true;
-    chatQueue.push({ a, b, aNews: news.aNews, bNews: news.bNews,
-                     aExtra: news.aExtra, bExtra: news.bExtra, age: 0 });
+    chatQueue.push({ a, b, ctx: ctx || {}, age: 0 });
   }
 
   function chatTick(dt) {
@@ -680,12 +681,10 @@ LG.dialogue = (function () {
     const L = LG.LANGUAGES[s.lang];
     const turns = 4 + ((Math.random() * 3) | 0);        // 4–6 lines between them
     const transcript = [];
-    const news = { };
-    news[a.def.id] = job.aNews;
-    news[b.def.id] = job.bNews;
-    const extra = { };
-    extra[a.def.id] = job.aExtra;
-    extra[b.def.id] = job.bExtra;
+    const ctx = job.ctx || {};
+    const mind = {};
+    mind[a.def.id] = ctx.aKnows || [];
+    mind[b.def.id] = ctx.bKnows || [];
 
     try {
       for (let t = 0; t < turns; t++) {
@@ -695,9 +694,12 @@ LG.dialogue = (function () {
         const turn = await LG.llm.converse(LG.game.llmConfig(), {
           me: { name: me.def.name, job: me.def.job, persona: me.def.persona },
           them: { name: them.def.name, job: them.def.job, persona: them.def.persona },
-          // each villager brings their own news, and only mentions it once
-          news: t < 2 ? news[me.def.id] : null,
-          knows: extra[me.def.id],
+          /* No assignment to deliver. They have what is on their mind and what
+             they are like, and whether any of it comes up is the conversation's
+             business. Nothing downstream depends on a particular thing being
+             said, so nothing has to make them say it. */
+          knows: mind[me.def.id],
+          recent: (me.memory || []).slice(-4),
           transcript: transcript,
           closing: t === turns - 1,
           when: t === 0 ? LG.time.describe() : '',
@@ -716,6 +718,10 @@ LG.dialogue = (function () {
         a.pauseT = Math.max(a.pauseT, 6); a.route = null;
         b.pauseT = Math.max(b.pauseT, 6); b.route = null;
 
+        // Most of this happens where you cannot see it; the console is the only
+        // window onto a village that carries on talking behind your back.
+        if (LG.game.think) LG.game.think(me, 'says', plain +
+          (turn.translation ? '  \u2014 ' + turn.translation : ''));
         if (LG.game.canOverhear(a, b)) {
           const ruby = (L.furigana && plain !== turn.say) ? turn.say : null;
           LG.game.logSpeech(me.def.name, plain, ruby, turn.roman, turn.translation);
@@ -726,6 +732,44 @@ LG.dialogue = (function () {
 
     chatBusy--;
     a.chatting = b.chatting = false;
+
+    /* What either of them keeps is read off the conversation that happened,
+       rather than decided before it started. */
+    if (transcript.length >= 2 && ctx.factsOf) remember(a, b, transcript, ctx);
+  }
+
+  function remember(a, b, transcript, ctx) {
+    const factsOf = ctx.factsOf;
+    LG.llm.recall(LG.game.llmConfig(), {
+      transcript: transcript,
+      a: { name: a.def.name, facts: factsOf(a) },
+      b: { name: b.def.name, facts: factsOf(b) }
+    }).then(res => {
+      if (!res) return;
+      keep(a, b, res.a, factsOf(a));
+      keep(b, a, res.b, factsOf(b));
+    }).catch(() => {});
+  }
+
+  /* `speaker` said things; `listener` is the one who now knows them. */
+  function keep(speaker, listener, took, mine) {
+    (took.remembers || []).slice(0, 4).forEach(m => {
+      if (typeof m !== 'string' || m.length < 4) return;
+      if (speaker.memory.indexOf(m) === -1) {
+        speaker.memory.push(m);
+        if (speaker.memory.length > 24) speaker.memory.shift();
+        if (LG.game.think) LG.game.think(speaker, 'remembers', m);
+      }
+    });
+    // A chain fact travels only if it was genuinely said out loud.
+    const ids = mine.map(f => f.id);
+    (took.said || []).forEach(tag => {
+      const id = String(tag).replace(/[^\w]/g, '');
+      if (ids.indexOf(id) === -1) return;              // not theirs to tell
+      if (listener.facts.indexOf(id) !== -1) return;   // already knew
+      listener.facts.push(id);
+      if (LG.game.think) LG.game.think(listener, 'now knows', LG.game.factText(id) || id);
+    });
   }
 
   function init() {

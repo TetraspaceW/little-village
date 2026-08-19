@@ -213,7 +213,7 @@ LG.chain = (function () {
                   gives: lk.gives, givesCount: lk.givesCount };
       if (i === 0) {
         r.goal = 'You want ' + a(lk.wants) + ' more than anything — ' + lk.reason +
-          '. You ask everyone you meet about it and you do not know who has one. ' +
+          '. You ask everyone you meet about it. ' +
           'When the traveller brings you one, take it and give them ' + a(lk.gives) +
           ' in thanks.';
         r.trade.hint = 'Once it is clear the traveller is giving you ' + a(lk.wants) +
@@ -250,9 +250,15 @@ LG.chain = (function () {
       }
     });
 
+    /* This used to open "You want nothing in particular today", which was meant
+       to say "you have no part in the errand" and was read as "you have no
+       reason to do anything" — the shopkeeper reasoned her way out of going to
+       her own shop with it. A villager with no errand still has a trade. */
     bystanders.forEach(n => {
-      roles[n.id].goal = 'You want nothing in particular today. You are happy to stop and ' +
-        'talk, and you pass on anything you have heard around the village.';
+      const d = LG.NPCS.find(x => x.id === n.id) || {};
+      roles[n.id].goal = 'Your own work, as ' + (d.job || 'a villager') +
+        ', which is what your day is mostly about. Nobody has asked you for anything, ' +
+        'so beyond that you are happy to stop and talk, and you pass on what you have heard.';
     });
 
     /* -------------------------------------------------------- assemble */

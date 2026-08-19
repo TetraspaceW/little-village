@@ -688,23 +688,64 @@ LG.game = (function () {
      model from their own goal and memory, so the baker opens up because she is
      the baker and the woman looking for a saw goes where she heard there is one. */
   const DECIDE_COOL = 25;
+
+  /* Villagers think out loud into the console. Every decision comes back with a
+     reason and nothing was doing anything with it, which made the difference
+     between a villager reasoning and a villager rolling dice invisible from the
+     outside. Tagged in the villager's own colour so a busy village stays
+     readable. `LG.game.thoughts = false` turns it off. */
+  let thoughts = true;
+  function think(n, what, detail) {
+    // The log keeps these whether or not the console is printing them.
+    if (LG.logbook) LG.logbook.note('villager', n.def ? n.def.name : '?', what,
+      { detail: detail || '', where: n.px !== undefined ? describeWhere(n) : '',
+        clock: LG.time && LG.time.clock ? LG.time.clock() : '' });
+    if (!thoughts || typeof console === 'undefined' || !console.log) return;
+    const c = (n.def && n.def.color) || '#888';
+    console.log('%c ' + (n.def ? n.def.name : '?') + ' %c ' + what +
+                (detail ? '%c  ' + detail : ''),
+      'background:' + c + ';color:#fff;border-radius:3px;font-weight:600',
+      'color:inherit',
+      'color:#888;font-style:italic');
+  }
+  /* Everywhere a villager could sensibly go, including after other people.
+
+     Knowing that Mira has the pie is worth nothing if there is no way to go and
+     find Mira — Boris worked that out the hard way, reasoned that "Mira's home is
+     not listed as a place I can go", and settled for standing on the green
+     hoping she would turn up. So whoever they can see is a destination too. */
   function placesFor(n) {
     const out = [{ name: 'home', rect: n.def.home, note: 'your own place' }];
-    if (n.work) out.push({ name: n.workBuilding ? n.workBuilding.label : 'your work',
-                           rect: n.work,
-                           note: n.workBuilding ? 'where you work' : 'where you do your work' });
+    if (n.work) {
+      // "your work" was a literal option name, and it made villagers wonder aloud
+      // what and where their work was. Name the place.
+      const label = n.workBuilding ? n.workBuilding.label : (n.def.job || 'your work');
+      out.push({ name: label, rect: n.work, note: 'where you work' });
+    }
     out.push({ name: 'the village green', rect: LG.GREEN, note: 'where people gather' });
     W.buildings.forEach(b => {
       if (n.workBuilding && b === n.workBuilding) return;
       out.push({ name: b.label, rect: b.inside });
     });
+    npcs.forEach(o => {
+      if (o === n) return;
+      if (dist(n, o) > TILE * 26) return;               // only people they can see
+      out.push({ name: 'after ' + o.def.name, rect: besideThem(o), note: describeWhere(o) });
+    });
     return out;
+  }
+
+  /* A patch of ground next to someone, so "go after Mira" means standing where
+     she is rather than occupying her exactly. */
+  function besideThem(o) {
+    return { x: Math.max(0, o.tx - 2), y: Math.max(0, o.ty - 2), w: 5, h: 5 };
   }
 
   function decideWhereToGo(n, green) {
     const opts = placesFor(n);
     const done = () => { n.deciding = false; n.decideCool = DECIDE_COOL; };
     if (n.decideCool > 0) { n.deciding = false; return false; }   // asked too recently
+    think(n, 'wonders where to be', describeWhere(n) + ', ' + LG.time.phase().name);
     LG.llm.intent(llmConfig(), {
       me: { name: n.def.name, job: n.def.job, persona: n.def.persona },
       goal: (plan.roles[n.def.id] || {}).goal || '',
@@ -717,13 +758,24 @@ LG.game = (function () {
       places: opts.map(o => ({ name: o.name, note: o.note }))
     }).then(res => {
       done();
-      if (!res) return;
-      const want = opts.find(o => o.name.toLowerCase() === String(res.go).toLowerCase())
-                || opts.find(o => String(res.go).toLowerCase().indexOf(o.name.toLowerCase()) !== -1);
-      if (!want) return;
+      if (!res) { think(n, 'could not decide', 'falling back to habit'); return; }
+      /* Match forgivingly. Being told the exact strings cuts the failure rate but
+         does not end it, and "village green" for "the village green" should not
+         leave someone standing in the road. */
+      const norm = x => String(x).toLowerCase()
+        .replace(/^(the|a|an)\s+/, '').replace(/[^a-z0-9 ]/g, '').trim();
+      const said = norm(res.go);
+      const want = opts.find(o => norm(o.name) === said)
+                || opts.find(o => said && (norm(o.name).indexOf(said) !== -1 ||
+                                           said.indexOf(norm(o.name)) !== -1));
+      if (!want) {
+        think(n, 'wanted to go somewhere that is not a place', String(res.go));
+        return;
+      }
       n.wantsGo = want.rect;
       n.why = res.why || '';
-    }).catch(done);
+      think(n, '\u2192 ' + want.name, n.why);
+    }).catch(() => { done(); think(n, 'could not decide', 'the call failed'); });
     return true;
   }
 
@@ -743,27 +795,26 @@ LG.game = (function () {
 
   /* Villagers talk to each other wherever they are; this only supplies the news
      being passed. `factId` is the piece of gossip actually changing hands. */
-  function villagerTalk(a, b, fromA, fromB) {
+  /* They have met and stopped to talk. Nothing is decided about what will be
+     said — they have their own business, their own memories, and whatever the
+     weather is doing. What either of them keeps is settled afterwards. */
+  function villagerTalk(a, b) {
     if (!settings.apiKey) return false;
-    const text = id => (id && plan.facts[id]) ? plan.facts[id].text : null;
-    /* Whatever else they are each carrying, in case the talk wanders there. A
-       villager's own opinion is stored as "Mira thinks Wren talks too much",
-       which reads absurdly when you hand it back to Mira — she does not think
-       about herself in the third person. */
+    /* A villager's own opinion is stored as "Mira thinks Wren talks too much",
+       which reads absurdly handed back to Mira — she does not think about
+       herself in the third person. */
     const own = (n, t) => (t && t.indexOf(n.def.name + ' thinks ') === 0)
       ? 'You think ' + t.slice((n.def.name + ' thinks ').length)
       : t;
-    // the news being passed needs this as much as the extras do
-    const aNews = own(a, text(fromA)), bNews = own(b, text(fromB));
-    if (!aNews && !bNews) return false;
-    const rest = (n, skip) => n.facts
-      .filter(id => id !== skip && plan.facts[id])
-      .slice(0, 2)
-      .map(id => own(n, plan.facts[id].text))
-      .join(' ');
+    const mind = n => n.facts
+      .map(id => plan.facts[id] && own(n, plan.facts[id].text))
+      .filter(Boolean)
+      .slice(0, 5);
     LG.dialogue.overheard(a, b, {
-      aNews: aNews, bNews: bNews,
-      aExtra: rest(a, fromA), bExtra: rest(b, fromB)
+      aKnows: mind(a), bKnows: mind(b),
+      factsOf: n => n.facts
+        .map(id => plan.facts[id] && { id: id, text: plan.facts[id].text })
+        .filter(Boolean)
     });
     return true;
   }
@@ -808,13 +859,16 @@ LG.game = (function () {
     movePlayer(dt);
 
     for (const n of npcs) {
+      const walking = !!(n.route && n.route.length);
       A.routine(n, dt, LG.GREEN, settings.apiKey && settings.npcChatter ? decideWhereToGo : null);
+      if (n.wasWalking && !walking) think(n, 'arrives', describeWhere(n) + (n.why ? ' — ' + n.why : ''));
+      n.wasWalking = walking;
       A.walk(n, dt, 34);
       if (n.bubbleT > 0) n.bubbleT -= dt;
     }
     if (settings.npcChatter) {
       LG.dialogue.chatTick(dt);
-      A.gossip(npcs, dt, log, LG.dialogue.chatterLine, villagerTalk);
+      A.meet(npcs, dt, log, LG.dialogue.chatterLine, villagerTalk);
     }
 
     if (beast) {
@@ -937,7 +991,10 @@ LG.game = (function () {
   return { init, settings, state, llmConfig, ttsConfig, log, learn, hasNote, give, take, count,
            atWork, behindTheCounter,
            _moveDir: moveDir, _isInteract: isInteract,
-           canOverhear, logSpeech,
+           canOverhear, logSpeech, think,
+           factText: id => (plan && plan.facts[id]) ? plan.facts[id].text : null,
+           set thoughts(v) { thoughts = !!v; },
+           get thoughts() { return thoughts; },
            _debugPlayerAt: (x, y) => { player.px = x; player.py = y; },
            inventoryList, doTrade, commerce, renderHUD, openSettings, uiBlocked, newVillage,
            get plan() { return plan; },

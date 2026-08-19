@@ -134,7 +134,9 @@ LG.chain = (function () {
       return pool.slice(0, n);
     }
 
-    const spread = level.spread;
+    // Spread scales with the population: a fact known by two of six villagers is
+    // findable, the same two of twelve is a needle in a haystack.
+    const spread = Math.max(1, Math.round(level.spread * LG.NPCS.length / 6));
     const factOrder = [];
 
     links.forEach((lk, i) => {
@@ -195,35 +197,35 @@ LG.chain = (function () {
           '. You ask everyone you meet about it and you do not know who has one. ' +
           'When the traveller brings you one, be delighted, take it, and press ' +
           a(lk.gives) + ' on them in thanks.';
-        r.trade.hint = 'When the traveller offers you ' + a(lk.wants) +
-          ', accept it joyfully and give them ' + a(lk.gives) + '.';
+        r.trade.hint = 'Once it is clear the traveller is giving you ' + a(lk.wants) +
+          ', accept it joyfully and press ' + a(lk.gives) + ' on them.';
       } else if (lk.kind === 'sell') {
         r.goal = (shopkeeper(lk)
           ? 'You keep the village shop, and ' + a(lk.gives) + ' costs ' + NUMWORD[lk.wantsCount] + ' coins there.'
           : 'You have ' + a(lk.gives) + ' and you are willing to sell it, but you want ' +
             NUMWORD[lk.wantsCount] + ' coins for it — ' + lk.reason + '.') +
           ' You never give credit and you never come down on the price, though you are perfectly polite about it.';
-        r.trade.hint = 'When the traveller pays you ' + NUMWORD[lk.wantsCount] +
+        r.trade.hint = 'Once the traveller has agreed the price and is paying you ' + NUMWORD[lk.wantsCount] +
           ' coins, sell them ' + a(lk.gives) + '.';
       } else if (lk.kind === 'errand' && isBeast) {
         r.goal = 'Your ' + named(lk.wants) + ', ' + beastName + ', has wandered off again — ' +
           'somewhere ' + place.en + ', you think. You are worried. You will give ' +
           a(lk.gives) + ' to whoever brings ' + beastName + ' back, and you mention ' +
           'it to anyone who will listen.';
-        r.trade.hint = 'When the traveller brings you ' + beastName +
+        r.trade.hint = 'Once the traveller is handing ' + beastName + ' back to you' +
           ', be delighted and hand over ' + a(lk.gives) + '.';
       } else if (lk.kind === 'errand') {
         r.goal = 'You need ' + a(lk.wants) + ' — ' + lk.reason + '. You believe there ' +
           'is one ' + place.en + ' but you cannot go and get it yourself. You will give ' +
           a(lk.gives) + ' to whoever fetches it.';
-        r.trade.hint = 'When the traveller brings you ' + a(lk.wants) +
+        r.trade.hint = 'Once the traveller is giving you ' + a(lk.wants) +
           ', thank them and hand over ' + a(lk.gives) + '.';
       } else {
         r.goal = 'You have ' + a(lk.gives) + ' and you keep it on you. You will part ' +
           'with it for one thing only: ' + a(lk.wants) + ' — ' + lk.reason +
           '. Say so plainly if anyone asks.';
-        r.trade.hint = 'When the traveller offers you ' + a(lk.wants) +
-          ', take it and hand over ' + a(lk.gives) + '.';
+        r.trade.hint = 'Once it is plain that the traveller is trading you ' + a(lk.wants) +
+          ' for it, take it and hand over ' + a(lk.gives) + '.';
       }
     });
 

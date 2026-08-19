@@ -118,6 +118,10 @@ LG.dialogue = (function () {
       npc.memory.slice(-12).forEach(f => lines.push('- ' + f));
     }
     lines.push('');
+    lines.push('# Where you are right now');
+    lines.push(LG.time.describe());
+    lines.push('Remark on the weather or the season if it comes naturally — it is what people here talk about — but do not force it into every reply.');
+    lines.push('');
     lines.push('# The player');
     lines.push('A traveller visiting the village. They are learning ' + L.name + ' and will make mistakes — be patient with broken grammar and bad pronunciation.');
     lines.push('They are carrying: ' + (inv || 'nothing'));
@@ -159,10 +163,13 @@ LG.dialogue = (function () {
     lines.push('  "remember": "OPTIONAL: one short English sentence stating a NEW fact you just learned from the traveller. Omit this unless you understood them.",');
     lines.push('  "action": "' + (trade ? 'trade | none' : 'none') + '"');
     lines.push('}');
-    if (L.furigana) lines.push('Furigana gives the reading of the whole WORD as it is actually pronounced, never the character readings stitched together: \u5927\u5de5 is \u3060\u3044\u304f, not \u3060\u3044\u3053\u3046. If you are unsure of a reading, use a simpler word you are sure of.');
+    if (L.furigana) lines.push('Furigana gives the reading of the whole WORD as it is actually pronounced, never the character readings stitched together: \u5927\u5de5 is \u3060\u3044\u304f, not \u3060\u3044\u3053\u3046.');
     lines.push('"translation" and "remember" are notes for the game, not speech — writing English there does not mean you understand any.');
     lines.push('"revealed" is about what you asserted, not what you talked about: using the word, explaining what it means, or asking after it does not count. When in doubt, leave it out.');
-    if (trade) lines.push('Set "action" to "trade" at the moment you hand over ' + (trade.gives === 'coins' ? 'the coins' : LG.ITEMS[trade.gives].full) + ', and not before. Someone holding the thing out to you needs no words — that you always understand.');
+    if (trade) {
+      lines.push('Set "action" to "trade" at the moment you actually hand over ' + (trade.gives === 'coins' ? 'the coins' : LG.ITEMS[trade.gives].full) + ', and not before.');
+      lines.push('Someone holding an object out to you is a gesture you understand without words — but a gesture is not yet a bargain. If it is not clear what the two of you are exchanging, ask them before you take it. Once the exchange is plain to you both, take it and hand yours over in the same breath.');
+    }
     return lines.join('\n');
   }
 
@@ -192,7 +199,7 @@ LG.dialogue = (function () {
       npc.history.slice(-4).forEach(h => {
         if (h.player) addLine('player', h.player);
         addLine('npc', h.say, h.translation, h.roman,
-                rubyMatches(h.ruby, h.say) ? h.ruby : null);
+                rubyMatches(h.ruby, h.say) ? h.ruby : null, npc);
       });
     } else {
       status('Say hello — or click a phrase below.');
@@ -201,6 +208,7 @@ LG.dialogue = (function () {
   }
 
   function close() {
+    LG.tts.stop();
     if (current) current.frozen = false;
     current = null;
     el.dlg.classList.remove('open');
@@ -212,7 +220,12 @@ LG.dialogue = (function () {
     el.dlgStatus.className = 'dlg-status ' + (kind || '');
   }
 
-  function addLine(who, text, translation, roman, ruby) {
+  function speakLine(npc, text) {
+    if (!npc || !LG.game.settings.voices) return;
+    LG.tts.speak(LG.game.ttsConfig(), npc.def.id, text);
+  }
+
+  function addLine(who, text, translation, roman, ruby, npc) {
     const s = LG.game.settings;
     const row = document.createElement('div');
     row.className = 'line ' + who;
@@ -228,21 +241,30 @@ LG.dialogue = (function () {
     }
     if (who === 'npc') main.style.fontFamily = LG.LANGUAGES[s.lang].fontStack;
     bub.appendChild(main);
-    if (roman) {
-      const r = document.createElement('div');
-      r.className = 'roman';
-      r.textContent = roman;
-      bub.appendChild(r);
+    if (who === 'npc' && npc && s.voices && LG.tts.state === 'ready') {
+      const say = document.createElement('button');
+      say.className = 'replay';
+      say.textContent = '🔊';
+      say.title = 'Hear it again';
+      say.onclick = () => speakLine(npc, text);
+      bub.appendChild(say);
     }
-    if (translation) {
-      const tr = document.createElement('div');
-      tr.className = 'trans' + (s.showTranslation ? '' : ' hidden-tr');
-      tr.textContent = translation;
-      tr.title = s.showTranslation ? '' : 'click to reveal';
-      tr.onclick = () => tr.classList.remove('hidden-tr');
-      bub.appendChild(tr);
-    }
-    row._main = main;
+    // both gloss lines exist from the start so a late repair can fill them in
+    const r = document.createElement('div');
+    r.className = 'roman';
+    r.textContent = roman || '';
+    r.style.display = roman ? '' : 'none';
+    bub.appendChild(r);
+
+    const tr = document.createElement('div');
+    tr.className = 'trans' + (s.showTranslation ? '' : ' hidden-tr');
+    tr.textContent = translation || '';
+    tr.title = s.showTranslation ? '' : 'click to reveal';
+    tr.onclick = () => tr.classList.remove('hidden-tr');
+    tr.style.display = translation ? '' : 'none';
+    bub.appendChild(tr);
+
+    row._main = main; row._roman = r; row._trans = tr;
     row.appendChild(bub);
     el.dlgLog.appendChild(row);
     el.dlgLog.scrollTop = el.dlgLog.scrollHeight;
@@ -313,7 +335,7 @@ LG.dialogue = (function () {
     }
 
     if (!reply || !reply.say) {
-      status('⚠ The reply could not be read. Try again.', 'error');
+      status('⚠ ' + npc.def.name + ' said something the game could not read. Try again.', 'error');
       busy = false; el.dlgSend.disabled = false;
       return;
     }
@@ -343,9 +365,16 @@ LG.dialogue = (function () {
       }
     }
 
-    const row = addLine('npc', spoken, reply.translation, reply.roman, ruby);
+    const row = addLine('npc', spoken, reply.translation, reply.roman, ruby, npc);
+    speakLine(npc, spoken);
     if (L.furigana && !ruby && needsFurigana(spoken)) {
       pending.push(repairFurigana(npc, spoken, row));               // ask the small model for it
+    }
+    const missingTrans = !reply.translation;
+    const missingRoman = L.romanize && !reply.roman;
+    if (missingTrans || missingRoman) {
+      pending.push(repairGloss(npc, spoken, row,
+        { translation: !missingTrans, roman: !missingRoman }));
     }
     npc.bubble = spoken; npc.bubbleT = 6;   // the canvas bubble stays plain text
 
@@ -354,16 +383,19 @@ LG.dialogue = (function () {
     else if (u === 'partial') status(npc.def.name + ' only caught part of that.', 'miss');
     else status('');
 
-    // Trades: the model can trigger one, but if the player physically offered the
-    // right thing we complete it regardless, so a conversation can never deadlock.
+    // A trade happens because the villager agreed to it, never because an object
+    // was waved at them. If they agreed in words but forgot the field, a second
+    // reader catches that — see confirmOffer.
     const trade = npc.tradeDone ? null : (LG.game.plan.roles[npc.def.id] || {}).trade;
     if (trade) {
       const need = trade.wantsCount || 1;
-      const offeredRight = offered === trade.wants && LG.game.count(trade.wants) >= need;
+      const haveEnough = LG.game.count(trade.wants) >= need;
       const modelSaysTrade = gotIt && String(reply.action || '').toLowerCase().indexOf('trade') !== -1;
-      if (offeredRight || (modelSaysTrade && LG.game.count(trade.wants) >= need)) {
+      if (modelSaysTrade && haveEnough) {
         LG.game.doTrade(npc, trade);
         renderItems();
+      } else if (offered === trade.wants && haveEnough) {
+        pending.push(confirmOffer(npc, trade, spoken, reply.translation));
       } else if (offered) {
         status(npc.def.name + ' does not want your ' + LG.ITEMS[offered].en + '.');
       }
@@ -380,6 +412,44 @@ LG.dialogue = (function () {
      confirms them against what was actually said before anything is written in
      the notebook. Runs after the reply is on screen, so nobody waits for it. */
   const pending = [];
+
+  /* A villager sometimes answers with no translation, or no romanisation. Ask
+     the small model for the missing half rather than leaving a learner with a
+     bare sentence. */
+  async function repairGloss(npc, spoken, row, have) {
+    const L = LG.LANGUAGES[LG.game.settings.lang];
+    try {
+      const got = await LG.llm.gloss(LG.game.llmConfig(), spoken,
+        { langName: L.name, romanLabel: (L.romanize && !have.roman) ? L.romanLabel : null });
+      if (!got) return;
+      const turn = npc.history[npc.history.length - 1];
+      if (!have.translation && got.translation) {
+        if (turn && turn.say === spoken) turn.translation = got.translation;
+        if (row && row._trans) { row._trans.textContent = got.translation; row._trans.style.display = ''; }
+      }
+      if (L.romanize && !have.roman && got.roman) {
+        if (turn && turn.say === spoken) turn.roman = got.roman;
+        if (row && row._roman) { row._roman.textContent = got.roman; row._roman.style.display = ''; }
+      }
+    } catch (e) { /* the line is still readable */ }
+  }
+
+  /* The player held out exactly the right thing and the villager did not flag a
+     trade. Either they declined, or they agreed and dropped the field — ask a
+     reader which it was. */
+  async function confirmOffer(npc, trade, spoken, translation) {
+    try {
+      const yes = await LG.llm.confirmTrade(LG.game.llmConfig(), spoken, translation, {
+        npcName: npc.def.name,
+        wants: trade.wantsCount > 1 ? trade.wantsCount + ' coins' : LG.ITEMS[trade.wants].full,
+        gives: trade.givesCount > 1 ? trade.givesCount + ' coins' : LG.ITEMS[trade.gives].full
+      });
+      if (!yes || npc.tradeDone) return;
+      if (LG.game.count(trade.wants) < (trade.wantsCount || 1)) return;
+      LG.game.doTrade(npc, trade);
+      renderItems();
+    } catch (e) { /* no deal */ }
+  }
 
   /* The villager forgot the furigana (or mangled it). Ask the small model for
      just that, check it strips back to the same sentence, and slot it into the
@@ -431,6 +501,68 @@ LG.dialogue = (function () {
     } catch (e) { /* an unwritten note is always better than a wrong one */ }
   }
 
+  /* Villagers passing news to each other, out loud, wherever they are. This runs
+     on the small model, so the village talks to itself freely; the queue below
+     exists only to stop a dozen simultaneous meetings firing at once, not to
+     ration the conversation. */
+  const chatQueue = [];
+  let chatGap = 0, chatBusy = 0;
+  const CHAT_GAP = 1.2, CHAT_PARALLEL = 2, CHAT_STALE = 12;
+
+  function overheard(a, b, newsText, extraText) {
+    if (chatQueue.length > 8) return;                  // a crowd, not a queue
+    if (a.chatting || b.chatting) return;
+    a.chatting = b.chatting = true;
+    chatQueue.push({ a, b, newsText, extraText, age: 0 });
+  }
+
+  function chatTick(dt) {
+    chatGap -= dt;
+    for (let i = chatQueue.length - 1; i >= 0; i--) {
+      chatQueue[i].age += dt;
+      if (chatQueue[i].age > CHAT_STALE) {             // they have wandered off
+        const q = chatQueue.splice(i, 1)[0];
+        q.a.chatting = q.b.chatting = false;
+      }
+    }
+    while (chatQueue.length && chatGap <= 0 && chatBusy < CHAT_PARALLEL) {
+      chatGap = CHAT_GAP;
+      startChat(chatQueue.shift());
+    }
+  }
+
+  function startChat(job) {
+    const a = job.a, b = job.b, newsText = job.newsText, extraText = job.extraText;
+    chatBusy++;
+    const s = LG.game.settings;
+    const L = LG.LANGUAGES[s.lang];
+    LG.llm.chatter(LG.game.llmConfig(), {
+      a: { name: a.def.name, job: a.def.job, persona: a.def.persona },
+      b: { name: b.def.name, job: b.def.job, persona: b.def.persona },
+      news: newsText,
+      extra: extraText,
+      when: LG.time.describe(),
+      langName: L.name,
+      romanLabel: L.romanize ? L.romanLabel : null,
+      level: (LG.LEVELS[s.level] || {}).prompt || ''
+    }).then(res => {
+      chatBusy--;
+      a.chatting = b.chatting = false;
+      if (!res) return;
+      // The talk happens wherever they are; the log is only for what the player
+      // is close enough to actually overhear.
+      const near = LG.game.canOverhear(a, b);
+      a.bubble = res.a.say; a.bubbleT = 7;
+      a.pauseT = Math.max(a.pauseT, 6); a.route = null;
+      if (near) LG.game.log('👂 ' + a.def.name + ': ' + (res.a.translation || res.a.say));
+      setTimeout(() => {
+        b.bubble = res.b.say; b.bubbleT = 6;
+        b.pauseT = Math.max(b.pauseT, 4); b.route = null;
+        if (near) LG.game.log('👂 ' + b.def.name + ': ' + (res.b.translation || res.b.say));
+      }, 2600);
+    }).catch(() => { chatBusy--; a.chatting = b.chatting = false; });
+  }
+
   function init() {
     bind();
     el.dlgSend.onclick = () => send(el.dlgInput.value);
@@ -441,7 +573,9 @@ LG.dialogue = (function () {
     });
   }
 
-  return { init, open, close, send, chatterLine, isOpen: () => !!current, renderItems, addLine, status,
+  return { init, open, close, send, chatterLine, overheard, chatTick,
+           get chatPending() { return chatQueue.length + chatBusy; },
+           isOpen: () => !!current, renderItems, addLine, status,
            settled: () => { const all = pending.splice(0); return Promise.all(all); },
            _debugPrompt: systemPrompt, _rubyHTML: rubyHTML,
            _stripRuby: stripRuby, _rubyMatches: rubyMatches, _needsFurigana: needsFurigana,

@@ -31,6 +31,7 @@ canvas{display:block;width:100%;height:100%;outline:none;cursor:default}
   box-shadow:var(--shadow);
   max-width:280px;
 }
+#purse{float:right;color:#b5563f;font-size:12px;letter-spacing:0}
 .hud-box h3{
   margin:0 0 6px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;
   color:#8a7355;font-weight:700;
@@ -50,6 +51,7 @@ canvas{display:block;width:100%;height:100%;outline:none;cursor:default}
 .seedline{margin-top:7px;padding-top:6px;border-top:1px solid var(--line);
   font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#a8916f}
 .seedline span{color:#6d5b45;font-weight:700}
+#clock{letter-spacing:.02em;text-transform:none;font-size:11px}
 #inv .pill{
   display:inline-block;background:var(--paper-2);border:1px solid var(--line);
   border-radius:999px;padding:2px 9px;margin:2px 3px 2px 0;font-size:13px;
@@ -144,6 +146,15 @@ ruby rb{font-size:1em}
 }
 .chip:hover{background:#fff;border-color:var(--accent)}
 .chip.item{background:#fdf1d8;border-color:#e0c78d}
+.replay{
+  border:none;background:transparent;cursor:pointer;font-size:13px;padding:2px 4px;
+  margin-left:2px;opacity:.45;line-height:1;
+}
+.replay:hover{opacity:1}
+.panel-card .opt{
+  font-weight:400;font-size:11px;color:#a8916f;border:1px solid var(--line);
+  border-radius:999px;padding:1px 7px;margin-left:6px;text-transform:uppercase;letter-spacing:.06em;
+}
 
 .composer{display:flex;gap:8px;padding:10px 12px;border-top:2px solid var(--line);background:var(--paper-2)}
 .composer textarea{
@@ -171,7 +182,7 @@ ruby rb{font-size:1em}
 }
 .panel-card h2{margin:0 0 12px;font-size:21px}
 .panel-card label{display:block;margin:12px 0;font-size:13px;font-weight:600;color:#6d5b45}
-.panel-card select,.panel-card input[type=password]{
+.panel-card select,.panel-card input[type=password],.panel-card input[type=text]{
   display:block;width:100%;margin-top:5px;padding:8px 10px;font:15px inherit;
   border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);
 }
@@ -186,6 +197,19 @@ ruby rb{font-size:1em}
 .note code{background:#e7d9bd;border-radius:4px;padding:1px 4px;font-size:12px}
 .lede{font-size:16px;color:#4a3b2a;margin:0 0 8px}
 #setLede p{font-size:13.5px;color:#6d5b45}
+#ttsResult:empty{display:none}
+#ttsResult{
+  margin-top:8px;padding:8px 10px;border-radius:8px;font-size:12px;font-weight:400;
+  background:var(--paper-2);border:1px solid var(--line);color:#6d5b45;
+  word-break:break-word;line-height:1.45;
+}
+#ttsResult.bad{background:#f7e3de;border-color:#e0b3a8;color:#8e3a26}
+#ttsResult.good{background:#e4efe0;border-color:#b6d0ac;color:#3f6b3a}
+.castrow{display:flex;align-items:center;gap:6px;margin-top:5px;font-size:12px}
+.castrow .replay{opacity:.8;font-size:11px}
+.castrow .replay:disabled{opacity:.25;cursor:default}
+.castrow i{color:#8a7355;font-style:normal;font-size:11px}
+#setTtsTest{margin-top:8px;padding:7px}
 #setError:empty{display:none}
 #setError{
   margin-top:14px;padding:9px 11px;border-radius:9px;font-size:13px;

@@ -23,15 +23,15 @@ LG.LANGUAGES = {
 
 LG.LEVELS = {
   beginner: {
-    label: 'Beginner (A1)', depth: 2, spread: 2, deliver: false,
+    label: 'Beginner (A1)', depth: 2, spread: 2, deliver: false, speed: 0.75,
     prompt: 'Speak the way a kind native speaker speaks to someone on their first day: short, complete sentences built from the most common everyday words, about the here and now. Stick to simple grammar, but use whatever tense the sentence actually needs. No idioms, no slang, nothing literary.'
   },
   intermediate: {
-    label: 'Intermediate (A2–B1)', depth: 3, spread: 1, deliver: true,
+    label: 'Intermediate (A2–B1)', depth: 3, spread: 1, deliver: true, speed: 0.85,
     prompt: 'Speak simply but easily, the way you would to someone who can hold a conversation but still gropes for words. Everyday vocabulary, ordinary sentence structures, any tense you need. Go light on idiom and avoid rare or literary words.'
   },
   advanced: {
-    label: 'Advanced (B2+)', depth: 4, spread: 1, deliver: true,
+    label: 'Advanced (B2+)', depth: 4, spread: 1, deliver: true, speed: 0.95,
     prompt: 'Speak exactly as you would to another native — full range, including idiom, colloquialism and whatever regional flavour you have.'
   }
 };
@@ -332,18 +332,30 @@ LG.ITEMS = {
 
 LG.BEAST_NAMES = ['Musya', 'Bella', 'Pip', 'Nina', 'Rufus', 'Kolya', 'Tula', 'Bruno'];
 
+/* The green in the middle of the village. Anyone idle drifts here by day. */
+LG.GREEN = { x: 31, y: 27, w: 20, h: 12 };
+
 /* --------------------------------------------------------------- places
    Where a dropped thing can turn up, and where an animal likes to loiter.
    Rectangles are in tile coordinates; the game snaps to the nearest
    walkable tile inside them. */
 LG.PLACES = [
-  { id: 'pond',    en: 'down by the pond',            rect: { x: 4,  y: 20, w: 13, h: 4 } },
-  { id: 'mine',    en: 'inside the mine',             rect: { x: 3,  y: 11, w: 5,  h: 5 } },
-  { id: 'fields',  en: 'out in the fields',           rect: { x: 31, y: 26, w: 13, h: 5 } },
-  { id: 'square',  en: 'around the village square',   rect: { x: 19, y: 15, w: 8,  h: 6 } },
-  { id: 'woods',   en: 'at the edge of the woods',    rect: { x: 12, y: 3,  w: 22, h: 3 } },
-  { id: 'behind',  en: 'behind the farmhouse',        rect: { x: 32, y: 16, w: 3,  h: 7 } },
-  { id: 'road',    en: 'along the west road',         rect: { x: 10, y: 15, w: 6,  h: 4 } }
+  { id: 'pond',    en: 'down by the pond',            rect: { x: 6,  y: 25, w: 12, h: 3 } },
+  { id: 'mine',    en: 'inside the mine',             rect: { x: 3,  y: 12, w: 5,  h: 5 } },
+  { id: 'fields',  en: 'out in the fields',           rect: { x: 60, y: 34, w: 15, h: 5 } },
+  { id: 'green',   en: 'on the village green',        rect: { x: 32, y: 27, w: 18, h: 12 } },
+  { id: 'hall',    en: 'outside the village hall',    rect: { x: 36, y: 25, w: 10, h: 2 } },
+  { id: 'woods',   en: 'at the edge of the woods',    rect: { x: 12, y: 4,  w: 10, h: 3 } },
+  { id: 'behind',  en: 'behind the farmhouse',        rect: { x: 60, y: 20, w: 2,  h: 6 } },
+  { id: 'road',    en: 'along the west road',         rect: { x: 10, y: 18, w: 6,  h: 4 } },
+  { id: 'orchard', en: 'out in the orchard',          rect: { x: 63, y: 24, w: 14, h: 7 } },
+  { id: 'beeyard', en: 'up by the beeyard',           rect: { x: 73, y: 12, w: 4,  h: 3 } },
+  { id: 'mill',    en: 'round the back of the mill',  rect: { x: 66, y: 42, w: 9,  h: 3 } },
+  { id: 'school',  en: 'in the schoolyard',           rect: { x: 16, y: 45, w: 8,  h: 3 } },
+  { id: 'chapel',  en: 'on the chapel steps',         rect: { x: 28, y: 44, w: 8,  h: 2 } },
+  { id: 'graves',  en: 'in the graveyard',            rect: { x: 37, y: 49, w: 7,  h: 4 } },
+  { id: 'woodpile',en: 'by the woodpile',             rect: { x: 16, y: 23, w: 8,  h: 7 } },
+  { id: 'smithy',  en: 'outside the smithy',          rect: { x: 45, y: 43, w: 9,  h: 3 } }
 ];
 
 /* ------------------------------------------------------------- flavour */
@@ -372,27 +384,100 @@ LG.OPINIONS = [
 LG.NPCS = [
   { id: 'mira',  name: 'Mira',  emoji: '👩‍🍳', color: '#e07a5f', job: 'the village baker',
     persona: 'Warm, chatty, a little scattered. Calls everyone "dear". Smells of flour.',
-    x: 17, y: 9,  home: { x: 14, y: 7,  w: 7,  h: 5 } },
+    x: 17, y: 14, home: { x: 13, y: 13, w: 9,  h: 3 },
+    voice: { gender: 'female', age: 'middle' },
+    workplace: 'Bakery',
+    sells: [{ i: 'bread', p: 2 }, { i: 'cake', p: 3 }, { i: 'pie', p: 3 }],
+    buys: [{ i: 'wheat', p: 2 }, { i: 'egg', p: 1 }, { i: 'milk', p: 2 }] },
 
   { id: 'boris', name: 'Boris', emoji: '⛏️',  color: '#6b705c', job: 'the miner',
     persona: 'Gruff, short sentences, secretly soft-hearted. Complains about his back.',
-    x: 6,  y: 15, home: { x: 3,  y: 12, w: 6,  h: 6 } },
+    x: 6,  y: 16, home: { x: 3,  y: 13, w: 6,  h: 6 },
+    voice: { gender: 'male', age: 'old' },
+    workplace: 'Mine',
+    workRect: { x: 3, y: 12, w: 5, h: 5 },
+    sells: [{ i: 'stone', p: 1 }, { i: 'lantern', p: 4 }, { i: 'shiny_rock', p: 6 }],
+    buys: [{ i: 'candle', p: 1 }, { i: 'rope', p: 2 }] },
 
   { id: 'nadia', name: 'Nadia', emoji: '🧕',  color: '#81b29a', job: 'the shopkeeper',
     persona: 'Brisk and businesslike, proud of her shop, never gives anything away for free.',
-    x: 33, y: 11, home: { x: 30, y: 9,  w: 6,  h: 5 }, prefers: 'shop' },
+    x: 33, y: 15, home: { x: 29, y: 14, w: 9,  h: 3 }, prefers: 'shop',
+    voice: { gender: 'female', age: 'young' },
+    workplace: 'Shop',
+    sells: [{ i: 'beans', p: 2 }, { i: 'candle', p: 2 }, { i: 'rope', p: 3 }, { i: 'soap', p: 2 }, { i: 'salt', p: 1 }, { i: 'sweets', p: 2 }, { i: 'paper', p: 1 }, { i: 'bucket', p: 3 }, { i: 'basket', p: 3 }],
+    buys: [{ i: 'mushrooms', p: 1 }, { i: 'herbs', p: 1 }, { i: 'shell', p: 1 }, { i: 'feather', p: 1 }] },
 
   { id: 'olo',   name: 'Olo',   emoji: '👨‍🌾', color: '#c9a227', job: 'the farmer',
     persona: 'Slow, kindly, wanders off topic to talk about the weather and his turnips.',
-    x: 37, y: 24, home: { x: 33, y: 21, w: 8,  h: 6 }, prefers: 'beast' },
+    x: 65, y: 27, home: { x: 61, y: 26, w: 9,  h: 3 }, prefers: 'beast',
+    voice: { gender: 'male', age: 'old' },
+    workplace: 'Farmhouse',
+    sells: [{ i: 'egg', p: 1 }, { i: 'milk', p: 2 }, { i: 'apple', p: 1 }, { i: 'wool', p: 3 }, { i: 'pumpkin', p: 2 }, { i: 'carrot', p: 1 }],
+    buys: [{ i: 'rope', p: 2 }, { i: 'bucket', p: 2 }] },
 
   { id: 'petra', name: 'Petra', emoji: '🧒',  color: '#9d4edd', job: 'a child who runs everywhere',
     persona: 'Excitable, nosy, knows everybody\'s business, speaks in short bursts. Asks questions back.',
-    x: 22, y: 17, home: { x: 17, y: 14, w: 10, h: 7 }, prefers: 'gossip' },
+    x: 41, y: 35, home: { x: 34, y: 33, w: 14, h: 6 }, prefers: 'gossip',
+    voice: { gender: 'female', age: 'young' },
+    workRect: { x: 32, y: 27, w: 18, h: 12 },
+    sells: [{ i: 'flower', p: 1 }, { i: 'shell', p: 1 }, { i: 'feather', p: 1 }],
+    buys: [{ i: 'sweets', p: 1 }, { i: 'apple', p: 1 }] },
 
   { id: 'yuri',  name: 'Yuri',  emoji: '🎣',  color: '#3d5a80', job: 'the fisherman',
     persona: 'Dreamy and philosophical, half asleep, answers questions with questions about fish.',
-    x: 9,  y: 26, home: { x: 6,  y: 23, w: 7,  h: 5 } }
+    x: 12, y: 27, home: { x: 6,  y: 26, w: 11, h: 2 },
+    voice: { gender: 'male', age: 'middle' },
+    workRect: { x: 6, y: 25, w: 12, h: 3 },
+    sells: [{ i: 'fish', p: 2 }, { i: 'rope', p: 3 }],
+    buys: [{ i: 'bread', p: 2 }, { i: 'beer', p: 2 }] },
+
+  { id: 'sanna', name: 'Sanna', emoji: '🍺', color: '#c46d3f', job: 'the innkeeper',
+    persona: 'Loud, welcoming, remembers what everyone drinks and nothing else. Talks over you cheerfully.',
+    x: 65, y: 16, home: { x: 61, y: 15, w: 9,  h: 3 },
+    voice: { gender: 'female', age: 'middle' },
+    workplace: 'Inn',
+    sells: [{ i: 'beer', p: 2 }, { i: 'soup', p: 2 }, { i: 'wine', p: 4 }, { i: 'bread', p: 2 }],
+    buys: [{ i: 'fish', p: 2 }, { i: 'meat', p: 3 }, { i: 'wheat', p: 2 }] },
+
+  { id: 'tomas', name: 'Tomas', emoji: '🔨', color: '#7a5c3e', job: 'the blacksmith',
+    persona: 'Deliberate and deaf in one ear. Says "eh?" a lot and answers a beat late, then very precisely.',
+    x: 49, y: 44, home: { x: 45, y: 43, w: 9,  h: 3 },
+    voice: { gender: 'male', age: 'old' },
+    workplace: 'Smithy',
+    sells: [{ i: 'hammer', p: 4 }, { i: 'screw', p: 1 }, { i: 'knife', p: 3 }, { i: 'key', p: 3 }, { i: 'chain', p: 4 }],
+    buys: [{ i: 'stone', p: 1 }, { i: 'log', p: 2 }] },
+
+  { id: 'rosa',  name: 'Rosa',  emoji: '📚', color: '#4f7a52', job: 'the schoolteacher',
+    persona: 'Precise and kind. Repeats your sentence back correctly before answering it, without making a fuss of it.',
+    x: 16, y: 43, home: { x: 12, y: 42, w: 9,  h: 3 },
+    voice: { gender: 'female', age: 'old' },
+    workplace: 'School',
+    sells: [{ i: 'book', p: 4 }, { i: 'paper', p: 1 }, { i: 'pencil', p: 1 }, { i: 'pen', p: 2 }],
+    buys: [{ i: 'feather', p: 1 }, { i: 'paper', p: 1 }] },
+
+  { id: 'kesh',  name: 'Kesh',  emoji: '⚙️',  color: '#8a8478', job: 'the miller',
+    persona: 'Anxious and always mid-task. Talks while working and keeps losing the thread of what he was saying.',
+    x: 71, y: 43, home: { x: 66, y: 42, w: 9,  h: 3 },
+    voice: { gender: 'male', age: 'young' },
+    workplace: 'Mill',
+    sells: [{ i: 'wheat', p: 2 }, { i: 'rice', p: 2 }, { i: 'noodles', p: 2 }],
+    buys: [{ i: 'wheat', p: 1 }, { i: 'corn', p: 1 }] },
+
+  { id: 'wren',  name: 'Wren',  emoji: '🐝', color: '#d9a441', job: 'the beekeeper',
+    persona: 'Soft-spoken and easily distracted, trails off mid-sentence to look at something. Unbothered by everything.',
+    x: 70, y: 28, home: { x: 63, y: 26, w: 14, h: 6 },
+    voice: { gender: 'female', age: 'young' },
+    workRect: { x: 63, y: 24, w: 14, h: 7 },
+    sells: [{ i: 'honey', p: 4 }, { i: 'candle', p: 2 }, { i: 'flower', p: 1 }],
+    buys: [{ i: 'flower', p: 1 }, { i: 'herbs', p: 1 }] },
+
+  { id: 'ilya',  name: 'Ilya',  emoji: '🪵', color: '#6b4a2f', job: 'the woodcutter',
+    persona: 'Says little, and what he says is dry. Answers questions with one word unless the subject is trees.',
+    x: 19, y: 25, home: { x: 16, y: 23, w: 8,  h: 7 },
+    voice: { gender: 'male', age: 'middle' },
+    workRect: { x: 16, y: 23, w: 8, h: 7 },
+    sells: [{ i: 'log', p: 2 }, { i: 'rope', p: 3 }, { i: 'mushrooms', p: 2 }, { i: 'chestnut', p: 1 }],
+    buys: [{ i: 'axe', p: 4 }, { i: 'saw', p: 4 }] }
 ];
 
 /* ---------------------------------------------------- gossip mutterings

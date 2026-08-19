@@ -13,15 +13,38 @@ LG.llm = (function () {
       { id: 'anthropic/claude-opus-5',    label: 'Claude Opus 5' },
       { id: 'anthropic/claude-haiku-4.5', label: 'Claude Haiku 4.5' },
       { id: 'openai/gpt-4.1-mini',        label: 'GPT-4.1 mini' },
-      { id: 'google/gemini-2.5-flash',    label: 'Gemini 2.5 Flash' }
+      { id: 'google/gemini-2.5-flash',    label: 'Gemini 2.5 Flash' },
+      { id: 'z-ai/glm-5.2',               label: 'GLM-5.2 (Z.ai)' }
     ]
   };
 
-  // A small, cheap model does the notebook fact-checking (see judge below).
+  /* A second, smaller model does the bookkeeping the in-character one is bad at:
+     notebook fact-checking, furigana repair, and confirming a trade was agreed.
+     Anything cheap and literal-minded suits it. */
+  const HELPERS = {
+    anthropic: [
+      { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 — fast and cheap' },
+      { id: 'claude-sonnet-5',  label: 'Claude Sonnet 5 — more careful, pricier' }
+    ],
+    openrouter: [
+      { id: 'anthropic/claude-haiku-4.5', label: 'Claude Haiku 4.5 — fast and cheap' },
+      { id: 'xiaomi/mimo-v2.5',           label: 'MiMo-V2.5' },
+      { id: 'xiaomi/mimo-v2.5-pro',       label: 'MiMo-V2.5 Pro' },
+      { id: 'google/gemini-2.5-flash',    label: 'Gemini 2.5 Flash' },
+      { id: 'openai/gpt-4.1-mini',        label: 'GPT-4.1 mini' },
+      { id: 'z-ai/glm-5.2',               label: 'GLM-5.2' }
+    ]
+  };
   const VERIFIER = {
     anthropic: 'claude-haiku-4-5',
     openrouter: 'anthropic/claude-haiku-4.5'
   };
+
+  /* An explicit choice wins; otherwise the provider's default; otherwise fall
+     back to whatever is playing the villagers. */
+  function helperModel(cfg) {
+    return (cfg && cfg.helper) || VERIFIER[cfg && cfg.provider] || (cfg && cfg.model);
+  }
 
   // Models that accept output_config.effort. Older models (Haiku 4.5, Sonnet 4.5)
   // reject it, so we only send it where it is supported.
@@ -150,7 +173,7 @@ LG.llm = (function () {
     lines.push('');
     lines.push('Leave out anything that was not told. Reply [] if none of them were.');
 
-    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: VERIFIER[cfg.provider] || cfg.model };
+    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg) };
     let raw;
     try {
       raw = vcfg.provider === 'anthropic'
@@ -180,6 +203,106 @@ LG.llm = (function () {
     return out;
   }
 
+  /* Did the villager just close the deal? Asked only when the player physically
+     offered the right thing and the villager's own reply did not flag a trade —
+     a second reader catches the missed field without letting a wordless gesture
+     complete a bargain on its own. */
+  async function confirmTrade(cfg, said, translation, deal) {
+    const ask = [
+      'One line of dialogue, and a question about it.',
+      '',
+      deal.npcName + ' said: ' + JSON.stringify(said),
+      translation ? 'In English, that is: ' + JSON.stringify(translation) : '',
+      '',
+      'The traveller is holding out ' + deal.wants + '.',
+      '',
+      'Question: in that line, did ' + deal.npcName + ' accept it and hand over ' + deal.gives + '?',
+      '',
+      'Being interested, asking a question about it, saying they want it, or agreeing to',
+      'trade later is NOT acceptance. They have to be completing the exchange now.',
+      '',
+      'Answer with one word: yes or no.'
+    ].join('\n');
+    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg) };
+    try {
+      const raw = vcfg.provider === 'anthropic'
+        ? await anthropicCall(vcfg, 'You answer yes or no about what a line of dialogue did.',
+            [{ role: 'user', content: ask }])
+        : await openrouterCall(vcfg, 'You answer yes or no about what a line of dialogue did.',
+            [{ role: 'user', content: ask }]);
+      return /^\W*yes\b/i.test(String(raw).trim());
+    } catch (e) { return false; }        // no deal on a failed check
+  }
+
+  /* A villager sometimes returns a line with no translation or no romanisation.
+     Rather than showing a learner a bare sentence, ask the small model for the
+     missing parts. */
+  async function gloss(cfg, say, opts) {
+    const o = opts || {};
+    const want = ['  "translation": "a plain English translation of the line"'];
+    if (o.romanLabel) want.push('  "roman": "the ' + o.romanLabel + ' of the line"');
+    const ask = [
+      'Here is one line of ' + (o.langName || 'text') + ':',
+      '',
+      JSON.stringify(say),
+      '',
+      'Reply with only a JSON object:',
+      '{',
+      want.join(',\n'),
+      '}'
+    ].join('\n');
+    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg) };
+    try {
+      const raw = vcfg.provider === 'anthropic'
+        ? await anthropicCall(vcfg, 'You translate and romanise single lines. Answer with JSON only.',
+            [{ role: 'user', content: ask }])
+        : await openrouterCall(vcfg, 'You translate and romanise single lines. Answer with JSON only.',
+            [{ role: 'user', content: ask }]);
+      const o2 = parseJSON(raw);
+      return o2 || null;
+    } catch (e) { return null; }
+  }
+
+  /* Two villagers meeting in the street. The small model writes the exchange,
+     seeded with the piece of news actually being passed. */
+  async function chatter(cfg, opts) {
+    const o = opts || {};
+    const lines = [
+      'Two villagers have run into each other and stopped to talk. Write their exchange.',
+      '',
+      o.a.name + ' — ' + o.a.job + '. ' + o.a.persona,
+      o.b.name + ' — ' + o.b.job + '. ' + o.b.persona,
+      '',
+      o.when || '',
+      '',
+      o.a.name + ' has been wanting to pass on this piece of news: ' + o.news,
+      o.extra ? ('They also know: ' + o.extra) : '',
+      '',
+      'Write it in ' + o.langName + ' only. ' + (o.level || ''),
+      o.a.name + ' brings the news up in their own way; ' + o.b.name + ' reacts in theirs.',
+      'One short sentence each — this is two people passing in the street, not a scene.',
+      '',
+      'Reply with only a JSON object:',
+      '{',
+      '  "a": {"say": "' + o.a.name + '\u2019s line", "translation": "plain English"' +
+        (o.romanLabel ? ', "roman": "' + o.romanLabel + '"' : '') + '},',
+      '  "b": {"say": "' + o.b.name + '\u2019s line", "translation": "plain English"' +
+        (o.romanLabel ? ', "roman": "' + o.romanLabel + '"' : '') + '}',
+      '}'
+    ].filter(Boolean).join('\n');
+    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg) };
+    try {
+      const raw = vcfg.provider === 'anthropic'
+        ? await anthropicCall(vcfg, 'You write short village dialogue. Answer with JSON only.',
+            [{ role: 'user', content: lines }])
+        : await openrouterCall(vcfg, 'You write short village dialogue. Answer with JSON only.',
+            [{ role: 'user', content: lines }]);
+      const obj = parseJSON(raw);
+      if (!obj || !obj.a || !obj.a.say || !obj.b || !obj.b.say) return null;
+      return obj;
+    } catch (e) { return null; }
+  }
+
   /* Add furigana to a Japanese line. The villager often forgets the ruby field,
      or returns it without markup — it is busy being a person. The small model
      has nothing else to do. Returns null if anything looks off. */
@@ -203,7 +326,7 @@ LG.llm = (function () {
       'character for character and add ruby tags around the kanji — do not reword it, do not',
       'add or remove punctuation, and do not wrap it in quotes.'
     ] : []).join('\n');
-    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: VERIFIER[cfg.provider] || cfg.model };
+    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg) };
     try {
       const raw = vcfg.provider === 'anthropic'
         ? await anthropicCall(vcfg, 'You add furigana to Japanese text. Output the sentence only.',
@@ -214,13 +337,38 @@ LG.llm = (function () {
     } catch (e) { return null; }
   }
 
-  /* Pull the first JSON object out of a reply, tolerating ```json fences and
-     stray prose around it. */
-  function parseJSON(text) {
-    if (!text) return null;
-    let t = text.trim();
-    const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (fence) t = fence[1].trim();
+  const FIELDS = 'say|translation|roman|ruby|understood|remember|action|revealed';
+
+  /* Models drop the odd quote or leave a trailing comma. These repairs are all
+     shape-level — none of them invents content. */
+  function repairJSON(t) {
+    return t
+      // curly quotes first, or the missing-quote rule below fires on them and
+      // leaves the curly one stranded inside the value
+      .replace(new RegExp('("(?:' + FIELDS + ')"\\s*:\\s*)[\u201c\u201d]', 'g'), '$1"')
+      .replace(/[\u201c\u201d](\s*[,}])/g, '"$1')
+      // "say":值..."   — the opening quote of a string value went missing
+      .replace(new RegExp('("(?:' + FIELDS + ')"\\s*:\\s*)(?=[^"\\[{\\s\\dtfn-])', 'g'), '$1"')
+      // a trailing comma before the close
+      .replace(/,(\s*[}\]])/g, '$1');
+  }
+
+  /* Last resort: lift the fields out by hand. Anything is better than showing a
+     player a brace. */
+  function salvage(text) {
+    const out = {};
+    ['say', 'translation', 'roman', 'ruby', 'understood', 'action'].forEach(k => {
+      const re = new RegExp('"' + k + '"\\s*:\\s*"?([\\s\\S]*?)"?\\s*(?=,\\s*"(?:' + FIELDS +
+        ')"\\s*:|\\}|$)');
+      const m = text.match(re);
+      if (m && m[1]) out[k] = m[1].replace(/^"|"$/g, '').trim();
+    });
+    return out.say ? out : null;
+  }
+
+  /* Find the first balanced {...}. A missing quote throws the string-state
+     tracking off, which is why repair runs before this, not after. */
+  function extractObject(t) {
     const start = t.indexOf('{');
     if (start === -1) return null;
     let depth = 0, inStr = false, esc = false;
@@ -231,11 +379,27 @@ LG.llm = (function () {
       if (c === '"') { inStr = !inStr; continue; }
       if (inStr) continue;
       if (c === '{') depth++;
-      else if (c === '}') { depth--; if (depth === 0) {
-        try { return JSON.parse(t.slice(start, i + 1)); } catch (e) { return null; }
-      } }
+      else if (c === '}') { depth--; if (depth === 0) return t.slice(start, i + 1); }
     }
     return null;
+  }
+
+  /* Pull the reply object out, tolerating ```json fences, prose around it, and
+     the small breakages models produce. */
+  function parseJSON(text) {
+    if (!text) return null;
+    let t = String(text).trim();
+    const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fence) t = fence[1].trim();
+
+    const repaired = repairJSON(t);
+    for (const cand of [t, repaired]) {
+      const chunk = extractObject(cand);
+      if (!chunk) continue;
+      try { return JSON.parse(chunk); } catch (e) {}
+      try { return JSON.parse(repairJSON(chunk)); } catch (e) {}
+    }
+    return salvage(repaired) || salvage(t);
   }
 
   /* Returns the parsed JSON object the character replied with. */
@@ -244,9 +408,16 @@ LG.llm = (function () {
       ? await anthropicCall(cfg, system, messages)
       : await openrouterCall(cfg, system, messages);
     const obj = parseJSON(raw);
-    if (!obj) return { say: raw.slice(0, 300), translation: '', roman: '', action: 'none' };
+    if (!obj || !obj.say) {
+      // Never put a brace in a villager's mouth — let the caller report a failure.
+      if (typeof console !== 'undefined' && console.warn) {
+        console.warn('[dialogue] could not read this reply:\n' + String(raw).slice(0, 600));
+      }
+      return null;
+    }
     return obj;
   }
 
-  return { MODELS, VERIFIER, speak, judge, furigana, validate, parseJSON };
+  return { MODELS, HELPERS, VERIFIER, helperModel, speak, judge, furigana, gloss, chatter, confirmTrade,
+           validate, parseJSON, repairJSON, salvage };
 })();

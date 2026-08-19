@@ -6,8 +6,10 @@ LG.game = (function () {
 
   const settings = {
     lang: 'ru', level: 'beginner',
-    provider: 'anthropic', apiKey: '', model: 'claude-sonnet-5',
-    showTranslation: true, npcChatter: true
+    provider: 'anthropic', apiKey: '', model: 'claude-sonnet-5', helper: '',
+    showTranslation: true, npcChatter: true,
+    voices: false, ttsKey: '', voiceSpeed: 'auto', voiceQuality: 'curated',
+    dayMinutes: 6
   };
 
   // No key, no village. `gated` freezes input until the front door is passed.
@@ -18,7 +20,24 @@ LG.game = (function () {
   let plan = null;                 // the generated errand chain (chain.js)
   let canvas, ctx, cam = { x: 0, y: 0 }, vw = 0, vh = 0;
   let player, npcs = [], beast = null, worldItem = null;
-  const keys = {};
+  /* Physical keys, not characters. e.key is whatever the layout produces — on a
+     Russian keyboard WASD types цфыв and E types у — so movement and interaction
+     read e.code, and fall back to e.key only for anything that lacks it. */
+  const MOVE_CODE = { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right',
+                      ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  const MOVE_KEY  = { w: 'up', s: 'down', a: 'left', d: 'right',
+                      arrowup: 'up', arrowdown: 'down', arrowleft: 'left', arrowright: 'right' };
+  function moveDir(e) {
+    return MOVE_CODE[e.code] || MOVE_KEY[String(e.key || '').toLowerCase()] || null;
+  }
+  function isInteract(e) {
+    if (e.code) return e.code === 'KeyE' || e.code === 'Space';
+    const k = String(e.key || '').toLowerCase();
+    return k === 'e' || k === ' ' || k === 'spacebar';
+  }
+  function isCancel(e) { return e.code === 'Escape' || e.key === 'Escape'; }
+
+  const held = { up: false, down: false, left: false, right: false };
   let last = 0, nearby = null;
   const logLines = [];
 
@@ -32,8 +51,26 @@ LG.game = (function () {
   function saveSettings() {
     try { localStorage.setItem('lg-settings', JSON.stringify(settings)); } catch (e) {}
   }
+  function saveClock() {
+    try { localStorage.setItem('lg-clock', JSON.stringify({ day: LG.time.day, frac: LG.time.frac })); }
+    catch (e) {}
+  }
+  function loadClock() {
+    try {
+      const raw = localStorage.getItem('lg-clock');
+      if (raw) { const c = JSON.parse(raw); return c; }
+    } catch (e) {}
+    return null;
+  }
+  function ttsConfig() {
+    const auto = (LG.LEVELS[settings.level] || {}).speed || 0.85;
+    const speed = settings.voiceSpeed === 'auto' ? auto : Number(settings.voiceSpeed);
+    return { key: settings.ttsKey.trim(), speed: speed,
+             lang: settings.lang, curatedOnly: settings.voiceQuality === 'curated' };
+  }
   function llmConfig() {
-    return { provider: settings.provider, apiKey: settings.apiKey.trim(), model: settings.model };
+    return { provider: settings.provider, apiKey: settings.apiKey.trim(),
+             model: settings.model, helper: settings.helper };
   }
 
   /* ---------------------------------------------------------- inventory */
@@ -82,8 +119,10 @@ LG.game = (function () {
 
   /* ----------------------------------------------------------------- HUD */
   function renderHUD() {
+    const purse = document.getElementById('purse');
+    if (purse) purse.textContent = '\u00a4' + (state.inv.coins || 0);
     const inv = document.getElementById('inv');
-    const ks = Object.keys(state.inv).filter(k => state.inv[k] > 0);
+    const ks = Object.keys(state.inv).filter(k => state.inv[k] > 0 && k !== 'coins');
     inv.innerHTML = ks.length
       ? ks.map(k => '<span class="pill" title="' + LG.ITEMS[k].en + '">' + LG.ITEMS[k].icon +
           ' ' + escapeHTML(itemLabel(k)) + (state.inv[k] > 1 ? ' ×' + state.inv[k] : '') + '</span>').join('')
@@ -106,6 +145,38 @@ LG.game = (function () {
     Array.prototype.forEach.call(nb.querySelectorAll('.gloss.hidden-tr'), el => {
       el.onclick = () => el.classList.remove('hidden-tr');
     });
+  }
+
+  /* --------------------------------------------------------------- shops
+     The villager decides a sale has happened; this makes it real. Their price
+     stands as long as it is not wild, because the haggling is the point. */
+  function commerce(npc, act, itemId, price) {
+    const d = npc.def;
+    if (!atWork(npc)) return false;
+    const id = String(itemId || '').replace(/[^\w]/g, '');
+    if (!LG.ITEMS[id] || id === 'coins') return false;
+    const list = act === 'sell' ? (d.sells || []) : (d.buys || []);
+    const ware = list.find(w => w.i === id);
+    if (!ware) return false;
+
+    let cost = Math.round(Number(price));
+    if (!isFinite(cost) || cost < 0) cost = ware.p;
+    cost = Math.max(Math.ceil(ware.p * 0.4), Math.min(Math.ceil(ware.p * 2.5), cost));  // a haggle, not a fleecing
+
+    if (act === 'sell') {
+      if (count('coins') < cost) return false;
+      take('coins', cost);
+      give(id, 1);
+      log('\u00a4 Bought ' + LG.ITEMS[id].full + ' from ' + d.name + ' for ' + cost + '.');
+    } else {
+      if (count(id) < 1) return false;
+      take(id, 1);
+      give('coins', cost);
+      log('\u00a4 Sold ' + LG.ITEMS[id].full + ' to ' + d.name + ' for ' + cost + '.');
+    }
+    npc.memory.push('The traveller ' + (act === 'sell' ? 'bought ' : 'sold me ') + LG.ITEMS[id].en + '.');
+    renderHUD();
+    return true;
   }
 
   /* ------------------------------------------------------------- trading */
@@ -156,6 +227,10 @@ LG.game = (function () {
 
     newVillage(null, true);
 
+    LG.time.dayLength = Math.max(1, Number(settings.dayMinutes) || 6) * 60 * 1000;
+    const saved = loadClock();
+    LG.time.start(saved && saved.day, saved && saved.frac);
+
     LG.dialogue.init();
     wireUI();
     resize();
@@ -164,6 +239,7 @@ LG.game = (function () {
     if (settings.apiKey) { gated = false; }
     else { openSettings(true); }
     showChrome();
+    loadVoices();
     requestAnimationFrame(loop);
   }
 
@@ -171,12 +247,18 @@ LG.game = (function () {
   function newVillage(seed, quiet) {
     plan = LG.chain.generate({ level: settings.level, seed: seed || null });
 
-    state.inv = {}; state.notes = []; state.deeds = []; state.won = false;
+    state.inv = { coins: 10 };          // a little money to be going on with
+    state.notes = []; state.deeds = []; state.won = false;
 
     const p = W.nearestOpen(23, 20);
     player = { px: p.x * TILE + TILE / 2, py: p.y * TILE + TILE / 2, dir: 'down',
                tx: p.x, ty: p.y, bubble: null, bubbleT: 0 };
     npcs = LG.NPCS.map(d => A.makeNPC(d, plan.npcFacts[d.id]));
+    npcs.forEach(n => {
+      const b = n.def.workplace ? W.buildingByLabel(n.def.workplace) : null;
+      n.work = b ? b.inside : (n.def.workRect || n.def.home);
+      n.workBuilding = b;
+    });
 
     // the thing at the end of the chain, out in the world somewhere
     beast = null; worldItem = null;
@@ -211,13 +293,17 @@ LG.game = (function () {
   function wireUI() {
     window.addEventListener('keydown', e => {
       if (uiBlocked()) return;
-      keys[e.key.toLowerCase()] = true;
-      if (['arrowup','arrowdown','arrowleft','arrowright',' '].indexOf(e.key.toLowerCase()) !== -1) e.preventDefault();
-      if (e.key.toLowerCase() === 'e' || e.key === ' ') interact();
-      if (e.key === 'Escape') closePanels();
+      const dir = moveDir(e);
+      if (dir) { held[dir] = true; if (e.code !== 'KeyW' && e.code !== 'KeyA' &&
+                 e.code !== 'KeyS' && e.code !== 'KeyD') e.preventDefault(); }
+      if (isInteract(e)) { e.preventDefault(); interact(); }
+      if (isCancel(e)) closePanels();
     });
-    window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
-    window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+    window.addEventListener('keyup', e => {
+      const dir = moveDir(e);
+      if (dir) held[dir] = false;
+    });
+    window.addEventListener('blur', () => { for (const k in held) held[k] = false; });
 
     document.getElementById('btnSettings').onclick = () => openSettings(false);
     document.getElementById('btnHelp').onclick = () =>
@@ -234,8 +320,10 @@ LG.game = (function () {
       document.getElementById('settings').classList.remove('open');
       newVillage();
     };
+    document.getElementById('setTtsTest').onclick = testVoices;
     document.getElementById('setSave').onclick = submitSettings;
-    document.getElementById('setProvider').onchange = refreshModelList;
+    document.getElementById('setProvider').onchange = () => { refreshModelList(); refreshHelperList(); };
+    document.getElementById('setHelper').onchange = syncHelperBox;
   }
 
   function panelOpen() { return !!document.querySelector('.panel.open'); }
@@ -254,8 +342,14 @@ LG.game = (function () {
       provider: document.getElementById('setProvider').value,
       apiKey: document.getElementById('setKey').value.trim(),
       model: document.getElementById('setModel').value || settings.model,
+      helper: readHelper(),
       showTranslation: document.getElementById('setTrans').checked,
-      npcChatter: document.getElementById('setChatter').checked
+      npcChatter: document.getElementById('setChatter').checked,
+      voices: document.getElementById('setVoices').checked,
+      ttsKey: document.getElementById('setTtsKey').value.trim(),
+      voiceSpeed: document.getElementById('setSpeed').value,
+      voiceQuality: document.getElementById('setQuality').value,
+      dayMinutes: Number(document.getElementById('setDayLength').value) || 6
     };
     err.textContent = '';
 
@@ -277,11 +371,18 @@ LG.game = (function () {
     }
 
     const levelChanged = next.level !== settings.level;
+    if (next.dayMinutes !== settings.dayMinutes) {
+      LG.time.dayLength = Math.max(1, next.dayMinutes) * 60 * 1000;
+    }
+    const voiceChanged = next.voices !== settings.voices || next.ttsKey !== settings.ttsKey
+                      || next.voiceQuality !== settings.voiceQuality;
     Object.assign(settings, next);
     saveSettings();
     document.getElementById('settings').classList.remove('open');
     btn.textContent = 'Save';
     renderHUD();
+
+    if (voiceChanged) { LG.tts.stop(); loadVoices(); }
 
     if (gateMode) {
       gated = false;
@@ -295,6 +396,56 @@ LG.game = (function () {
     } else {
       log('The villagers now speak ' + LG.LANGUAGES[settings.lang].name + '.');
     }
+  }
+
+  /* Try the key without leaving the settings panel, and show exactly what came
+     back — a 401 from ElevenLabs says which of key/permission/kind it was. */
+  async function testVoices() {
+    const box = document.getElementById('ttsResult');
+    const btn = document.getElementById('setTtsTest');
+    const key = document.getElementById('setTtsKey').value.trim();
+    if (!key) { box.className = 'bad'; box.textContent = 'Paste a key first.'; return; }
+    btn.disabled = true; btn.textContent = 'Asking ElevenLabs…';
+    box.className = ''; box.textContent = '';
+    const ok = await LG.tts.load({ key });
+    btn.disabled = false; btn.textContent = 'Test this key';
+    box.className = ok ? 'good' : 'bad';
+    box.textContent = '';
+    const head = document.createElement('div');
+    head.textContent = LG.tts.error;
+    box.appendChild(head);
+    if (!ok) return;
+
+    LG.NPCS.forEach(n => {
+      const id = LG.tts.voices[n.id];
+      const v = id && LG.tts.info(id);
+      const row = document.createElement('div');
+      row.className = 'castrow';
+      const play = document.createElement('button');
+      play.type = 'button';
+      play.className = 'replay';
+      play.textContent = '▶';
+      play.title = 'Hear this voice';
+      play.disabled = !(v && (v.preview_url || v.previewUrl));
+      play.onclick = () => LG.tts.preview(id);
+      row.appendChild(play);
+      const who = document.createElement('span');
+      who.innerHTML = '<b>' + n.name + '</b> — ' +
+        escapeHTML((v && v.name) || id || 'no voice') +
+        (v && v.category ? ' <i>(' + escapeHTML(v.category) + ')</i>' : '');
+      row.appendChild(who);
+      box.appendChild(row);
+    });
+  }
+
+  /* Casting the villagers takes one request; do it while the player is reading
+     the help panel rather than when they first say hello. */
+  function loadVoices() {
+    if (!settings.voices || !settings.ttsKey) return;
+    LG.tts.load(ttsConfig()).then(ok => {
+      if (ok) log('🔊 The villagers have found their voices.');
+      else log('🔊 No voices: ' + LG.tts.error);
+    });
   }
 
   /* the HUD is noise behind the title screen */
@@ -316,9 +467,40 @@ LG.game = (function () {
     document.getElementById('setKey').value = settings.apiKey;
     document.getElementById('setTrans').checked = settings.showTranslation;
     document.getElementById('setChatter').checked = settings.npcChatter;
+    document.getElementById('setVoices').checked = settings.voices;
+    document.getElementById('setTtsKey').value = settings.ttsKey;
+    document.getElementById('setSpeed').value = settings.voiceSpeed;
+    document.getElementById('setQuality').value = settings.voiceQuality;
+    document.getElementById('setDayLength').value = String(settings.dayMinutes || 6);
     refreshModelList();
     document.getElementById('setModel').value = settings.model;
+    refreshHelperList();
     s.classList.add('open');
+  }
+
+  /* "Other" reveals a free-text box, so a model newer than this picker can still
+     be used without editing the source. */
+  function readHelper() {
+    const sel = document.getElementById('setHelper');
+    if (sel.value !== 'other') return sel.value;
+    return document.getElementById('setHelperCustom').value.trim();
+  }
+
+  function refreshHelperList() {
+    const prov = document.getElementById('setProvider').value;
+    const sel = document.getElementById('setHelper');
+    const list = LG.llm.HELPERS[prov] || [];
+    sel.innerHTML = list.map(m => '<option value="' + m.id + '">' + m.label + '</option>').join('')
+      + '<option value="other">Other — type an id below</option>';
+    const known = list.some(m => m.id === settings.helper);
+    sel.value = settings.helper && !known ? 'other' : (settings.helper || (list[0] && list[0].id) || 'other');
+    document.getElementById('setHelperCustom').value = known ? '' : settings.helper;
+    syncHelperBox();
+  }
+
+  function syncHelperBox() {
+    const other = document.getElementById('setHelper').value === 'other';
+    document.getElementById('setHelperCustom').style.display = other ? '' : 'none';
   }
 
   function refreshModelList() {
@@ -358,14 +540,41 @@ LG.game = (function () {
 
   function dist(a, b) { return Math.hypot(a.px - b.px, a.py - b.py); }
 
+  function inRect(a, r) {
+    return r && a.tx >= r.x && a.tx < r.x + r.w && a.ty >= r.y && a.ty < r.y + r.h;
+  }
+  /* Trading only happens where somebody actually works. */
+  function atWork(n) { return inRect(n, n.work); }
+
+  /* Close enough to make out what they are saying? Only decides whether it goes
+     in the log — the conversation happens either way. */
+  function canOverhear(a, b) {
+    return dist(player, a) < TILE * 11 || dist(player, b) < TILE * 11;
+  }
+
+  /* Villagers talk to each other wherever they are; this only supplies the news
+     being passed. `factId` is the piece of gossip actually changing hands. */
+  function villagerTalk(a, b, factId) {
+    if (!settings.apiKey) return false;
+    const fact = factId && plan.facts[factId];
+    if (!fact) return false;
+    const also = a.facts
+      .filter(id => id !== factId && plan.facts[id])
+      .slice(0, 2)
+      .map(id => plan.facts[id].text)
+      .join(' ');
+    LG.dialogue.overheard(a, b, fact.text, also);
+    return true;
+  }
+
   /* ---------------------------------------------------------------- loop */
   function movePlayer(dt) {
     if (uiBlocked()) return;
     let dx = 0, dy = 0;
-    if (keys['a'] || keys['arrowleft']) dx -= 1;
-    if (keys['d'] || keys['arrowright']) dx += 1;
-    if (keys['w'] || keys['arrowup']) dy -= 1;
-    if (keys['s'] || keys['arrowdown']) dy += 1;
+    if (held.left) dx -= 1;
+    if (held.right) dx += 1;
+    if (held.up) dy -= 1;
+    if (held.down) dy += 1;
     if (!dx && !dy) return;
     const len = Math.hypot(dx, dy) || 1;
     const speed = 132;
@@ -387,14 +596,25 @@ LG.game = (function () {
     return true;
   }
 
+  let clockSave = 0;
   function update(dt) {
+    if (LG.time.tick(dt)) log('🗓 ' + LG.time.season().name + ', day ' + LG.time.dayOfSeason() + '.');
+    clockSave += dt;
+    if (clockSave > 10) { clockSave = 0; saveClock(); }
+    const el = document.getElementById('clock');
+    if (el) el.textContent = LG.time.label();
+
     movePlayer(dt);
 
     for (const n of npcs) {
-      A.wander(n, dt, n.def.home, 34);
+      A.routine(n, dt, LG.GREEN);
+      A.walk(n, dt, 34);
       if (n.bubbleT > 0) n.bubbleT -= dt;
     }
-    if (settings.npcChatter) A.gossip(npcs, dt, log, LG.dialogue.chatterLine);
+    if (settings.npcChatter) {
+      LG.dialogue.chatTick(dt);
+      A.gossip(npcs, dt, log, LG.dialogue.chatterLine, villagerTalk);
+    }
 
     if (beast) {
       if (beast.following) {
@@ -459,7 +679,7 @@ LG.game = (function () {
     ctx.translate(-Math.round(cam.x), -Math.round(cam.y));
 
     W.drawGround(ctx, cam, vw, vh);
-    W.drawBuildings(ctx);
+    W.drawBuildings(ctx, W.buildingAt(player.tx, player.ty));
     W.drawLabels(ctx);
     drawWorldItem();
 
@@ -485,6 +705,8 @@ LG.game = (function () {
     }
 
     ctx.restore();
+    LG.sky.draw(ctx, vw, vh);
+
     const g = ctx.createRadialGradient(vw / 2, vh / 2, Math.min(vw, vh) * 0.42,
                                        vw / 2, vh / 2, Math.max(vw, vh) * 0.75);
     g.addColorStop(0, 'rgba(0,0,0,0)');
@@ -496,13 +718,17 @@ LG.game = (function () {
   function loop(t) {
     const dt = Math.min(0.05, (t - last) / 1000 || 0);
     last = t;
+    LG.sky.step(dt, vw, vh);
     update(dt);
     draw();
     requestAnimationFrame(loop);
   }
 
-  return { init, settings, state, llmConfig, log, learn, hasNote, give, take, count,
-           inventoryList, doTrade, renderHUD, openSettings, uiBlocked, newVillage,
+  return { init, settings, state, llmConfig, ttsConfig, log, learn, hasNote, give, take, count, atWork,
+           _moveDir: moveDir, _isInteract: isInteract,
+           canOverhear,
+           _debugPlayerAt: (x, y) => { player.px = x; player.py = y; },
+           inventoryList, doTrade, commerce, renderHUD, openSettings, uiBlocked, newVillage,
            get plan() { return plan; },
            get npcs() { return npcs; },
            get canvas() { return canvas; } };

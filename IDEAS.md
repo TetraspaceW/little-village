@@ -3,30 +3,16 @@
 Where Little Village could go next. Things that have since been built are at the
 bottom, for the record.
 
-## Text to speech
+## Speech input
 
-Probably the single biggest win for actually learning anything. Two notes on how to
-pick a provider, because the obvious criterion is the wrong one:
+Text-to-speech is in (see the README). The natural pair is speech *input* —
+`SpeechRecognition`, Chrome only: say the line aloud, the recogniser transcribes, and
+what it heard becomes your message. Being misheard is itself useful feedback, and it
+closes the loop on pronunciation, which the game currently does nothing about.
 
-**Accent matters more than latency.** A model that reads Russian with an American
-accent is worse than silence in a game whose point is learning Russian. That rules
-out several of the fastest options, which are English-first. ElevenLabs Flash v2.5
-(~75ms, ~32 languages) and Azure Speech (slower, but the broadest locale coverage
-with genuinely native voices per locale, and a browser SDK with short-lived tokens
-rather than a raw key) are the strongest fits. Cartesia Sonic is faster than either —
-check its Russian and Mandarin coverage before committing. Piper or Kokoro compiled
-to WASM would run locally with no key at all, at a clear quality cost.
-
-**Latency is mostly hideable, so optimise for cacheability instead.** The villager's
-model call already costs 1–3s and the text renders the moment it arrives, so even
-300ms of TTS is invisible. Villager lines repeat constantly, the phrasebook is fixed,
-and the difficulty templates are a closed set — hash `(text, voice)` into IndexedDB
-and most lines become instant and free after twenty minutes of play. The phrasebook
-could be pre-generated as static audio and never hit an API at all.
-
-Speech *input* is the natural pair (`SpeechRecognition`, Chrome only): say it aloud,
-the recogniser transcribes, and what it heard becomes your message. Being misheard is
-itself useful feedback.
+Worth knowing when tuning voices: readings are the weak point, not the audio. A wrong
+furigana reading feeds straight into a wrong pronunciation, so the two systems fail
+together.
 
 ## Relationships, and the shape of the problem
 
@@ -117,3 +103,6 @@ something for someone else entirely.
 - Six languages: Russian, English, Chinese, Japanese, French, Spanish — with
   furigana rather than rōmaji for Japanese.
 - ~140 items across five pools, so chains rarely repeat themselves.
+- Voices per villager, cast at load time from the ElevenLabs voice list.
+- A village of twelve across 68×48 tiles, with a flood-fill test that fails the build
+  if any villager or place is walled off.

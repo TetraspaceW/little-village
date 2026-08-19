@@ -3,11 +3,11 @@ window.LG = window.LG || {};
 
 LG.world = (function () {
   const TILE = 32;
-  const W = 48, H = 34;
+  const W = 80, H = 56;
 
   const T = { GRASS:0, PATH:1, TREE:2, WATER:3, WALL:4, DOOR:5, ROCK:6, FLOWER:7,
               CROP:8, FENCE:9, SAND:10, CAVE:11, FLOOR:12, REED:13, FOUNTAIN:14 };
-  const SOLID = { 2:1, 3:1, 4:1, 5:1, 6:1, 9:1, 12:1, 14:1 };
+  const SOLID = { 2:1, 3:1, 4:1, 6:1, 9:1, 14:1 };   // walls, trees, water, rock, fence, fountain
 
   let tiles = null;
   const buildings = [];
@@ -35,67 +35,156 @@ LG.world = (function () {
 
   function addBuilding(x, y, w, h, doorX, opts) {
     rect(x, y, w, h, T.WALL);
-    rect(x + 1, y + 1, w - 2, h - 2, T.FLOOR);
+    rect(x + 1, y + 2, w - 2, h - 3, T.FLOOR);   // the top two rows are roof and back wall
     set(doorX, y + h - 1, T.DOOR);
-    buildings.push(Object.assign({ x, y, w, h, doorX, doorY: y + h - 1 }, opts));
+    const b = Object.assign({ x, y, w, h, doorX, doorY: y + h - 1,
+      inside: { x: x + 1, y: y + 2, w: w - 2, h: h - 3 }, furniture: [] }, opts);
+    buildings.push(b);
     labels.push({ x: x + w / 2, y: y - 0.4, text: opts.label });
+    return b;
+  }
+
+  /* Which building, if any, is this tile inside? */
+  function buildingAt(tx, ty) {
+    for (const b of buildings) {
+      const i = b.inside;
+      if (tx >= i.x && tx < i.x + i.w && ty >= i.y && ty < i.y + i.h) return b;
+      if (tx === b.doorX && ty === b.doorY) return b;
+    }
+    return null;
+  }
+  function buildingByLabel(name) {
+    for (const b of buildings) if (b.label === name) return b;
+    return null;
   }
 
   function build() {
     tiles = new Uint8Array(W * H).fill(T.GRASS);
     buildings.length = 0; labels.length = 0; props.length = 0;
 
-    // scattered trees round the edges
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const edge = Math.min(x, y, W - 1 - x, H - 1 - y);
       const r = hash(x, y);
       if (edge < 2) set(x, y, T.TREE);
       else if (edge < 4 && r < 0.45) set(x, y, T.TREE);
-      else if (r < 0.035) set(x, y, T.TREE);
-      else if (r > 0.975) set(x, y, T.FLOWER);
+      else if (r < 0.03) set(x, y, T.TREE);
+      else if (r > 0.978) set(x, y, T.FLOWER);
     }
 
-    // ---- roads
-    rect(10, 13, 36, 2, T.PATH);         // main east-west street
-    rect(22, 4, 2, 26, T.PATH);          // north-south street
-    rect(30, 22, 12, 2, T.PATH);         // lane to the farm
-    rect(8, 20, 2, 4, T.PATH);           // lane down to the pond
+    // ---- streets
+    rect(8, 16, 70, 2, T.PATH);           // the high street, west to east
+    rect(6, 42, 68, 2, T.PATH);           // the south street
+    rect(24, 4, 2, 48, T.PATH);           // the west lane
+    rect(58, 6, 2, 40, T.PATH);           // the east lane
+    rect(40, 18, 2, 24, T.PATH);          // through the green, hall to south street
+    rect(10, 22, 2, 6, T.PATH);           // down to the pond
+    rect(16, 45, 8, 2, T.PATH);           // schoolyard
+    rect(44, 45, 8, 2, T.PATH);           // to the smithy
 
-    // ---- village square (with a fountain)
-    rect(19, 15, 8, 6, T.PATH);
-    rect(22, 17, 2, 2, T.FOUNTAIN);
-    props.push({ type: 'fountain', x: 22, y: 17 });
+    // ---- the village green, with the hall standing at the north of it
+    rect(30, 26, 22, 14, T.GRASS);
+    rect(30, 32, 22, 2, T.PATH);          // the green's cross path
+    for (const [gx, gy] of [[33, 29], [49, 29], [33, 37], [49, 37], [36, 36], [46, 28]])
+      set(gx, gy, T.TREE);
+    rect(40, 30, 2, 2, T.FOUNTAIN);
+    props.push({ type: 'fountain', x: 40, y: 30 });
+    for (const [bx, by] of [[35, 31], [46, 31], [37, 34], [45, 34]])
+      props.push({ type: 'bench', x: bx, y: by });
+    labels.push({ x: 41, y: 40.6, text: 'The Green' });
 
     // ---- buildings
-    addBuilding(14, 5, 7, 6, 17, { label: 'Bakery', sign: '🥖', roof: '#b5563f', wall: '#e8d5b7' });
-    addBuilding(29, 7, 7, 6, 32, { label: 'Shop',   sign: '🏪', roof: '#4a6fa5', wall: '#e8d5b7' });
-    addBuilding(35, 17, 7, 6, 38, { label: 'Farmhouse', sign: '🏡', roof: '#7a5c3e', wall: '#f0e2c8' });
+    addBuilding(35, 18, 12, 7, 41, { label: 'Village Hall', sign: '🏛️', roof: '#8a6a3f', wall: '#f3e7cc' });
+    addBuilding(14, 6,  7,  6, 17, { label: 'Bakery',    sign: '🥖', roof: '#b5563f', wall: '#e8d5b7' });
+    addBuilding(30, 7,  7,  6, 33, { label: 'Shop',      sign: '🏪', roof: '#4a6fa5', wall: '#e8d5b7' });
+    addBuilding(62, 8,  8,  7, 65, { label: 'Inn',       sign: '🍺', roof: '#8a5a2b', wall: '#efdcbc' });
+    addBuilding(62, 20, 7,  6, 65, { label: 'Farmhouse', sign: '🏡', roof: '#7a5c3e', wall: '#f0e2c8' });
+    addBuilding(68, 32, 8,  7, 71, { label: 'Mill',      sign: '⚙️', roof: '#6b705c', wall: '#e8d5b7' });
+    addBuilding(12, 45, 8,  6, 15, { label: 'School',    sign: '📚', roof: '#4f7a52', wall: '#f0e2c8' });
+    addBuilding(28, 47, 7,  6, 31, { label: 'Chapel',    sign: '🕯️', roof: '#5b6b8a', wall: '#f3e9d6' });
+    addBuilding(46, 47, 7,  6, 49, { label: 'Smithy',    sign: '🔨', roof: '#5a4436', wall: '#ddc9a6' });
 
-    // ---- the mine: a rocky hillside on the west with a cave mouth
-    rect(2, 9, 8, 9, T.ROCK);
-    rect(3, 11, 5, 5, T.CAVE);
-    rect(5, 16, 2, 3, T.PATH);         // cave mouth
-    rect(5, 18, 6, 1, T.PATH);         // trail along the foot of the hill
-    rect(10, 15, 1, 4, T.PATH);        // ...up to the street
-    labels.push({ x: 6, y: 8.4, text: 'Mine' });
+    // ---- the mine, west
+    rect(2, 10, 8, 9, T.ROCK);
+    rect(3, 12, 5, 5, T.CAVE);
+    rect(5, 17, 2, 3, T.PATH);
+    rect(5, 19, 6, 1, T.PATH);
+    rect(10, 18, 1, 2, T.PATH);
+    labels.push({ x: 6, y: 9.4, text: 'Mine' });
 
     // ---- the pond, south-west
-    for (let y = 23; y < 31; y++) for (let x = 3; x < 16; x++) {
-      const dx = (x - 9.5) / 6.5, dy = (y - 27) / 3.6;
+    for (let y = 28; y < 39; y++) for (let x = 4; x < 21; x++) {
+      const dx = (x - 12) / 8, dy = (y - 33.5) / 5;
       const d = dx * dx + dy * dy;
       if (d < 1) set(x, y, T.WATER);
       else if (d < 1.2) set(x, y, hash(x, y) < 0.28 ? T.REED : T.SAND);
     }
-    labels.push({ x: 9.5, y: 21.6, text: 'Pond' });
+    labels.push({ x: 12, y: 39.6, text: 'Pond' });
 
-    // ---- the farm fields, south-east
-    rect(31, 26, 13, 5, T.CROP);
-    for (let x = 30; x <= 44; x++) { set(x, 25, T.FENCE); set(x, 31, T.FENCE); }
-    for (let y = 25; y <= 31; y++) { set(30, y, T.FENCE); set(44, y, T.FENCE); }
-    set(36, 25, T.PATH); // gate
-    labels.push({ x: 37, y: 24.4, text: 'Fields' });
+    // ---- the fields, east
+    rect(60, 34, 15, 5, T.CROP);
+    for (let x = 59; x <= 76; x++) { set(x, 33, T.FENCE); set(x, 40, T.FENCE); }
+    for (let y = 33; y <= 40; y++) { set(59, y, T.FENCE); set(76, y, T.FENCE); }
+    set(66, 33, T.PATH);
+    labels.push({ x: 68, y: 32.4, text: 'Fields' });
+
+    // ---- the orchard and beeyard, north-east
+    rect(62, 24, 16, 8, T.GRASS);
+    for (let y = 25; y <= 30; y += 2) for (let x = 63; x <= 77; x += 2) set(x, y, T.TREE);
+    labels.push({ x: 70, y: 23.2, text: 'Orchard' });
+    rect(72, 11, 7, 4, T.GRASS);
+    for (let x = 73; x <= 77; x++) set(x, 11, T.FENCE);
+    for (let y = 12; y <= 14; y++) set(72, y, T.FENCE);
+    for (let x = 74; x <= 76; x += 2) props.push({ type: 'hive', x: x, y: 12 });
+    labels.push({ x: 75, y: 10.2, text: 'Beeyard' });
+
+    // ---- the woodcutter's clearing
+    for (let y = 24; y <= 30; y++) for (let x = 16; x <= 22; x++)
+      if (hash(x * 3, y * 5) < 0.32) set(x, y, T.TREE);
+    set(18, 27, T.CAVE); set(19, 27, T.CAVE);
+    labels.push({ x: 19, y: 23.2, text: 'Woodpile' });
+
+    // ---- the graveyard behind the chapel
+    for (let x = 36; x <= 44; x++) { set(x, 48, T.FENCE); set(x, 53, T.FENCE); }
+    for (let y = 48; y <= 53; y++) { set(36, y, T.FENCE); set(44, y, T.FENCE); }
+    set(36, 50, T.PATH);
+    for (let y = 49; y <= 52; y += 2) for (let x = 38; x <= 43; x += 2)
+      props.push({ type: 'grave', x: x, y: y });
+    labels.push({ x: 40, y: 47.4, text: 'Graveyard' });
 
     return { W, H, TILE };
+  }
+
+  /* A short path between two tiles, so a villager can actually cross the
+     village rather than bumping into the first wall. Breadth-first, and only
+     run when a villager picks a new destination. */
+  function pathTo(sx, sy, tx, ty, limit) {
+    if (sx === tx && sy === ty) return [];
+    const max = limit || 4000;
+    const prev = new Map();
+    const startKey = sx + ',' + sy;
+    prev.set(startKey, null);
+    let frontier = [[sx, sy]], visited = 0;
+    while (frontier.length && visited < max) {
+      const next = [];
+      for (const [cx, cy] of frontier) {
+        visited++;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = cx + dx, ny = cy + dy, k = nx + ',' + ny;
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H || prev.has(k)) continue;
+          if (!isWalkable(nx, ny)) continue;
+          prev.set(k, [cx, cy]);
+          if (nx === tx && ny === ty) {
+            const out = [];
+            let cur = [nx, ny];
+            while (cur) { out.push({ x: cur[0], y: cur[1] }); cur = prev.get(cur[0] + ',' + cur[1]); }
+            return out.reverse().slice(1);
+          }
+          next.push([nx, ny]);
+        }
+      }
+      frontier = next;
+    }
+    return null;
   }
 
   /* nearest walkable tile to (x,y) — used to place characters safely */
@@ -194,6 +283,42 @@ LG.world = (function () {
   }
 
   function drawProp(ctx, p) {
+    if (p.type === 'hive') {
+      const x = p.x * TILE, y = p.y * TILE;
+      ctx.fillStyle = 'rgba(0,0,0,.2)';
+      ctx.beginPath(); ctx.ellipse(x + 16, y + 26, 12, 5, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#d8ab55';                       // stacked boxes
+      ctx.fillRect(x + 6, y + 12, 20, 12);
+      ctx.fillStyle = '#c2963f'; ctx.fillRect(x + 6, y + 6, 20, 7);
+      ctx.fillStyle = '#8a6a2f'; ctx.fillRect(x + 4, y + 3, 24, 4);
+      ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(x + 13, y + 18, 6, 3);
+      return;
+    }
+    if (p.type === 'bench') {
+      const x = p.x * TILE, y = p.y * TILE;
+      ctx.fillStyle = 'rgba(0,0,0,.18)';
+      ctx.fillRect(x + 3, y + 20, 26, 5);
+      ctx.fillStyle = '#9a7b52';
+      ctx.fillRect(x + 2, y + 12, 28, 5);      // seat
+      ctx.fillRect(x + 2, y + 6, 28, 4);       // back
+      ctx.fillStyle = '#7d6242';
+      ctx.fillRect(x + 4, y + 16, 4, 7);
+      ctx.fillRect(x + 24, y + 16, 4, 7);
+      return;
+    }
+    if (p.type === 'grave') {
+      const x = p.x * TILE, y = p.y * TILE;
+      ctx.fillStyle = 'rgba(0,0,0,.18)';
+      ctx.beginPath(); ctx.ellipse(x + 16, y + 25, 9, 4, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#a8a296';
+      ctx.beginPath();
+      ctx.moveTo(x + 10, y + 24); ctx.lineTo(x + 10, y + 12);
+      ctx.arc(x + 16, y + 12, 6, Math.PI, 0);
+      ctx.lineTo(x + 22, y + 24);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#8d8779'; ctx.fillRect(x + 12, y + 16, 8, 2);
+      return;
+    }
     if (p.type !== 'fountain') return;
     const cx = (p.x + 1) * TILE, cy = (p.y + 1) * TILE;
     ctx.fillStyle = 'rgba(0,0,0,.18)';
@@ -217,31 +342,114 @@ LG.world = (function () {
     ctx.beginPath(); ctx.arc(cx, cy - 18, 6, 0, Math.PI * 2); ctx.fill();
   }
 
-  function drawBuildings(ctx) {
+  function drawBuildings(ctx, insideBuilding) {
     for (const p of props) drawProp(ctx, p);
     for (const b of buildings) {
       const px = b.x * TILE, py = b.y * TILE, pw = b.w * TILE, ph = b.h * TILE;
+      const open = (b === insideBuilding);
+
       ctx.fillStyle = 'rgba(0,0,0,.18)';
       ctx.fillRect(px + 6, py + 10, pw, ph);
-      ctx.fillStyle = b.wall; ctx.fillRect(px, py, pw, ph);
-      ctx.fillStyle = b.roof; ctx.fillRect(px - 6, py - 10, pw + 12, TILE * 2);
+
+      // the wall ring — the inside is left as floor so it can be furnished
+      ctx.fillStyle = b.wall;
+      ctx.fillRect(px, py, pw, TILE * 2);                     // back wall
+      ctx.fillRect(px, py + ph - TILE, pw, TILE);             // front wall
+      ctx.fillRect(px, py, TILE, ph);                         // west
+      ctx.fillRect(px + pw - TILE, py, TILE, ph);             // east
+
+      drawFurniture(ctx, b, open);
+
+      // roof: solid from outside, a hint of one when you are under it
+      ctx.globalAlpha = open ? 0.16 : 1;
+      ctx.fillStyle = b.roof;
+      if (!open) ctx.fillRect(px, py, pw, ph);
+      ctx.fillRect(px - 6, py - 10, pw + 12, TILE * 2);
       ctx.fillStyle = 'rgba(0,0,0,.15)'; ctx.fillRect(px - 6, py + TILE * 2 - 16, pw + 12, 6);
       ctx.fillStyle = 'rgba(255,255,255,.16)'; ctx.fillRect(px - 6, py - 10, pw + 12, 4);
-      ctx.fillStyle = 'rgba(0,0,0,.10)';                        // plank courses
-      for (let yy = py + TILE * 2 + 34; yy < py + ph; yy += 12) ctx.fillRect(px, yy, pw, 2);
-      ctx.fillStyle = '#8a6a4d'; ctx.fillRect(px, py + ph - 7, pw, 7);
-      // windows
+      ctx.globalAlpha = 1;
+
+      // windows and door sit on the walls either way
       ctx.fillStyle = '#3d5468';
       for (let i = 1; i < b.w - 1; i += 2) ctx.fillRect(px + i * TILE + 6, py + TILE * 2 + 8, 20, 18);
-      // door
       const dx = b.doorX * TILE, dy = (b.y + b.h - 1) * TILE;
-      ctx.fillStyle = '#5b3d26'; ctx.fillRect(dx + 3, dy - 6, TILE - 6, TILE + 6);
-      ctx.fillStyle = '#d8b25e'; ctx.beginPath(); ctx.arc(dx + TILE - 10, dy + 12, 2.5, 0, Math.PI * 2); ctx.fill();
-      // hanging sign
-      ctx.font = '20px system-ui';
-      ctx.textAlign = 'center';
+      ctx.fillStyle = open ? '#3a2717' : '#5b3d26';
+      ctx.fillRect(dx + 3, dy - 6, TILE - 6, TILE + 6);
+      ctx.fillStyle = '#d8b25e';
+      ctx.beginPath(); ctx.arc(dx + TILE - 10, dy + 12, 2.5, 0, Math.PI * 2); ctx.fill();
+
+      ctx.font = '20px system-ui'; ctx.textAlign = 'center';
       ctx.fillText(b.sign, px + pw / 2, py + TILE * 2 - 4);
     }
+  }
+
+  /* Plain shapes, but enough that a room reads as a bakery or a smithy. */
+  function drawFurniture(ctx, b, open) {
+    if (!b.furniture.length) return;
+    ctx.globalAlpha = open ? 1 : 0.9;
+    for (const f of b.furniture) {
+      const x = f.x * TILE, y = f.y * TILE;
+      switch (f.type) {
+        case 'counter':
+          ctx.fillStyle = '#8a6a45'; ctx.fillRect(x, y + 8, TILE * (f.w || 1), 18);
+          ctx.fillStyle = '#a3855c'; ctx.fillRect(x, y + 8, TILE * (f.w || 1), 6);
+          break;
+        case 'shelf':
+          ctx.fillStyle = '#6f563a'; ctx.fillRect(x, y + 4, TILE * (f.w || 1), 22);
+          ctx.fillStyle = '#c8a76d';
+          for (let i = 0; i < (f.w || 1) * 2; i++) ctx.fillRect(x + 4 + i * 14, y + 7, 9, 7);
+          ctx.fillStyle = '#b08b57';
+          for (let i = 0; i < (f.w || 1) * 2; i++) ctx.fillRect(x + 4 + i * 14, y + 17, 9, 7);
+          break;
+        case 'oven':
+          ctx.fillStyle = '#7a5346'; ctx.fillRect(x, y + 2, TILE * 2, TILE - 4);
+          ctx.fillStyle = '#2a1c14'; ctx.fillRect(x + 8, y + 10, 30, 14);
+          ctx.fillStyle = '#e0913a'; ctx.fillRect(x + 12, y + 16, 22, 7);
+          break;
+        case 'table':
+          ctx.fillStyle = '#8a6a45'; ctx.fillRect(x + 2, y + 6, TILE - 4, TILE - 12);
+          ctx.fillStyle = 'rgba(0,0,0,.15)'; ctx.fillRect(x + 2, y + TILE - 10, TILE - 4, 4);
+          break;
+        case 'stool':
+          ctx.fillStyle = '#7d6242';
+          ctx.beginPath(); ctx.arc(x + 16, y + 16, 7, 0, Math.PI * 2); ctx.fill();
+          break;
+        case 'anvil':
+          ctx.fillStyle = '#4a4a52'; ctx.fillRect(x + 6, y + 16, 20, 8);
+          ctx.fillRect(x + 10, y + 10, 12, 8);
+          ctx.fillStyle = '#6b6b74'; ctx.fillRect(x + 4, y + 8, 24, 4);
+          break;
+        case 'forge':
+          ctx.fillStyle = '#57493f'; ctx.fillRect(x, y + 4, TILE, TILE - 8);
+          ctx.fillStyle = '#e8762a'; ctx.fillRect(x + 8, y + 12, 16, 12);
+          ctx.fillStyle = '#f6c14a'; ctx.fillRect(x + 12, y + 16, 8, 6);
+          break;
+        case 'desk':
+          ctx.fillStyle = '#8a6a45'; ctx.fillRect(x + 2, y + 8, TILE - 4, 14);
+          ctx.fillStyle = '#f0e6d2'; ctx.fillRect(x + 8, y + 10, 12, 8);
+          break;
+        case 'pew':
+          ctx.fillStyle = '#6f563a'; ctx.fillRect(x, y + 10, TILE * (f.w || 1), 7);
+          ctx.fillRect(x, y + 4, TILE * (f.w || 1), 4);
+          break;
+        case 'barrel':
+          ctx.fillStyle = '#8a6a45';
+          ctx.beginPath(); ctx.ellipse(x + 16, y + 16, 10, 12, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = '#5f4a2f'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(x + 6, y + 13); ctx.lineTo(x + 26, y + 13); ctx.stroke();
+          break;
+        case 'sack':
+          ctx.fillStyle = '#c9b892';
+          ctx.beginPath(); ctx.ellipse(x + 16, y + 18, 9, 11, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#a8946c'; ctx.fillRect(x + 12, y + 6, 8, 5);
+          break;
+        case 'bed':
+          ctx.fillStyle = '#8a6a45'; ctx.fillRect(x + 2, y + 4, TILE - 4, TILE * 1.6);
+          ctx.fillStyle = '#dfe6ee'; ctx.fillRect(x + 4, y + 6, TILE - 8, 14);
+          break;
+      }
+    }
+    ctx.globalAlpha = 1;
   }
 
   function drawLabels(ctx) {
@@ -264,6 +472,7 @@ LG.world = (function () {
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) drawProps(ctx, x, y, x * TILE, y * TILE);
   }
 
-  return { TILE, W, H, T, build, get, isSolid, isWalkable, nearestOpen,
+  return { TILE, W, H, T, build, get, isSolid, isWalkable, nearestOpen, pathTo,
+           buildingAt, buildingByLabel,
            drawGround, drawBuildings, drawLabels, buildings };
 })();

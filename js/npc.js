@@ -16,7 +16,10 @@ LG.actors = (function () {
       history: [],                      // recent dialogue turns with the player
       bubble: null, bubbleT: 0,
       gossipCool: 5 + Math.random() * 10,
-      metPlayer: false, tradeDone: false
+      metPlayer: false, tradeDone: false,
+      patch: def.home,          // the rectangle they are pottering about in
+      route: null,              // a path being walked to somewhere else
+      routeCool: 4 + Math.random() * 20
     };
   }
 
@@ -45,6 +48,41 @@ LG.actors = (function () {
     return false;
   }
 
+  /* Villagers keep their own hours: out and about on the green by day, back to
+     their own patch at night, and a slow drift between the two in between. */
+  function routine(a, dt, green) {
+    if (a.frozen) { a.route = null; return; }
+    a.routeCool -= dt;
+    if (a.routeCool > 0) return;
+    a.routeCool = 14 + Math.random() * 26;
+
+    // the pull of the green rises to midday and thins out by dusk
+    const DRAW = { dawn: 0.1, morning: 0.45, midday: 0.8, afternoon: 0.65, dusk: 0.2, night: 0 };
+    const bad = (LG.time.info.dim || 0) > 0.22;      // nobody loiters in a blizzard
+    const pull = bad ? 0 : (DRAW[LG.time.phase().id] || 0);
+    const want = Math.random() < pull ? green : a.def.home;
+    if (want === a.patch) return;
+
+    const cx = want.x + (Math.random() * want.w | 0);
+    const cy = want.y + (Math.random() * want.h | 0);
+    const spot = W.nearestOpen(cx, cy);
+    const path = W.pathTo(a.tx, a.ty, spot.x, spot.y);
+    if (path && path.length) { a.route = path; a.patch = want; }
+  }
+
+  /* Follow a route if we are on one, otherwise potter about the current patch. */
+  function walk(a, dt, speed) {
+    if (a.frozen) return;
+    if (a.route && a.route.length) {
+      const step = a.route[0];
+      a.tx = step.x; a.ty = step.y;
+      if (stepTowards(a, speed, dt)) a.route.shift();
+      return;
+    }
+    a.route = null;
+    wander(a, dt, a.patch, speed);
+  }
+
   function wander(a, dt, area, speed) {
     if (a.frozen) return;
     const arrived = stepTowards(a, speed, dt);
@@ -67,7 +105,7 @@ LG.actors = (function () {
   /* ------------------------------------------------------------- gossip
      Two nearby idle NPCs swap one fact each. This is free (no model call),
      so the village's knowledge really does spread by word of mouth. */
-  function gossip(npcs, dt, log, chatterLine) {
+  function gossip(npcs, dt, log, chatterLine, onChat) {
     for (const a of npcs) a.gossipCool -= dt;
     for (let i = 0; i < npcs.length; i++) {
       for (let j = i + 1; j < npcs.length; j++) {
@@ -80,11 +118,30 @@ LG.actors = (function () {
         if (fromA && b.facts.indexOf(fromA) === -1) { b.facts.push(fromA); said = true; }
         if (fromB && a.facts.indexOf(fromB) === -1) { a.facts.push(fromB); said = true; }
         if (said) {
-          a.bubble = chatterLine(); a.bubbleT = 3.5;
-          b.bubble = chatterLine(); b.bubbleT = 3.5;
-          log(a.def.name + ' and ' + b.def.name + ' swapped news.');
+          a.pauseT = b.pauseT = 4 + Math.random() * 3;    // stop and talk
+          a.route = b.route = null;
+          faceEachOther(a, b);
+          // If the player is near enough to overhear, let them actually say it;
+          // otherwise the news still travels, just off-page.
+          const spoken = onChat && onChat(a, b, fromA || fromB);
+          if (!spoken) {
+            a.bubble = chatterLine(); a.bubbleT = 5;
+            b.bubble = chatterLine(); b.bubbleT = 5;
+            log(a.def.name + ' and ' + b.def.name + ' swapped news.');
+          }
         }
       }
+    }
+  }
+
+  function faceEachOther(a, b) {
+    const dx = b.px - a.px, dy = b.py - a.py;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      a.dir = dx > 0 ? 'right' : 'left';
+      b.dir = dx > 0 ? 'left' : 'right';
+    } else {
+      a.dir = dy > 0 ? 'down' : 'up';
+      b.dir = dy > 0 ? 'up' : 'down';
     }
   }
 
@@ -201,5 +258,5 @@ LG.actors = (function () {
     ctx.globalAlpha = 1;
   }
 
-  return { makeNPC, makeCreature, wander, stepTowards, gossip, drawCharacter, drawBubble, roundRect };
+  return { makeNPC, makeCreature, wander, walk, routine, stepTowards, gossip, drawCharacter, drawBubble, roundRect };
 })();

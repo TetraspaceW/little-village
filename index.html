@@ -16,11 +16,12 @@
     <div class="hud-box" id="questBox">
       <h3>Notebook</h3>
       <div id="notebook"></div>
+      <div class="seedline"><span id="clock"></span></div>
       <div class="seedline">village <span id="seed"></span></div>
     </div>
 
     <div class="hud-box" id="invBox">
-      <h3>Pockets</h3>
+      <h3>Pockets <span id="purse">¤0</span></h3>
       <div id="inv"></div>
     </div>
 
@@ -98,6 +99,45 @@
       <label class="check"><input type="checkbox" id="setTrans"> Show English translations straight away
         <small>(off = translations are blurred until you click them)</small></label>
       <label class="check"><input type="checkbox" id="setChatter"> Let the villagers gossip with each other</label>
+      <label class="check"><input type="checkbox" id="setVoices"> Let the villagers speak aloud
+        <small>(needs a separate ElevenLabs key, below)</small></label>
+
+      <label>How long is a village day?
+        <select id="setDayLength">
+          <option value="3">3 minutes — the sky changes quickly</option>
+          <option value="6">6 minutes</option>
+          <option value="12">12 minutes</option>
+          <option value="30">30 minutes — a slow, steady day</option>
+        </select>
+        <small>Thirty days to a season, four seasons to a year. The calendar keeps
+        running between visits, and a new village starts on a random day.</small>
+      </label>
+
+      <label>Which voices may be cast?
+        <select id="setQuality">
+          <option value="curated">Curated only — ElevenLabs library and professional clones</option>
+          <option value="any">Any voice on the account</option>
+        </select>
+        <small>Instant voice clones vary a lot in quality; curated ones do not.</small>
+      </label>
+
+      <label>How fast should they talk?
+        <select id="setSpeed">
+          <option value="auto">Match the difficulty (slower for beginners)</option>
+          <option value="0.7">Very slow</option>
+          <option value="0.8">Slow</option>
+          <option value="0.9">Relaxed</option>
+          <option value="1">Natural</option>
+        </select>
+      </label>
+
+      <label id="ttsRow">ElevenLabs key <span class="opt">optional</span>
+        <input id="setTtsKey" type="password" placeholder="sk_…" autocomplete="off">
+        <small>From elevenlabs.io. Each villager is cast a distinct voice from your account
+        when the village loads. Leave blank for a silent village.</small>
+        <button id="setTtsTest" class="secondary" type="button">Test this key</button>
+        <div id="ttsResult"></div>
+      </label>
 
       <hr>
 
@@ -115,6 +155,14 @@
 
       <label>Model
         <select id="setModel"></select>
+      </label>
+
+      <label>Helper model
+        <select id="setHelper"></select>
+        <input id="setHelperCustom" type="text" placeholder="e.g. xiaomi/mimo-v2.5" autocomplete="off">
+        <small>Does the bookkeeping the villagers are bad at: checking what they actually
+        told you before it reaches your notebook, filling in missing furigana, and
+        confirming a trade was agreed. Cheap and literal-minded beats clever here.</small>
       </label>
 
       <div id="setError"></div>
@@ -167,10 +215,13 @@
   </div>
 </div>
 
+<script src="js/time.js"></script>
 <script src="js/data.js"></script>
 <script src="js/chain.js"></script>
 <script src="js/llm.js"></script>
+<script src="js/tts.js"></script>
 <script src="js/world.js"></script>
+<script src="js/sky.js"></script>
 <script src="js/npc.js"></script>
 <script src="js/dialogue.js"></script>
 <script src="js/game.js"></script>

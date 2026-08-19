@@ -30,20 +30,29 @@ LG.LANGUAGES = {
    beyond the owner are told a chain fact, `taper` takes holders away as you go
    deeper down the chain (so length now *buries* the tail instead of exposing it),
    and `gossip` is how much of the chain the village gossip has picked up — she is
-   a skeleton key at beginner and knows nothing but opinions at advanced. */
+   a skeleton key at beginner and knows nothing but opinions at advanced.
+
+   `prompt` is how a villager speaks *to the traveller*, so it is written as
+   accommodation — meeting a learner where they are. `register` is for villagers
+   talking to each other, where accommodation would be absurd: they are natives and
+   the player is only overhearing. At advanced it is empty, because two natives with
+   nobody to accommodate simply talk. */
 LG.DEPTH = [2, 4];                       // links per errand, rolled per village
 
 LG.LEVELS = {
   beginner: {
     label: 'Beginner (A1)', spread: 2, taper: 0, gossip: 1, deliver: false, speed: 0.75,
+    register: 'Plain everyday words and short sentences — the way you talk when you are not thinking about it.',
     prompt: 'Speak the way a kind native speaker speaks to someone on their first day: short, complete sentences built from the most common everyday words, about the here and now. Stick to simple grammar, but use whatever tense the sentence actually needs. No idioms, no slang, nothing literary.'
   },
   intermediate: {
     label: 'Intermediate (A2–B1)', spread: 1, taper: 1, gossip: 0.5, deliver: true, speed: 0.85,
+    register: 'Ordinary everyday speech. Nothing literary or obscure.',
     prompt: 'Speak simply but easily, the way you would to someone who can hold a conversation but still gropes for words. Everyday vocabulary, ordinary sentence structures, any tense you need. Go light on idiom and avoid rare or literary words.'
   },
   advanced: {
     label: 'Advanced (B2+)', spread: 0.5, taper: 1, gossip: 0, deliver: true, speed: 0.95,
+    register: '',                        // two natives; they talk as they talk
     prompt: 'Speak exactly as you would to another native — full range, including idiom, colloquialism and whatever regional flavour you have.'
   }
 };

@@ -155,6 +155,21 @@ dusk; at night everyone is home, and nobody stands about on the green in a blizz
 When two of them meet they stop, turn to face each other, and actually talk — a real
 back-and-forth of four to six lines, not a canned exchange.
 
+The prompt for these gives the villager their situation and gets out of the way. It
+says who they are, who they have run into, what they have been meaning to mention, what
+has been said so far, and that they are both on their way somewhere — and then stops.
+It does not tell them to react to what the other one said rather than talk past them,
+which is instructing a competent actor in how conversation works and reads exactly as
+stiffly as it sounds.
+
+The one that mattered most was the level. Each difficulty carries a `prompt` written as
+*accommodation* — "speak the way a kind native speaker speaks to someone on their first
+day" — which is right when a villager is talking to you and absurd between two
+villagers, where it has Mira addressing Boris as though he were learning his own
+language. Villager-to-villager talk uses a separate `register` line instead, which
+describes how plainly they speak rather than who they are speaking down to. At advanced
+it is empty: two natives with nobody to accommodate simply talk.
+
 **Each line is its own call, and each villager only writes their own.** The alternative
 is one call that writes both halves, which is what this used to do, and it reads like a
 script: the halves agree too neatly, nobody misunderstands anybody, and the second

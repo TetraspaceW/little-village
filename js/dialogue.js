@@ -635,7 +635,7 @@ LG.dialogue = (function () {
           langName: L.name,
           furigana: !!L.furigana,
           romanLabel: L.romanize ? L.romanLabel : null,
-          level: (LG.LEVELS[s.level] || {}).prompt || ''
+          register: (LG.LEVELS[s.level] || {}).register || ''
         });
         if (!turn) break;
         if (a.frozen || b.frozen) break;

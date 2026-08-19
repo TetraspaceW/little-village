@@ -278,29 +278,27 @@ LG.llm = (function () {
     const said = (o.transcript || []).map(t => t.who + ': ' + t.say);
     const lines = [
       'You are ' + o.me.name + ' — ' + o.me.job + '. ' + o.me.persona,
-      'You have stopped in the street to talk to ' + o.them.name + ', ' + o.them.job + '.',
-      o.when || '',
+      'You have run into ' + o.them.name + ', ' + o.them.job + '.',
+      o.when || null,
       '',
-      o.news ? 'You have been wanting to pass this on: ' + o.news : '',
-      o.knows ? 'Other things you know, if they come up: ' + o.knows : '',
+      o.news ? 'Something you have been meaning to tell them: ' + o.news : null,
+      o.knows ? 'Other things you know, if they come up: ' + o.knows : null,
       '',
-      said.length ? 'The conversation so far:\n' + said.join('\n')
-                  : 'Nothing has been said yet — you speak first.',
+      said.length ? 'So far:\n' + said.join('\n')
+                  : 'Neither of you has said anything yet.',
       '',
-      'Say your next line, and only that. Answer ' + o.them.name + ' — react to what they',
-      'actually just said rather than talking past them.',
-      o.closing ? 'The conversation has run its course; wrap it up and say goodbye.'
-                : 'One or two sentences. This is two neighbours in the street, not a speech.',
+      o.closing ? 'You are both about to move on.' : null,
+      'Say your next line — a line or two, since you are both on your way somewhere.',
       '',
-      'Write it in ' + o.langName + ' only. ' + (o.level || ''),
+      ('In ' + o.langName + '. ' + (o.register || '')).trim(),
       o.furigana
         ? 'Put furigana in "say": wrap each kanji word as <ruby>\u6f22\u5b57<rt>\u304b\u3093\u3058</rt></ruby>. Kanji only.'
-        : '',
+        : null,
       '',
       'Reply with only a JSON object:',
       '{"say": "your line", "translation": "plain English"' +
         (o.romanLabel ? ', "roman": "' + o.romanLabel + '"' : '') + '}'
-    ].filter(Boolean).join('\n');
+    ].filter(x => x !== null && x !== undefined).join('\n');
     const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg) };
     const sys = 'You play one villager in a two-person conversation. Answer with JSON only.';
     try {

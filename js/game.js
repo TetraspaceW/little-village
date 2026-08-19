@@ -606,11 +606,18 @@ LG.game = (function () {
     const text = id => (id && plan.facts[id]) ? plan.facts[id].text : null;
     const aNews = text(fromA), bNews = text(fromB);
     if (!aNews && !bNews) return false;
-    // whatever else they are each carrying, in case the talk wanders there
+    /* Whatever else they are each carrying, in case the talk wanders there. A
+       villager's own opinion is stored as "Mira thinks Wren talks too much",
+       which reads absurdly when you hand it back to Mira — she does not think
+       about herself in the third person. */
+    const own = (n, text) =>
+      text.indexOf(n.def.name + ' thinks ') === 0
+        ? 'You think ' + text.slice((n.def.name + ' thinks ').length)
+        : text;
     const rest = (n, skip) => n.facts
       .filter(id => id !== skip && plan.facts[id])
       .slice(0, 2)
-      .map(id => plan.facts[id].text)
+      .map(id => own(n, plan.facts[id].text))
       .join(' ');
     LG.dialogue.overheard(a, b, {
       aNews: aNews, bNews: bNews,

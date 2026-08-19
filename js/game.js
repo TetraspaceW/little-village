@@ -107,11 +107,37 @@ LG.game = (function () {
   }
 
   /* ----------------------------------------------------------------- log */
-  function log(msg) {
-    logLines.push(msg);
+  function pushLog(html) {
+    logLines.push(html);
     if (logLines.length > 5) logLines.shift();
-    document.getElementById('log').innerHTML =
-      logLines.map(l => '<div>' + escapeHTML(l) + '</div>').join('');
+    const box = document.getElementById('log');
+    box.innerHTML = logLines.map(l => '<div>' + l + '</div>').join('');
+    Array.prototype.forEach.call(box.querySelectorAll('.gloss.hidden-tr'), el => {
+      el.onclick = () => el.classList.remove('hidden-tr');
+    });
+  }
+
+  function log(msg) { pushLog(escapeHTML(msg)); }
+
+  /* Overhearing two villagers.
+
+     They are talking to each other, in their own language — there is no English
+     anywhere in that exchange, so there is none in the log either. What you get
+     is the line as spoken, with furigana or a romanisation the same as anywhere
+     else. The English is there to check yourself against, blurred until you ask
+     for it, and it stays blurred even with translations switched on: a villager
+     explaining something to you is a lesson, but eavesdropping is a test, and
+     handing over the answer makes overhearing a way to skip the language. */
+  function logSpeech(name, said, ruby, roman, gloss) {
+    const L = LG.LANGUAGES[settings.lang];
+    const heard = (ruby && L.furigana) ? LG.dialogue.rubyHTML(ruby) : escapeHTML(said);
+    let html = '<span class="who">\uD83D\uDC42 ' + escapeHTML(name) + ':</span> ' +
+               '<span class="heard"' + (ruby && L.furigana ? ' style="line-height:2"' : '') +
+               '>' + heard + '</span>';
+    if (roman && L.romanize) html += '<span class="roman">' + escapeHTML(roman) + '</span>';
+    if (gloss) html += '<span class="gloss hidden-tr" title="click to read">' +
+                       escapeHTML(gloss) + '</span>';
+    pushLog(html);
   }
   function escapeHTML(s) {
     return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -155,13 +181,14 @@ LG.game = (function () {
     if (!atWork(npc)) return false;
     const id = String(itemId || '').replace(/[^\w]/g, '');
     if (!LG.ITEMS[id] || id === 'coins') return false;
-    const list = act === 'sell' ? (d.sells || []) : (d.buys || []);
-    const ware = list.find(w => w.i === id);
-    if (!ware) return false;
+    const base = act === 'sell'
+      ? priceFrom(d.sells, d.sellsTags, id, 1)
+      : priceFrom(d.buys, d.buysTags, id, 0.5);
+    if (!base) return false;
 
     let cost = Math.round(Number(price));
-    if (!isFinite(cost) || cost < 0) cost = ware.p;
-    cost = Math.max(Math.ceil(ware.p * 0.4), Math.min(Math.ceil(ware.p * 2.5), cost));  // a haggle, not a fleecing
+    if (!isFinite(cost) || cost < 0) cost = base;
+    cost = Math.max(Math.ceil(base * 0.4), Math.min(Math.ceil(base * 2.5), cost));  // a haggle, not a fleecing
 
     if (act === 'sell') {
       if (count('coins') < cost) return false;
@@ -254,10 +281,15 @@ LG.game = (function () {
     player = { px: p.x * TILE + TILE / 2, py: p.y * TILE + TILE / 2, dir: 'down',
                tx: p.x, ty: p.y, bubble: null, bubbleT: 0 };
     npcs = LG.NPCS.map(d => A.makeNPC(d, plan.npcFacts[d.id]));
-    npcs.forEach(n => {
+    // Everyone needs somewhere to work, and somewhere with a roof to bolt to.
+    const publics = ['Inn', 'Village Hall', 'Chapel']
+      .map(l => W.buildingByLabel(l)).filter(Boolean);
+    npcs.forEach((n, i) => {
       const b = n.def.workplace ? W.buildingByLabel(n.def.workplace) : null;
       n.work = b ? b.inside : (n.def.workRect || n.def.home);
       n.workBuilding = b;
+      const refuge = b || publics[i % Math.max(1, publics.length)];
+      n.shelter = refuge ? refuge.inside : n.def.home;
     });
 
     // the thing at the end of the chain, out in the world somewhere
@@ -543,8 +575,23 @@ LG.game = (function () {
   function inRect(a, r) {
     return r && a.tx >= r.x && a.tx < r.x + r.w && a.ty >= r.y && a.ty < r.y + r.h;
   }
-  /* Trading only happens where somebody actually works. */
-  function atWork(n) { return inRect(n, n.work); }
+  /* Somebody's trade goes with them: the baker will sell you bread on the street
+     as readily as across her counter. Only the small hours close the shop. */
+  function atWork(n) { return !LG.time.isNight(); }
+  /* Whether they are physically at their workplace — flavour, and a fuller stock. */
+  function behindTheCounter(n) { return inRect(n, n.work); }
+
+  /* What this villager will sell, explicit wares first then anything their trade
+     covers. Returns the price, or 0 if they would not sell it at all. */
+  function priceFrom(list, tags, id, factor) {
+    const ware = (list || []).find(w => w.i === id);
+    if (ware) return ware.p;
+    const it = LG.ITEMS[id];
+    if (it && tags && tags.some(t => (it.tags || []).indexOf(t) !== -1)) {
+      return Math.max(1, Math.round(LG.priceOf(id) * (factor || 1)));
+    }
+    return 0;
+  }
 
   /* Close enough to make out what they are saying? Only decides whether it goes
      in the log — the conversation happens either way. */
@@ -554,16 +601,21 @@ LG.game = (function () {
 
   /* Villagers talk to each other wherever they are; this only supplies the news
      being passed. `factId` is the piece of gossip actually changing hands. */
-  function villagerTalk(a, b, factId) {
+  function villagerTalk(a, b, fromA, fromB) {
     if (!settings.apiKey) return false;
-    const fact = factId && plan.facts[factId];
-    if (!fact) return false;
-    const also = a.facts
-      .filter(id => id !== factId && plan.facts[id])
+    const text = id => (id && plan.facts[id]) ? plan.facts[id].text : null;
+    const aNews = text(fromA), bNews = text(fromB);
+    if (!aNews && !bNews) return false;
+    // whatever else they are each carrying, in case the talk wanders there
+    const rest = (n, skip) => n.facts
+      .filter(id => id !== skip && plan.facts[id])
       .slice(0, 2)
       .map(id => plan.facts[id].text)
       .join(' ');
-    LG.dialogue.overheard(a, b, fact.text, also);
+    LG.dialogue.overheard(a, b, {
+      aNews: aNews, bNews: bNews,
+      aExtra: rest(a, fromA), bExtra: rest(b, fromB)
+    });
     return true;
   }
 
@@ -678,13 +730,22 @@ LG.game = (function () {
     ctx.save();
     ctx.translate(-Math.round(cam.x), -Math.round(cam.y));
 
+    const room = W.buildingUnder(player);
+
     W.drawGround(ctx, cam, vw, vh);
-    W.drawBuildings(ctx, W.buildingAt(player.tx, player.ty));
+    W.drawBuildings(ctx, room);
     W.drawLabels(ctx);
     drawWorldItem();
 
-    const drawables = npcs.slice();
-    if (beast) drawables.push(beast);
+    /* A villager under a roof is out of sight. You can see into the room you are
+       standing in — that is what lifting the roof is for — but not through
+       someone else's walls, so the baker at her oven is genuinely away until you
+       go in after her. */
+    const drawables = npcs.filter(a => {
+      const r = W.buildingUnder(a);
+      return !r || r === room;
+    });
+    if (beast) { const r = W.buildingUnder(beast); if (!r || r === room) drawables.push(beast); }
     drawables.push(player);
     drawables.sort((a, b) => a.py - b.py);
 
@@ -705,7 +766,7 @@ LG.game = (function () {
     }
 
     ctx.restore();
-    LG.sky.draw(ctx, vw, vh);
+    LG.sky.draw(ctx, vw, vh, W.roofRects(cam, vw, vh));
 
     const g = ctx.createRadialGradient(vw / 2, vh / 2, Math.min(vw, vh) * 0.42,
                                        vw / 2, vh / 2, Math.max(vw, vh) * 0.75);
@@ -724,9 +785,10 @@ LG.game = (function () {
     requestAnimationFrame(loop);
   }
 
-  return { init, settings, state, llmConfig, ttsConfig, log, learn, hasNote, give, take, count, atWork,
+  return { init, settings, state, llmConfig, ttsConfig, log, learn, hasNote, give, take, count,
+           atWork, behindTheCounter,
            _moveDir: moveDir, _isInteract: isInteract,
-           canOverhear,
+           canOverhear, logSpeech,
            _debugPlayerAt: (x, y) => { player.px = x; player.py = y; },
            inventoryList, doTrade, commerce, renderHUD, openSettings, uiBlocked, newVillage,
            get plan() { return plan; },

@@ -265,40 +265,50 @@ LG.llm = (function () {
 
   /* Two villagers meeting in the street. The small model writes the exchange,
      seeded with the piece of news actually being passed. */
-  async function chatter(cfg, opts) {
+  /* One villager's next line in a conversation with another villager.
+
+     This is deliberately one call per turn rather than one call that writes the
+     whole exchange. Two actors improvising at each other produce a conversation;
+     one actor writing both halves produces a script, and it shows — the halves
+     agree too neatly, nobody misunderstands anybody, and the second speaker never
+     says anything the first did not set up. It runs on the small model precisely
+     so that this is affordable: a six-turn conversation is six cheap calls. */
+  async function converse(cfg, opts) {
     const o = opts || {};
+    const said = (o.transcript || []).map(t => t.who + ': ' + t.say);
     const lines = [
-      'Two villagers have run into each other and stopped to talk. Write their exchange.',
-      '',
-      o.a.name + ' — ' + o.a.job + '. ' + o.a.persona,
-      o.b.name + ' — ' + o.b.job + '. ' + o.b.persona,
-      '',
+      'You are ' + o.me.name + ' — ' + o.me.job + '. ' + o.me.persona,
+      'You have stopped in the street to talk to ' + o.them.name + ', ' + o.them.job + '.',
       o.when || '',
       '',
-      o.a.name + ' has been wanting to pass on this piece of news: ' + o.news,
-      o.extra ? ('They also know: ' + o.extra) : '',
+      o.news ? 'You have been wanting to pass this on: ' + o.news : '',
+      o.knows ? 'Other things you know, if they come up: ' + o.knows : '',
+      '',
+      said.length ? 'The conversation so far:\n' + said.join('\n')
+                  : 'Nothing has been said yet — you speak first.',
+      '',
+      'Say your next line, and only that. Answer ' + o.them.name + ' — react to what they',
+      'actually just said rather than talking past them.',
+      o.closing ? 'The conversation has run its course; wrap it up and say goodbye.'
+                : 'One or two sentences. This is two neighbours in the street, not a speech.',
       '',
       'Write it in ' + o.langName + ' only. ' + (o.level || ''),
-      o.a.name + ' brings the news up in their own way; ' + o.b.name + ' reacts in theirs.',
-      'One short sentence each — this is two people passing in the street, not a scene.',
+      o.furigana
+        ? 'Put furigana in "say": wrap each kanji word as <ruby>\u6f22\u5b57<rt>\u304b\u3093\u3058</rt></ruby>. Kanji only.'
+        : '',
       '',
       'Reply with only a JSON object:',
-      '{',
-      '  "a": {"say": "' + o.a.name + '\u2019s line", "translation": "plain English"' +
-        (o.romanLabel ? ', "roman": "' + o.romanLabel + '"' : '') + '},',
-      '  "b": {"say": "' + o.b.name + '\u2019s line", "translation": "plain English"' +
-        (o.romanLabel ? ', "roman": "' + o.romanLabel + '"' : '') + '}',
-      '}'
+      '{"say": "your line", "translation": "plain English"' +
+        (o.romanLabel ? ', "roman": "' + o.romanLabel + '"' : '') + '}'
     ].filter(Boolean).join('\n');
     const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg) };
+    const sys = 'You play one villager in a two-person conversation. Answer with JSON only.';
     try {
       const raw = vcfg.provider === 'anthropic'
-        ? await anthropicCall(vcfg, 'You write short village dialogue. Answer with JSON only.',
-            [{ role: 'user', content: lines }])
-        : await openrouterCall(vcfg, 'You write short village dialogue. Answer with JSON only.',
-            [{ role: 'user', content: lines }]);
+        ? await anthropicCall(vcfg, sys, [{ role: 'user', content: lines }])
+        : await openrouterCall(vcfg, sys, [{ role: 'user', content: lines }]);
       const obj = parseJSON(raw);
-      if (!obj || !obj.a || !obj.a.say || !obj.b || !obj.b.say) return null;
+      if (!obj || !obj.say) return null;
       return obj;
     } catch (e) { return null; }
   }
@@ -418,6 +428,6 @@ LG.llm = (function () {
     return obj;
   }
 
-  return { MODELS, HELPERS, VERIFIER, helperModel, speak, judge, furigana, gloss, chatter, confirmTrade,
+  return { MODELS, HELPERS, VERIFIER, helperModel, speak, judge, furigana, gloss, converse, confirmTrade,
            validate, parseJSON, repairJSON, salvage };
 })();

@@ -53,7 +53,11 @@ LG.chain = (function () {
     const level = LG.LEVELS[opts.level] || LG.LEVELS.beginner;
     const seed = opts.seed || makeSeed();
     const rnd = mulberry32(hashSeed(seed));
-    const depth = Math.min(level.depth, LG.NPCS.length - 1);
+    // Length is variety, not difficulty — the same range at every level. See the
+    // note over LG.LEVELS for why it stopped being the difficulty knob.
+    const span = LG.DEPTH || [2, 4];
+    const rolled = span[0] + ((rnd() * (span[1] - span[0] + 1)) | 0);
+    const depth = Math.min(rolled, LG.NPCS.length - 1);
 
     // Who plays which part. The shopkeeper is kept for a shop link if we have
     // one; the farmer is a natural person to be missing an animal.
@@ -134,9 +138,15 @@ LG.chain = (function () {
       return pool.slice(0, n);
     }
 
-    // Spread scales with the population: a fact known by two of six villagers is
-    // findable, the same two of twelve is a needle in a haystack.
-    const spread = Math.max(1, Math.round(level.spread * LG.NPCS.length / 6));
+    /* Spread scales with the population: a fact known by two of six villagers is
+       findable, the same two of twelve is a needle in a haystack. It then tapers
+       with depth, so the further down the chain a fact sits the fewer people have
+       heard it — a long errand is a deeper secret rather than a wider net. The
+       owner always knows their own business, so the chain stays walkable in order
+       however far the taper runs down. */
+    const base = Math.max(0, Math.round((level.spread || 1) * LG.NPCS.length / 6));
+    const taper = level.taper || 0;
+    const heardBy = i => Math.max(0, base - taper * i);
     const factOrder = [];
 
     links.forEach((lk, i) => {
@@ -145,24 +155,25 @@ LG.chain = (function () {
           (shopkeeper(lk) ? lk.npcName + ' sells ' + a(lk.gives) + ' in the shop for '
                           : lk.npcName + ' will sell ' + a(lk.gives) + ' for ') +
           NUMWORD[lk.wantsCount] + ' coins.',
-          [lk.npcId].concat(others([lk.npcId], spread)), { link: i, type: 'deal' }));
+          [lk.npcId].concat(others([lk.npcId], heardBy(i))), { link: i, type: 'deal' }));
       } else if (i === 0) {
         factOrder.push(addFact(
           lk.npcName + ' is looking for ' + a(lk.wants) + '.',
-          [lk.npcId].concat(others([lk.npcId], spread)), { link: i, type: 'want' }));
+          [lk.npcId].concat(others([lk.npcId], heardBy(i))), { link: i, type: 'want' }));
       } else {
         factOrder.push(addFact(
           lk.npcName + ' has ' + a(lk.gives) + '.',
-          [lk.npcId].concat(others([lk.npcId], spread)), { link: i, type: 'has' }));
+          [lk.npcId].concat(others([lk.npcId], heardBy(i))), { link: i, type: 'has' }));
         factOrder.push(addFact(
           lk.npcName + ' will only part with it for ' +
           (lk.wants === 'coins' ? NUMWORD[lk.wantsCount] + ' coins' : a(lk.wants)) + '.',
-          [lk.npcId].concat(others([lk.npcId], spread)), { link: i, type: 'want' }));
+          [lk.npcId].concat(others([lk.npcId], heardBy(i))), { link: i, type: 'want' }));
       }
     });
 
     // where the world thing is — someone has to have seen it
-    const seenBy = others([], Math.max(1, spread));
+    // someone has to have seen it, however deep it is — nobody owns this one
+    const seenBy = others([], Math.max(1, heardBy(depth - 1)));
     const whereText = isBeast
       ? beastName + ' the ' + named(terminalItem) + ' was last seen ' + place.en + '.'
       : 'There is ' + a(terminalItem) + ' lying ' + place.en + '.';
@@ -177,9 +188,17 @@ LG.chain = (function () {
         [a.id].concat(others([a.id, b.id], 1)), { type: 'opinion' });
     }
 
-    // the village gossip hears everything
+    /* The village gossip. At beginner she has heard the lot and will hand you the
+       whole errand in one conversation; further up she has caught only some of it,
+       and at advanced nothing but who thinks what about whom — an omniscient
+       villager is a skeleton key that makes every other difficulty knob moot. */
     const gossip = LG.NPCS.find(n => n.prefers === 'gossip');
-    if (gossip) Object.keys(facts).forEach(id => { facts[id].holders[gossip.id] = true; });
+    const share = typeof level.gossip === 'number' ? level.gossip : 1;
+    if (gossip) {
+      Object.keys(facts).forEach(id => {
+        if (facts[id].type === 'opinion' || rnd() < share) facts[id].holders[gossip.id] = true;
+      });
+    }
 
     /* -------------------------------------------- what to tell each model */
     const roles = {};

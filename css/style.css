@@ -61,9 +61,18 @@ canvas{display:block;width:100%;height:100%;outline:none;cursor:default}
 #log{
   position:absolute;left:14px;bottom:14px;max-width:420px;
   font-size:13px;color:#f6ecd9;text-shadow:0 1px 3px rgba(0,0,0,.85);
-  pointer-events:none;
+  pointer-events:none;   /* the gloss re-enables its own */
 }
-#log div{margin-top:3px;opacity:.9}
+#log div{margin-top:5px;opacity:.92}
+#log .who{opacity:.8}
+#log .heard{font-size:15px}
+#log .heard ruby rt{font-size:.5em;opacity:.85;text-shadow:none}
+#log .roman{display:block;font-size:11px;opacity:.62;font-style:italic}
+/* What you overhear stays blurred even with translations on: being talked to is
+   a lesson, overhearing is a test. Click if you want to check yourself. */
+#log .gloss{display:block;font-size:11.5px;opacity:.72}
+#log .gloss.hidden-tr{filter:blur(3.5px);cursor:pointer;user-select:none;pointer-events:auto}
+#log .gloss.hidden-tr:hover{filter:blur(2px)}
 
 #hint{
   position:absolute;left:50%;bottom:26px;transform:translateX(-50%) translateY(8px);

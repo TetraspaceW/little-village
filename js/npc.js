@@ -56,11 +56,25 @@ LG.actors = (function () {
     if (a.routeCool > 0) return;
     a.routeCool = 14 + Math.random() * 26;
 
-    // the pull of the green rises to midday and thins out by dusk
-    const DRAW = { dawn: 0.1, morning: 0.45, midday: 0.8, afternoon: 0.65, dusk: 0.2, night: 0 };
-    const bad = (LG.time.info.dim || 0) > 0.22;      // nobody loiters in a blizzard
-    const pull = bad ? 0 : (DRAW[LG.time.phase().id] || 0);
-    const want = Math.random() < pull ? green : a.def.home;
+    // Work first, then the green, then home — each pulls harder at its own hour
+    const phase = LG.time.phase().id;
+    const WORK  = { dawn: 0.2, morning: 0.6, midday: 0.4, afternoon: 0.5, dusk: 0.2, night: 0 };
+    const GREEN = { dawn: 0.1, morning: 0.3, midday: 0.5, afternoon: 0.4, dusk: 0.2, night: 0 };
+    // Rain, snow, sand: get under a roof. "Home" is a patch of open ground, so
+    // sheltering means the workplace or whatever public building is nearest.
+    // Whether to shelter is the weather's own business, not a reading off how
+    // grey the screen is — drizzle is worth going indoors for and barely shows.
+    const wet = !!LG.time.info.indoors;
+    const r = Math.random();
+    let want;
+    if (wet) {
+      want = (a.work && a.workBuilding && r < 0.6) ? a.work : (a.shelter || a.def.home);
+    } else {
+      const w = WORK[phase] || 0, g = GREEN[phase] || 0;
+      if (a.work && r < w) want = a.work;
+      else if (r < w + g) want = green;
+      else want = a.def.home;
+    }
     if (want === a.patch) return;
 
     const cx = want.x + (Math.random() * want.w | 0);
@@ -123,7 +137,7 @@ LG.actors = (function () {
           faceEachOther(a, b);
           // If the player is near enough to overhear, let them actually say it;
           // otherwise the news still travels, just off-page.
-          const spoken = onChat && onChat(a, b, fromA || fromB);
+          const spoken = onChat && onChat(a, b, fromA, fromB);
           if (!spoken) {
             a.bubble = chatterLine(); a.bubbleT = 5;
             b.bubble = chatterLine(); b.bubbleT = 5;

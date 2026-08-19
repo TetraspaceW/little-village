@@ -21,17 +21,29 @@ LG.LANGUAGES = {
         romanize: false, fontStack: "system-ui, sans-serif" }
 };
 
+/* Difficulty is how hard the village is to *read*, not how far you have to walk.
+   Chain length is rolled per village (see `depth` below) and is the same range at
+   every level, because length turned out to be a poor difficulty knob — a longer
+   chain deals out more facts to more villagers, which gives you more places to
+   break in, so a five-link errand could easily be easier than a two-link one.
+   What difficulty actually sets is who knows what: `spread` is how many villagers
+   beyond the owner are told a chain fact, `taper` takes holders away as you go
+   deeper down the chain (so length now *buries* the tail instead of exposing it),
+   and `gossip` is how much of the chain the village gossip has picked up — she is
+   a skeleton key at beginner and knows nothing but opinions at advanced. */
+LG.DEPTH = [2, 4];                       // links per errand, rolled per village
+
 LG.LEVELS = {
   beginner: {
-    label: 'Beginner (A1)', depth: 2, spread: 2, deliver: false, speed: 0.75,
+    label: 'Beginner (A1)', spread: 2, taper: 0, gossip: 1, deliver: false, speed: 0.75,
     prompt: 'Speak the way a kind native speaker speaks to someone on their first day: short, complete sentences built from the most common everyday words, about the here and now. Stick to simple grammar, but use whatever tense the sentence actually needs. No idioms, no slang, nothing literary.'
   },
   intermediate: {
-    label: 'Intermediate (A2–B1)', depth: 3, spread: 1, deliver: true, speed: 0.85,
+    label: 'Intermediate (A2–B1)', spread: 1, taper: 1, gossip: 0.5, deliver: true, speed: 0.85,
     prompt: 'Speak simply but easily, the way you would to someone who can hold a conversation but still gropes for words. Everyday vocabulary, ordinary sentence structures, any tense you need. Go light on idiom and avoid rare or literary words.'
   },
   advanced: {
-    label: 'Advanced (B2+)', depth: 4, spread: 1, deliver: true, speed: 0.95,
+    label: 'Advanced (B2+)', spread: 0.5, taper: 1, gossip: 0, deliver: true, speed: 0.95,
     prompt: 'Speak exactly as you would to another native — full range, including idiom, colloquialism and whatever regional flavour you have.'
   }
 };
@@ -330,6 +342,17 @@ LG.ITEMS = {
     ru: 'пони', zh: '小马', ja: 'ポニー', fr: 'poney', es: 'poni' }
 };
 
+/* What a thing is worth when nobody has priced it explicitly. */
+LG.PRICE_BY_TAG = { beast: 6, prize: 4, shop: 2, hold: 2, ground: 1 };
+LG.priceOf = function (id) {
+  const it = LG.ITEMS[id];
+  if (!it) return 0;
+  if (it.price) return it.price;
+  let p = 2;
+  (it.tags || []).forEach(t => { if (LG.PRICE_BY_TAG[t]) p = Math.max(p, LG.PRICE_BY_TAG[t]); });
+  return p;
+};
+
 LG.BEAST_NAMES = ['Musya', 'Bella', 'Pip', 'Nina', 'Rufus', 'Kolya', 'Tula', 'Bruno'];
 
 /* The green in the middle of the village. Anyone idle drifts here by day. */
@@ -394,7 +417,6 @@ LG.NPCS = [
     persona: 'Gruff, short sentences, secretly soft-hearted. Complains about his back.',
     x: 6,  y: 16, home: { x: 3,  y: 13, w: 6,  h: 6 },
     voice: { gender: 'male', age: 'old' },
-    workplace: 'Mine',
     workRect: { x: 3, y: 12, w: 5, h: 5 },
     sells: [{ i: 'stone', p: 1 }, { i: 'lantern', p: 4 }, { i: 'shiny_rock', p: 6 }],
     buys: [{ i: 'candle', p: 1 }, { i: 'rope', p: 2 }] },
@@ -405,6 +427,7 @@ LG.NPCS = [
     voice: { gender: 'female', age: 'young' },
     workplace: 'Shop',
     sells: [{ i: 'beans', p: 2 }, { i: 'candle', p: 2 }, { i: 'rope', p: 3 }, { i: 'soap', p: 2 }, { i: 'salt', p: 1 }, { i: 'sweets', p: 2 }, { i: 'paper', p: 1 }, { i: 'bucket', p: 3 }, { i: 'basket', p: 3 }],
+    sellsTags: ['shop'], buysTags: ['shop'],
     buys: [{ i: 'mushrooms', p: 1 }, { i: 'herbs', p: 1 }, { i: 'shell', p: 1 }, { i: 'feather', p: 1 }] },
 
   { id: 'olo',   name: 'Olo',   emoji: '👨‍🌾', color: '#c9a227', job: 'the farmer',

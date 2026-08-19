@@ -10,46 +10,56 @@ LG.time = (function () {
   const YEAR_DAYS = SEASON_DAYS * 4;
   let dayMs = 6 * 60 * 1000;          // real milliseconds per village day
 
+  /* Seasons do not tint the screen. A wash that is always on is a wash you stop
+     seeing, and it costs you the actual colours of the village all day long —
+     the hour is allowed to colour the world because it changes; the season is
+     told, not shown. `tone` is only the colour weather gloom takes on. */
   const SEASONS = [
-    { id: 'winter', name: 'Winter', wash: ['#cfe0f2', 0.22], warmth: 'cold and dry',
+    { id: 'winter', name: 'Winter', tone: '#b9c8de', warmth: 'cold and dry',
       note: 'The cold is dry and hard, and the blizzards come without much warning.' },
-    { id: 'spring', name: 'Spring', wash: ['#e6ecb4', 0.10], warmth: 'mild',
+    { id: 'spring', name: 'Spring', tone: '#c9a86a', warmth: 'mild',
       note: 'Spring is over almost before it starts, and the wind carries sand off the flats.' },
-    { id: 'summer', name: 'Summer', wash: ['#ffe6a0', 0.11], warmth: 'hot and humid',
+    { id: 'summer', name: 'Summer', tone: '#5d6472', warmth: 'hot and humid',
       note: 'The heat is heavy and wet; the rains come in earnest and stay for days.' },
-    { id: 'autumn', name: 'Autumn', wash: ['#dfa45e', 0.16], warmth: 'cooling',
+    { id: 'autumn', name: 'Autumn', tone: '#5d6472', warmth: 'cooling',
       note: 'Autumn is brief and cools steadily, a little more each morning.' }
   ];
 
   /* Weather the villagers can actually feel. `talk` is what goes into their
      prompt, so it reads as description rather than a label. */
+  /* `dim` is a grey laid over the whole screen, so it is kept for the four kinds
+     of weather that genuinely take the light away. Everything else is legible
+     from its particles alone — you can see that it is snowing without the
+     village being greyed out to tell you. `indoors` is what actually drives the
+     villagers under a roof, and is deliberately a separate knob: drizzle is
+     miserable to stand in without darkening the sky. */
   const WEATHER = {
     clear:     { name: 'clear',      talk: 'a clear sky', particles: null },
-    cloud:     { name: 'overcast',   talk: 'a low grey overcast', particles: null, dim: 0.10 },
+    cloud:     { name: 'overcast',   talk: 'a low grey overcast', particles: null },
     fog:       { name: 'fog',        talk: 'thick fog that swallows the far side of the village',
-                 particles: 'fog', dim: 0.16 },
-    drizzle:   { name: 'drizzle',    talk: 'a thin cold drizzle', particles: 'rain', dim: 0.12, rate: 0.4 },
-    rain:      { name: 'rain',       talk: 'steady rain', particles: 'rain', dim: 0.20, rate: 1 },
+                 particles: 'fog', dim: 0.14 },
+    drizzle:   { name: 'drizzle',    talk: 'a thin cold drizzle', particles: 'rain', rate: 0.4, indoors: true },
+    rain:      { name: 'rain',       talk: 'steady rain', particles: 'rain', rate: 1, indoors: true },
     monsoon:   { name: 'monsoon rain', talk: 'monsoon rain coming down in sheets',
-                 particles: 'rain', dim: 0.30, rate: 2.2 },
+                 particles: 'rain', dim: 0.26, rate: 2.2, indoors: true },
     storm:     { name: 'thunderstorm', talk: 'a thunderstorm, with rain and lightning',
-                 particles: 'rain', dim: 0.34, rate: 1.8, lightning: true },
-    humid:     { name: 'heavy air',  talk: 'still, heavy, humid air', particles: 'haze', dim: 0.08 },
+                 particles: 'rain', dim: 0.30, rate: 1.8, lightning: true, indoors: true },
+    humid:     { name: 'heavy air',  talk: 'still, heavy, humid air', particles: 'haze' },
     blizzard:  { name: 'blizzard',   talk: 'a blizzard — driving snow and no visibility',
-                 particles: 'snow', dim: 0.40, rate: 3.2, wind: 2.2, whiteout: true },
-    snow:      { name: 'snow',       talk: 'quiet falling snow', particles: 'snow', dim: 0.12, rate: 0.8 },
-    frost:     { name: 'hard frost', talk: 'a hard dry frost', particles: null, dim: 0.06 },
+                 particles: 'snow', dim: 0.34, rate: 3.2, wind: 2.2, whiteout: true, indoors: true },
+    snow:      { name: 'snow',       talk: 'quiet falling snow', particles: 'snow', rate: 0.8, indoors: true },
+    frost:     { name: 'hard frost', talk: 'a hard dry frost', particles: null },
     sandstorm: { name: 'sandstorm',  talk: 'a sandstorm blowing in off the flats',
-                 particles: 'sand', dim: 0.30, rate: 2, wind: 2.4 },
-    wind:      { name: 'high wind',  talk: 'a hard dry wind', particles: 'sand', dim: 0.10, rate: 0.5, wind: 1.8 }
+                 particles: 'sand', dim: 0.26, rate: 2, wind: 2.4, indoors: true },
+    wind:      { name: 'high wind',  talk: 'a hard dry wind', particles: 'sand', rate: 0.5, wind: 1.8 }
   };
 
   // what each season is likely to throw at you
   const CLIMATE = {
-    winter: [['clear', 4], ['frost', 4], ['cloud', 3], ['snow', 3], ['blizzard', 2], ['fog', 1]],
-    spring: [['clear', 5], ['wind', 3], ['sandstorm', 3], ['cloud', 2], ['drizzle', 2]],
-    summer: [['humid', 5], ['monsoon', 4], ['storm', 3], ['cloud', 2], ['clear', 2], ['rain', 3]],
-    autumn: [['cloud', 4], ['drizzle', 3], ['clear', 3], ['fog', 3], ['rain', 2], ['wind', 2]]
+    winter: [['clear', 6], ['frost', 4], ['cloud', 3], ['snow', 3], ['blizzard', 2], ['fog', 1]],
+    spring: [['clear', 6], ['wind', 3], ['sandstorm', 2], ['cloud', 2], ['drizzle', 2]],
+    summer: [['humid', 5], ['clear', 4], ['monsoon', 3], ['storm', 2], ['cloud', 2], ['rain', 3]],
+    autumn: [['cloud', 4], ['clear', 5], ['drizzle', 3], ['fog', 2], ['rain', 2], ['wind', 2]]
   };
 
   const PHASES = [
@@ -134,6 +144,7 @@ LG.time = (function () {
     get frac() { return frac; },
     get weather() { return weather; },
     get info() { return WEATHER[weather]; },
+    WEATHER, CLIMATE,
     set dayLength(ms) { if (ms > 1000) dayMs = ms; },
     get dayLength() { return dayMs; }
   };

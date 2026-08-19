@@ -69,8 +69,55 @@ Others worth having: a node that requires *two* items at once (forces a harder
 sentence), and a node where the holder will only deal with you after you've done
 something for someone else entirely.
 
+## Difficulty, now that length isn't carrying it
+
+Difficulty is currently three things: how the villagers speak, how widely chain facts
+are spread, and whether the village gossip is a skeleton key. Chain length was retired
+as a lever because it ran the wrong way — a longer chain has more facts, so more
+villagers hold one, so there are more places to break in.
+
+What's left to try, roughly in order of how much they'd add:
+
+- **DELIVER nodes** (below) are the one lever that scales with *comprehension* rather
+  than legwork, which is the thing the game is actually about.
+- **Take away the crutches at the top end**: translations locked, phrasebook empty.
+  Cheap to build, and it moves difficulty into the interface where the player can feel
+  it, rather than into the fact graph where they can't.
+- **Villagers who need a reason.** Right now anyone will tell you anything if you ask
+  in their language. A villager who wants small talk first, or who only talks to
+  someone another villager vouched for, makes the spread number bite harder without
+  changing it.
+- **Wrong answers.** A villager who half-remembers — right item, wrong person — costs
+  you a walk and is recoverable by asking a second source. This is also the cheapest
+  thing that makes the spread number *good* rather than merely restrictive: at low
+  spread there is no second source to check against.
+
+## Where the villager conversations could go
+
+They hold real conversations now, but the conversation is a closed loop: it is generated,
+displayed, and thrown away. Two things fall out of keeping it.
+
+- **Villagers should remember talking.** Right now the fact ids transfer but the
+  conversation itself evaporates, so Boris can tell Mira the same thing three times an
+  hour and neither of them notices. A few lines of transcript kept per pair, fed back in
+  next time, would fix the amnesia and cost nothing.
+- **The player should be interruptible into one.** You can overhear two villagers but not
+  join them. Walking up mid-conversation and being addressed by both — with the transcript
+  as context — is the most natural three-way practice the game could offer, and the
+  machinery is now nearly all there.
+- **What they say should be able to be wrong.** They currently pass facts along
+  faithfully. A villager who garbles a fact in the retelling is how rumours actually work
+  and is the cheapest source of the misinformation the chain design keeps wanting.
+
 ## Smaller things
 
+- **An economy that moves.** Buying and selling work, but prices are static and the
+  village's stock is infinite. Stock that depletes, a baker who runs out by evening,
+  and prices that drift with the season would make ¤10 mean something — and give the
+  chain a second solution: buy the thing instead of fetching it.
+- **Rooms worth being in.** Interiors exist but are only scenery. A villager who is
+  *at* their anvil could be interruptible in a way they aren't on the street, and a
+  bed you can sleep in would let you skip to morning rather than waiting out the night.
 - **Save/load.** Nothing persists but settings. Serialising inventory, notebook,
   villager memory and positions would let a village span days.
 - **A word list.** Every noun a villager uses, logged with its translation and where
@@ -86,8 +133,6 @@ something for someone else entirely.
   breakpoint there would cut per-turn cost once conversations get long.
 - **Cost meter.** Tokens and estimated spend in the corner. Makes the model choice
   concrete for anyone paying per call.
-- **Time of day.** A colour tint and villagers going home at dusk. Cheap, and it makes
-  the village feel like it exists when you aren't looking at it.
 - **More languages.** One `LG.LANGUAGES` entry, item translations, twelve phrasebook
   strings, four gossip mutterings — all of it in `data.js`, and the smoke test fails if
   any of the four is incomplete. Korean would follow Japanese exactly (romanisation
@@ -104,5 +149,20 @@ something for someone else entirely.
   furigana rather than rōmaji for Japanese.
 - ~140 items across five pools, so chains rarely repeat themselves.
 - Voices per villager, cast at load time from the ElevenLabs voice list.
-- A village of twelve across 68×48 tiles, with a flood-fill test that fails the build
-  if any villager or place is walled off.
+- A village of twelve across 80×56 tiles, with a flood-fill test that fails the build
+  if any villager or place is walled off — or if a door can't be reached.
+- Building interiors: walk in, the roof lifts, the room is furnished.
+- A calendar — six-minute days, thirty-day seasons, a monsoon climate — with weather
+  the villagers remark on and shelter from.
+- Villager-to-villager conversations on the small model, running everywhere at once
+  rather than only within earshot — turn by turn, each villager writing only their own
+  lines and answering what was actually said.
+- Overheard talk logged in the language it was spoken in, with the English blurred
+  behind a click so eavesdropping stays a comprehension test.
+- Difficulty rebuilt around knowledge concentration rather than chain length, with a
+  test that fails if the two ever re-correlate.
+- Roofs that hide the people under them and keep the rain off.
+- A screen that is untinted most of the time — no season wash, and grey reserved for
+  the weather that genuinely takes the light.
+- Money: a ¤10 purse, villagers who buy and sell from behind their own counters, and
+  haggling clamped either side of what a thing is worth.

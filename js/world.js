@@ -53,6 +53,30 @@ LG.world = (function () {
     }
     return null;
   }
+  /* Which building is this *character* in? Characters are positioned by a point
+     a little above their feet — collision tests py+4..py+10 — so asking with the
+     raw tile puts you outside the room for the topmost few pixels of it, and the
+     roof snaps shut while you are plainly standing indoors. Ask with the feet. */
+  function buildingUnder(a) {
+    if (!a) return null;
+    return buildingAt((a.px / TILE) | 0, ((a.py + 8) / TILE) | 0);
+  }
+
+  /* Building roofs in screen space, for the sky to keep the rain off. The
+     overhang is included, so precipitation stops at the eaves rather than at
+     the wall. */
+  function roofRects(cam, vw, vh) {
+    const out = [];
+    const ox = Math.round(cam.x), oy = Math.round(cam.y);
+    for (const b of buildings) {
+      const x = b.x * TILE - 6 - ox, y = b.y * TILE - 10 - oy;
+      const w = b.w * TILE + 12, h = b.h * TILE + 10;
+      if (x > vw || y > vh || x + w < 0 || y + h < 0) continue;
+      out.push({ x, y, w, h });
+    }
+    return out;
+  }
+
   function buildingByLabel(name) {
     for (const b of buildings) if (b.label === name) return b;
     return null;
@@ -143,6 +167,11 @@ LG.world = (function () {
     set(18, 27, T.CAVE); set(19, 27, T.CAVE);
     labels.push({ x: 19, y: 23.2, text: 'Woodpile' });
 
+    // Both of these face south, away from the street, so they need a lane down
+    // the side and along the front or their doors open onto nothing.
+    rect(26, 44, 1, 10, T.PATH); rect(26, 53, 6, 1, T.PATH);   // to the chapel door
+    rect(53, 44, 1, 10, T.PATH); rect(49, 53, 5, 1, T.PATH);   // to the smithy door
+
     // ---- the graveyard behind the chapel
     for (let x = 36; x <= 44; x++) { set(x, 48, T.FENCE); set(x, 53, T.FENCE); }
     for (let y = 48; y <= 53; y++) { set(36, y, T.FENCE); set(44, y, T.FENCE); }
@@ -151,7 +180,40 @@ LG.world = (function () {
       props.push({ type: 'grave', x: x, y: y });
     labels.push({ x: 40, y: 47.4, text: 'Graveyard' });
 
+    // Terrain painted after the buildings can land on a doorway — an orchard row
+    // sealed the farmhouse once. Clear every door and its step, last of all.
+    for (const b of buildings) {
+      set(b.doorX, b.doorY, T.DOOR);
+      if (b.doorY + 1 < H && isSolid(b.doorX, b.doorY + 1)) set(b.doorX, b.doorY + 1, T.PATH);
+    }
+    furnish();
     return { W, H, TILE };
+  }
+
+  /* Enough in each room that you can tell whose it is from the doorway. */
+  function furnish() {
+    const put = (label, items) => {
+      const b = buildingByLabel(label);
+      if (!b) return;
+      const i = b.inside;
+      b.furniture = items.map(f => ({
+        type: f[0], x: i.x + f[1], y: i.y + f[2], w: f[3] || 1
+      })).filter(f => f.x < i.x + i.w && f.y < i.y + i.h);
+    };
+    put('Bakery',       [['oven', 0, 0], ['counter', 3, 2, 2], ['shelf', 3, 0, 2], ['sack', 0, 2]]);
+    put('Shop',         [['counter', 1, 2, 3], ['shelf', 0, 0, 5], ['barrel', 0, 2], ['sack', 4, 2]]);
+    put('Inn',          [['counter', 0, 0, 3], ['barrel', 4, 0], ['table', 1, 2], ['stool', 0, 2],
+                         ['stool', 2, 2], ['table', 4, 2], ['stool', 3, 3]]);
+    put('Farmhouse',    [['table', 1, 1], ['stool', 0, 1], ['stool', 2, 1], ['bed', 4, 0], ['sack', 3, 2]]);
+    put('Mill',         [['sack', 0, 0], ['sack', 1, 0], ['sack', 0, 2], ['barrel', 5, 0],
+                         ['counter', 2, 2, 3], ['shelf', 3, 0, 2]]);
+    put('School',       [['desk', 0, 1], ['desk', 2, 1], ['desk', 4, 1], ['desk', 0, 2],
+                         ['desk', 2, 2], ['desk', 4, 2], ['shelf', 0, 0, 3], ['table', 5, 0]]);
+    put('Chapel',       [['pew', 0, 1, 4], ['pew', 0, 2, 4], ['table', 2, 0]]);
+    put('Smithy',       [['forge', 0, 0], ['anvil', 2, 1], ['barrel', 4, 0], ['shelf', 2, 0, 2],
+                         ['counter', 3, 2, 2]]);
+    put('Village Hall', [['table', 3, 1], ['table', 5, 1], ['stool', 2, 1], ['stool', 6, 1],
+                         ['pew', 1, 3, 4], ['pew', 5, 3, 4], ['shelf', 0, 0, 3], ['desk', 8, 1]]);
   }
 
   /* A short path between two tiles, so a villager can actually cross the
@@ -239,7 +301,13 @@ LG.world = (function () {
         for (let i = 0; i < 3; i++) ctx.fillRect(px + 4 + i * 9, py + 8 + ((r * 10 * (i + 1)) % 8 | 0), 6, 16);
         break;
       case T.CAVE: ctx.fillStyle = COLORS.cave; ctx.fillRect(px, py, TILE, TILE); break;
-      case T.FLOOR: ctx.fillStyle = '#8a6a4d'; ctx.fillRect(px, py, TILE, TILE); break;
+      case T.FLOOR:
+        ctx.fillStyle = '#c6a173'; ctx.fillRect(px, py, TILE, TILE);
+        ctx.fillStyle = 'rgba(120,86,52,.30)';               // floorboards
+        ctx.fillRect(px, py + 10, TILE, 2);
+        ctx.fillRect(px, py + 24, TILE, 2);
+        if (r < 0.4) { ctx.fillStyle = 'rgba(120,86,52,.16)'; ctx.fillRect(px + 15, py, 2, 10); }
+        break;
       case T.ROCK: {
         ctx.fillStyle = '#8a8478'; ctx.fillRect(px, py, TILE, TILE);
         for (let k = 0; k < 4; k++) {
@@ -473,6 +541,6 @@ LG.world = (function () {
   }
 
   return { TILE, W, H, T, build, get, isSolid, isWalkable, nearestOpen, pathTo,
-           buildingAt, buildingByLabel,
+           buildingAt, buildingUnder, roofRects, buildingByLabel,
            drawGround, drawBuildings, drawLabels, buildings };
 })();

@@ -76,22 +76,30 @@ LG.sky = (function () {
     if (flash > 0) flash = Math.max(0, flash - dt * 2.2);
   }
 
-  function draw(ctx, vw, vh) {
+  /* Rain, snow and sand fall on roofs, not through them. The roofs arrive as
+     screen-space rectangles and are punched out of the particle layer with an
+     even-odd clip, which costs one path per frame. Fog and haze are exempt:
+     they sit around the buildings rather than falling on them, and cutting hard
+     rectangles out of a soft cloud looks worse than the thing it fixes. */
+  function shelterClip(ctx, vw, vh, roofs) {
+    if (!roofs || !roofs.length) return false;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, vw, vh);
+    for (const r of roofs) ctx.rect(r.x, r.y, r.w, r.h);
+    ctx.clip('evenodd');
+    return true;
+  }
+
+  function draw(ctx, vw, vh, roofs) {
     const info = LG.time.info || {};
     const s = LG.time.season();
 
-    // the season colours the land itself — winter grass is not summer grass
-    if (s.wash) {
-      ctx.globalAlpha = s.wash[1];
-      ctx.fillStyle = s.wash[0];
-      ctx.fillRect(0, 0, vw, vh);
-      ctx.globalAlpha = 1;
-    }
-    // then the weather's own gloom
+    // The weather's gloom, and only for weather dark enough to earn it — see
+    // the note on `dim` in time.js. Nothing here is on by default.
     if (info.dim) {
       ctx.globalAlpha = info.dim;
-      ctx.fillStyle = info.whiteout ? '#dce8f4'
-        : s.id === 'spring' ? '#c9a86a' : s.id === 'winter' ? '#b9c8de' : '#5d6472';
+      ctx.fillStyle = info.whiteout ? '#dce8f4' : (s.tone || '#5d6472');
       ctx.fillRect(0, 0, vw, vh);
       ctx.globalAlpha = 1;
     }
@@ -103,6 +111,8 @@ LG.sky = (function () {
     }
 
     // whatever is falling
+    const clipped = (kind === 'rain' || kind === 'snow' || kind === 'sand')
+      && shelterClip(ctx, vw, vh, roofs);
     if (kind === 'rain') {
       ctx.strokeStyle = 'rgba(190,215,240,.55)'; ctx.lineWidth = 1.4;
       ctx.beginPath();
@@ -126,6 +136,7 @@ LG.sky = (function () {
       }
       ctx.globalAlpha = 1;
     }
+    if (clipped) ctx.restore();
 
     if (flash > 0) {
       ctx.fillStyle = 'rgba(226,238,255,' + (flash * 0.5).toFixed(3) + ')';

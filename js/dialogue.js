@@ -20,28 +20,65 @@ LG.dialogue = (function () {
   /* Furigana arrives as markup from the model, so escape everything and then
      let exactly three tags back through — no attributes, nothing else. */
   const KANJI = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
-  const RUBY_OK = /^<\/?(?:ruby|rt|rp)>$/;
+  // <rb> and <rtc> are part of the ruby family and models do emit them
+  const RUBY_TAG = /^(?:ruby|rb|rt|rtc|rp)$/;
 
-  /* Peel the furigana back off. If what is left is not the line the villager
-     actually said, the markup is wrong and we do not trust it. */
+  /* Peel the furigana back off, permissively — attributes, casing and the whole
+     ruby tag family. This only feeds the comparison below, never the page. */
   function stripRuby(html) {
     return String(html)
-      .replace(/<rp>[\s\S]*?<\/rp>/g, '')
-      .replace(/<rt>[\s\S]*?<\/rt>/g, '')
-      .replace(/<\/?(?:ruby|rt|rp)>/g, '');
+      .replace(/<rp\b[^>]*>[\s\S]*?<\/rp>/gi, '')
+      .replace(/<rtc\b[^>]*>[\s\S]*?<\/rtc>/gi, '')
+      .replace(/<rt\b[^>]*>[\s\S]*?<\/rt>/gi, '')
+      .replace(/<\/?(?:ruby|rb|rt|rtc|rp)\b[^>]*>/gi, '');
+  }
+  /* Compare loosely enough to survive width and spacing differences, strictly
+     enough that we never show the player words the villager did not say. */
+  function normText(str) {
+    let t = String(str);
+    try { t = t.normalize('NFKC'); } catch (e) {}
+    return t.replace(/\s/g, '');
   }
   function rubyMatches(ruby, say) {
     if (!ruby) return false;
-    return stripRuby(ruby).replace(/\s/g, '') === String(say).replace(/\s/g, '');
+    return normText(stripRuby(ruby)) === normText(say);
+  }
+
+  /* A reply may arrive fenced or quoted. Try the plausible unwrappings and take
+     the first that survives validation — nothing unvalidated is ever accepted. */
+  function usableRuby(raw, say) {
+    if (!raw) return null;
+    const t = String(raw).trim();
+    const tries = [t];
+    const unfenced = t.replace(/^```[a-zA-Z]*\s*/, '').replace(/\s*```$/, '').trim();
+    tries.push(unfenced);
+    tries.push(unfenced.replace(/^["'`\u300c\u300e]+/, '').replace(/["'`\u300d\u300f]+$/, '').trim());
+    for (const cand of tries) if (rubyMatches(cand, say)) return cand;
+    return null;
   }
   function needsFurigana(say) { return KANJI.test(String(say)); }
   function rubyHTML(str) {
     return String(str)
-      // throw away any complete tag that is not exactly one of the three we allow,
-      // so nothing with an attribute ever reaches the escape step
-      .replace(/<\/?[a-zA-Z][^>]*>/g, m => (RUBY_OK.test(m) ? m : ''))
+      // Keep the ruby family but strip it back to a bare tag — that removes every
+      // attribute while preserving the structure. Anything else tag-shaped goes.
+      .replace(/<(\/?)([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/g, (m, slash, name) => {
+        const n = name.toLowerCase();
+        return RUBY_TAG.test(n) ? '<' + slash + n + '>' : '';
+      })
       .replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
-      .replace(/&lt;(\/?)(ruby|rt|rp)&gt;/g, '<$1$2>');
+      .replace(/&lt;(\/?)(ruby|rb|rt|rtc|rp)&gt;/g, '<$1$2>')
+      .replace(/<ruby>([\s\S]*?)<\/ruby>/g, dropKanaRuby);
+  }
+
+  /* Katakana and hiragana already say how they sound, so a reading over them is
+     just clutter. Keep the base text, drop the annotation. */
+  function dropKanaRuby(match, inner) {
+    const base = String(inner)
+      .replace(/<rt>[\s\S]*?<\/rt>/g, '')
+      .replace(/<rp>[\s\S]*?<\/rp>/g, '')
+      .replace(/<rtc>[\s\S]*?<\/rtc>/g, '')
+      .replace(/<\/?(?:rb|rt|rtc|rp)>/g, '');
+    return KANJI.test(base) ? match : base;
   }
 
   function itemName(id, lang) {
@@ -110,8 +147,11 @@ LG.dialogue = (function () {
     lines.push('# Reply format');
     lines.push('Reply with a single JSON object and nothing else:');
     lines.push('{');
-    lines.push('  "say": "what you say out loud, in ' + L.name + '",');
-    if (L.furigana) lines.push('  "ruby": "the same line again with furigana — every kanji run wrapped as <ruby>漢字<rt>かんじ</rt></ruby>, kana and punctuation untouched. One kanji still counts. Repeat the line verbatim if it has none.",');
+    if (L.furigana) {
+      lines.push('  "say": "what you say out loud, in ' + L.name + ', with furigana already in it: wrap each kanji word as <ruby>\u6f22\u5b57<rt>\u304b\u3093\u3058</rt></ruby>. Kanji only — katakana and hiragana stay bare.",');
+    } else {
+      lines.push('  "say": "what you say out loud, in ' + L.name + '",');
+    }
     lines.push('  "translation": "an English translation of exactly what you said",');
     if (L.romanize) lines.push('  "roman": "the ' + L.romanLabel + ' of what you said",');
     lines.push('  "understood": "full | partial | none — how much of what the traveller just said you actually understood",');
@@ -119,6 +159,7 @@ LG.dialogue = (function () {
     lines.push('  "remember": "OPTIONAL: one short English sentence stating a NEW fact you just learned from the traveller. Omit this unless you understood them.",');
     lines.push('  "action": "' + (trade ? 'trade | none' : 'none') + '"');
     lines.push('}');
+    if (L.furigana) lines.push('Furigana gives the reading of the whole WORD as it is actually pronounced, never the character readings stitched together: \u5927\u5de5 is \u3060\u3044\u304f, not \u3060\u3044\u3053\u3046. If you are unsure of a reading, use a simpler word you are sure of.');
     lines.push('"translation" and "remember" are notes for the game, not speech — writing English there does not mean you understand any.');
     lines.push('"revealed" is about what you asserted, not what you talked about: using the word, explaining what it means, or asking after it does not count. When in doubt, leave it out.');
     if (trade) lines.push('Set "action" to "trade" at the moment you hand over ' + (trade.gives === 'coins' ? 'the coins' : LG.ITEMS[trade.gives].full) + ', and not before. Someone holding the thing out to you needs no words — that you always understand.');
@@ -277,13 +318,23 @@ LG.dialogue = (function () {
       return;
     }
 
-    const turn = { player: shown, say: reply.say, translation: reply.translation,
-                   roman: reply.roman, ruby: reply.ruby };
+    // For a furigana language the villager annotates as it writes, so the spoken
+    // line is whatever remains once the readings are peeled off.
+    const L = LG.LANGUAGES[LG.game.settings.lang];
+    let spoken = reply.say, ruby = null;
+    if (L.furigana) {
+      const bare = stripRuby(reply.say);
+      if (bare !== reply.say) { ruby = reply.say; spoken = bare; }   // annotated in one pass
+      else if (reply.ruby) ruby = usableRuby(reply.ruby, reply.say); // separate field, still honoured
+    }
+
+    const turn = { player: shown, say: spoken, translation: reply.translation,
+                   roman: reply.roman, ruby: ruby };
     npc.history.push(turn);
     if (npc.history.length > 20) npc.history.shift();
     const gotIt = String(reply.understood || 'full').toLowerCase() !== 'none';
     if (gotIt && Array.isArray(reply.revealed) && reply.revealed.length) {
-      pending.push(verifyRevealed(npc, reply));   // deliberately not awaited
+      pending.push(verifyRevealed(npc, reply, spoken, ruby));   // deliberately not awaited
     }
     if (gotIt && reply.remember && typeof reply.remember === 'string' && reply.remember.length > 3) {
       if (npc.memory.indexOf(reply.remember) === -1) {
@@ -292,14 +343,11 @@ LG.dialogue = (function () {
       }
     }
 
-    const L = LG.LANGUAGES[LG.game.settings.lang];
-    let ruby = reply.ruby;
-    if (L.furigana && !rubyMatches(ruby, reply.say)) ruby = null;   // wrong markup, drop it
-    const row = addLine('npc', reply.say, reply.translation, reply.roman, ruby);
-    if (L.furigana && !ruby && needsFurigana(reply.say)) {
-      pending.push(repairFurigana(npc, reply, row));               // fetch it separately
+    const row = addLine('npc', spoken, reply.translation, reply.roman, ruby);
+    if (L.furigana && !ruby && needsFurigana(spoken)) {
+      pending.push(repairFurigana(npc, spoken, row));               // ask the small model for it
     }
-    npc.bubble = reply.say; npc.bubbleT = 6;   // the canvas bubble stays plain text
+    npc.bubble = spoken; npc.bubbleT = 6;   // the canvas bubble stays plain text
 
     const u = String(reply.understood || '').toLowerCase();
     if (u === 'none') status(npc.def.name + ' did not understand you at all.', 'miss');
@@ -336,30 +384,50 @@ LG.dialogue = (function () {
   /* The villager forgot the furigana (or mangled it). Ask the small model for
      just that, check it strips back to the same sentence, and slot it into the
      line already on screen. */
-  async function repairFurigana(npc, reply, row) {
-    try {
-      const got = await LG.llm.furigana(LG.game.llmConfig(), reply.say);
-      if (!rubyMatches(got, reply.say)) return;
-      const turn = npc.history[npc.history.length - 1];
-      if (turn && turn.say === reply.say) turn.ruby = got;
-      if (row && row._main) {
-        row._main.innerHTML = rubyHTML(got);
-        row._main.classList.add('has-ruby');
+  async function repairFurigana(npc, spoken, row) {
+    let last = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let got = null;
+      try { got = await LG.llm.furigana(LG.game.llmConfig(), spoken, attempt); }
+      catch (e) { got = null; }
+      last = got;
+      const ok = usableRuby(got, spoken);
+      if (ok) {
+        const turn = npc.history[npc.history.length - 1];
+        if (turn && turn.say === spoken) turn.ruby = ok;
+        if (row && row._main) {
+          row._main.innerHTML = rubyHTML(ok);
+          row._main.classList.add('has-ruby');
+        }
+        return true;
       }
-    } catch (e) { /* the line stays readable without it */ }
+    }
+    // Nothing usable. Say so rather than leaving the player wondering.
+    if (typeof console !== 'undefined' && console.warn) {
+      console.warn('[furigana] gave up on this line.\n  said:     ' + spoken +
+                   '\n  returned: ' + last);
+    }
+    status('No furigana for that line — ' + (last ? 'the reading did not match.' : 'the request failed.'), 'miss');
+    return false;
   }
 
-  async function verifyRevealed(npc, reply) {
+  async function verifyRevealed(npc, reply, spoken, ruby) {
     const plan = LG.game.plan;
     const claimed = reply.revealed
       .map(id => String(id).replace(/[^\w]/g, ''))
-      .filter(id => plan.facts[id] && npc.facts.indexOf(id) !== -1
-                 && LG.game.state.notes.indexOf(id) === -1);
+      .filter(id => plan.facts[id] && npc.facts.indexOf(id) !== -1 && !LG.game.hasNote(id));
     if (!claimed.length) return;
     const candidates = claimed.map(id => ({ id, text: plan.facts[id].text }));
+    const L = LG.LANGUAGES[LG.game.settings.lang];
     try {
-      const confirmed = await LG.llm.judge(LG.game.llmConfig(), reply.say, reply.translation, candidates);
-      confirmed.forEach(id => LG.game.learn(id, npc));
+      const confirmed = await LG.llm.judge(LG.game.llmConfig(), spoken, reply.translation, candidates,
+                                           { langName: L.name, furigana: !!L.furigana });
+      confirmed.forEach(c => {
+        // fall back to the line as spoken, so a note is never in the wrong language
+        const note = c.note || spoken;
+        const nRuby = usableRuby(c.ruby, c.note) || (c.note ? null : ruby);
+        LG.game.learn(c.id, npc, note, nRuby);
+      });
     } catch (e) { /* an unwritten note is always better than a wrong one */ }
   }
 
@@ -376,5 +444,6 @@ LG.dialogue = (function () {
   return { init, open, close, send, chatterLine, isOpen: () => !!current, renderItems, addLine, status,
            settled: () => { const all = pending.splice(0); return Promise.all(all); },
            _debugPrompt: systemPrompt, _rubyHTML: rubyHTML,
-           _stripRuby: stripRuby, _rubyMatches: rubyMatches, _needsFurigana: needsFurigana };
+           _stripRuby: stripRuby, _rubyMatches: rubyMatches, _needsFurigana: needsFurigana,
+           rubyHTML: rubyHTML, _usableRuby: usableRuby };
 })();

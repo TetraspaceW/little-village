@@ -56,13 +56,24 @@ The village speaks Russian, English, Chinese (Mandarin), Japanese, French or Spa
 at three difficulties. Russian and Chinese lines come back with a romanisation under
 them; Japanese gets furigana over the kanji instead, via `<ruby>` tags.
 
-Furigana is markup arriving from a model, so it gets two guards. It is **sanitised** —
-every tag dropped except `<ruby>`, `<rt>` and `<rp>`, with no attributes on any of
-them — and it is **validated** by peeling the readings back off and checking what is
-left is exactly the line the villager said. Markup that fails either test is
-discarded. If a line contains kanji and no usable furigana came back (the villager
-often just forgets the field), Haiku 4.5 is asked for the reading on its own, checked
-the same way, and slotted into the line already on screen.
+For Japanese the villager annotates as it writes — `say` itself carries the ruby
+markup, and the spoken line is whatever remains once the readings are peeled off. One
+field instead of two, so the line and its readings cannot disagree. Readings over
+katakana and hiragana are stripped automatically; only kanji keep them.
+
+Furigana is markup arriving from a model, so it is **sanitised**: the ruby tag family
+survives (`ruby`, `rb`, `rt`, `rtc`, `rp`), normalised to bare tags so no attribute
+ever reaches the page, and everything else tag-shaped is dropped. If a line has kanji
+and no furigana came back, Haiku 4.5 is asked for the reading on its own — and *that*
+is validated by peeling the readings off and checking what is left is exactly the line
+the villager said, with one retry before giving up. A repair that alters the sentence
+is discarded, and a give-up says so rather than failing silently.
+
+What none of this catches is a **wrong reading** — 大工 as だいこう rather than だいく.
+Validation only proves the text is intact, and a second opinion from a smaller model
+would be less reliable, not more. The mitigations are prompt-side: annotate in one
+pass rather than re-transcribing, and name the failure (word readings, not character
+readings stitched together).
 
 ## Playing
 
@@ -108,6 +119,12 @@ runs by double-clicking.
 — the holder of a fact always knows it, plus a couple of others, and one villager is
 the designated gossip who knows everything. Nothing reaches the notebook except by
 being said out loud.
+
+**Your notebook is in their language.** A note records what you were told, in the
+words you were told it — `ミラさんはのこぎりをさがしています。`, not "Mira is looking
+for a saw". The English gloss sits underneath, blurred until you click it, on the same
+terms as dialogue translations. The fact-checker below writes the note as part of the
+call it was already making.
 
 **Notes are nominated, then fact-checked.** A villager's prompt lists their facts with
 tags, and their reply nominates the tags it thinks it just revealed. That report alone

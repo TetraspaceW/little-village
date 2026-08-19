@@ -121,8 +121,9 @@ LG.llm = (function () {
      This asks a small model that has no character to play and nothing else to
      track. It fails closed: anything unconfirmed simply does not get written
      down. */
-  async function judge(cfg, said, translation, candidates) {
+  async function judge(cfg, said, translation, candidates, opts) {
     if (!candidates.length) return [];
+    const lang = (opts && opts.langName) || 'the speaker\u2019s language';
     const lines = [
       'You are checking one line of dialogue against a list of statements.',
       '',
@@ -139,7 +140,15 @@ LG.llm = (function () {
       'Statements:'
     ].concat(candidates.map(c => '[' + c.id + '] ' + c.text));
     lines.push('');
-    lines.push('Reply with only a JSON array of the tags that were genuinely told, like ["f0"] or [].');
+    lines.push('Reply with only a JSON array. For each statement that WAS genuinely told, add an object:');
+    lines.push('  "tag"  - the statement tag');
+    lines.push('  "note" - how the listener would jot that down in ' + lang + ', in one short line.');
+    lines.push('           Use the words the speaker actually used. Write it in ' + lang + ', not in English.');
+    if (opts && opts.furigana) {
+      lines.push('  "ruby" - the same note with furigana over the kanji only, like <ruby>\u6f22\u5b57<rt>\u304b\u3093\u3058</rt></ruby>');
+    }
+    lines.push('');
+    lines.push('Leave out anything that was not told. Reply [] if none of them were.');
 
     const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: VERIFIER[cfg.provider] || cfg.model };
     let raw;
@@ -152,21 +161,29 @@ LG.llm = (function () {
     } catch (e) {
       return [];                                   // never guess on failure
     }
-    const m = String(raw).match(/\[[\s\S]*?\]/);
+    const m = String(raw).match(/\[[\s\S]*\]/);
     if (!m) return [];
-    try {
-      const arr = JSON.parse(m[0]);
-      if (!Array.isArray(arr)) return [];
-      const valid = {};
-      candidates.forEach(c => valid[c.id] = true);
-      return arr.map(x => String(x).replace(/[^\w]/g, '')).filter(id => valid[id]);
-    } catch (e) { return []; }
+    let arr;
+    try { arr = JSON.parse(m[0]); } catch (e) { return []; }
+    if (!Array.isArray(arr)) return [];
+    const valid = {};
+    candidates.forEach(c => valid[c.id] = true);
+    const out = [];
+    arr.forEach(x => {
+      // tolerate a bare tag as well as the object form
+      const id = String(typeof x === 'string' ? x : (x && x.tag) || '').replace(/[^\w]/g, '');
+      if (!valid[id] || out.some(o => o.id === id)) return;
+      out.push({ id,
+                 note: (x && typeof x.note === 'string' && x.note.trim()) || null,
+                 ruby: (x && typeof x.ruby === 'string' && x.ruby.trim()) || null });
+    });
+    return out;
   }
 
   /* Add furigana to a Japanese line. The villager often forgets the ruby field,
      or returns it without markup — it is busy being a person. The small model
      has nothing else to do. Returns null if anything looks off. */
-  async function furigana(cfg, say) {
+  async function furigana(cfg, say, attempt) {
     const ask = [
       'Add furigana to this Japanese sentence.',
       '',
@@ -174,10 +191,18 @@ LG.llm = (function () {
       '',
       'Return the sentence exactly as it is, but wrap every kanji run in ruby tags with its',
       'reading in hiragana, like <ruby>漢字<rt>かんじ</rt></ruby>. Even a single kanji gets one.',
+      'Kanji only — katakana and hiragana are left exactly as they are, with no reading.',
+      'Give the reading of the whole WORD as it is actually pronounced, never the character',
+      'readings stitched together: \u5927\u5de5 is \u3060\u3044\u304f, not \u3060\u3044\u3053\u3046.',
       'Change nothing else: same words, same kana, same punctuation, same order.',
       '',
       'Reply with only the rewritten sentence, no quotes and no explanation.'
-    ].join('\n');
+    ].concat(attempt ? [
+      '',
+      'A previous attempt came back different from the sentence above. Copy the sentence',
+      'character for character and add ruby tags around the kanji — do not reword it, do not',
+      'add or remove punctuation, and do not wrap it in quotes.'
+    ] : []).join('\n');
     const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: VERIFIER[cfg.provider] || cfg.model };
     try {
       const raw = vcfg.provider === 'anthropic'

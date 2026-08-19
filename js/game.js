@@ -57,12 +57,15 @@ LG.game = (function () {
   /* ------------------------------------------------------------ notebook
      The player only knows what somebody has actually told them. Villagers
      report which facts they revealed; those are what land here. */
-  function learn(factId, fromNpc) {
+  function hasNote(factId) {
+    return state.notes.some(n => n.id === factId);
+  }
+  function learn(factId, fromNpc, note, ruby) {
     if (!plan || !plan.facts[factId]) return;
-    if (state.notes.indexOf(factId) !== -1) return;
+    if (hasNote(factId)) return;
     if (fromNpc && fromNpc.facts.indexOf(factId) === -1) return;   // they can't tell you what they don't know
-    state.notes.push(factId);
-    log('📓 ' + plan.facts[factId].text);
+    state.notes.push({ id: factId, text: note || plan.facts[factId].text, ruby: ruby || null });
+    log('📓 ' + (note || plan.facts[factId].text));
     renderHUD();
   }
 
@@ -87,10 +90,22 @@ LG.game = (function () {
       : '<span class="muted">empty pockets</span>';
 
     const nb = document.getElementById('notebook');
+    const L = LG.LANGUAGES[settings.lang];
     const rows = state.deeds.map(d => '<div class="q done">✔ ' + escapeHTML(d) + '</div>')
-      .concat(state.notes.map(id => '<div class="q">• ' + escapeHTML(plan.facts[id].text) + '</div>'));
+      .concat(state.notes.map(n => {
+        const heard = (n.ruby && L.furigana) ? LG.dialogue.rubyHTML(n.ruby) : escapeHTML(n.text);
+        const gloss = plan.facts[n.id].text;
+        const hide = settings.showTranslation ? '' : ' hidden-tr';
+        return '<div class="q"><span class="heard"' +
+               (L.furigana && n.ruby ? ' style="line-height:2"' : '') + '>• ' + heard + '</span>' +
+               '<span class="gloss' + hide + '" title="' + escapeHTML(gloss) + '">' +
+               escapeHTML(gloss) + '</span></div>';
+      }));
     nb.innerHTML = rows.length ? rows.join('')
       : '<div class="q muted">Nothing yet. Ask around — somebody here wants something.</div>';
+    Array.prototype.forEach.call(nb.querySelectorAll('.gloss.hidden-tr'), el => {
+      el.onclick = () => el.classList.remove('hidden-tr');
+    });
   }
 
   /* ------------------------------------------------------------- trading */
@@ -106,8 +121,8 @@ LG.game = (function () {
     log('✔ ' + npc.def.name + ' hands over ' + got + '.');
 
     // whichever note described this deal is now spent
-    state.notes = state.notes.filter(id => {
-      const f = plan.facts[id];
+    state.notes = state.notes.filter(n => {
+      const f = plan.facts[n.id];
       return !(f && f.link === (plan.roles[npc.def.id] || {}).link && f.type !== 'opinion');
     });
 
@@ -324,7 +339,7 @@ LG.game = (function () {
 
   /* a note about where something was is no use once it is in your pocket */
   function retireWhereNote() {
-    state.notes = state.notes.filter(id => plan.facts[id].type !== 'where');
+    state.notes = state.notes.filter(n => plan.facts[n.id].type !== 'where');
     renderHUD();
   }
 
@@ -486,7 +501,7 @@ LG.game = (function () {
     requestAnimationFrame(loop);
   }
 
-  return { init, settings, state, llmConfig, log, learn, give, take, count,
+  return { init, settings, state, llmConfig, log, learn, hasNote, give, take, count,
            inventoryList, doTrade, renderHUD, openSettings, uiBlocked, newVillage,
            get plan() { return plan; },
            get npcs() { return npcs; },

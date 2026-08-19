@@ -114,4 +114,6 @@ something for someone else entirely.
 - Monolingual villagers — English words genuinely don't land.
 - A key gate that validates before the game starts.
 - Free gossip: villagers swap fact ids on contact, no model call.
-- Six languages: Russian, English, Chinese, Japanese, French, Spanish.
+- Six languages: Russian, English, Chinese, Japanese, French, Spanish — with
+  furigana rather than rōmaji for Japanese.
+- ~140 items across five pools, so chains rarely repeat themselves.

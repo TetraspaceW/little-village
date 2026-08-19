@@ -130,7 +130,7 @@ ruby rt{font-size:.5em;color:#8a7355;font-weight:400;line-height:1.1;user-select
 
 .tray{padding:6px 12px;border-top:1px solid var(--line)}
 .tray-label{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#a8916f;margin-bottom:4px}
-.chips{display:flex;flex-wrap:wrap;gap:5px;max-height:96px;overflow-y:auto;padding-bottom:2px}
+.chips{display:flex;flex-wrap:wrap;gap:5px;max-height:118px;overflow-y:auto;padding-bottom:4px}
 .chip{
   border:1px solid var(--line);background:var(--paper-2);border-radius:999px;
   padding:4px 11px;font-size:13px;cursor:pointer;color:var(--ink);

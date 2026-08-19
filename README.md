@@ -53,8 +53,16 @@ fact, and its prompt is a few hundred tokens, so it is a rounding error next to 
 dialogue itself.
 
 The village speaks Russian, English, Chinese (Mandarin), Japanese, French or Spanish,
-at three difficulties. Chinese, Japanese and Russian lines come back with a
-romanisation under them.
+at three difficulties. Russian and Chinese lines come back with a romanisation under
+them; Japanese gets furigana over the kanji instead, via `<ruby>` tags.
+
+Furigana is markup arriving from a model, so it gets two guards. It is **sanitised** —
+every tag dropped except `<ruby>`, `<rt>` and `<rp>`, with no attributes on any of
+them — and it is **validated** by peeling the readings back off and checking what is
+left is exactly the line the villager said. Markup that fails either test is
+discarded. If a line contains kanji and no usable furigana came back (the villager
+often just forgets the field), Haiku 4.5 is asked for the reading on its own, checked
+the same way, and slotted into the line already on screen.
 
 ## Playing
 
@@ -84,7 +92,7 @@ notebook) is its seed — the same name always regenerates the same errand.
 ```
 index.html
 css/style.css
-js/data.js       languages, phrasebook, the item pool, places, the six villagers
+js/data.js       languages, phrasebook, gossip lines, ~140 items, places, villagers
 js/chain.js      generates a solvable errand chain + the facts that describe it
 js/llm.js        provider abstraction, key validation, JSON extraction from replies
 js/world.js      tile map, collision, all the canvas drawing

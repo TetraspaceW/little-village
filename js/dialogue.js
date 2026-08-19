@@ -19,7 +19,22 @@ LG.dialogue = (function () {
 
   /* Furigana arrives as markup from the model, so escape everything and then
      let exactly three tags back through — no attributes, nothing else. */
+  const KANJI = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
   const RUBY_OK = /^<\/?(?:ruby|rt|rp)>$/;
+
+  /* Peel the furigana back off. If what is left is not the line the villager
+     actually said, the markup is wrong and we do not trust it. */
+  function stripRuby(html) {
+    return String(html)
+      .replace(/<rp>[\s\S]*?<\/rp>/g, '')
+      .replace(/<rt>[\s\S]*?<\/rt>/g, '')
+      .replace(/<\/?(?:ruby|rt|rp)>/g, '');
+  }
+  function rubyMatches(ruby, say) {
+    if (!ruby) return false;
+    return stripRuby(ruby).replace(/\s/g, '') === String(say).replace(/\s/g, '');
+  }
+  function needsFurigana(say) { return KANJI.test(String(say)); }
   function rubyHTML(str) {
     return String(str)
       // throw away any complete tag that is not exactly one of the three we allow,
@@ -96,9 +111,9 @@ LG.dialogue = (function () {
     lines.push('Reply with a single JSON object and nothing else:');
     lines.push('{');
     lines.push('  "say": "what you say out loud, in ' + L.name + '",');
+    if (L.furigana) lines.push('  "ruby": "the same line again with furigana — every kanji run wrapped as <ruby>漢字<rt>かんじ</rt></ruby>, kana and punctuation untouched. One kanji still counts. Repeat the line verbatim if it has none.",');
     lines.push('  "translation": "an English translation of exactly what you said",');
     if (L.romanize) lines.push('  "roman": "the ' + L.romanLabel + ' of what you said",');
-    if (L.furigana) lines.push('  "ruby": "exactly what you said again, but with furigana: wrap every kanji run as <ruby>漢字<rt>かんじ</rt></ruby> and leave kana, punctuation and spacing untouched",');
     lines.push('  "understood": "full | partial | none — how much of what the traveller just said you actually understood",');
     lines.push('  "revealed": ["tags of any facts above that you plainly TOLD the traveller this turn — [] if none"],');
     lines.push('  "remember": "OPTIONAL: one short English sentence stating a NEW fact you just learned from the traveller. Omit this unless you understood them.",');
@@ -135,7 +150,8 @@ LG.dialogue = (function () {
     if (npc.history.length) {
       npc.history.slice(-4).forEach(h => {
         if (h.player) addLine('player', h.player);
-        addLine('npc', h.say, h.translation, h.roman, h.ruby);
+        addLine('npc', h.say, h.translation, h.roman,
+                rubyMatches(h.ruby, h.say) ? h.ruby : null);
       });
     } else {
       status('Say hello — or click a phrase below.');
@@ -185,6 +201,7 @@ LG.dialogue = (function () {
       tr.onclick = () => tr.classList.remove('hidden-tr');
       bub.appendChild(tr);
     }
+    row._main = main;
     row.appendChild(bub);
     el.dlgLog.appendChild(row);
     el.dlgLog.scrollTop = el.dlgLog.scrollHeight;
@@ -260,12 +277,13 @@ LG.dialogue = (function () {
       return;
     }
 
-    npc.history.push({ player: shown, say: reply.say, translation: reply.translation,
-                       roman: reply.roman, ruby: reply.ruby });
+    const turn = { player: shown, say: reply.say, translation: reply.translation,
+                   roman: reply.roman, ruby: reply.ruby };
+    npc.history.push(turn);
     if (npc.history.length > 20) npc.history.shift();
     const gotIt = String(reply.understood || 'full').toLowerCase() !== 'none';
     if (gotIt && Array.isArray(reply.revealed) && reply.revealed.length) {
-      verifying = verifyRevealed(npc, reply);   // deliberately not awaited
+      pending.push(verifyRevealed(npc, reply));   // deliberately not awaited
     }
     if (gotIt && reply.remember && typeof reply.remember === 'string' && reply.remember.length > 3) {
       if (npc.memory.indexOf(reply.remember) === -1) {
@@ -274,7 +292,13 @@ LG.dialogue = (function () {
       }
     }
 
-    addLine('npc', reply.say, reply.translation, reply.roman, reply.ruby);
+    const L = LG.LANGUAGES[LG.game.settings.lang];
+    let ruby = reply.ruby;
+    if (L.furigana && !rubyMatches(ruby, reply.say)) ruby = null;   // wrong markup, drop it
+    const row = addLine('npc', reply.say, reply.translation, reply.roman, ruby);
+    if (L.furigana && !ruby && needsFurigana(reply.say)) {
+      pending.push(repairFurigana(npc, reply, row));               // fetch it separately
+    }
     npc.bubble = reply.say; npc.bubbleT = 6;   // the canvas bubble stays plain text
 
     const u = String(reply.understood || '').toLowerCase();
@@ -307,7 +331,24 @@ LG.dialogue = (function () {
   /* The villager nominates facts it thinks it revealed; a second, cheaper model
      confirms them against what was actually said before anything is written in
      the notebook. Runs after the reply is on screen, so nobody waits for it. */
-  let verifying = null;
+  const pending = [];
+
+  /* The villager forgot the furigana (or mangled it). Ask the small model for
+     just that, check it strips back to the same sentence, and slot it into the
+     line already on screen. */
+  async function repairFurigana(npc, reply, row) {
+    try {
+      const got = await LG.llm.furigana(LG.game.llmConfig(), reply.say);
+      if (!rubyMatches(got, reply.say)) return;
+      const turn = npc.history[npc.history.length - 1];
+      if (turn && turn.say === reply.say) turn.ruby = got;
+      if (row && row._main) {
+        row._main.innerHTML = rubyHTML(got);
+        row._main.classList.add('has-ruby');
+      }
+    } catch (e) { /* the line stays readable without it */ }
+  }
+
   async function verifyRevealed(npc, reply) {
     const plan = LG.game.plan;
     const claimed = reply.revealed
@@ -333,6 +374,7 @@ LG.dialogue = (function () {
   }
 
   return { init, open, close, send, chatterLine, isOpen: () => !!current, renderItems, addLine, status,
-           settled: () => verifying || Promise.resolve(),
-           _debugPrompt: systemPrompt, _rubyHTML: rubyHTML };
+           settled: () => { const all = pending.splice(0); return Promise.all(all); },
+           _debugPrompt: systemPrompt, _rubyHTML: rubyHTML,
+           _stripRuby: stripRuby, _rubyMatches: rubyMatches, _needsFurigana: needsFurigana };
 })();

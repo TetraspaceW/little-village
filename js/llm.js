@@ -163,6 +163,32 @@ LG.llm = (function () {
     } catch (e) { return []; }
   }
 
+  /* Add furigana to a Japanese line. The villager often forgets the ruby field,
+     or returns it without markup — it is busy being a person. The small model
+     has nothing else to do. Returns null if anything looks off. */
+  async function furigana(cfg, say) {
+    const ask = [
+      'Add furigana to this Japanese sentence.',
+      '',
+      'Sentence: ' + JSON.stringify(say),
+      '',
+      'Return the sentence exactly as it is, but wrap every kanji run in ruby tags with its',
+      'reading in hiragana, like <ruby>漢字<rt>かんじ</rt></ruby>. Even a single kanji gets one.',
+      'Change nothing else: same words, same kana, same punctuation, same order.',
+      '',
+      'Reply with only the rewritten sentence, no quotes and no explanation.'
+    ].join('\n');
+    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: VERIFIER[cfg.provider] || cfg.model };
+    try {
+      const raw = vcfg.provider === 'anthropic'
+        ? await anthropicCall(vcfg, 'You add furigana to Japanese text. Output the sentence only.',
+            [{ role: 'user', content: ask }])
+        : await openrouterCall(vcfg, 'You add furigana to Japanese text. Output the sentence only.',
+            [{ role: 'user', content: ask }]);
+      return String(raw).trim();
+    } catch (e) { return null; }
+  }
+
   /* Pull the first JSON object out of a reply, tolerating ```json fences and
      stray prose around it. */
   function parseJSON(text) {
@@ -197,5 +223,5 @@ LG.llm = (function () {
     return obj;
   }
 
-  return { MODELS, VERIFIER, speak, judge, validate, parseJSON };
+  return { MODELS, VERIFIER, speak, judge, furigana, validate, parseJSON };
 })();

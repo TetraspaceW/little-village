@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Little Village — a language game</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="game" tabindex="0"></canvas>
+
+  <!-- ------------------------------------------------------------- HUD -->
+  <div id="hud">
+    <div class="hud-box" id="questBox">
+      <h3>Notebook</h3>
+      <div id="notebook"></div>
+      <div class="seedline">village <span id="seed"></span></div>
+    </div>
+
+    <div class="hud-box" id="invBox">
+      <h3>Pockets</h3>
+      <div id="inv"></div>
+    </div>
+
+    <div id="log"></div>
+    <div id="hint"></div>
+
+    <div id="topbar">
+      <button id="btnHelp" class="tool" title="How to play">?</button>
+      <button id="btnSettings" class="tool" title="Settings">⚙</button>
+    </div>
+  </div>
+
+  <!-- -------------------------------------------------------- dialogue -->
+  <div id="dlg">
+    <div class="dlg-card">
+      <header>
+        <div id="dlgAvatar" class="avatar"></div>
+        <div class="who">
+          <strong id="dlgName"></strong>
+          <span id="dlgRole"></span>
+        </div>
+        <button id="dlgClose" title="Leave (Esc)">✕</button>
+      </header>
+
+      <div id="dlgLog"></div>
+      <div id="dlgStatus" class="dlg-status"></div>
+
+      <div class="tray">
+        <div class="tray-label">Phrases</div>
+        <div id="dlgPhrases" class="chips"></div>
+      </div>
+      <div class="tray">
+        <div class="tray-label">Offer an item</div>
+        <div id="dlgItems" class="chips"></div>
+      </div>
+
+      <div class="composer">
+        <textarea id="dlgInput" rows="1" placeholder="Say something…"></textarea>
+        <button id="dlgSend">Say it</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ------------------------------------------- settings / the front door -->
+  <div id="settings" class="panel">
+    <div class="panel-card">
+      <h2 id="setTitle">Settings</h2>
+
+      <div id="setLede">
+        <p class="lede">Six people live here. None of them speak your language.</p>
+        <p>The villagers are played by a language model, so the game needs an API key
+        before it can start. It is kept in this browser and sent only to the provider
+        you pick below.</p>
+      </div>
+
+      <label>Language the villagers speak
+        <select id="setLang">
+          <option value="ru">🇷🇺 Russian — Русский</option>
+          <option value="en">🇬🇧 English</option>
+          <option value="zh">🇨🇳 Chinese (Mandarin) — 中文</option>
+          <option value="ja">🇯🇵 Japanese — 日本語</option>
+          <option value="fr">🇫🇷 French — Français</option>
+          <option value="es">🇪🇸 Spanish — Español</option>
+        </select>
+      </label>
+
+      <label>How hard should they talk?
+        <select id="setLevel">
+          <option value="beginner">Beginner (A1) — simple words, natural sentences</option>
+          <option value="intermediate">Intermediate (A2–B1)</option>
+          <option value="advanced">Advanced (B2+) — natural speech</option>
+        </select>
+      </label>
+
+      <label class="check"><input type="checkbox" id="setTrans"> Show English translations straight away
+        <small>(off = translations are blurred until you click them)</small></label>
+      <label class="check"><input type="checkbox" id="setChatter"> Let the villagers gossip with each other</label>
+
+      <hr>
+
+      <label>Provider
+        <select id="setProvider">
+          <option value="anthropic">Anthropic</option>
+          <option value="openrouter">OpenRouter</option>
+        </select>
+      </label>
+
+      <label id="keyRow">API key
+        <input id="setKey" type="password" placeholder="sk-…" autocomplete="off">
+        <small id="keyHint"></small>
+      </label>
+
+      <label>Model
+        <select id="setModel"></select>
+      </label>
+
+      <div id="setError"></div>
+
+      <button id="setSave" class="primary">Save</button>
+      <button id="setNew" class="secondary">Start a new village</button>
+
+      <p class="note">The key lives in this browser's local storage and goes only to the
+      provider above. Anyone with access to your browser profile can read it, so use a key
+      you are happy to rotate. If you opened this page as a file, serve it over
+      <code>http://localhost</code> instead — browsers block API calls from
+      <code>file://</code> pages.</p>
+
+    </div>
+  </div>
+
+  <!-- ------------------------------------------------------------ help -->
+  <div id="help" class="panel">
+    <div class="panel-card">
+      <h2>Little Village</h2>
+      <p>A small place where nobody speaks your language. You have to talk your way through it.</p>
+      <ul>
+        <li><b>WASD</b> or <b>arrow keys</b> to walk.</li>
+        <li><b>E</b> or <b>Space</b> to talk to whoever you are standing next to.</li>
+        <li>In a conversation, type in <em>their</em> language. The <b>Phrases</b> row gives you
+            something to start from, and <b>Offer an item</b> holds something out from your pockets.</li>
+        <li>They remember what you tell them — and they repeat it to each other.</li>
+        <li>Your <b>notebook</b> only fills in with things a villager has actually told you.
+            If it is empty, go and ask.</li>
+      </ul>
+      <p><b>Where to start:</b> somebody in this village wants something, and somebody else
+      has it. Nobody will volunteer that — knock on doors and ask. Every village is a new
+      errand; the one you are in is named at the bottom of your notebook.</p>
+      <p class="note">Change the language, the difficulty or the model at any time with the
+      <b>⚙</b> button at the top of the screen.</p>
+      <button id="helpClose" class="primary">Off you go</button>
+    </div>
+  </div>
+
+  <!-- ---------------------------------------------------------- ending -->
+  <div id="ending" class="panel">
+    <div class="panel-card">
+      <h2>🎉 The errand is done</h2>
+      <p id="endingText"></p>
+      <p class="note">Wander back out and keep chatting: the villagers still remember everything
+      you told them, and they are still gossiping about you.</p>
+      <button id="endingClose" class="primary">Keep wandering</button>
+      <button id="endingAgain" class="secondary">Start a new village</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/chain.js"></script>
+<script src="js/llm.js"></script>
+<script src="js/world.js"></script>
+<script src="js/npc.js"></script>
+<script src="js/dialogue.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>

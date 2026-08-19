@@ -214,10 +214,10 @@ LG.chain = (function () {
       if (i === 0) {
         r.goal = 'You want ' + a(lk.wants) + ' more than anything — ' + lk.reason +
           '. You ask everyone you meet about it and you do not know who has one. ' +
-          'When the traveller brings you one, be delighted, take it, and press ' +
-          a(lk.gives) + ' on them in thanks.';
+          'When the traveller brings you one, take it and give them ' + a(lk.gives) +
+          ' in thanks.';
         r.trade.hint = 'Once it is clear the traveller is giving you ' + a(lk.wants) +
-          ', accept it joyfully and press ' + a(lk.gives) + ' on them.';
+          ', take it and give them ' + a(lk.gives) + '.';
       } else if (lk.kind === 'sell') {
         r.goal = (shopkeeper(lk)
           ? 'You keep the village shop, and ' + a(lk.gives) + ' costs ' + NUMWORD[lk.wantsCount] + ' coins there.'
@@ -232,16 +232,18 @@ LG.chain = (function () {
           a(lk.gives) + ' to whoever brings ' + beastName + ' back, and you mention ' +
           'it to anyone who will listen.';
         r.trade.hint = 'Once the traveller is handing ' + beastName + ' back to you' +
-          ', be delighted and hand over ' + a(lk.gives) + '.';
+          ', take them and hand over ' + a(lk.gives) + '.';
       } else if (lk.kind === 'errand') {
         r.goal = 'You need ' + a(lk.wants) + ' — ' + lk.reason + '. You believe there ' +
           'is one ' + place.en + ' but you cannot go and get it yourself. You will give ' +
           a(lk.gives) + ' to whoever fetches it.';
         r.trade.hint = 'Once the traveller is giving you ' + a(lk.wants) +
-          ', thank them and hand over ' + a(lk.gives) + '.';
+          ', take it and hand over ' + a(lk.gives) + '.';
       } else {
-        r.goal = 'You have ' + a(lk.gives) + ' and you keep it on you. You will part ' +
-          'with it for one thing only: ' + a(lk.wants) + ' — ' + lk.reason +
+        // "You have coins ... you keep it on you" — mind the plural
+        const them = lk.gives === 'coins' ? 'them' : 'it';
+        r.goal = 'You have ' + a(lk.gives) + ' and you keep ' + them + ' on you. You will part ' +
+          'with ' + them + ' for one thing only: ' + a(lk.wants) + ' — ' + lk.reason +
           '. Say so plainly if anyone asks.';
         r.trade.hint = 'Once it is plain that the traveller is trading you ' + a(lk.wants) +
           ' for it, take it and hand over ' + a(lk.gives) + '.';

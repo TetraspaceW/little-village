@@ -604,16 +604,16 @@ LG.game = (function () {
   function villagerTalk(a, b, fromA, fromB) {
     if (!settings.apiKey) return false;
     const text = id => (id && plan.facts[id]) ? plan.facts[id].text : null;
-    const aNews = text(fromA), bNews = text(fromB);
-    if (!aNews && !bNews) return false;
     /* Whatever else they are each carrying, in case the talk wanders there. A
        villager's own opinion is stored as "Mira thinks Wren talks too much",
        which reads absurdly when you hand it back to Mira — she does not think
        about herself in the third person. */
-    const own = (n, text) =>
-      text.indexOf(n.def.name + ' thinks ') === 0
-        ? 'You think ' + text.slice((n.def.name + ' thinks ').length)
-        : text;
+    const own = (n, t) => (t && t.indexOf(n.def.name + ' thinks ') === 0)
+      ? 'You think ' + t.slice((n.def.name + ' thinks ').length)
+      : t;
+    // the news being passed needs this as much as the extras do
+    const aNews = own(a, text(fromA)), bNews = own(b, text(fromB));
+    if (!aNews && !bNews) return false;
     const rest = (n, skip) => n.facts
       .filter(id => id !== skip && plan.facts[id])
       .slice(0, 2)

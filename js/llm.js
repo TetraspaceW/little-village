@@ -168,7 +168,8 @@ LG.llm = (function () {
     lines.push('  "note" - how the listener would jot that down in ' + lang + ', in one short line.');
     lines.push('           Use the words the speaker actually used. Write it in ' + lang + ', not in English.');
     if (opts && opts.furigana) {
-      lines.push('  "ruby" - the same note with furigana over the kanji only, like <ruby>\u6f22\u5b57<rt>\u304b\u3093\u3058</rt></ruby>');
+      lines.push('  "ruby" - the same note, annotated:');
+      lines.push(LG.FURIGANA);
     }
     lines.push('');
     lines.push('Leave out anything that was not told. Reply [] if none of them were.');
@@ -291,9 +292,7 @@ LG.llm = (function () {
       'Say your next line — a line or two, since you are both on your way somewhere.',
       '',
       ('In ' + o.langName + '. ' + (o.register || '')).trim(),
-      o.furigana
-        ? 'Put furigana in "say": wrap each kanji word as <ruby>\u6f22\u5b57<rt>\u304b\u3093\u3058</rt></ruby>. Kanji only.'
-        : null,
+      o.furigana ? 'Put the furigana in "say".\n' + LG.FURIGANA : null,
       '',
       'Reply with only a JSON object:',
       '{"say": "your line", "translation": "plain English"' +
@@ -320,11 +319,9 @@ LG.llm = (function () {
       '',
       'Sentence: ' + JSON.stringify(say),
       '',
-      'Return the sentence exactly as it is, but wrap every kanji run in ruby tags with its',
-      'reading in hiragana, like <ruby>漢字<rt>かんじ</rt></ruby>. Even a single kanji gets one.',
-      'Kanji only — katakana and hiragana are left exactly as they are, with no reading.',
-      'Give the reading of the whole WORD as it is actually pronounced, never the character',
-      'readings stitched together: \u5927\u5de5 is \u3060\u3044\u304f, not \u3060\u3044\u3053\u3046.',
+      'Return the sentence exactly as it is, with the readings added.',
+      LG.FURIGANA,
+      'Even a single kanji gets one.',
       'Change nothing else: same words, same kana, same punctuation, same order.',
       '',
       'Reply with only the rewritten sentence, no quotes and no explanation.'

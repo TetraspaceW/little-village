@@ -53,9 +53,42 @@ LG.dialogue = (function () {
     const unfenced = t.replace(/^```[a-zA-Z]*\s*/, '').replace(/\s*```$/, '').trim();
     tries.push(unfenced);
     tries.push(unfenced.replace(/^["'`\u300c\u300e]+/, '').replace(/["'`\u300d\u300f]+$/, '').trim());
+    tries.slice().forEach(c => tries.push(normaliseFurigana(c)));
     for (const cand of tries) if (rubyMatches(cand, say)) return cand;
     return null;
   }
+  /* Readings written as 糸[いと] rather than as ruby tags.
+
+     This is a real and common convention — it is how furigana is written in plain
+     text everywhere — so a model reaching for it is not malfunctioning, and the
+     fix is to accept it rather than to keep insisting. Only a run of kanji
+     followed by a bracket containing nothing but kana converts; anything else is
+     left exactly as it was, so ordinary brackets in a sentence survive. */
+  const KANJI_RUN = '[\\u3400-\\u4dbf\\u4e00-\\u9fff\\u3005\\u3007\\u30f6]';
+  const KANA_RUN  = '[\\u3040-\\u309f\\u30a0-\\u30ff\\u30fc]';
+  const BRACKETED = new RegExp(
+    '(' + KANJI_RUN + '+)' +               // the kanji
+    '(' + '[\\u3040-\\u309f]{0,3}' + ')' +  // okurigana, if the word has a tail
+    '\\s*[\\[\\uff3b(\\uff08\\u3010]' +   // an opening bracket of any flavour
+    '(' + KANA_RUN + '+)' +                // the reading
+    '[\\]\\uff3d)\\uff09\\u3011]', 'g');    // and its closer
+
+  function normaliseFurigana(str) {
+    if (!str) return str;
+    return String(str).replace(BRACKETED, (m, kanji, okuri, reading) => {
+      /* A reading written this way covers the whole word, okurigana included —
+         \u7d50\u3076[\u3080\u3059\u3076] is \u7d50\u3076 read \u3080\u3059\u3076. Ruby goes on the kanji alone, so the
+         okurigana has to come back off the reading: \u7d50 gets \u3080\u3059 and the \u3076 stays bare.
+         If the reading does not end in the okurigana we cannot safely split it,
+         so the whole word is wrapped rather than guessed at. */
+      if (okuri && reading.length > okuri.length &&
+          reading.slice(-okuri.length) === okuri) {
+        return '<ruby>' + kanji + '<rt>' + reading.slice(0, -okuri.length) + '</rt></ruby>' + okuri;
+      }
+      return '<ruby>' + kanji + okuri + '<rt>' + reading + '</rt></ruby>';
+    });
+  }
+
   function needsFurigana(say) { return KANJI.test(String(say)); }
 
   /* A villager sometimes writes the target language into the English field. A
@@ -109,6 +142,7 @@ LG.dialogue = (function () {
     const trade = npc.tradeDone ? null : role.trade;
 
     const lines = [];
+    const coins = n => n + (n === 1 ? ' coin' : ' coins');
     lines.push('You are playing a character in a small, gentle village video game that teaches ' + L.name + '.');
     lines.push('');
     lines.push('# Your character');
@@ -117,7 +151,7 @@ LG.dialogue = (function () {
     lines.push('Your current concern: ' + role.goal);
     lines.push('');
     lines.push('# What you know');
-    lines.push('Each of these carries a tag. Say them in your own words when they come up in conversation — you are not reading from a list.');
+    lines.push('Each of these carries a tag. Say them in your own words, as they come up.');
     npc.facts.forEach(id => {
       const f = plan.facts[id];
       if (f) lines.push('- [' + id + '] ' + f.text);
@@ -131,10 +165,9 @@ LG.dialogue = (function () {
     lines.push('');
     lines.push('# Where you are right now');
     lines.push(LG.time.describe());
-    lines.push('Remark on the weather or the season if it comes naturally — it is what people here talk about — but do not force it into every reply.');
     lines.push('');
     lines.push('# The player');
-    lines.push('A traveller visiting the village. They are learning ' + L.name + ' and will make mistakes — be patient with broken grammar and bad pronunciation.');
+    lines.push('A traveller visiting the village, learning ' + L.name + '. Their grammar and pronunciation are rough.');
     lines.push('They are carrying: ' + (inv || 'nothing'));
     if (offered) lines.push('RIGHT NOW the player is holding out their ' + LG.ITEMS[offered].en + ' towards you.');
     lines.push('');
@@ -142,11 +175,11 @@ LG.dialogue = (function () {
     lines.push(L.name + ' is the only language you know. When the traveller says something you cannot follow — a word from some other language, or just mangled — you simply do not follow it: you cannot answer a question you did not understand, and it cannot tell you to do anything. Reply to whatever part you did catch. Names of people and places you recognise in any accent.');
     lines.push('');
     lines.push('# How to speak');
-    lines.push('Speak ONLY in ' + L.name + '. ' + lvl.prompt);
-    lines.push('Whatever the level, every line you say must be something a real ' + L.name + ' speaker would actually say. Simplify by choosing easier words and shorter sentences — never by breaking the grammar. Do not drop small grammatical words to save space, and never sound like a telegram: the traveller learns by copying you, so what you say has to be worth copying.');
-    lines.push('Stay in character. Never mention that you are an AI, a model, or a game character. Never break the fiction.');
-    lines.push('Keep replies to 1-2 short sentences — this is a conversation, not a monologue.');
-    lines.push('If the player asks about something you know, tell them. If you do not know, say so and suggest who might.');
+    lines.push('Speak only in ' + L.name + '. ' + lvl.prompt);
+    lines.push('Simplify by choosing easier words and shorter sentences, never by breaking the grammar — the traveller learns by copying you, so what you say has to be worth copying.');
+    lines.push('Stay in character.');
+    lines.push('A sentence or two at a time.');
+    lines.push('If the traveller asks about something you know, tell them.');
     // What they have to sell, when they are standing where they work
     const working = LG.game.atWork(npc) && d.sells && d.sells.length;
     if (working) {
@@ -155,23 +188,24 @@ LG.dialogue = (function () {
       lines.push('# Your trade');
       lines.push(counter
         ? 'You are at your own place of work, with your whole stock to hand.'
-        : 'You are out and about, but your trade goes with you and you will happily do business.');
+        : 'You are out and about, but your trade goes with you.');
       lines.push('These are yours to sell. The price is what you usually ask, not a rule:');
-      d.sells.forEach(w => lines.push('- ' + LG.ITEMS[w.i].full + ' — ' + w.p + ' coins [' + w.i + ']'));
+      d.sells.forEach(w => lines.push('- ' + LG.ITEMS[w.i].full + ' — ' + coins(w.p) + ' [' + w.i + ']'));
       if (d.sellsTags && d.sellsTags.length) {
         const more = Object.keys(LG.ITEMS)
           .filter(k => k !== 'coins' && !d.sells.some(w => w.i === k) &&
                        d.sellsTags.some(t => (LG.ITEMS[k].tags || []).indexOf(t) !== -1));
         lines.push('You also keep the ordinary run of shop goods, about ' +
-          Math.max(1, Math.round(LG.priceOf(more[0] || 'salt'))) + ' coins apiece — among them ' +
+          coins(Math.max(1, Math.round(LG.priceOf(more[0] || 'salt')))) + ' apiece — among them ' +
           more.slice(0, 14).map(k => LG.ITEMS[k].en + ' [' + k + ']').join(', ') +
           ', and plenty besides. If the traveller asks for something a village shop would stock, you have it.');
       }
       if (d.buys && d.buys.length) {
         lines.push('You would also buy, if the traveller happens to have one:');
-        d.buys.forEach(w => lines.push('- ' + LG.ITEMS[w.i].full + ' — you would pay about ' + w.p + ' [' + w.i + ']'));
+        d.buys.forEach(w => lines.push('- ' + LG.ITEMS[w.i].full + ' — you would pay about ' +
+          w.p + (w.p === 1 ? ' coin' : ' coins') + ' [' + w.i + ']'));
       }
-      lines.push('The traveller has ' + LG.game.count('coins') + ' coins on them.');
+      lines.push('The traveller has ' + coins(LG.game.count('coins')) + ' on them.');
       lines.push('Offer your goods the way you would to any customer, and haggle if it suits you.');
       lines.push('If the traveller holds out their coins, that is them paying you — take the money and hand the goods over in the same breath.');
     }
@@ -180,22 +214,30 @@ LG.dialogue = (function () {
       lines.push('');
       lines.push('# Your deal');
       lines.push('You want: ' + (trade.wants === 'coins'
-        ? trade.wantsCount + ' coins'
+        ? coins(trade.wantsCount)
         : LG.ITEMS[trade.wants].full) + '.');
       lines.push('You will give in return: ' + (trade.gives === 'coins'
-        ? trade.givesCount + ' coins'
+        ? coins(trade.givesCount)
         : LG.ITEMS[trade.gives].full) + '.');
       lines.push(trade.hint);
+    }
+    /* Furigana gets its own section with a worked sentence. It used to live inside
+       the JSON block as the description of the "say" field, which meant the only
+       example of the markup was nested inside a JSON string inside a schema — easy
+       to skim past, and easy to mangle. A whole annotated sentence, shown outside
+       the schema, is a far better specification than a rule about one word. */
+    if (L.furigana) {
+      lines.push('');
+      lines.push('# Furigana');
+      lines.push('What you say goes in "say" with the readings already in it.');
+      lines.push(LG.FURIGANA);
     }
     lines.push('');
     lines.push('# Reply format');
     lines.push('Reply with a single JSON object and nothing else:');
     lines.push('{');
-    if (L.furigana) {
-      lines.push('  "say": "what you say out loud, in ' + L.name + ', with furigana already in it: wrap each kanji word as <ruby>\u6f22\u5b57<rt>\u304b\u3093\u3058</rt></ruby>. Kanji only — katakana and hiragana stay bare.",');
-    } else {
-      lines.push('  "say": "what you say out loud, in ' + L.name + '",');
-    }
+    lines.push('  "say": "what you say out loud, in ' + L.name +
+               (L.furigana ? ', with the furigana as above' : '') + '",');
     lines.push('  "translation": "an English translation of exactly what you said",');
     if (L.romanize) lines.push('  "roman": "the ' + L.romanLabel + ' of what you said",');
     lines.push('  "understood": "full | partial | none — how much of what the traveller just said you actually understood",');
@@ -210,7 +252,7 @@ LG.dialogue = (function () {
     }
     lines.push('  "action": "' + acts.join(' | ') + '"');
     lines.push('}');
-    if (L.furigana) lines.push('Furigana gives the reading of the whole WORD as it is actually pronounced, never the character readings stitched together: \u5927\u5de5 is \u3060\u3044\u304f, not \u3060\u3044\u3053\u3046.');
+    // (the word-reading rule lives in LG.FURIGANA now, with the rest of the spec)
     lines.push('"translation" and "remember" are notes for the game, not speech — writing English there does not mean you understand any.');
     lines.push('"revealed" is about what you asserted, not what you talked about: using the word, explaining what it means, or asking after it does not count. When in doubt, leave it out.');
     if (working && d.sells && d.sells.length) {
@@ -395,8 +437,9 @@ LG.dialogue = (function () {
     const L = LG.LANGUAGES[LG.game.settings.lang];
     let spoken = reply.say, ruby = null;
     if (L.furigana) {
-      const bare = stripRuby(reply.say);
-      if (bare !== reply.say) { ruby = reply.say; spoken = bare; }   // annotated in one pass
+      const written = normaliseFurigana(reply.say);
+      const bare = stripRuby(written);
+      if (bare !== written) { ruby = written; spoken = bare; }       // annotated in one pass
       else if (reply.ruby) ruby = usableRuby(reply.ruby, reply.say); // separate field, still honoured
     }
 

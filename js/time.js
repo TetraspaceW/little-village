@@ -124,11 +124,15 @@ LG.time = (function () {
     setWeather(pickWeather());
   }
 
-  /* One line for a villager's prompt, so they have something to remark on. */
+  /* Where and when they are, for their prompt. Just the situation — the season's
+     standing note is only worth adding when the weather is not already saying it,
+     or you get "a blizzard" followed by a sentence about blizzards. */
   function describe() {
     const s = season(), w = WEATHER[weather];
-    return 'It is ' + phase().name + ' on day ' + dayOfSeason() + ' of ' + s.name +
-           '. The weather is ' + s.warmth + ': ' + w.talk + '. ' + s.note;
+    const line = 'It is ' + phase().name + ' of day ' + dayOfSeason() + ' of ' + s.name +
+                 ', ' + s.warmth + '. Outside: ' + w.talk + '.';
+    const dull = !w.particles;                 // nothing falling, so nothing to remark on
+    return dull ? line + ' ' + s.note : line;
   }
 
   /* A short label for the HUD. */

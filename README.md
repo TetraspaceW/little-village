@@ -64,6 +64,24 @@ markup, and the spoken line is whatever remains once the readings are peeled off
 field instead of two, so the line and its readings cannot disagree. Readings over
 katakana and hiragana are stripped automatically; only kanji keep them.
 
+**One spec, in one place.** The model was being asked for furigana in five separate
+places — the villager's own prompt, a second rule further down that same prompt, the
+villager-to-villager call, the notebook fact-checker, and the repair helper — each
+worded differently, and four of the five illustrating it with the bare word 漢字. That
+example never shows what to do about okurigana, which is exactly where it broke: 結ぶ
+has no obvious single-tag form, and with nothing to copy the model fell back to writing
+結ぶ[むすぶ]. All five now share `LG.FURIGANA`, whose worked example carries an okurigana
+word on purpose and shows the reading split across the tag boundary
+(`<ruby>結<rt>むす</rt></ruby>ぶ`).
+
+**And the bracket convention is accepted anyway.** 糸[いと] is not a malfunction — it is
+how furigana is written in plain text everywhere — so rather than keep insisting, it is
+converted. A run of kanji followed by a bracket containing nothing but kana becomes ruby
+markup; where the word has okurigana the reading is split back off it, so 結ぶ[むすぶ]
+becomes `<ruby>結<rt>むす</rt></ruby>ぶ` rather than putting むすぶ over the whole word.
+Anything that is not kanji-then-kana-in-brackets is left exactly as it was, so ordinary
+brackets in a sentence survive.
+
 Furigana is markup arriving from a model, so it is **sanitised**: the ruby tag family
 survives (`ruby`, `rb`, `rt`, `rtc`, `rp`), normalised to bare tags so no attribute
 ever reaches the page, and everything else tag-shaped is dropped. If a line has kanji
@@ -161,6 +179,21 @@ has been said so far, and that they are both on their way somewhere — and then
 It does not tell them to react to what the other one said rather than talk past them,
 which is instructing a competent actor in how conversation works and reads exactly as
 stiffly as it sounds.
+
+The player-facing prompt got the same pass. Gone from it: *"do not force it into every
+reply"* after an instruction to remark on the weather (naming a failure mode is a good
+way to get it), *"you are not reading from a list"*, *"this is a conversation, not a
+monologue"*, *"never sound like a telegram"*, and *"be patient with broken grammar"* —
+replaced by simply stating that the traveller's grammar is rough, which lets a warm
+villager be warm about it and a brisk one be brisk. Mandated feelings went too: a chain
+role used to say *"accept it joyfully and press a compass on them"*, which fights the
+persona of a shopkeeper written as never giving anything away.
+
+One of those was a correctness fix rather than a stylistic one. The prompt used to end
+*"If you do not know, say so and suggest who might"* — but a villager has no way of
+knowing who else knows, so that is an invitation to invent a name. With facts now
+concentrated by difficulty, an invented signpost sends you across the village to
+somebody who genuinely cannot help.
 
 The one that mattered most was the level. Each difficulty carries a `prompt` written as
 *accommodation* — "speak the way a kind native speaker speaks to someone on their first

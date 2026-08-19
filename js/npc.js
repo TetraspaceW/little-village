@@ -13,6 +13,8 @@ LG.actors = (function () {
       dir: 'down', frozen: false, pauseT: 1 + Math.random() * 2,
       facts: (factIds || []).slice(),   // ids of things they know (see chain.js)
       memory: [],                       // what they have picked up, from anyone
+      coins: 3 + ((Math.random() * 9) | 0),   // a purse of their own
+      stock: {},                        // goods in hand, however they came by them
       history: [],                      // recent dialogue turns with the player
       bubble: null, bubbleT: 0,
       gossipCool: 5 + Math.random() * 10,
@@ -121,13 +123,24 @@ LG.actors = (function () {
     }
     if (!want || want === a.patch) return;
 
-    const cx = want.x + (Math.random() * want.w | 0);
-    const cy = want.y + (Math.random() * want.h | 0);
-    const spot = W.nearestOpen(cx, cy);
-    const path = W.pathTo(a.tx, a.ty, spot.x, spot.y);
-    if (path && path.length) { a.route = path; a.patch = want; }
-    // No way through — forget having thought about it, so they try again rather
-    // than standing in the road for the rest of the day.
+    /* Aim for somewhere in the patch you can actually get to.
+
+       Open is not the same as reachable. The woods have little clearings walled
+       in by trees, and Ilya the woodcutter lives among them — a third of the
+       tiles in his own home patch have no way in. One dart at a random spot
+       meant he regularly failed to go home and stood in the trees until his next
+       think. Try a handful of spots before giving up on the whole idea. */
+    let route = null;
+    for (let tries = 0; tries < 8 && !route; tries++) {
+      const cx = want.x + (Math.random() * want.w | 0);
+      const cy = want.y + (Math.random() * want.h | 0);
+      const spot = W.nearestOpen(cx, cy);
+      const path = W.pathTo(a.tx, a.ty, spot.x, spot.y);
+      if (path && path.length) route = path;
+    }
+    if (route) { a.route = route; a.patch = want; }
+    // Nowhere in it they can reach — forget having thought about it, so they try
+    // somewhere else rather than standing in the road for the rest of the day.
     else a.thought = null;
   }
 

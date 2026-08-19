@@ -30,6 +30,7 @@ LG.llm = (function () {
       { id: 'anthropic/claude-haiku-4.5', label: 'Claude Haiku 4.5 — fast and cheap' },
       { id: 'xiaomi/mimo-v2.5',           label: 'MiMo-V2.5' },
       { id: 'xiaomi/mimo-v2.5-pro',       label: 'MiMo-V2.5 Pro' },
+      { id: 'google/gemma-4-31b-it',      label: 'Gemma 4 31B — quick off the mark' },
       { id: 'google/gemini-2.5-flash',    label: 'Gemini 2.5 Flash' },
       { id: 'openai/gpt-4.1-mini',        label: 'GPT-4.1 mini' },
       { id: 'z-ai/glm-5.2',               label: 'GLM-5.2' }
@@ -122,8 +123,11 @@ LG.llm = (function () {
        LG.llm.audit = false     stop printing (still recorded)
        LG.llm.transcript        the records, newest last
        LG.llm.dump()            the lot as plain text, for copying out */
+  /* Helper calls are known by the opening of their system prompt. A villager's
+     own prompt opens with their name, which is not something to match on, so it
+     is known by a section heading only it has — keep these in step with the
+     prompts or the log fills up with "call". */
   const KINDS = [
-    ['You are playing a character', 'villager'],
     ['You decide what a villager does next', 'intent'],
     ['You play one villager', 'chatter'],
     ['You verify claims', 'notebook'],
@@ -138,6 +142,7 @@ LG.llm = (function () {
   function kindOf(system) {
     const t = String(system || '');
     for (const [head, name] of KINDS) if (t.indexOf(head) === 0) return name;
+    if (t.indexOf('# Your character') !== -1) return 'villager';
     return 'call';
   }
 
@@ -387,7 +392,8 @@ LG.llm = (function () {
   async function gloss(cfg, say, opts) {
     const o = opts || {};
     const want = ['  "translation": "a plain English translation of the line"'];
-    if (o.romanLabel) want.push('  "roman": "the ' + o.romanLabel + ' of the line"');
+    if (o.romanLabel) want.push('  "roman": "the ' + o.romanLabel + ' of the line' +
+      (o.romanNote ? ', ' + o.romanNote : '') + '"');
     const ask = [
       'Here is one line of ' + (o.langName || 'text') + ':',
       '',
@@ -451,6 +457,10 @@ LG.llm = (function () {
       '',
       'The [f0]-style labels above are just ids for those statements; use them as they are.',
       '',
+      'Did anything change hands? Only if it plainly did in the words above —',
+      'someone handing something over, someone paying. An agreement to do it later',
+      'is not it happening.',
+      '',
       'For each of them, write down what they would come away remembering.',
       'Anything from the conversation worth keeping — what the other one told them,',
       'what they are like, what is going on with them. Not everything said is worth',
@@ -461,8 +471,11 @@ LG.llm = (function () {
       'Reply with only a JSON object:',
       '{',
       '  "' + o.a.name + '": {"remembers": ["..."], "said": ["ids ' + o.a.name + ' actually said, [] if none"]},',
-      '  "' + o.b.name + '": {"remembers": ["..."], "said": ["ids ' + o.b.name + ' actually said, [] if none"]}',
-      '}'
+      '  "' + o.b.name + '": {"remembers": ["..."], "said": ["ids ' + o.b.name + ' actually said, [] if none"]},',
+      '  "exchanged": [{"from": "who handed it over", "to": "who took it", ' +
+        '"item": "what, in plain English", "coins": 0}]',
+      '}',
+      '"exchanged" is [] unless something actually passed between them.'
     ].join('\n');
     const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg) };
     const sys = 'You note what people took away from a conversation. Answer with JSON only.';
@@ -477,7 +490,8 @@ LG.llm = (function () {
         return { remembers: Array.isArray(v.remembers) ? v.remembers.filter(x => typeof x === 'string') : [],
                  said: Array.isArray(v.said) ? v.said.map(String) : [] };
       };
-      return { a: pick(o.a.name), b: pick(o.b.name) };
+      const moved = Array.isArray(obj.exchanged) ? obj.exchanged.filter(x => x && x.item) : [];
+      return { a: pick(o.a.name), b: pick(o.b.name), exchanged: moved };
     } catch (e) { return null; }
   }
 
@@ -545,7 +559,18 @@ LG.llm = (function () {
     const said = (o.transcript || []).map(t => t.who + ': ' + t.say);
     const lines = [
       'You are ' + o.me.name + ' — ' + o.me.job + '. ' + o.me.persona,
-      'You have run into ' + o.them.name + ', ' + o.them.job + '.',
+      /* Where they are and why they are there. This used to say "you have run
+         into X" and, further down, that they were both on their way somewhere —
+         asserted of everyone, always, including two people who had each walked
+         somewhere on purpose and arrived. It made every conversation an
+         interruption, and the village spent its days telling each other to go
+         home. They are where they chose to be, for the reason they chose it. */
+      o.here ? 'You are ' + o.here + '.' : null,
+      o.sought
+        ? 'You came looking for ' + o.them.name + ', ' + o.them.job + '.' +
+          (o.errand ? ' What brought you: ' + o.errand + '.' : '')
+        : (o.errand ? 'What brought you here: ' + o.errand + '.' : null),
+      o.sought ? null : o.them.name + ', ' + o.them.job + ', is here too.',
       o.when || null,
       '',
       o.knows && o.knows.length
@@ -553,18 +578,39 @@ LG.llm = (function () {
       o.recent && o.recent.length
         ? 'Lately you have picked up:\n' + o.recent.map(k => '- ' + k).join('\n') : null,
       '',
+      /* Villagers had no money and no way to hand anything over, so they agreed
+         to deals that never happened and went round in circles about them for a
+         whole afternoon. They can deal with each other now, and this is what
+         they have to deal with. */
+      o.purse !== undefined ? 'In your purse: ' + o.purse + (o.purse === 1 ? ' coin' : ' coins') + '.' : null,
+      o.wares && o.wares.length ? 'Yours to sell or hand over: ' + o.wares.join(', ') + '.' : null,
+      o.theirs && o.theirs.length ? o.them.name + ' has: ' + o.theirs.join(', ') + '.' : null,
+      o.after ? 'You are after: ' + o.after + '.' : null,
+      '',
       said.length ? 'So far:\n' + said.join('\n')
                   : 'Neither of you has said anything yet.',
       '',
-      o.closing ? 'You are both about to move on.' : null,
-      'Say your next line — a line or two, since you are both on your way somewhere.',
+      o.closing ? 'This is the last thing you will say in this conversation.' : null,
+      'Say your next line. A line or two.',
       '',
       ('In ' + o.langName + '. ' + (o.register || '')).trim(),
+      /* The player reads these too, so they have to be worth reading. This rule
+         lives in the villager's own prompt and was missing here, which is how a
+         laconic character ended up producing telegraphese: "\u9ec4\u660f\u51b7\uff1f" is not a
+         sentence anyone says.
+
+         It says nothing about length on purpose. The first draft ended "terse is
+         fine, ungrammatical is not", and "terse" is the most salient word in it —
+         a clause meant to permit brevity reads as an instruction to be brief. How
+         long a villager's sentences are is their character's business; whether
+         they are sentences is not. */
+      'Say it the way a real ' + o.langName + ' speaker would actually say it out loud.',
       o.furigana ? 'Put the furigana in "say".\n' + LG.FURIGANA : null,
       '',
       'Reply with only a JSON object:',
       '{"say": "your line", "translation": "plain English"' +
-        (o.romanLabel ? ', "roman": "' + o.romanLabel + '"' : '') + '}'
+        (o.romanLabel ? ', "roman": "' + o.romanLabel +
+          (o.romanNote ? ', ' + o.romanNote : '') + '"' : '') + '}'
     ].filter(x => x !== null && x !== undefined).join('\n');
     const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg) };
     const sys = 'You play one villager in a two-person conversation. Answer with JSON only.';

@@ -14,6 +14,7 @@ LG.game = (function () {
 
   // No key, no village. `gated` freezes input until the front door is passed.
   let gated = true, gateMode = false, lastValidated = '';
+  let fromEnv = false;             // the keys were handed to us, not typed
 
   const state = { inv: {}, notes: [], deeds: [], won: false };
 
@@ -202,6 +203,7 @@ LG.game = (function () {
 
     npc.sold = npc.sold || {};                 // index: what they can take back, at what price
     npc.till = npc.till || [];                 // the record they actually get to read
+    npc.stock = npc.stock || {};               // what they are actually holding
 
     /* A refusal has to reach the villager. Left to narrate unaided they will
        describe the refund as done, and then be baffled when you offer the beer
@@ -214,6 +216,16 @@ LG.game = (function () {
     }
 
     // a list, or "beer, wine" written out as one string — both turn up
+    /* Nothing is exchanged for nothing. An explicit price of zero is not a
+       haggle, it is a villager narrating rather than dealing — and the band below
+       would quietly invent a coin for it, which is how a shell got taken off the
+       traveller for a purchase nobody meant to make. A missing price still falls
+       back to what the thing is worth. */
+    if (Number(price) === 0 && String(price) !== '') {
+      return refuse('Nothing was actually exchanged, so nothing happened.',
+                    'No price was named, so nothing changed hands.');
+    }
+
     const asked = (Array.isArray(itemId) ? itemId : String(itemId || '').split(/[,;+]|\band\b/))
       .map(x => String(x || '').replace(/[^\w]/g, ''))
       .filter(x => x && x !== 'coins' && LG.ITEMS[x]);
@@ -221,7 +233,12 @@ LG.game = (function () {
 
     const back = id => npc.sold[id] && npc.sold[id].n > 0 ? npc.sold[id] : null;
     const priced = asked.map(id => {
-      if (act === 'sell') return { id: id, base: priceFrom(d.sells, d.sellsTags, id, 1) };
+      // Something they bought earlier is theirs to sell on, whether or not it is
+      // the sort of thing they usually deal in.
+      if (act === 'sell') {
+        const own = npc.stock[id] > 0 ? Math.max(1, Math.round(LG.priceOf(id))) : 0;
+        return { id: id, base: priceFrom(d.sells, d.sellsTags, id, 1) || own, fromStock: own > 0 };
+      }
       const owed = back(id);                       // returning something they sold you
       return owed ? { id: id, base: owed.price, refund: true }
                   : { id: id, base: priceFrom(d.buys, d.buysTags, id, 0.5) };
@@ -271,6 +288,7 @@ LG.game = (function () {
       }
       take('coins', cost);
       priced.forEach(w => {
+        if (npc.stock[w.id] > 0) npc.stock[w.id]--;      // off their own shelf
         give(w.id, 1);
         const share = Math.max(1, Math.round(cost * w.base / base));
         npc.sold[w.id] = { price: share, n: (npc.sold[w.id] ? npc.sold[w.id].n : 0) + 1 };
@@ -279,6 +297,11 @@ LG.game = (function () {
       priced.forEach(w => {
         take(w.id, 1);
         if (w.refund && npc.sold[w.id]) npc.sold[w.id].n--;
+        /* They are holding it now. Without this the goods simply evaporated: the
+           apple left the traveller's pocket, a coin came back, and the villager
+           who had just bought it went on saying she had no apples — which was
+           true of everything she could see. */
+        else npc.stock[w.id] = (npc.stock[w.id] || 0) + 1;
       });
       give('coins', cost);
     }
@@ -319,8 +342,13 @@ LG.game = (function () {
       beast.home = npc.def.home;
       beast.tx = npc.tx; beast.ty = npc.ty;
     }
-    // the village notices
-    npc.memory.push('The traveller brought me ' + gave + '.');
+    /* Into the till, both sides of it. A trade used to leave a memory saying only
+       "the traveller brought me a bowl of rice", which never mentioned the shell
+       going back the other way — so the villager went on trying to finish an
+       exchange that was already finished, and encoded the attempt as an action. */
+    npc.till = npc.till || [];
+    npc.till.push({ act: 'trade', names: gave, gaveBack: got, coins: 0, asked: 0,
+                    at: LG.time.clock() });
 
     if ((plan.roles[npc.def.id] || {}).link === 0) win();
     renderHUD();
@@ -358,6 +386,52 @@ LG.game = (function () {
     showChrome();
     loadVoices();
     requestAnimationFrame(loop);
+    adoptEnv();
+  }
+
+  /* Keys from .env, by way of the log server.
+
+     The game was built to ask for a key at the door because a web page cannot
+     read a file off your disk. A server can, and there is one here now, so if it
+     is running and has a .env it hands the keys over and the door is already
+     open. This is asked for after the game has started rather than before, so a
+     missing or slow server delays nothing: the gate is up either way, and it
+     comes down by itself if an answer arrives. */
+  function adoptEnv() {
+    if (typeof fetch !== 'function') return;
+    if (typeof location === 'undefined' || !/^https?:/.test(location.protocol)) return;
+    fetch('/env', { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(env => { if (env) useEnv(env); })
+      .catch(() => {});                       // no server, or not that sort of server
+  }
+
+  function useEnv(env) {
+    const was = { lang: settings.lang, level: settings.level };
+    if (env.provider === 'anthropic' || env.provider === 'openrouter') settings.provider = env.provider;
+    const key = settings.provider === 'openrouter' ? env.openrouterKey : env.anthropicKey;
+    let got = [];
+    if (key) { settings.apiKey = key; got.push('the model key'); }
+    if (env.ttsKey) { settings.ttsKey = env.ttsKey; settings.voices = true; got.push('a voice key'); }
+    if (env.model) settings.model = env.model;
+    if (env.helper) settings.helper = env.helper;
+    if (env.lang && LG.LANGUAGES[env.lang]) settings.lang = env.lang;
+    if (env.level && LG.LEVELS[env.level]) settings.level = env.level;
+    if (!got.length && was.lang === settings.lang && was.level === settings.level) return;
+
+    fromEnv = true;
+    saveSettings();
+    // the village is built out of the language and the difficulty, so a change
+    // to either means starting it again — nothing has happened yet in any case
+    if (was.lang !== settings.lang || was.level !== settings.level) newVillage(null, true);
+    if (settings.apiKey && gated) {
+      gated = false; gateMode = false;
+      document.getElementById('settings').classList.remove('open');
+    }
+    showChrome();
+    renderHUD();
+    if (settings.voices && settings.ttsKey) loadVoices();
+    log('\u00a4 Read ' + got.join(' and ') + ' from .env.');
   }
 
   /* Roll a fresh errand chain and reset everything that depends on it. */
@@ -587,6 +661,12 @@ LG.game = (function () {
     document.getElementById('setLevel').value = settings.level;
     document.getElementById('setProvider').value = settings.provider;
     document.getElementById('setKey').value = settings.apiKey;
+    // where the key came from, so a field you did not fill in is not a mystery
+    const note = document.getElementById('setKeyNote');
+    if (note) {
+      note.textContent = fromEnv ? 'filled from .env — type over it to change it for this session' : '';
+      note.style.display = fromEnv ? '' : 'none';
+    }
     document.getElementById('setTrans').checked = settings.showTranslation;
     document.getElementById('setChatter').checked = settings.npcChatter;
     document.getElementById('setVoices').checked = settings.voices;
@@ -730,7 +810,8 @@ LG.game = (function () {
     npcs.forEach(o => {
       if (o === n) return;
       if (dist(n, o) > TILE * 26) return;               // only people they can see
-      out.push({ name: 'after ' + o.def.name, rect: besideThem(o), note: describeWhere(o) });
+      out.push({ name: 'after ' + o.def.name, rect: besideThem(o),
+                 note: describeWhere(o), after: o.def.id });
     });
     return out;
   }
@@ -774,6 +855,9 @@ LG.game = (function () {
       }
       n.wantsGo = want.rect;
       n.why = res.why || '';
+      // "after Mira" is a decision about a person, and the conversation that
+      // follows should know it was not a coincidence
+      n.wentAfter = want.after || null;
       think(n, '\u2192 ' + want.name, n.why);
     }).catch(() => { done(); think(n, 'could not decide', 'the call failed'); });
     return true;
@@ -812,6 +896,10 @@ LG.game = (function () {
       .slice(0, 5);
     LG.dialogue.overheard(a, b, {
       aKnows: mind(a), bKnows: mind(b),
+      where: n => describeWhere(n),
+      // what they came here for, and whether they came for each other
+      errandOf: n => n.why || '',
+      soughtBy: (n, other) => n.wentAfter === other.def.id,
       factsOf: n => n.facts
         .map(id => plan.facts[id] && { id: id, text: plan.facts[id].text })
         .filter(Boolean)

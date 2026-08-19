@@ -16,8 +16,67 @@ const http = require('http'), fs = require('fs'), path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 const LOGS = path.join(ROOT, 'logs');
+const ENVFILE = path.join(ROOT, '.env');
+
+/* ---------------------------------------------------------------- .env
+
+   A browser cannot read a file off your disk, which is why the game used to
+   have no choice but to ask you to paste keys. A server can, so now that one is
+   here anyway, it reads .env and hands the keys to the page over the loopback
+   interface it is already serving from.
+
+   The keys do reach the browser, which is the same place they lived before —
+   this saves the pasting, not the trust. It refuses to answer anything that is
+   not a local connection, so nothing on your network can ask it for them. */
+/* Read .env into the process at startup, the way dotenv does it: anything
+   already in the environment wins, so `ANTHROPIC_API_KEY=… node tools/logserver.js`
+   beats the file without having to edit it. Loaded once — restart to pick up a
+   change, which is what everyone expects of a .env. */
+function loadEnvFile() {
+  let text = '';
+  try { text = fs.readFileSync(ENVFILE, 'utf8'); } catch (e) { return 0; }
+  let n = 0;
+  text.split(/\r?\n/).forEach(line => {
+    const t = line.trim();
+    if (!t || t[0] === '#') return;
+    const eq = t.indexOf('=');
+    if (eq < 1) return;
+    const k = t.slice(0, eq).trim();
+    let v = t.slice(eq + 1).trim();
+    if ((v[0] === '"' && v.slice(-1) === '"') || (v[0] === "'" && v.slice(-1) === "'")) {
+      v = v.slice(1, -1);
+    }
+    if (v && process.env[k] === undefined) { process.env[k] = v; n++; }
+  });
+  return n;
+}
+const ENV_LOADED = loadEnvFile();
+
+// read after .env, so PORT and LOGSERVER_FAKE can be set there like anything else
 const PORT = Number(process.env.PORT || 8787);
 const FAKE = process.env.LOGSERVER_FAKE === '1';
+
+
+/* Only what the game has a use for, and only over the loopback interface. */
+function settingsFromEnv() {
+  const e = process.env;
+  const pick = (...names) => { for (const n of names) if (e[n]) return e[n]; return ''; };
+  return {
+    provider: pick('LG_PROVIDER', 'PROVIDER'),
+    anthropicKey: pick('ANTHROPIC_API_KEY'),
+    openrouterKey: pick('OPENROUTER_API_KEY'),
+    ttsKey: pick('ELEVENLABS_API_KEY'),
+    model: pick('LG_MODEL', 'MODEL'),
+    helper: pick('LG_HELPER', 'HELPER'),
+    lang: pick('LG_LANG', 'LANG_CHOICE'),
+    level: pick('LG_LEVEL', 'LEVEL')
+  };
+}
+
+function isLocal(req) {
+  const a = req.socket.remoteAddress || '';
+  return a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1';
+}
 
 fs.mkdirSync(LOGS, { recursive: true });
 const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -36,6 +95,15 @@ function serve(req, res) {
   if (rel === '/') rel = '/index.html';
   const file = path.join(ROOT, path.normalize(rel).replace(/^(\.\.[/\\])+/, ''));
   if (!file.startsWith(ROOT)) { res.writeHead(403).end('no'); return; }
+  /* The keys live in a dotfile in the directory this is serving, so serving
+     dotfiles would hand them to anyone who guessed the name — /env is careful
+     about who it answers and it would have been beside the point. The logs are
+     full of prompts and are nobody's business either. */
+  const parts = path.relative(ROOT, file).split(path.sep);
+  if (parts.some(p => p[0] === '.') || parts[0] === 'logs' || parts[0] === 'node_modules') {
+    res.writeHead(404).end('not found');
+    return;
+  }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404).end('not found'); return; }
     res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream' });
@@ -81,14 +149,28 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
+  if (req.method === 'GET' && req.url === '/env') {
+    if (!isLocal(req)) { res.writeHead(403).end('local connections only'); return; }
+    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+    res.end(JSON.stringify(settingsFromEnv()));
+    return;
+  }
   if (req.method === 'GET') return serve(req, res);
   res.writeHead(405).end();
 });
 
-server.listen(PORT, () => {
+/* Loopback only. This process reads your keys and serves them; there is no
+   reason for anything else on the network to be able to reach it. */
+server.listen(PORT, '127.0.0.1', () => {
   console.log('village   http://localhost:' + PORT);
   console.log('log       ' + path.relative(process.cwd(), LOGFILE));
   if (FAKE) console.log('fake      POST /fake is answering as a stand-in provider');
+  const env = settingsFromEnv();
+  const have = ['anthropicKey', 'openrouterKey', 'ttsKey']
+    .filter(k => env[k]).map(k => k.replace('Key', ''));
+  console.log('env       ' + (ENV_LOADED ? ENV_LOADED + ' values from .env' : 'no .env'));
+  console.log('keys      ' + (have.length ? have.join(', ')
+                                          : 'none — paste them in the game'));
   console.log('');
 });
 process.on('SIGINT', () => {

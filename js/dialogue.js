@@ -143,7 +143,7 @@ LG.dialogue = (function () {
 
     const lines = [];
     const coins = n => n + (n === 1 ? ' coin' : ' coins');
-    lines.push('You are playing a character in a small, gentle village video game that teaches ' + L.name + '.');
+    lines.push('You are ' + d.name + ', who lives in this village and speaks ' + L.name + '.');
     lines.push('');
     lines.push('# Your character');
     lines.push('Name: ' + d.name + ' — ' + d.job + '.');
@@ -181,7 +181,6 @@ LG.dialogue = (function () {
     lines.push('Simplify by choosing easier words and shorter sentences, never by breaking the grammar — the traveller learns by copying you, so what you say has to be worth copying.');
     lines.push('Stay in character.');
     lines.push('A sentence or two at a time.');
-    lines.push('If the traveller asks about something you know, tell them.');
     // What they have to sell, when they are standing where they work
     const working = LG.game.atWork(npc) && d.sells && d.sells.length;
     if (working) {
@@ -191,6 +190,16 @@ LG.dialogue = (function () {
       lines.push(counter
         ? 'You are at your own place of work, with your whole stock to hand.'
         : 'You are out and about, but your trade goes with you.');
+      /* Anything they have taken off the traveller is theirs now and they should
+         know it. Without this the apple they had just bought did not appear
+         anywhere in what they could see, and they went on saying they had no
+         apples — truthfully, from where they were standing. */
+      const held = Object.keys(npc.stock || {}).filter(k => npc.stock[k] > 0);
+      if (held.length) {
+        lines.push('In your hands right now, bought off the traveller: ' +
+          held.map(k => LG.ITEMS[k].full + (npc.stock[k] > 1 ? ' \u00d7' + npc.stock[k] : '')).join(', ') +
+          '. You have these; you can say so, and sell them on if you like.');
+      }
       lines.push('These are yours to sell. The price is what you usually ask, not a rule:');
       d.sells.forEach(w => lines.push('- ' + LG.ITEMS[w.i].full + ' — ' + coins(w.p) + ' [' + w.i + ']'));
       if (d.sellsTags && d.sellsTags.length) {
@@ -249,6 +258,20 @@ LG.dialogue = (function () {
         : LG.ITEMS[trade.gives].full) + '.');
       lines.push(trade.hint);
     }
+    /* A concluded deal has to say so. It used simply to vanish from the prompt
+       the moment it completed, leaving the villager with no sign it had ever
+       happened — so they went on trying to finish it, and the schema turned each
+       attempt into another transaction. Silence is not the same as closure. */
+    if (npc.tradeDone && role.trade) {
+      const r = role.trade;
+      lines.push('');
+      lines.push('# Your deal');
+      lines.push('Done, earlier today: the traveller gave you ' +
+        (r.wants === 'coins' ? coins(r.wantsCount) : LG.ITEMS[r.wants].full) +
+        ' and you handed over ' +
+        (r.gives === 'coins' ? coins(r.givesCount) : LG.ITEMS[r.gives].full) +
+        '. That exchange is finished and does not want doing again.');
+    }
     /* Furigana gets its own section with a worked sentence. It used to live inside
        the JSON block as the description of the "say" field, which meant the only
        example of the markup was nested inside a JSON string inside a schema — easy
@@ -267,7 +290,8 @@ LG.dialogue = (function () {
     lines.push('  "say": "what you say out loud, in ' + L.name +
                (L.furigana ? ', with the furigana as above' : '') + '",');
     lines.push('  "translation": "an English translation of exactly what you said",');
-    if (L.romanize) lines.push('  "roman": "the ' + L.romanLabel + ' of what you said",');
+    if (L.romanize) lines.push('  "roman": "the ' + L.romanLabel + ' of what you said' +
+      (L.romanNote ? ', ' + L.romanNote : '') + '",');
     lines.push('  "understood": "full | partial | none — how much of what the traveller just said you actually understood",');
     lines.push('  "revealed": ["tags of any facts above that you plainly TOLD the traveller this turn — [] if none"],');
     lines.push('  "remember": "OPTIONAL: one short English sentence stating a NEW fact you just learned from the traveller. Omit this unless you understood them.",');
@@ -700,6 +724,9 @@ LG.dialogue = (function () {
              said, so nothing has to make them say it. */
           knows: mind[me.def.id],
           recent: (me.memory || []).slice(-4),
+          here: ctx.where ? ctx.where(me) : '',
+          errand: ctx.errandOf ? ctx.errandOf(me) : '',
+          sought: ctx.soughtBy ? ctx.soughtBy(me, them) : false,
           transcript: transcript,
           closing: t === turns - 1,
           when: t === 0 ? LG.time.describe() : '',

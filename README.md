@@ -29,7 +29,11 @@ mysteriously later.
 node tools/logserver.js      # then open http://localhost:8787
 ```
 
-One process that serves the village and keeps its log. Serving it over http is
+```sh
+cp .env.example .env         # then fill in your keys
+```
+
+One process that serves the village, keeps its log, and hands over your keys. Serving it over http is
 needed anyway — the providers reject `file://` origins — and doing both from the
 same place means there is no CORS to arrange and nothing to switch on.
 
@@ -48,6 +52,29 @@ both providers return it in a field of its own, which nothing was reading.
 The terminal shows a terse line per entry as a live view. If the log server is
 not running the game notices on its first post, switches logging off and carries
 on — so it is never a dependency, only a window.
+
+**And it reads `.env`,** the ordinary way: at launch it merges the file into the
+process environment without clobbering anything already set, so
+`ANTHROPIC_API_KEY=… node tools/logserver.js` beats the file without editing it.
+Loaded once — restart to pick up a change. `PORT` works from there too. The game asks for a key at the front door
+because a web page cannot read a file off your disk. A server can, so when this
+one is running the door is already open: `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY` and
+`ELEVENLABS_API_KEY`, plus optional `LG_PROVIDER`, `LG_MODEL`, `LG_HELPER`,
+`LG_LANG` and `LG_LEVEL`. The settings panel says where a key it did not ask you
+for came from. Without the server, or without a `.env`, nothing changes and you
+paste as before.
+
+Two things this deliberately does not do. It does not make the keys any safer —
+they still end up in the browser, which is where they lived anyway; this saves
+the pasting, not the trust. And it does not proxy the API: the page still calls
+the provider directly, so it keeps working as a plain static page. Routing the
+calls through the server would keep the keys server-side and moot CORS entirely,
+which is strictly better security and strictly worse for opening `index.html`.
+
+The server binds `127.0.0.1` only, refuses `/env` to anything that is not a local
+connection, and will not serve dotfiles or `logs/` as static files — otherwise
+serving the directory that contains `.env` would hand it to anyone who guessed
+the name.
 
 ## Connecting a brain (⚙ button)
 
@@ -272,6 +299,23 @@ language. Villager-to-villager talk uses a separate `register` line instead, whi
 describes how plainly they speak rather than who they are speaking down to. At advanced
 it is empty: two natives with nobody to accommodate simply talk.
 
+**A rule about grammar, not about length.** Villager-to-villager lines had no equivalent
+of the rule that keeps the player-facing ones from turning into telegrams, so a character
+written as *deliberate* produced 黄昏冷？ — which is not a sentence anyone says. The rule
+now reads *"say it the way a real Chinese (Mandarin) speaker would actually say it out
+loud"*, and says nothing about length on purpose: the first attempt ended *"terse is fine,
+ungrammatical is not"*, where "terse" is the most salient word in the sentence and a clause
+meant to permit brevity reads as an instruction to be brief. How long a villager's
+sentences are belongs to their character; whether they are sentences does not.
+
+**They are where they chose to be.** The conversation prompt used to say "you have run
+into X" and, further down, that they were both on their way somewhere — asserted of
+everyone, always, including two people who had each walked somewhere on purpose and
+arrived. Reading a real session's log, the cost was plain: seven of twenty-two lines were
+people telling each other to go home. Now a villager is told where they are, what brought
+them there, and whether they came looking for this particular person — so Boris, who
+chose to go after Mira about the pie, opens like someone who did that.
+
 **Each line is its own call, and each villager only writes their own.** The alternative
 is one call that writes both halves, which is what this used to do, and it reads like a
 script: the halves agree too neatly, nobody misunderstands anybody, and the second
@@ -353,6 +397,32 @@ item at the two-item price: you paid for the round and got the beer. The price c
 made it worse by quietly trimming six coins to five, because five is the most a beer can
 cost. When the cap does bite it now says so, since being charged a number nobody in the
 conversation said is worse than either the villager's price or a refusal.
+
+**Open is not the same as reachable.** The woods hold small clearings walled in by trees,
+and Ilya the woodcutter lives among them — a third of the tiles in his own home patch have
+no way into them. A villager aimed one dart at a random spot in the patch they wanted, and
+when it landed in a clearing the path failed and they stood in the trees until their next
+think. They try a handful of spots now before giving up on the idea, and a test checks that
+every villager can reach every patch they can be sent to.
+
+**A finished exchange stays finished.** When a chain trade completed, every trace of it
+left the villager's prompt at once — the deal block vanished and nothing was written to
+the till, so from where they stood the exchange had simply never happened. They went on
+trying to finish it, and since the reply schema wants an action for anything that sounds
+like a transaction, each attempt became one: Nadia said *"here's the shell, take it"* and
+encoded *buy the shell*, and the game took it off the traveller. Trades are written to the
+till now, both sides of them, and a concluded deal says so in words rather than going
+quiet. Silence is not closure.
+
+**And nothing is exchanged for nothing.** An explicit price of zero is not a haggle, it is
+a villager narrating rather than dealing — and the haggle band would quietly round it up
+to a coin, which is how goods changed hands in a sale nobody meant to make.
+
+**What a villager buys, a villager has.** Goods used to evaporate on the way in: Petra
+bought an apple, it left the traveller's pocket, a coin came back, and then she went on
+saying she had no apples — truthfully, because nothing anywhere recorded that she was
+holding one. Villagers keep stock now, are told what is in their hands, and can sell it on
+even when it is not the sort of thing they usually deal in.
 
 **They take back what they sold you.** A villager's `buys` list is what they deal in as
 a trade — the innkeeper buys fish, meat and wheat — and does not include their own stock,

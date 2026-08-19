@@ -16,6 +16,8 @@ LG.LANGUAGES = {
   zh: {
     name: 'Chinese (Mandarin)', native: '中文', flag: '🇨🇳',
     romanize: true, romanLabel: 'pinyin',
+    // asking for "pinyin" alone got tone marks on some syllables and not others
+    romanNote: 'with tone marks on every syllable \u2014 n\u01d0 h\u01ceo, not ni hao',
     fontStack: "'Noto Sans SC', system-ui, sans-serif"
   },
   ja: {

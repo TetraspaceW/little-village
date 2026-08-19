@@ -208,6 +208,8 @@ LG.dialogue = (function () {
       lines.push('The traveller has ' + coins(LG.game.count('coins')) + ' on them.');
       lines.push('Offer your goods the way you would to any customer, and haggle if it suits you.');
       lines.push('If the traveller holds out their coins, that is them paying you — take the money and hand the goods over in the same breath.');
+      lines.push('Two things at once is still one sale: put both tags in "item" and the total in "price". Only list what you are actually handing over this turn.');
+      lines.push('If the traveller brings something back that you sold them, that is a "buy": take it and give them their money back.');
     }
 
     if (trade) {
@@ -247,8 +249,8 @@ LG.dialogue = (function () {
     if (trade) acts.push('trade');
     if (working) acts.push('sell', 'buy');
     if (working) {
-      lines.push('  "item": "the [tag] of the goods — only with sell or buy",');
-      lines.push('  "price": "the coins agreed, as a number — only with sell or buy",');
+      lines.push('  "item": "the [tag] of the goods, or a list of tags if it is more than one thing — only with sell or buy",');
+      lines.push('  "price": "the coins agreed for all of it together, as a number — only with sell or buy",');
     }
     lines.push('  "action": "' + acts.join(' | ') + '"');
     lines.push('}');

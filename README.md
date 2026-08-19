@@ -277,6 +277,30 @@ too, if it is the sort of thing they deal in. Prices come from what the item is,
 haggling is clamped either side of that, so a villager can be talked down but not
 robbed. Nobody trades at night, and nobody trades away from their counter.
 
+**A round of drinks is one sale.** A villager will happily say "beer and wine, that's
+six" — it is the natural way to sell two things — so `item` takes a list and `price` is
+the total for the lot. It used to be a single tag, which rang the whole thing up as one
+item at the two-item price: you paid for the round and got the beer. The price cap then
+made it worse by quietly trimming six coins to five, because five is the most a beer can
+cost. When the cap does bite it now says so, since being charged a number nobody in the
+conversation said is worse than either the villager's price or a refusal.
+
+**They take back what they sold you.** A villager's `buys` list is what they deal in as
+a trade — the innkeeper buys fish, meat and wheat — and does not include their own stock,
+so returning a beer she poured you five minutes ago found no price and did nothing at all
+while she cheerfully announced the refund. What each villager has sold you is now
+remembered, and comes back at what you actually paid rather than at a trade-in rate. The
+same one cannot be returned twice, and a beer she never sold you is not refundable at all.
+
+**And the villager is told what the till did.** They used to remember only "the traveller
+bought beer" — no price, no mention of the wine — so the next turn they did arithmetic
+from a half-memory and insisted you had three coins when you had five. What goes into
+their memory is now what actually happened, in coins, including what you have left. So is
+every refusal — not enough coins, nothing in your pockets to hand over, not a thing they
+deal in. Left to narrate unaided they describe the refund as done and are then baffled
+when you offer the beer again, which is exactly what happened: *"I already took the beer
+back! I gave you 2 coins back, remember?"*
+
 **Every village is a new errand.** A chain is generated per playthrough: someone wants
 a thing, someone else has it and wants something else, and the last link is something
 lying out in the world or an animal that has wandered off. The village's name (bottom of the

@@ -176,32 +176,124 @@ LG.game = (function () {
   /* --------------------------------------------------------------- shops
      The villager decides a sale has happened; this makes it real. Their price
      stands as long as it is not wild, because the haggling is the point. */
+  /* A sale, of one thing or of several.
+
+     A villager will happily say "beer and wine, that's six" — it is the natural
+     way to sell two things — so `item` accepts a list and `price` is the total
+     for the lot. It used to be a single tag, which meant a two-item sale was
+     rung up as one item at the two-item price: you paid for the round and got
+     the beer. */
+  /* A sale, of one thing or of several — and its reverse.
+
+     A villager will happily say "beer and wine, that's six", so `item` takes a
+     list and `price` is the total for the lot. It used to be a single tag, which
+     rang a two-item sale up as one item at the two-item price: you paid for the
+     round and got the beer.
+
+     They will also take back what they sold you. Their `buys` list is what they
+     deal in as a trade — the innkeeper buys fish and meat — and does not include
+     their own stock, so a refund on a beer she poured you five minutes ago found
+     no price and quietly did nothing while she said the coins were on their way.
+     What they sold you is remembered, and comes back at what you actually paid. */
   function commerce(npc, act, itemId, price) {
     const d = npc.def;
+    const coins = n => n + (n === 1 ? ' coin' : ' coins');
     if (!atWork(npc)) return false;
-    const id = String(itemId || '').replace(/[^\w]/g, '');
-    if (!LG.ITEMS[id] || id === 'coins') return false;
-    const base = act === 'sell'
-      ? priceFrom(d.sells, d.sellsTags, id, 1)
-      : priceFrom(d.buys, d.buysTags, id, 0.5);
-    if (!base) return false;
 
+    npc.sold = npc.sold || {};
+
+    /* A refusal has to reach the villager. Left to narrate unaided they will
+       describe the refund as done, and then be baffled when you offer the beer
+       again — they have no way of knowing the till disagreed with them. */
+    function refuse(note, shown) {
+      npc.memory.push(note);
+      log('¤ ' + (shown || note));
+      renderHUD();
+      return false;
+    }
+
+    // a list, or "beer, wine" written out as one string — both turn up
+    const asked = (Array.isArray(itemId) ? itemId : String(itemId || '').split(/[,;+]|\band\b/))
+      .map(x => String(x || '').replace(/[^\w]/g, ''))
+      .filter(x => x && x !== 'coins' && LG.ITEMS[x]);
+    if (!asked.length) return false;
+
+    const back = id => npc.sold[id] && npc.sold[id].n > 0 ? npc.sold[id] : null;
+    const priced = asked.map(id => {
+      if (act === 'sell') return { id: id, base: priceFrom(d.sells, d.sellsTags, id, 1) };
+      const owed = back(id);                       // returning something they sold you
+      return owed ? { id: id, base: owed.price, refund: true }
+                  : { id: id, base: priceFrom(d.buys, d.buysTags, id, 0.5) };
+    }).filter(w => w.base > 0);
+
+    /* Whether they have it comes before whether it has a price, or a villager
+       who plainly sells beer ends up saying she does not deal in beer when what
+       is actually missing is the beer. */
+    if (act === 'buy') {
+      const short = asked.filter(id => count(id) < 1);
+      if (short.length) {
+        const names = short.map(id => LG.ITEMS[id].en).join(' or ');
+        return refuse('The traveller does not actually have ' + names + ' to give you.',
+                      'You have no ' + names + ' to hand over.');
+      }
+    }
+
+    if (!priced.length) {
+      const names = asked.map(id => LG.ITEMS[id].en).join(' and ');
+      const theirs = asked.filter(id => priceFrom(d.sells, d.sellsTags, id, 1) > 0);
+      return theirs.length
+        ? refuse('That is not one you sold them, so there is nothing to refund.',
+                 d.name + ' did not sell you that ' + LG.ITEMS[theirs[0]].en + '.')
+        : refuse('You do not deal in ' + names + ', and said so.',
+                 d.name + ' does not deal in ' + names + '.');
+    }
+
+    const base = priced.reduce((n, w) => n + w.base, 0);
     let cost = Math.round(Number(price));
     if (!isFinite(cost) || cost < 0) cost = base;
-    cost = Math.max(Math.ceil(base * 0.4), Math.min(Math.ceil(base * 2.5), cost));  // a haggle, not a fleecing
 
+    // A haggle, not a fleecing — but when the band does bite, the player is
+    // charged a number nobody in the conversation said, so it is said out loud.
+    // A refund is not a haggle: it is the money back, exactly.
+    const refunding = priced.every(w => w.refund);
+    const asking = cost;
+    if (refunding) cost = base;
+    else cost = Math.max(Math.ceil(base * 0.4), Math.min(Math.ceil(base * 2.5), cost));
+
+    const names = priced.map(w => LG.ITEMS[w.id].full).join(' and ');
     if (act === 'sell') {
-      if (count('coins') < cost) return false;
+      if (count('coins') < cost) {
+        return refuse('The traveller could not afford that — they have ' +
+          coins(count('coins')) + ', and you asked for ' + coins(cost) + '.',
+          'Not enough coins for ' + names + ' (' + cost + ').');
+      }
       take('coins', cost);
-      give(id, 1);
-      log('\u00a4 Bought ' + LG.ITEMS[id].full + ' from ' + d.name + ' for ' + cost + '.');
+      priced.forEach(w => {
+        give(w.id, 1);
+        const share = Math.max(1, Math.round(cost * w.base / base));
+        npc.sold[w.id] = { price: share, n: (npc.sold[w.id] ? npc.sold[w.id].n : 0) + 1 };
+      });
     } else {
-      if (count(id) < 1) return false;
-      take(id, 1);
+      priced.forEach(w => {
+        take(w.id, 1);
+        if (w.refund && npc.sold[w.id]) npc.sold[w.id].n--;
+      });
       give('coins', cost);
-      log('\u00a4 Sold ' + LG.ITEMS[id].full + ' to ' + d.name + ' for ' + cost + '.');
     }
-    npc.memory.push('The traveller ' + (act === 'sell' ? 'bought ' : 'sold me ') + LG.ITEMS[id].en + '.');
+
+    if (asking !== cost) log('¤ ' + d.name + ' said ' + asking + ', the going rate is ' + cost + '.');
+    log('¤ ' + (act === 'sell' ? 'Bought ' : refunding ? 'Returned ' : 'Sold ') + names +
+        (act === 'sell' ? ' from ' : ' to ') + d.name + ' for ' + cost + '.');
+
+    /* What the villager remembers has to be what the game actually did, or they
+       do their own arithmetic from a half-memory and it drifts — quoting six,
+       being paid five, and insisting next turn that you have three left. */
+    npc.memory.push(act === 'sell'
+      ? 'You sold the traveller ' + names + ' for ' + coins(cost) + '. They have ' +
+        coins(count('coins')) + ' left.'
+      : (refunding ? 'The traveller returned ' + names + ' and you refunded '
+                   : 'You bought ' + names + ' from the traveller for ') + coins(cost) +
+        '. They now have ' + coins(count('coins')) + '.');
     renderHUD();
     return true;
   }

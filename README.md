@@ -662,7 +662,7 @@ js/dialogue.js   prompt building, the conversation UI, trades
 js/game.js       state, main loop, input, notebook, settings
 js/save.js       the one save format: snapshot, restore, and both places to put it
 tools/logserver.js  serves the game, hands over .env, collects the log, keeps the save
-tools/smoke.js      runs the whole game headlessly and checks it still works
+tests/smoke.js      runs the whole game headlessly and checks it still works
 ```
 
 Plain `<script>` tags and a global `LG` namespace — no modules, no bundler, so it
@@ -684,10 +684,10 @@ chocolat then of course she has one. That looseness is the point and is passed t
 untouched — the only hard fact is what she is holding because she took it off you, which
 is the thing she used to deny having.
 
-**The tests run the real game.** `node tools/smoke.js` loads every script in the order
+**The tests run the real game.** `node tests/smoke.js` loads every script in the order
 `index.html` loads it, into a fake browser, builds a village and ticks it for a hundred
 seconds with no API key — so what is being checked is the code that ships, not a copy of
-it. `node tools/smoke.js --prompts` prints every villager's system prompt for one fixed
+it. `node tests/smoke.js --prompts` prints every villager's system prompt for one fixed
 village; diffing that between two checkouts is the only reliable way to know a refactor
 left the model looking at the same words.
 

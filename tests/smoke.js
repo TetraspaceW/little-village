@@ -1,6 +1,6 @@
 /* smoke.js — run the real game headlessly and check it still works.
  *
- *   node tools/smoke.js
+ *   node tests/smoke.js
  *
  * The game is plain <script> tags: each file sets window.LG and then reads the
  * bare global LG, which only works when the two are the same object. A vm
@@ -113,7 +113,7 @@ const LG = sandbox.LG;
 sandbox.LG.game.init();
 if (LG.game.thoughts !== undefined) LG.game.thoughts = false;   // no narration in a test
 
-/* `node tools/smoke.js --prompts` prints every villager's system prompt for one
+/* `node tests/smoke.js --prompts` prints every villager's system prompt for one
    fixed village and stops. Two checkouts dumped this way diff cleanly, which is
    the only way to be sure a refactor left the model looking at the same words. */
 if (process.argv.indexOf('--prompts') !== -1) {

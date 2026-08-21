@@ -131,7 +131,10 @@ LG.dialogue = (function () {
   }
 
   /* -------------------------------------------------------- prompt build */
-  function systemPrompt(npc, offered) {
+  /* The prompt and the schema come out of one call because they come out of one
+     field list — see `fields` below. `systemPrompt` stays the string-returning
+     wrapper the tests and the prompt dump use. */
+  function buildReply(npc, offered) {
     const s = LG.game.settings;
     const L = LG.LANGUAGES[s.lang];
     const lvl = LG.LEVELS[s.level];
@@ -310,26 +313,54 @@ LG.dialogue = (function () {
       lines.push('What you say goes in "say" with the readings already in it.');
       lines.push(LG.FURIGANA);
     }
+    const acts = ['none'];
+    if (trade) acts.push('trade');
+    if (working) acts.push('sell', 'buy');
+
+    /* One list, three readers. The block the villager reads, the sentence naming
+       what is never omitted, and — where the provider will take one — the JSON
+       Schema that stops this being a matter of the model's judgement at all are
+       all rendered from the same array, so a field cannot be described in the
+       prompt and missing from the schema, or typed one way and explained
+       another. Which fields exist is a decision about the game; it is made once,
+       here. */
+    const fields = [
+      { k: 'say', always: true, type: { type: 'string' },
+        desc: 'what you say out loud, in ' + L.name +
+              (L.furigana ? ', with the furigana as above' : '') },
+      { k: 'translation', always: true, type: { type: 'string' },
+        desc: 'an English translation of exactly what you said' }
+    ];
+    if (L.romanize) fields.push({ k: 'roman', always: true, type: { type: 'string' },
+      desc: 'the ' + L.romanLabel + ' of what you said' +
+            (L.romanNote ? ', ' + L.romanNote : '') });
+    fields.push({ k: 'understood', always: true,
+      type: { type: 'string', enum: ['full', 'partial', 'none'] },
+      desc: 'full | partial | none — how much of what the traveller just said you actually understood' });
+    fields.push({ k: 'revealed', arr: true,
+      type: { type: 'array', items: { type: 'string' } },
+      desc: 'tags of any facts above that you plainly TOLD the traveller this turn — [] if none' });
+    fields.push({ k: 'remember', type: { type: ['string', 'null'] },
+      desc: 'OPTIONAL: one short English sentence stating a NEW fact you just learned from the traveller. Omit this unless you understood them.' });
+    if (working) {
+      /* commerce() already takes either a tag or a list, so the schema asks for
+         the list — one shape to check rather than two to allow. */
+      fields.push({ k: 'item', type: { type: ['array', 'null'], items: { type: 'string' } },
+        desc: 'the [tag] of the goods, or a list of tags if it is more than one thing — only with sell or buy' });
+      fields.push({ k: 'price', type: { type: ['number', 'null'] },
+        desc: 'the coins agreed for all of it together, as a number — only with sell or buy' });
+    }
+    fields.push({ k: 'action', type: { type: 'string', enum: acts },
+      desc: acts.join(' | ') });
+
     lines.push('');
     lines.push('# Reply format');
     lines.push('Reply with a single JSON object and nothing else:');
     lines.push('{');
-    lines.push('  "say": "what you say out loud, in ' + L.name +
-               (L.furigana ? ', with the furigana as above' : '') + '",');
-    lines.push('  "translation": "an English translation of exactly what you said",');
-    if (L.romanize) lines.push('  "roman": "the ' + L.romanLabel + ' of what you said' +
-      (L.romanNote ? ', ' + L.romanNote : '') + '",');
-    lines.push('  "understood": "full | partial | none — how much of what the traveller just said you actually understood",');
-    lines.push('  "revealed": ["tags of any facts above that you plainly TOLD the traveller this turn — [] if none"],');
-    lines.push('  "remember": "OPTIONAL: one short English sentence stating a NEW fact you just learned from the traveller. Omit this unless you understood them.",');
-    const acts = ['none'];
-    if (trade) acts.push('trade');
-    if (working) acts.push('sell', 'buy');
-    if (working) {
-      lines.push('  "item": "the [tag] of the goods, or a list of tags if it is more than one thing — only with sell or buy",');
-      lines.push('  "price": "the coins agreed for all of it together, as a number — only with sell or buy",');
-    }
-    lines.push('  "action": "' + acts.join(' | ') + '"');
+    fields.forEach((f, i) => {
+      const val = f.arr ? '["' + f.desc + '"]' : '"' + f.desc + '"';
+      lines.push('  "' + f.k + '": ' + val + (i < fields.length - 1 ? ',' : ''));
+    });
     lines.push('}');
     // (the word-reading rule lives in LG.FURIGANA now, with the rest of the spec)
     /* Which fields are never omitted, spelled out. Every field but "say" used to
@@ -345,9 +376,7 @@ LG.dialogue = (function () {
        session, which is what makes this the schema's fault rather than the
        model's. So: name the always-fields, and give "nothing happened" a
        spelling of its own so it does not have to be expressed by absence. */
-    const always = ['"say"', '"translation"'];
-    if (L.romanize) always.push('"roman"');
-    always.push('"understood"');
+    const always = fields.filter(f => f.always).map(f => '"' + f.k + '"');
     lines.push('Every reply carries ' + always.slice(0, -1).join(', ') + ' and ' +
                always[always.length - 1] + '. A one-word answer, a greeting, or ' +
                'explaining what a word means carries them just the same as a long ' +
@@ -362,11 +391,12 @@ LG.dialogue = (function () {
        says the tail is never dropped; this shows a reply that had nothing at all
        to report and still carries every field, which is the exact turn that was
        coming back bare. */
-    const ex = ['"say": "<your line, in ' + L.name + '>"',
-                '"translation": "<the same line, in English>"'];
-    if (L.romanize) ex.push('"roman": "<the ' + L.romanLabel + '>"');
-    ex.push('"understood": "full"', '"revealed": []',
-            '"action": "' + (acts.indexOf('none') === 0 ? 'none' : acts[0]) + '"');
+    const shown = { say: '"<your line, in ' + L.name + '>"',
+                    translation: '"<the same line, in English>"',
+                    roman: '"<the ' + L.romanLabel + '>"',
+                    understood: '"full"' };
+    const ex = fields.filter(f => f.always).map(f => '"' + f.k + '": ' + shown[f.k]);
+    ex.push('"revealed": []', '"action": "none"');
     lines.push('A turn where nothing at all happened — a greeting, a thank-you, ' +
                'telling them what a word means — still looks like this:');
     lines.push('{' + ex.join(', ') + '}');
@@ -379,8 +409,19 @@ LG.dialogue = (function () {
       lines.push('Set "action" to "trade" at the moment you actually hand over ' + (trade.gives === 'coins' ? 'the coins' : LG.ITEMS[trade.gives].full) + ', and not before.');
       lines.push('Someone holding an object out to you is a gesture you understand without words — but a gesture is not yet a bargain. If it is not clear what the two of you are exchanging, ask them before you take it. Once the exchange is plain to you both, take it and hand yours over in the same breath.');
     }
-    return lines.join('\n');
+    /* Every field is required and the optional ones are nullable, rather than
+       some being absent from `required`: that is the one shape both providers
+       accept, and it is also the shape that says what the prompt says — nothing
+       is omitted, and a turn with nothing to report spells that out as null, []
+       and "none". */
+    const props = {}, required = [];
+    fields.forEach(f => { props[f.k] = f.type; required.push(f.k); });
+    return { text: lines.join('\n'),
+             schema: { type: 'object', properties: props, required: required,
+                       additionalProperties: false } };
   }
+
+  function systemPrompt(npc, offered) { return buildReply(npc, offered).text; }
 
   function historyMessages(npc) {
     const msgs = [];
@@ -553,7 +594,8 @@ LG.dialogue = (function () {
       const cfg = LG.game.llmConfig();
       const msgs = historyMessages(npc);
       msgs.push({ role: 'user', content: shown || '[says nothing, just holds out the item]' });
-      reply = await LG.llm.speak(cfg, systemPrompt(npc, offered), msgs);
+      const built = buildReply(npc, offered);
+      reply = await LG.llm.speak(cfg, built.text, msgs, built.schema);
     } catch (err) {
       status('⚠ ' + err.message, 'error');
       busy = false; el.dlgSend.disabled = false;
@@ -909,7 +951,7 @@ LG.dialogue = (function () {
            get chatRunning() { return chatBusy; },
            isOpen: () => !!current, renderItems, addLine, status,
            settled: () => { const all = pending.splice(0); return Promise.all(all); },
-           _debugPrompt: systemPrompt, _rubyHTML: rubyHTML,
+           _debugPrompt: systemPrompt, _debugReply: buildReply, _rubyHTML: rubyHTML,
            _stripRuby: stripRuby, _rubyMatches: rubyMatches, _needsFurigana: needsFurigana,
            _looksEnglish: looksEnglish,
            rubyHTML: rubyHTML, _usableRuby: usableRuby };

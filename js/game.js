@@ -439,7 +439,7 @@ LG.game = (function () {
     resize();
     window.addEventListener('resize', resize);
 
-    if (settings.apiKey) { gated = false; }
+    if (settings.apiKey) { gated = false; LG.llm.probe(llmConfig()); }
     else { openSettings(true); }
     showChrome();
     loadVoices();
@@ -661,6 +661,8 @@ LG.game = (function () {
                       || next.voiceQuality !== settings.voiceQuality;
     Object.assign(settings, next);
     saveSettings();
+    // whether these models will take a schema is a fact about this pair; ask again
+    LG.llm.probe(llmConfig());
     document.getElementById('settings').classList.remove('open');
     btn.textContent = 'Save';
     renderHUD();

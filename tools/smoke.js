@@ -300,6 +300,50 @@ section('a finished errand stops being what they want');
   }
 }
 
+/* ------------------------------------------------------------ the reply schema
+   The prompt block and the JSON Schema are rendered from one field list, so the
+   thing worth checking is that they cannot disagree: every key the villager is
+   shown is a key the provider is told to enforce. The gate is checked too — a
+   model nobody has looked up must read as "no schema", because sending one to a
+   provider that cannot take it fails the whole request rather than being
+   ignored. */
+section('the prompt and the schema are the same list');
+{
+  const n = npcs[0];
+  const built = LG.dialogue._debugReply(n, null);
+  ok(typeof built.text === 'string' && built.text.length > 0, 'a prompt came back');
+  ok(LG.dialogue._debugPrompt(n, null) === built.text,
+     'and the string-returning wrapper is the same text');
+
+  const sc = built.schema;
+  ok(sc && sc.type === 'object', 'a schema came back');
+  ok(sc.additionalProperties === false, 'closed to fields nobody asked for');
+
+  // the keys the villager is actually shown, read back out of the block
+  const block = built.text.split('# Reply format')[1].split('}')[0];
+  const shown = [];
+  block.replace(/^ {2}"([a-z]+)":/gm, (m, k) => { shown.push(k); return m; });
+  ok(shown.length >= 6, 'the reply block names its fields');
+  ok(shown.every(k => k in sc.properties), 'every field shown is a field typed');
+  ok(shown.every(k => sc.required.indexOf(k) !== -1), 'and every one is required');
+  ok(Object.keys(sc.properties).every(k => shown.indexOf(k) !== -1),
+     'and nothing is typed that the villager was never shown');
+
+  ok(sc.properties.understood.enum.join() === 'full,partial,none', 'understood is an enum');
+  ok(sc.properties.action.enum.indexOf('none') !== -1, 'action can always be none');
+  const nullable = k => [].concat(sc.properties[k].type).indexOf('null') !== -1;
+  ok(nullable('remember'), 'the optional fields are nullable rather than absent');
+  ok(!nullable('say') && !nullable('translation'), 'and the ones that always come are not');
+}
+
+section('a model nobody has looked up gets no schema');
+{
+  ok(LG.llm.schemaOK({ provider: 'openrouter', model: 'nobody/never-heard-of-it' }) === false,
+     'unknown reads as no');
+  ok(LG.llm.schemaOK({ provider: 'anthropic', model: 'claude-opus-5' }) === false,
+     'and so does a real model that has not been probed in this session');
+}
+
 /* ------------------------------------------------------------------- saving
    One format, both ways round. What is checked here is that a village survives
    being written down and read back — not that localStorage works, but that

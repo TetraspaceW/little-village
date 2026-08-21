@@ -324,6 +324,29 @@ language. Villager-to-villager talk uses a separate `register` line instead, whi
 describes how plainly they speak rather than who they are speaking down to. At advanced
 it is empty: two natives with nobody to accommodate simply talk.
 
+**But overhearing is a mechanic, not scenery.** The beginner `register` ended *"— the
+way you talk when you are not thinking about it"*, which is an instruction to be
+unguarded, and it beat the plain-words clause in front of it every time: a beginner
+village gossiped in 蔫了, 白拿人家东西 and 回头再聊. What a register constrains is the
+words and the sentences, so that is all it names now. Who they are speaking to stays
+out of it, which is the whole reason it is not `prompt`.
+
+**A third way to simplify.** The player-facing rule offered two — easier words, shorter
+sentences — and then forbade the only other thing a model might try, breaking the
+grammar. That is the right thing to forbid and the wrong place to stop: where the
+natural phrasing of a thought needs a construction a beginner has no chance with, both
+permitted moves fail, and a beginner village asked for a pig back with 把…带回来 and
+offered a reward with 谁…就谁 — correct, short, and nowhere near a first day. What was
+never said is that the villager may simply say something else. They are not translating
+a fixed sentence; they are a person with something to get across, and choosing an easier
+thing to say is what a kind speaker actually does.
+
+Gone with it: *"use whatever tense the sentence actually needs"*. Tense is an
+Indo-European frame — Chinese has aspect and complements and no tense at all — so the
+clause constrained nothing and left *"simple grammar"* to be satisfied by a short
+sentence. No level is named in any of this on purpose: naming A1 or HSK 1 would put a
+syllabus in the villager's mouth, and they are not teachers.
+
 **A rule about grammar, not about length.** Villager-to-villager lines had no equivalent
 of the rule that keeps the player-facing ones from turning into telegrams, so a character
 written as *deliberate* produced 黄昏冷？ — which is not a sentence anyone says. The rule
@@ -508,6 +531,22 @@ encoded *buy the shell*, and the game took it off the traveller. Trades are writ
 till now, both sides of them, and a concluded deal says so in words rather than going
 quiet. Silence is not closure.
 
+**And a spent errand stops being what they want.** Finishing a trade turned over the
+deal block and nothing else. The goal sat next to it in the same assembly and did not,
+and the deal block only ever reaches the player-facing prompt — so the two calls that
+decide where a villager walks and what they say to each other were the two that never
+heard the errand had ended. Wren got his pig back, handed the teapot over, walked to
+the green to advertise the reward again, and asked where his pig was. A finished
+errand now leaves a villager the same plain-work line the generator already writes for
+everyone who never had a part in one, because that is what they are.
+
+Their facts go with it. Facts are dealt once at the start and nothing ever took one
+back, so Wren went on holding *Wren has a teapot* after trading the teapot away, and
+said so out loud. They retire on the same rule that already retires the player's note
+for that link — and only for the villager who was there. Anyone else who was told it
+believes it until somebody tells them otherwise, the same way nobody who never walks
+to the graveyard finds out the axe has gone; the memory left behind is how it travels.
+
 **You cannot sell the errand.** Villagers will not buy a link of the chain off you for
 coins, and they say so themselves rather than the game silently declining. Selling the
 pie the baker is waiting for to the innkeeper for three coins used to be one click away,
@@ -653,6 +692,41 @@ words you were told it — `ミラさんはのこぎりをさがしています�
 for a saw". The English gloss sits underneath, blurred until you click it, on the same
 terms as dialogue translations. The fact-checker below writes the note as part of the
 call it was already making.
+
+**And where the model will take a schema, it is not asked nicely.** Reading one
+session's logs turned up a third of the player-facing replies coming back as a bare
+`{"say": …}` — no English, no pinyin — every one of them a courtesy or a
+vocabulary gloss, which is to say every one a turn where the rest of the object was
+at its empty value. The prompt was the cause: every field but `say` carried a hedge
+(*OPTIONAL*, *only with sell or buy*, *[] if none*, *when in doubt leave it out*) and
+nothing said any field was mandatory, so the object read as mostly-optional and the
+tail got dropped. The villager-to-villager call, three fields and no hedges, was
+complete eighty-four times out of eighty-four in the same session.
+
+The prompt says which fields are never omitted now, and gives *nothing happened* a
+spelling of its own. But the stronger fix is to stop it being a matter of judgement:
+both providers will take a JSON Schema — Anthropic as `output_config.format`,
+OpenRouter as OpenAI's `response_format`, which the router translates to whatever
+backend it picks, so this is two branches rather than one per model.
+
+**It is asked once, and it fails closed.** Support is per endpoint, not per model,
+and OpenRouter *rejects* a request whose model has no structured outputs rather than
+ignoring the field — so sending one blindly would turn a reply that merely arrived
+thin into no reply at all. When the key is accepted the game looks the pair up —
+`capabilities.structured_outputs` on Anthropic, `supported_parameters` on OpenRouter
+— and remembers the answer. Anything it could not look up, could not reach, or does
+not recognise counts as no. `stealth/ox-alpha` is exactly that case today: it takes
+`response_format` for plain JSON mode but is not on the structured-outputs list, so
+it gets the prompt and the repair, the way everything did before.
+
+**The prompt block and the schema are one list.** They are rendered from the same
+array of fields, so a field cannot be described to the villager and missing from the
+schema, or typed one way and explained another — which is the drift that put three
+copies of a villager's prompt out of step once already. Every field is required and
+the optional ones are nullable rather than absent, because that is the one shape both
+providers accept and it is also the shape the prompt describes: nothing is omitted,
+and a turn with nothing to report says so with `null`, `[]` and `"none"`. Each entry
+in the log records whether it was shape-checked or only asked.
 
 **Replies are read forgivingly, but never shown raw.** Villagers answer in JSON, and
 models occasionally drop a quote or leave a trailing comma. The parser strips fences,

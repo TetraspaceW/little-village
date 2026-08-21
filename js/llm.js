@@ -80,13 +80,18 @@ LG.llm = (function () {
     return res.json();
   }
 
-  function anthropicBody(cfg, system, messages, maxTokens) {
+  function anthropicBody(cfg, system, messages, maxTokens, schema) {
     const body = { model: cfg.model, max_tokens: maxTokens, system, messages };
     if (SUPPORTS_EFFORT.test(cfg.model)) {
       // Snappy dialogue matters more than deep reasoning here. Disabling thinking
       // is allowed at effort "high" or below.
       body.thinking = { type: 'disabled' };
       body.output_config = { effort: 'low' };
+    }
+    // effort and format share the one object, so merge rather than assign
+    if (schema) {
+      body.output_config = Object.assign({}, body.output_config,
+        { format: { type: 'json_schema', schema: schema } });
     }
     return body;
   }
@@ -108,6 +113,73 @@ LG.llm = (function () {
       'HTTP-Referer': location.origin || 'https://localhost',
       'X-Title': 'Little Village Language Game'
     };
+  }
+
+  /* ------------------------------------------------------- can it take a schema
+
+     Asking a model for JSON and hoping is what this game did everywhere, and one
+     session's logs showed what that costs: a third of the player-facing replies
+     came back missing the fields that carry the English and the romanisation.
+     Both providers can be told the shape instead — Anthropic as
+     `output_config.format`, OpenRouter as OpenAI's `response_format` — and
+     OpenRouter translates the one shape to whatever its chosen backend speaks,
+     so this stays two branches rather than one per model.
+
+     What it cannot be is unconditional. Support is per endpoint, not per model:
+     OpenRouter rejects the request outright rather than ignoring the field, so
+     sending a schema to a model that has none turns a reply that merely arrived
+     thin into no reply at all. `stealth/ox-alpha` is exactly that case today —
+     it takes `response_format` for plain JSON mode but is not on the
+     structured-outputs list.
+
+     So it is asked once, when the key is accepted, and it fails closed: anything
+     we could not look up, could not reach, or do not recognise is treated as no
+     schema, and the prompt and the repair carry the turn the way they already
+     do. */
+  const SCHEMA_OK = {};                  // 'provider:model' -> true | false, resolved once
+  let orModels = null;                   // the OpenRouter list is one fetch for both models
+
+  async function getJSON(url, headers) {
+    const res = await fetch(url, { headers: headers || {} });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  }
+
+  function schemaKey(cfg, model) { return cfg.provider + ':' + model; }
+
+  /* Synchronous, so the send path never waits on it. Unknown reads as no. */
+  function schemaOK(cfg, model) {
+    return SCHEMA_OK[schemaKey(cfg, model || cfg.model)] === true;
+  }
+
+  async function probeOne(cfg, model) {
+    const key = schemaKey(cfg, model);
+    if (key in SCHEMA_OK) return SCHEMA_OK[key];
+    SCHEMA_OK[key] = false;                            // stands unless we learn otherwise
+    try {
+      if (cfg.provider === 'anthropic') {
+        const m = await getJSON('https://api.anthropic.com/v1/models/' +
+                                encodeURIComponent(model), anthropicHeaders(cfg));
+        const c = m && m.capabilities && m.capabilities.structured_outputs;
+        SCHEMA_OK[key] = !!(c && c.supported);
+      } else {
+        if (!orModels) orModels = getJSON('https://openrouter.ai/api/v1/models');
+        const d = await orModels;
+        const m = (d.data || []).find(x => x.id === model);
+        SCHEMA_OK[key] = !!m && (m.supported_parameters || []).indexOf('structured_outputs') !== -1;
+      }
+    } catch (e) {
+      orModels = null;                                 // a failed list should not poison a later look
+    }
+    return SCHEMA_OK[key];
+  }
+
+  /* Both models, one round of lookups, at the door. Never throws: not knowing is
+     a supported answer. */
+  async function probe(cfg) {
+    if (!cfg || !cfg.provider) return;
+    try { await Promise.all([probeOne(cfg, cfg.model), probeOne(cfg, helperModel(cfg))]); }
+    catch (e) { /* fails closed on its own */ }
   }
 
   /* ---------------------------------------------------------------- audit
@@ -170,6 +242,8 @@ LG.llm = (function () {
       reasoning: (res && res.reasoning) || null,
       usage: (res && res.usage) || null,
       stop: (res && res.stop) || null,
+      // whether this one was shape-checked by the provider or only asked nicely
+      schema: !!(res && res.schema),
       // A reasoning model can spend the whole budget thinking and never get to the
       // JSON. That comes back as an empty-handed success, so it is called out.
       truncated: !!(res && (res.stop === 'max_tokens' || res.stop === 'length')),
@@ -223,12 +297,17 @@ LG.llm = (function () {
     }
   }
 
-  async function anthropicCall(cfg, system, messages) {
-    return audited(cfg, system, messages, () => anthropicSend(cfg, system, messages));
+  /* A caller hands over the shape it wants and stays out of the question of
+     whether this model can be told it — the gate lives here, in the one place
+     all the traffic already goes through. */
+  async function anthropicCall(cfg, system, messages, schema) {
+    const s = (schema && schemaOK(cfg, cfg.model)) ? schema : null;
+    return audited(cfg, system, messages, () => anthropicSend(cfg, system, messages, s));
   }
 
-  async function openrouterCall(cfg, system, messages) {
-    return audited(cfg, system, messages, () => openrouterSend(cfg, system, messages));
+  async function openrouterCall(cfg, system, messages, schema) {
+    const s = (schema && schemaOK(cfg, cfg.model)) ? schema : null;
+    return audited(cfg, system, messages, () => openrouterSend(cfg, system, messages, s));
   }
 
   function dump() {
@@ -244,22 +323,28 @@ LG.llm = (function () {
     ).join('\n\n');
   }
 
-  async function anthropicSend(cfg, system, messages) {
+  async function anthropicSend(cfg, system, messages, schema) {
     const data = await post('https://api.anthropic.com/v1/messages',
-      anthropicHeaders(cfg), anthropicBody(cfg, system, messages, 700));
+      anthropicHeaders(cfg), anthropicBody(cfg, system, messages, 700, schema));
     if (data.stop_reason === 'refusal') throw new Error('The model declined to answer that.');
     const blocks = data.content || [];
     return { text: blocks.filter(b => b.type === 'text').map(b => b.text).join(''),
              // the model's own working, when it shows any — this is the interesting half
              reasoning: blocks.filter(b => b.type === 'thinking' || b.type === 'redacted_thinking')
                               .map(b => b.thinking || '[redacted]').join('\n') || null,
-             usage: data.usage || null, stop: data.stop_reason || null };
+             usage: data.usage || null, stop: data.stop_reason || null,
+             schema: !!schema };
   }
 
-  async function openrouterSend(cfg, system, messages) {
+  async function openrouterSend(cfg, system, messages, schema) {
+    const body = { model: cfg.model,
+                   messages: [{ role: 'system', content: system }].concat(messages) };
+    if (schema) {
+      body.response_format = { type: 'json_schema',
+                               json_schema: { name: 'reply', strict: true, schema: schema } };
+    }
     const data = await post('https://openrouter.ai/api/v1/chat/completions',
-      openrouterHeaders(cfg),
-      { model: cfg.model, messages: [{ role: 'system', content: system }].concat(messages) });
+      openrouterHeaders(cfg), body);
     if (data.error) throw new Error(data.error.message || 'OpenRouter error');
     const choice = (data.choices || [])[0] || {};
     const m = choice.message || {};
@@ -272,7 +357,8 @@ LG.llm = (function () {
         ? m.reasoning_details.map(d => d.text || d.summary || '').filter(Boolean).join('\n')
         : null);
     return { text: m.content || '', reasoning: think || null,
-             usage: data.usage || null, stop: choice.finish_reason || null };
+             usage: data.usage || null, stop: choice.finish_reason || null,
+             schema: !!schema };
   }
 
   /* A minimal round trip, so a bad key or a blocked origin is caught at the
@@ -713,10 +799,10 @@ LG.llm = (function () {
   }
 
   /* Returns the parsed JSON object the character replied with. */
-  async function speak(cfg, system, messages) {
+  async function speak(cfg, system, messages, schema) {
     const raw = cfg.provider === 'anthropic'
-      ? await anthropicCall(cfg, system, messages)
-      : await openrouterCall(cfg, system, messages);
+      ? await anthropicCall(cfg, system, messages, schema)
+      : await openrouterCall(cfg, system, messages, schema);
     const obj = parseJSON(raw);
     if (!obj || !obj.say) {
       // Never put a brace in a villager's mouth — let the caller report a failure.
@@ -731,5 +817,5 @@ LG.llm = (function () {
   return { MODELS, HELPERS, VERIFIER, helperModel, speak, judge, furigana, gloss, converse, intent, recall,
            get transcript() { return transcript; }, dump,
            get audit() { return audit; }, set audit(v) { audit = !!v; }, confirmTrade,
-           validate, parseJSON, repairJSON, salvage };
+           validate, probe, schemaOK, parseJSON, repairJSON, salvage };
 })();

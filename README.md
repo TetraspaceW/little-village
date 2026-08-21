@@ -271,6 +271,21 @@ weather broke, they learned something — so a settled villager costs nothing, a
 a cooldown so a busy village cannot spin. With no key, or when a call fails, the old
 table is still there as a fallback, so the village never stands still.
 
+**Snow settles, and then it lies there.** The weather is what is falling; snow that
+has fallen is a separate number that builds while it snows, holds through a hard frost,
+and melts at a rate the season sets — a winter can stay white across three changes of
+weather, and a thaw takes a couple of minutes rather than a frame. It is not a white
+wash over the finished picture: the ground goes white in drifts that spread and join
+up, trees carry it on the canopy and keep their green underneath, fences and benches
+and gravestones take it along the top, the pond goes to ice and the fountain stops
+running. What holds it least is the streets, which are walked all day — under the
+deepest fall the lanes are still there as pale bands through the white, because a
+village you cannot navigate is worse than a village that is not quite white enough.
+Roofs take it first and hold it longest, but never all the way: eleven identical white
+rectangles is not a village either. Villagers can see it too — the depth goes into
+their prompt, so a clear morning over a white village does not have them talking as
+though the snow had gone.
+
 **They keep hours too.** The pull of the village green rises to midday and thins by
 dusk; at night everyone is home, and nobody stands about on the green in a blizzard.
 When two of them meet they stop, turn to face each other, and actually talk — a real
@@ -429,6 +444,30 @@ encoded *buy the shell*, and the game took it off the traveller. Trades are writ
 till now, both sides of them, and a concluded deal says so in words rather than going
 quiet. Silence is not closure.
 
+**You cannot sell the errand.** Villagers will not buy a link of the chain off you for
+coins, and they say so themselves rather than the game silently declining. Selling the
+pie the baker is waiting for to the innkeeper for three coins used to be one click away,
+and short of buying it back at her price with the coins she had just handed over, the
+errand was over with nothing anywhere to say so. Trading is untouched — that is how the
+chain is meant to move, and a trade always hands you something back.
+
+**The shop shuts in the small hours, and now somebody mentions it.** Trade goes with a
+villager all day, and only the small hours close it. That rule was enforced by refusing
+the sale and telling nobody: Mikhalych took two coins for a cup of tea at midnight,
+twice, described handing it over both times, and the game turned both down without a
+word to either party — the tea never existed and neither did the payment. A villager
+who is shut now knows they are shut before they offer, and if a sale is claimed anyway
+the refusal goes into their till where they can read it.
+
+What it tells them is that their trade is shut until morning, and then it stops. The
+first draft of that line told them not to offer, not to name a price and not to take the
+money, and added that they would like the custom — three failure modes named out loud
+and a feeling issued to a character who came with one. The same rule applies to the
+refusal notes: they say what the till did, not what the villager should say about it. A
+note reading *"the traveller is carrying that for somebody, tell them they will need it"*
+is a line written for someone whose whole job is writing their own, and it asserts
+something about the traveller's business that the villager has no way of knowing.
+
 **And nothing is exchanged for nothing.** An explicit price of zero is not a haggle, it is
 a villager narrating rather than dealing — and the haggle band would quietly round it up
 to a coin, which is how goods changed hands in a sale nobody meant to make.
@@ -543,6 +582,26 @@ agreed. It defaults to Haiku 4.5 on either provider and is pickable in settings
 (OpenRouter offers MiMo-V2.5, Gemini Flash, GPT-4.1 mini, GLM-5.2, Ox Alpha), with an **Other**
 box for any id the picker does not list yet. Cheap and literal-minded beats clever
 here; it is answering yes/no questions about a transcript.
+
+**A lead you have already followed arrives ticked off.** The one thing in an errand
+that stops being true while you play is the thing lying out in the world, because you
+pick it up. The note saying where it was is struck through when you do — and if you find
+it before anyone tells you about it, the note arrives struck through, rather than sending
+you back across the village to fetch what is already in your pocket. It stays in the
+notebook either way: a line that vanishes reads as a bug, and you lose the record of who
+told you.
+
+**And the village finds out the same way you would.** Facts are dealt once, at the start,
+so a villager told there was an axe in the graveyard would go on saying so all session.
+Now, if they walk to the spot themselves and it is plainly not there, they stop believing
+it and remember why — which they can then pass on. Nobody who never goes there ever finds
+out, which is right: it is the difference between knowing and having looked.
+
+What goes into their memory is what they saw: *"you went in the graveyard yourself and
+there was no axe there"*. It first said *"somebody has had it away"*, which hands them a
+theft they did not witness — and, this being the village where a baker's turn of phrase
+became a rice merchant, a supplied conclusion is exactly the kind of thing that gets
+passed on as a fact. They looked, and it was not there. What they make of that is theirs.
 
 **Notes are nominated, then fact-checked.** A villager's prompt lists their facts with
 tags, and their reply nominates the tags it thinks it just revealed. That report alone

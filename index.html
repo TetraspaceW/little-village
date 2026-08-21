@@ -78,13 +78,18 @@
       </div>
 
       <label>Language the villagers speak
+        <!-- Each option ends in its own language's name for itself, and an
+             <option> cannot hold a tag to mark just that half, so the whole
+             row carries the language. It is the endonym that needs it: 中文
+             and 日本語 share characters and only the tag says which font
+             draws them. The English half is unharmed by riding along. -->
         <select id="setLang">
-          <option value="ru">🇷🇺 Russian — Русский</option>
-          <option value="en">🇬🇧 English</option>
-          <option value="zh">🇨🇳 Chinese (Mandarin) — 中文</option>
-          <option value="ja">🇯🇵 Japanese — 日本語</option>
-          <option value="fr">🇫🇷 French — Français</option>
-          <option value="es">🇪🇸 Spanish — Español</option>
+          <option value="ru" lang="ru">🇷🇺 Russian — Русский</option>
+          <option value="en" lang="en">🇬🇧 English</option>
+          <option value="zh" lang="zh-Hans">🇨🇳 Chinese (Mandarin) — 中文</option>
+          <option value="ja" lang="ja">🇯🇵 Japanese — 日本語</option>
+          <option value="fr" lang="fr">🇫🇷 French — Français</option>
+          <option value="es" lang="es">🇪🇸 Spanish — Español</option>
         </select>
       </label>
 

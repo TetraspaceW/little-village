@@ -142,10 +142,12 @@ LG.game = (function () {
     const L = LG.LANGUAGES[settings.lang];
     const heard = (ruby && L.furigana) ? LG.dialogue.rubyHTML(ruby) : escapeHTML(said);
     let html = '<span class="who">\uD83D\uDC42 ' + escapeHTML(name) + ':</span> ' +
-               '<span class="heard"' + (ruby && L.furigana ? ' style="line-height:2"' : '') +
+               '<span class="heard" lang="' + L.tag + '"' +
+               (ruby && L.furigana ? ' style="line-height:2"' : '') +
                '>' + heard + '</span>';
-    if (roman && L.romanize) html += '<span class="roman">' + escapeHTML(roman) + '</span>';
-    if (gloss) html += '<span class="gloss hidden-tr" title="click to read">' +
+    if (roman && L.romanize) html += '<span class="roman" lang="' + L.romanTag + '">' +
+                                     escapeHTML(roman) + '</span>';
+    if (gloss) html += '<span class="gloss hidden-tr" lang="en" title="click to read">' +
                        escapeHTML(gloss) + '</span>';
     pushLog(html);
   }
@@ -158,23 +160,24 @@ LG.game = (function () {
     const purse = document.getElementById('purse');
     if (purse) purse.textContent = '\u00a4' + (state.inv.coins || 0);
     const inv = document.getElementById('inv');
+    const L = LG.LANGUAGES[settings.lang];
     const ks = Object.keys(state.inv).filter(k => state.inv[k] > 0 && k !== 'coins');
     inv.innerHTML = ks.length
       ? ks.map(k => '<span class="pill" title="' + LG.ITEMS[k].en + '">' + LG.ITEMS[k].icon +
-          ' ' + escapeHTML(itemLabel(k)) + (state.inv[k] > 1 ? ' ×' + state.inv[k] : '') + '</span>').join('')
+          ' <span lang="' + L.tag + '">' + escapeHTML(itemLabel(k)) +
+          (state.inv[k] > 1 ? ' ×' + state.inv[k] : '') + '</span></span>').join('')
       : '<span class="muted">empty pockets</span>';
 
     const nb = document.getElementById('notebook');
-    const L = LG.LANGUAGES[settings.lang];
     const rows = state.deeds.map(d => '<div class="q done">✔ ' + escapeHTML(d) + '</div>')
       .concat(state.notes.map(n => {
         const heard = (n.ruby && L.furigana) ? LG.dialogue.rubyHTML(n.ruby) : escapeHTML(n.text);
         const gloss = plan.facts[n.id].text;
         const hide = settings.showTranslation ? '' : ' hidden-tr';
-        return '<div class="q' + (n.done ? ' done' : '') + '"><span class="heard"' +
-               (L.furigana && n.ruby ? ' style="line-height:2"' : '') +
+        return '<div class="q' + (n.done ? ' done' : '') + '"><span class="heard" lang="' +
+               L.tag + '"' + (L.furigana && n.ruby ? ' style="line-height:2"' : '') +
                '>' + (n.done ? '\u2714 ' : '\u2022 ') + heard + '</span>' +
-               '<span class="gloss' + hide + '" title="' + escapeHTML(gloss) + '">' +
+               '<span class="gloss' + hide + '" lang="en" title="' + escapeHTML(gloss) + '">' +
                escapeHTML(gloss) + '</span></div>';
       }));
     nb.innerHTML = rows.length ? rows.join('')
@@ -233,8 +236,7 @@ LG.game = (function () {
        already described handing over the tea and taking the two coins, and
        nothing in the game or the conversation ever said otherwise. */
     if (!atWork(npc)) {
-      return refuse('It is the middle of the night and you are not trading — whatever ' +
-                    'you just said, nothing changed hands. They can come back in the morning.',
+      return refuse('It is the middle of the night and you are not trading, so nothing changed hands.',
                     d.name + ' is not trading at this hour — nothing changed hands.');
     }
 
@@ -294,14 +296,17 @@ LG.game = (function () {
        buying it back off her — at her price, with the coins she just gave you —
        the errand was over with no way to tell that it was. A trade is a
        different thing and still works: that is how the chain is meant to move.
-       Refusing is on the villager's side of it, so they say so themselves. */
+
+       The note says what the till did and stops there. It used to say the
+       traveller was carrying it for somebody and to tell them they would need
+       it, which is a line written for the villager and a fact about the
+       traveller's business that this villager has no way of knowing. */
     if (act === 'buy') {
       const spoken = asked.filter(neededForChain);
       if (spoken.length) {
         const names = spoken.map(id => LG.ITEMS[id].en).join(' and ');
-        return refuse('The traveller is carrying that ' + names + ' for somebody. Say you will ' +
-                      'not take it off them for money — they will need it.',
-                      d.name + ' will not buy the ' + names + ' — you need it for the errand.');
+        return refuse('The ' + names + ' did not change hands: that is not one you buy off them.',
+                      d.name + ' will not buy the ' + names + ' — it is part of the errand.');
       }
     }
 
@@ -824,10 +829,15 @@ LG.game = (function () {
     if (i === -1) return;
     if (!nearRect(n, plan.terminal.rect, 3)) return;
     n.facts.splice(i, 1);
+    /* What they saw, and only that. "Somebody has had it away" was the first
+       version, which hands them a theft they did not witness and would go into
+       the next conversation as something they know. They looked, and it was not
+       there; what they make of that is theirs. */
     const t = plan.terminal;
-    const what = t.isBeast ? t.beastName : LG.ITEMS[t.item].full;
-    const line = 'You went ' + t.placeText + ' yourself and ' + what +
-                 ' was not there — somebody has had it away.';
+    const line = t.isBeast
+      ? 'You went ' + t.placeText + ' yourself and ' + t.beastName + ' was not there.'
+      : 'You went ' + t.placeText + ' yourself and there was no ' +
+        LG.ITEMS[t.item].en + ' there.';
     if (n.memory.indexOf(line) === -1) n.memory.push(line);
     think(n, 'finds nothing there', t.placeText);
   }

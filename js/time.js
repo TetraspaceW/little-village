@@ -149,9 +149,12 @@ LG.time = (function () {
     const line = 'It is ' + phase().name + ' of day ' + dayOfSeason() + ' of ' + s.name +
                  ', ' + s.warmth + '. Outside: ' + w.talk + '.';
     /* What is lying is not what is falling: a clear winter morning over a white
-       village should not have them talking as though the snow had gone. */
-    const under = lying > 0.5 ? ' There is snow lying over everything.'
-                : lying > 0.12 ? ' There is old snow still lying in patches.' : '';
+       village should not have them talking as though the snow had gone. The
+       depth, and nothing read into it — "over everything" is a flourish and
+       "old snow" dates it, and both are the sort of thing a villager should be
+       arriving at rather than being handed. */
+    const under = lying > 0.5 ? ' There is snow lying on the ground.'
+                : lying > 0.12 ? ' There is snow lying in patches on the ground.' : '';
     const dull = !w.particles;                 // nothing falling, so nothing to remark on
     return (dull ? line + ' ' + s.note : line) + under;
   }

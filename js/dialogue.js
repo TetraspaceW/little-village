@@ -218,11 +218,6 @@ LG.dialogue = (function () {
       }
       lines.push('The traveller has ' + coins(LG.game.count('coins')) + ' on them.');
 
-      /* The till: what the game actually did, as its own record rather than
-         buried in the conversational memory. A villager who can read this can
-         work out for themselves that they were paid for two drinks and handed
-         over one — which is the sort of thing a shopkeeper does without needing
-         a rule written for it. */
       lines.push('Offer your goods the way you would to any customer, and haggle if it suits you.');
       lines.push('If the traveller holds out their coins, that is them paying you — take the money and hand the goods over in the same breath.');
       lines.push('Two things at once is still one sale: put both tags in "item" and the total in "price". Only list what you are actually handing over this turn.');
@@ -230,19 +225,26 @@ LG.dialogue = (function () {
       /* The small hours are the one time the shop is shut, and saying nothing
          about it left them selling anyway: Mikhalych took two coins for a cup of
          tea at midnight, twice, and the game turned both down without a word to
-         either party. If they cannot trade they have to know it. */
+         either party. If they cannot trade they have to know it.
+
+         Their situation, and nothing else. The first version of this told them
+         not to offer, not to name a price and not to take the money, and added
+         that they would like the custom — which is three failure modes named out
+         loud and a feeling issued to a character who already has one. What they
+         do about being shut is theirs. */
       lines.push('');
       lines.push('# Your trade');
-      lines.push('It is the middle of the night. You are not selling anything to anybody until ' +
-                 'morning — do not offer, do not name a price, and do not take their money, ' +
-                 'however much you would like the custom. Tell them to come back in the morning.');
+      lines.push('It is the middle of the night. Your trade is shut until morning.');
     }
 
     {
       /* The till: what the game actually did, as its own record rather than
-         buried in the conversational memory. Outside the block above on purpose
-         — a villager who has just been told a sale did not go through needs to
-         read that whether or not they are open for business. */
+         buried in the conversational memory. A villager who can read this can
+         work out for themselves that they were paid for two drinks and handed
+         over one — which is the sort of thing a shopkeeper does without needing
+         a rule written for it. It sits outside the block above on purpose: a
+         villager who has just been told a sale did not go through needs to read
+         that whether or not they are open for business. */
       const till = (npc.till || []).slice(-8);
       if (till.length) {
         lines.push('');
@@ -345,10 +347,15 @@ LG.dialogue = (function () {
 
   /* ---------------------------------------------------------------- UI */
   function open(npc) {
+    const L = LG.LANGUAGES[LG.game.settings.lang];
     current = npc;
     npc.frozen = true;
     npc.metPlayer = true;
     el.dlg.classList.add('open');
+    /* The player types the village's language into this box, so it is tagged
+       as that: it is what an IME keys off, and what stops a browser's English
+       spellchecker underlining every word the player gets right. */
+    el.dlgInput.lang = L.tag;
     el.dlgName.textContent = npc.def.name;
     el.dlgRole.textContent = npc.def.job;
     el.dlgAvatar.textContent = npc.def.emoji;
@@ -388,19 +395,27 @@ LG.dialogue = (function () {
 
   function addLine(who, text, translation, roman, ruby, npc) {
     const s = LG.game.settings;
+    const L = LG.LANGUAGES[s.lang];
     const row = document.createElement('div');
     row.className = 'line ' + who;
     const bub = document.createElement('div');
     bub.className = 'bub';
     const main = document.createElement('div');
     main.className = 'main';
-    if (ruby && LG.LANGUAGES[s.lang].furigana) {
+    if (ruby && L.furigana) {
       main.innerHTML = rubyHTML(ruby);
       main.classList.add('has-ruby');
     } else {
       main.textContent = text;
     }
-    if (who === 'npc') main.style.fontFamily = LG.LANGUAGES[s.lang].fontStack;
+    /* Three lines in three languages sit in this bubble, so each is tagged
+       rather than the bubble around them: the spoken line is the village's,
+       the romanisation is the same language in Latin letters, and the gloss
+       is English. Both sides of the conversation are in the village language
+       — the player is typing it too — so the tag goes on either speaker,
+       even though only the villager gets the font. */
+    main.lang = L.tag;
+    if (who === 'npc') main.style.fontFamily = L.fontStack;
     bub.appendChild(main);
     if (who === 'npc' && npc && s.voices && LG.tts.state === 'ready') {
       const say = document.createElement('button');
@@ -413,12 +428,14 @@ LG.dialogue = (function () {
     // both gloss lines exist from the start so a late repair can fill them in
     const r = document.createElement('div');
     r.className = 'roman';
+    r.lang = L.romanTag;
     r.textContent = roman || '';
     r.style.display = roman ? '' : 'none';
     bub.appendChild(r);
 
     const tr = document.createElement('div');
     tr.className = 'trans' + (s.showTranslation ? '' : ' hidden-tr');
+    tr.lang = 'en';
     tr.textContent = translation || '';
     tr.title = s.showTranslation ? '' : 'click to reveal';
     tr.onclick = () => tr.classList.remove('hidden-tr');
@@ -440,6 +457,7 @@ LG.dialogue = (function () {
       b.className = 'chip';
       if (s.lang === 'ja' && p.jaRuby) { b.innerHTML = rubyHTML(p.jaRuby); b.classList.add('has-ruby'); }
       else b.textContent = p[s.lang] || p.en;
+      b.lang = LG.LANGUAGES[s.lang].tag;
       b.style.fontFamily = LG.LANGUAGES[s.lang].fontStack;
       b.title = p.en;
       b.onclick = () => { el.dlgInput.value = p[s.lang] || p.en; el.dlgInput.focus(); };
@@ -459,8 +477,9 @@ LG.dialogue = (function () {
     keys.forEach(k => {
       const b = document.createElement('button');
       b.className = 'chip item';
-      b.innerHTML = LG.ITEMS[k].icon + ' <span>' + itemName(k, s.lang) +
-        (inv[k] > 1 ? ' ×' + inv[k] : '') + '</span>';
+      // the icon is an emoji and the tooltip is English; only the name is theirs
+      b.innerHTML = LG.ITEMS[k].icon + ' <span lang="' + LG.LANGUAGES[s.lang].tag + '">' +
+        itemName(k, s.lang) + (inv[k] > 1 ? ' ×' + inv[k] : '') + '</span>';
       b.title = 'Offer your ' + LG.ITEMS[k].en;
       b.onclick = () => send('', k);
       el.dlgItems.appendChild(b);

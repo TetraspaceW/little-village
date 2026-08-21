@@ -3,18 +3,34 @@
    Plain <script> (no modules) so the game runs from file:// by double-click. */
 window.LG = window.LG || {};
 
+/* `tag` and `romanTag` are BCP-47, and they are what goes in the `lang`
+   attribute wherever a villager's words reach the page. A font stack is a
+   request; `lang` is the fact, and the browser needs the fact: Han characters
+   are shared between Chinese and Japanese but drawn differently in each, so an
+   untagged 直 gets whichever of the two the browser happened to reach for. It
+   also tells the line breaker, the spellchecker, an IME and a screen reader
+   which language they are looking at — none of which a font can say.
+
+   `zh-Hans` rather than plain `zh` because the village writes simplified, and
+   `zh` alone leaves the browser to guess between the two scripts. The `-Latn`
+   tags mark a romanisation for what it is: the same language written in Latin
+   letters. Pinyin is still Chinese, just not in its own script — and tagging it
+   `en` would invite an English spellchecker to underline every syllable. */
 LG.LANGUAGES = {
   ru: {
     name: 'Russian', native: 'Русский', flag: '🇷🇺',
+    tag: 'ru', romanTag: 'ru-Latn',
     romanize: false, romanLabel: 'transliteration',
     fontStack: "'Noto Sans', system-ui, sans-serif"
   },
   en: {
     name: 'English', native: 'English', flag: '🇬🇧',
+    tag: 'en', romanTag: 'en',
     romanize: false, fontStack: "system-ui, sans-serif"
   },
   zh: {
     name: 'Chinese (Mandarin)', native: '中文', flag: '🇨🇳',
+    tag: 'zh-Hans', romanTag: 'zh-Latn',
     romanize: true, romanLabel: 'pinyin',
     // asking for "pinyin" alone got tone marks on some syllables and not others
     romanNote: 'with tone marks on every syllable \u2014 n\u01d0 h\u01ceo, not ni hao',
@@ -22,15 +38,18 @@ LG.LANGUAGES = {
   },
   ja: {
     name: 'Japanese', native: '日本語', flag: '🇯🇵',
+    tag: 'ja', romanTag: 'ja-Latn',
     furigana: true,
     fontStack: "'Noto Sans JP', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', system-ui, sans-serif"
   },
   fr: {
     name: 'French', native: 'Français', flag: '🇫🇷',
+    tag: 'fr', romanTag: 'fr',
     romanize: false, fontStack: "system-ui, sans-serif"
   },
   es: {
     name: 'Spanish', native: 'Español', flag: '🇪🇸',
+    tag: 'es', romanTag: 'es',
     romanize: false, fontStack: "system-ui, sans-serif"
   }
 };

@@ -100,12 +100,12 @@ LG.LEVELS = {
   beginner: {
     label: 'Beginner (A1)', spread: 2, taper: 0, gossip: 1, deliver: false, speed: 0.75,
     register: 'Short sentences built from the most common everyday words. No idiom, no slang, no dialect colour.',
-    prompt: 'Speak the way a kind native speaker speaks to someone on their first day: short, complete sentences built from the most common everyday words, about the here and now. Stick to simple grammar, but use whatever tense the sentence actually needs. No idioms, no slang, nothing literary.'
+    prompt: 'Speak the way a kind native speaker speaks to someone on their first day — someone with a few hundred words, picking the rest up from what is in front of them: short, complete sentences built from the most common everyday words, about the here and now. One idea to a sentence, in the plainest construction your language has for it. No idioms, no slang, nothing literary.'
   },
   intermediate: {
     label: 'Intermediate (A2–B1)', spread: 1, taper: 1, gossip: 0.5, deliver: true, speed: 0.85,
     register: 'Ordinary everyday speech in plain words. Go light on idiom; nothing literary or obscure.',
-    prompt: 'Speak simply but easily, the way you would to someone who can hold a conversation but still gropes for words. Everyday vocabulary, ordinary sentence structures, any tense you need. Go light on idiom and avoid rare or literary words.'
+    prompt: 'Speak simply but easily, the way you would to someone who can hold a conversation but still gropes for words. Everyday vocabulary, ordinary sentence structures, whatever the sentence actually needs to be correct. Go light on idiom and avoid rare or literary words.'
   },
   advanced: {
     label: 'Advanced (B2+)', spread: 0.5, taper: 1, gossip: 0, deliver: true, speed: 0.95,

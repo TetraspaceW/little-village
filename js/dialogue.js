@@ -177,7 +177,18 @@ LG.dialogue = (function () {
     lines.push('');
     lines.push('# How to speak');
     lines.push('Speak only in ' + L.name + '. ' + lvl.prompt);
-    lines.push('Simplify by choosing easier words and shorter sentences, never by breaking the grammar — the traveller learns by copying you, so what you say has to be worth copying.');
+    /* The third lever is the one that was missing. This line used to offer only
+       two — easier words, shorter sentences — and then forbade the third thing a
+       model might have tried, breaking the grammar. That is the right thing to
+       forbid and the wrong place to stop, because in a language where the
+       natural phrasing of a thought needs a construction the traveller has no
+       chance with, both permitted moves fail: a beginner village asked for a pig
+       back with 把…带回来 and offered a reward with 谁…就谁, which are correct,
+       short, and nowhere near a first day. What was never said is that the
+       villager may simply say something else. They are not translating a fixed
+       sentence; they are a person with something to get across, and choosing an
+       easier thing to say is what a kind speaker actually does. */
+    lines.push('Simplify by choosing easier words, shorter sentences, and simpler things to say — never by breaking the grammar. Where saying what you mean would take more grammar than they have, mean something simpler rather than saying it a harder way. The traveller learns by copying you, so what you say has to be worth copying.');
     lines.push('Stay in character.');
     lines.push('A sentence or two at a time.');
     // What they have to sell, when they are standing where they work
@@ -345,6 +356,20 @@ LG.dialogue = (function () {
                '"revealed" is [], "action" is "none".' +
                (working ? ' Only "remember", "item" and "price" are ever absent.'
                         : ' Only "remember" is ever absent.'));
+    /* And a worked one, because this project has learned twice now that a filled-in
+       example specifies a format better than a sentence about it does — the
+       furigana spec moved out of the schema for the same reason. The rule above
+       says the tail is never dropped; this shows a reply that had nothing at all
+       to report and still carries every field, which is the exact turn that was
+       coming back bare. */
+    const ex = ['"say": "<your line, in ' + L.name + '>"',
+                '"translation": "<the same line, in English>"'];
+    if (L.romanize) ex.push('"roman": "<the ' + L.romanLabel + '>"');
+    ex.push('"understood": "full"', '"revealed": []',
+            '"action": "' + (acts.indexOf('none') === 0 ? 'none' : acts[0]) + '"');
+    lines.push('A turn where nothing at all happened — a greeting, a thank-you, ' +
+               'telling them what a word means — still looks like this:');
+    lines.push('{' + ex.join(', ') + '}');
     lines.push('"translation" and "remember" are notes for the game, not speech — writing English there does not mean you understand any.');
     lines.push('"revealed" is about what you asserted, not what you talked about: using the word, explaining what it means, or asking after it does not count. When in doubt, leave the tag out of the list.');
     if (working) {

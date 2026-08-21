@@ -138,7 +138,16 @@ LG.view = (function () {
     const d = n.def;
     return {
       id: d.id, name: d.name, job: d.job, persona: d.persona,
-      goal: r.goal || '',
+      /* A finished errand has to stop being what they are about. `deal` and
+         `done` below already turned over on tradeDone and `goal` did not, so a
+         beekeeper who had his pig back and had handed the teapot over went on
+         being told he was worried about his pig and would give a teapot to
+         whoever found it — with the memory of getting the pig back sitting a few
+         lines underneath it. He offered the reward again, in public, and then
+         asked where his pig was. The deal block only ever reached the
+         player-facing prompt, so the two calls that made him walk about and talk
+         to people were the two that never heard the errand had ended. */
+      goal: (n.tradeDone && r.settled) ? r.settled : (r.goal || ''),
       knows: firstOf(knows(n), t.knows),
       memory: lastOf(n.memory || [], t.memory),
       here: where(n),

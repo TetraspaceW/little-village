@@ -206,9 +206,21 @@ LG.chain = (function () {
       roles[n.id] = { goal: '', trade: null, link: -1 };
     });
 
+    /* What a villager is about once their part of the errand is over. It is the
+       same line the generator already writes for everybody who never had a part
+       in it, which is the point: a finished errand leaves you a villager with a
+       job, not a villager still wanting something they have been given. */
+    const plainGoal = id => {
+      const d = LG.NPCS.find(x => x.id === id) || {};
+      return 'Your own work, as ' + (d.job || 'a villager') +
+        ', which is what your day is mostly about. Nobody has asked you for anything, ' +
+        'so beyond that you are happy to stop and talk, and you pass on what you have heard.';
+    };
+
     links.forEach((lk, i) => {
       const r = roles[lk.npcId];
       r.link = i;
+      r.settled = plainGoal(lk.npcId);
       r.trade = { wants: lk.wants, wantsCount: lk.wantsCount,
                   gives: lk.gives, givesCount: lk.givesCount };
       if (i === 0) {
@@ -254,12 +266,7 @@ LG.chain = (function () {
        to say "you have no part in the errand" and was read as "you have no
        reason to do anything" — the shopkeeper reasoned her way out of going to
        her own shop with it. A villager with no errand still has a trade. */
-    bystanders.forEach(n => {
-      const d = LG.NPCS.find(x => x.id === n.id) || {};
-      roles[n.id].goal = 'Your own work, as ' + (d.job || 'a villager') +
-        ', which is what your day is mostly about. Nobody has asked you for anything, ' +
-        'so beyond that you are happy to stop and talk, and you pass on what you have heard.';
-    });
+    bystanders.forEach(n => { roles[n.id].goal = plainGoal(n.id); });
 
     /* -------------------------------------------------------- assemble */
     const npcFacts = {};

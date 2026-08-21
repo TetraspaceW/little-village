@@ -260,6 +260,46 @@ if (buyer) {
      'and the till records what actually happened');
 }
 
+/* ------------------------------------------------------------- a spent errand
+   A finished exchange has to stop being what the villager is about. Everything
+   that turns over on a completed trade used to be the deal block alone, which
+   only the player-facing prompt renders — so the two calls that decide where a
+   villager walks and what they say to each other went on being handed a goal
+   that wanted a thing already sitting in the villager's own house, and facts
+   saying they still held what they had just given away. */
+section('a finished errand stops being what they want');
+{
+  const lk = plan.links[plan.links.length - 1];       // the deepest link: no chain of its own to disturb
+  const who = npcs.find(n => n.def.id === lk.npcId);
+  ok(!!who, 'the deepest link belongs to somebody in the village');
+  if (who) {
+    const role = plan.roles[who.def.id];
+    const before = LG.view.of(who, 'player').goal;
+    const mine = who.facts.filter(id => {
+      const f = plan.facts[id];
+      return f && f.link === role.link && f.type !== 'opinion';
+    });
+    ok(mine.length > 0, who.def.name + ' holds the facts of their own link');
+
+    LG.game.give(lk.wants, lk.wantsCount || 1);
+    LG.game.doTrade(who, role.trade);
+
+    const after = LG.view.of(who, 'player').goal;
+    ok(who.tradeDone, 'the trade completed');
+    ok(after !== before, 'and what they are about has changed with it');
+    ok(after.indexOf('Your own work') === 0,
+       'they are a villager with a job again, not one still wanting it');
+    ok(mine.every(id => who.facts.indexOf(id) === -1),
+       'the facts of the spent link are gone from what they know');
+    ok(who.memory.some(m => m.indexOf('That is done with') !== -1),
+       'and they remember doing it, so it is theirs to pass on');
+
+    /* The goal is what reaches the two calls that had no other way of knowing. */
+    ok(LG.view.of(who, 'chat').goal === after, 'the chatter call sees it too');
+    ok(LG.view.of(who, 'intent').goal === after, 'and so does the one that walks them about');
+  }
+}
+
 /* ------------------------------------------------------------------- saving
    One format, both ways round. What is checked here is that a village survives
    being written down and read back — not that localStorage works, but that

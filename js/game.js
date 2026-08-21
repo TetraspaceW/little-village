@@ -371,10 +371,25 @@ LG.game = (function () {
     log('✔ ' + npc.def.name + ' hands over ' + got + '.');
 
     // whichever note described this deal is now spent
-    state.notes = state.notes.filter(n => {
-      const f = plan.facts[n.id];
-      return !(f && f.link === (plan.roles[npc.def.id] || {}).link && f.type !== 'opinion');
-    });
+    const spent = id => {
+      const f = plan.facts[id];
+      return !!(f && f.link === (plan.roles[npc.def.id] || {}).link && f.type !== 'opinion');
+    };
+    state.notes = state.notes.filter(n => !spent(n.id));
+
+    /* And the villager stops believing it too, on the same rule. Their facts were
+       dealt once at the start and nothing ever took one back, so Wren went on
+       holding "Wren has a teapot" and "Wren will only part with it for a pig"
+       after handing the teapot over for the pig — and said both out loud, to the
+       traveller and to the village. What retires is only this villager's copy:
+       anyone else who was told it still believes it until somebody tells them
+       otherwise, the same way nobody who never walks to the graveyard finds out
+       the axe has gone. The memory line is how it can travel. */
+    npc.facts = (npc.facts || []).filter(id => !spent(id));
+    npc.memory = npc.memory || [];
+    const settled = 'The traveller gave you ' + gave + ' and you handed over ' + got +
+                    '. That is done with.';
+    if (npc.memory.indexOf(settled) === -1) npc.memory.push(settled);
 
     if (beast && trade.wants === beast.item) {
       beast.following = false;

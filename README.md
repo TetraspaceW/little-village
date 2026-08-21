@@ -1,6 +1,6 @@
 # Little Village
 
-A small browser game. Twelve people live in a village, none of them speak your language,
+A small browser game. Thirteen people live in a village, none of them speak your language,
 and you have to talk your way through a chain of favours to get anything done.
 
 The villagers are played by a language model. They remember what you tell them,
@@ -342,6 +342,14 @@ counter and shelves, the bakery an oven, the smithy an anvil, the inn its tables
 Doors are cut so that every one of them has a path to it, which is checked by a
 flood-fill on every generated village rather than trusted.
 
+**The hut at the east end was a hallucination first.** Mira the baker, asked where you
+could buy rice and having no idea, invented a rice merchant at the east end of the
+village on the spot — and within twenty seconds two other villagers believed in him and
+one of them was setting off. Nobody could go: the place did not exist, and a villager
+walks to a named place or nowhere. `OLD-LI.md` is the whole account. The village now has
+a hut out past the farmhouse with Mikhalych in it, who sells rice, so the answer she gave
+is the true one. He keeps the habit that produced him: he does not say "I don't know".
+
 **Weather drives them indoors.** When it is raining, snowing or blowing sand, a
 villager would rather be under a roof — at their workplace if they have business
 there, at home otherwise — so a monsoon afternoon empties the green and fills the
@@ -471,7 +479,7 @@ notebook) is its seed — the same name always regenerates the same errand.
 index.html
 css/style.css
 js/time.js       the calendar: hours, seasons, and what the weather is doing
-js/data.js       languages, phrasebook, gossip lines, ~140 items, 16 places, 12 villagers
+js/data.js       languages, phrasebook, gossip lines, ~140 items, 17 places, 13 villagers
 js/chain.js      generates a solvable errand chain + the facts that describe it
 js/llm.js        provider abstraction, key validation, JSON extraction from replies
 js/world.js      tile map, collision, pathfinding, interiors, all the canvas drawing

@@ -186,3 +186,19 @@ out loud with enough confidence becomes something a villager knows.
 Old Li is the village's first piece of folklore, and he arrived the way most of
 them do: somebody was asked a question, didn't want to be useless, and said a
 name.
+
+---
+
+## Postscript: he lives there now
+
+There is a hut at the east end of the village, past the farmhouse, and Mikhalych
+lives in it and sells rice out of it. The name is the Russian equivalent of 老李 — the bare
+patronymic you call an old man whose given name is not the point — and the
+address is the one Mira gave, because it was easier to build the shop than to
+keep explaining that it wasn't there.
+
+He is a place on the list now, so a villager told to go and see him can go, and
+what he sells is in his own prompt rather than in someone else's guess. What has
+not changed is the mechanism that made him: the hedge is still available, and a
+warm baker asked a direct question will still drop it. The next one will not have
+a hut built for him.

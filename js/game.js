@@ -21,6 +21,8 @@ LG.game = (function () {
   let plan = null;                 // the generated errand chain (chain.js)
   let canvas, ctx, cam = { x: 0, y: 0 }, vw = 0, vh = 0;
   let player, npcs = [], beast = null, worldItem = null;
+  let whereFact = null;             // the fact saying where the world thing is lying
+  let chainNeeds = {};              // items the errand cannot be finished without
   /* Physical keys, not characters. e.key is whatever the layout produces — on a
      Russian keyboard WASD types цфыв and E types у — so movement and interaction
      read e.code, and fall back to e.key only for anything that lacks it. */
@@ -102,7 +104,14 @@ LG.game = (function () {
     if (!plan || !plan.facts[factId]) return;
     if (hasNote(factId)) return;
     if (fromNpc && fromNpc.facts.indexOf(factId) === -1) return;   // they can't tell you what they don't know
-    state.notes.push({ id: factId, text: note || plan.facts[factId].text, ruby: ruby || null });
+    /* Being told where the thing is when it is already in your pocket is not a
+       lead, and it used to arrive as one — you could pick something up, hear
+       about it an hour later, and be sent back to fetch what you were carrying.
+       It still goes in the notebook, because you were told it; it goes in
+       ticked. */
+    const stale = plan.facts[factId].type === 'where' && haveTerminal();
+    state.notes.push({ id: factId, text: note || plan.facts[factId].text,
+                       ruby: ruby || null, done: stale });
     log('📓 ' + (note || plan.facts[factId].text));
     renderHUD();
   }
@@ -162,8 +171,9 @@ LG.game = (function () {
         const heard = (n.ruby && L.furigana) ? LG.dialogue.rubyHTML(n.ruby) : escapeHTML(n.text);
         const gloss = plan.facts[n.id].text;
         const hide = settings.showTranslation ? '' : ' hidden-tr';
-        return '<div class="q"><span class="heard"' +
-               (L.furigana && n.ruby ? ' style="line-height:2"' : '') + '>• ' + heard + '</span>' +
+        return '<div class="q' + (n.done ? ' done' : '') + '"><span class="heard"' +
+               (L.furigana && n.ruby ? ' style="line-height:2"' : '') +
+               '>' + (n.done ? '\u2714 ' : '\u2022 ') + heard + '</span>' +
                '<span class="gloss' + hide + '" title="' + escapeHTML(gloss) + '">' +
                escapeHTML(gloss) + '</span></div>';
       }));
@@ -196,14 +206,37 @@ LG.game = (function () {
      their own stock, so a refund on a beer she poured you five minutes ago found
      no price and quietly did nothing while she said the coins were on their way.
      What they sold you is remembered, and comes back at what you actually paid. */
+  /* Everything the errand runs on: what each villager wants, what each hands
+     over, the prize at the end and the thing lying out in the world. Worked out
+     once with the village rather than per sale, since it cannot change. */
+  function chainItems() {
+    const out = {};
+    if (!plan) return out;
+    plan.links.forEach(lk => { out[lk.wants] = true; out[lk.gives] = true; });
+    out[plan.terminal.item] = true;
+    out[plan.prize] = true;
+    delete out.coins;
+    return out;
+  }
+  function neededForChain(id) { return !!chainNeeds[id]; }
+
   function commerce(npc, act, itemId, price) {
     const d = npc.def;
     const coins = n => n + (n === 1 ? ' coin' : ' coins');
-    if (!atWork(npc)) return false;
 
     npc.sold = npc.sold || {};                 // index: what they can take back, at what price
     npc.till = npc.till || [];                 // the record they actually get to read
     npc.stock = npc.stock || {};               // what they are actually holding
+
+    /* Shut for the night. This used to be a bare `return false` before the till
+       existed, which is to say the sale failed in silence: the villager had
+       already described handing over the tea and taking the two coins, and
+       nothing in the game or the conversation ever said otherwise. */
+    if (!atWork(npc)) {
+      return refuse('It is the middle of the night and you are not trading — whatever ' +
+                    'you just said, nothing changed hands. They can come back in the morning.',
+                    d.name + ' is not trading at this hour — nothing changed hands.');
+    }
 
     /* A refusal has to reach the villager. Left to narrate unaided they will
        describe the refund as done, and then be baffled when you offer the beer
@@ -253,6 +286,22 @@ LG.game = (function () {
         const names = short.map(id => LG.ITEMS[id].en).join(' or ');
         return refuse('The traveller does not actually have ' + names + ' to give you.',
                       'You have no ' + names + ' to hand over.');
+      }
+    }
+
+    /* Nobody buys a link of the chain off you for coins. You could sell the pie
+       the baker is waiting for to the innkeeper for three coins, and short of
+       buying it back off her — at her price, with the coins she just gave you —
+       the errand was over with no way to tell that it was. A trade is a
+       different thing and still works: that is how the chain is meant to move.
+       Refusing is on the villager's side of it, so they say so themselves. */
+    if (act === 'buy') {
+      const spoken = asked.filter(neededForChain);
+      if (spoken.length) {
+        const names = spoken.map(id => LG.ITEMS[id].en).join(' and ');
+        return refuse('The traveller is carrying that ' + names + ' for somebody. Say you will ' +
+                      'not take it off them for money — they will need it.',
+                      d.name + ' will not buy the ' + names + ' — you need it for the errand.');
       }
     }
 
@@ -457,6 +506,8 @@ LG.game = (function () {
     });
 
     // the thing at the end of the chain, out in the world somewhere
+    whereFact = Object.keys(plan.facts).find(id => plan.facts[id].type === 'where') || null;
+    chainNeeds = chainItems();
     beast = null; worldItem = null;
     const t = plan.terminal;
     if (t.isBeast) {
@@ -721,9 +772,17 @@ LG.game = (function () {
     else if (worldItem && !worldItem.taken && dist(player, worldItem) < TILE * 1.4) pickUp();
   }
 
-  /* a note about where something was is no use once it is in your pocket */
+  /* Whether the thing at the end of the chain has been collected — once, ever.
+     Trading it on afterwards does not put it back where it was lying. */
+  function haveTerminal() {
+    return !!((worldItem && worldItem.taken) || (beast && beast.caught));
+  }
+
+  /* A note about where something was is no use once it is in your pocket, but
+     striking it through says so better than deleting it does: a line that
+     vanishes reads as a bug, and you lose the record of who told you. */
   function retireWhereNote() {
-    state.notes = state.notes.filter(n => plan.facts[n.id].type !== 'where');
+    state.notes.forEach(n => { if (plan.facts[n.id].type === 'where') n.done = true; });
     renderHUD();
   }
 
@@ -744,6 +803,33 @@ LG.game = (function () {
 
   function inRect(a, r) {
     return r && a.tx >= r.x && a.tx < r.x + r.w && a.ty >= r.y && a.ty < r.y + r.h;
+  }
+  /* Close enough to see into it. Villagers are aimed at a spot in a rectangle,
+     not at its middle, so "did they get there" has to allow for standing at the
+     edge of it looking in. */
+  function nearRect(a, r, pad) {
+    return r && a.tx >= r.x - pad && a.tx < r.x + r.w + pad &&
+                a.ty >= r.y - pad && a.ty < r.y + r.h + pad;
+  }
+
+  /* The one fact in the errand that can stop being true while you play: the
+     thing lying out in the world gets picked up. Facts are dealt once, at the
+     start, so without this a villager who was told it was down by the pond goes
+     on sending people to the pond for the rest of the session. Walk to the spot
+     and find nothing, and they stop saying it — and remember why, so they can
+     tell you and each other. Nobody who never goes there ever finds out. */
+  function noticeItemGone(n) {
+    if (!whereFact || !haveTerminal()) return;
+    const i = n.facts.indexOf(whereFact);
+    if (i === -1) return;
+    if (!nearRect(n, plan.terminal.rect, 3)) return;
+    n.facts.splice(i, 1);
+    const t = plan.terminal;
+    const what = t.isBeast ? t.beastName : LG.ITEMS[t.item].full;
+    const line = 'You went ' + t.placeText + ' yourself and ' + what +
+                 ' was not there — somebody has had it away.';
+    if (n.memory.indexOf(line) === -1) n.memory.push(line);
+    think(n, 'finds nothing there', t.placeText);
   }
   /* Somebody's trade goes with them: the baker will sell you bread on the street
      as readily as across her counter. Only the small hours close the shop. */
@@ -958,6 +1044,7 @@ LG.game = (function () {
       if (n.wasWalking && !walking) think(n, 'arrives', describeWhere(n) + (n.why ? ' — ' + n.why : ''));
       n.wasWalking = walking;
       A.walk(n, dt, 34);
+      noticeItemGone(n);
       if (n.bubbleT > 0) n.bubbleT -= dt;
     }
     if (settings.npcChatter) {
@@ -1090,6 +1177,9 @@ LG.game = (function () {
            set thoughts(v) { thoughts = !!v; },
            get thoughts() { return thoughts; },
            _debugPlayerAt: (x, y) => { player.px = x; player.py = y; },
+           // one turn of the world by hand, for poking at it from the console
+           // (and for tests, which cannot rely on requestAnimationFrame)
+           _debugTick: dt => update(dt || 1 / 60),
            inventoryList, doTrade, commerce, renderHUD, openSettings, uiBlocked, newVillage,
            get plan() { return plan; },
            get npcs() { return npcs; },

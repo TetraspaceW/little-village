@@ -77,6 +77,14 @@ LG.time = (function () {
   let weather = 'clear';
   let weatherLeft = 0.2;
 
+  /* How much snow is lying, 0..1. The weather is what is falling; this is what
+     is left on the ground afterwards, and it is the half you can still see an
+     hour after the sky clears. It builds while snow falls and melts at a rate
+     the season sets — in a hard frost it does not melt at all, which is why a
+     winter can stay white through several changes of weather. */
+  let lying = 0;
+  const MELT = { winter: 0.5, spring: 2.5, summer: 8, autumn: 3 };   // per village day
+
   function seasonIndex(d) { return Math.floor((d % YEAR_DAYS) / SEASON_DAYS); }
   function season() { return SEASONS[seasonIndex(day)]; }
   function dayOfSeason() { return (day % SEASON_DAYS) + 1; }
@@ -111,10 +119,14 @@ LG.time = (function () {
   /* dt in seconds */
   function tick(dt) {
     const before = day;
-    frac += (dt * 1000) / dayMs;
+    const days = (dt * 1000) / dayMs;             // how much of a village day passed
+    frac += days;
     while (frac >= 1) { frac -= 1; day++; }
-    weatherLeft -= (dt * 1000) / dayMs;
+    weatherLeft -= days;
     if (weatherLeft <= 0) setWeather(pickWeather());
+    const w = WEATHER[weather];
+    if (w.particles === 'snow') lying = Math.min(1, lying + days * 4 * (w.rate || 1));
+    else if (weather !== 'frost') lying = Math.max(0, lying - days * (MELT[season().id] || 3));
     return day !== before;                        // a new day began
   }
 
@@ -122,6 +134,11 @@ LG.time = (function () {
     day = (typeof d === 'number' && isFinite(d)) ? d : Math.floor(Math.random() * YEAR_DAYS);
     frac = (typeof f === 'number' && isFinite(f)) ? f : 0.35;
     setWeather(pickWeather());
+    /* Arrive in winter and the ground is already white — snow that fell before
+       you got here. Waiting the two minutes it takes to settle would make every
+       winter arrival look like autumn. */
+    lying = season().id === 'winter'
+      ? (WEATHER[weather].particles === 'snow' ? 0.9 : 0.45) : 0;
   }
 
   /* Where and when they are, for their prompt. Just the situation — the season's
@@ -131,8 +148,12 @@ LG.time = (function () {
     const s = season(), w = WEATHER[weather];
     const line = 'It is ' + phase().name + ' of day ' + dayOfSeason() + ' of ' + s.name +
                  ', ' + s.warmth + '. Outside: ' + w.talk + '.';
+    /* What is lying is not what is falling: a clear winter morning over a white
+       village should not have them talking as though the snow had gone. */
+    const under = lying > 0.5 ? ' There is snow lying over everything.'
+                : lying > 0.12 ? ' There is old snow still lying in patches.' : '';
     const dull = !w.particles;                 // nothing falling, so nothing to remark on
-    return dull ? line + ' ' + s.note : line;
+    return (dull ? line + ' ' + s.note : line) + under;
   }
 
   /* A short label for the HUD. */
@@ -147,6 +168,8 @@ LG.time = (function () {
     get day() { return day; },
     get frac() { return frac; },
     get weather() { return weather; },
+    get snow() { return lying; },
+    setSnow(v) { lying = Math.max(0, Math.min(1, Number(v) || 0)); },
     get info() { return WEATHER[weather]; },
     WEATHER, CLIMATE,
     set dayLength(ms) { if (ms > 1000) dayMs = ms; },

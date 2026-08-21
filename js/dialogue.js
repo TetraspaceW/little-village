@@ -223,6 +223,26 @@ LG.dialogue = (function () {
          work out for themselves that they were paid for two drinks and handed
          over one — which is the sort of thing a shopkeeper does without needing
          a rule written for it. */
+      lines.push('Offer your goods the way you would to any customer, and haggle if it suits you.');
+      lines.push('If the traveller holds out their coins, that is them paying you — take the money and hand the goods over in the same breath.');
+      lines.push('Two things at once is still one sale: put both tags in "item" and the total in "price". Only list what you are actually handing over this turn.');
+    } else if (d.sells && d.sells.length) {
+      /* The small hours are the one time the shop is shut, and saying nothing
+         about it left them selling anyway: Mikhalych took two coins for a cup of
+         tea at midnight, twice, and the game turned both down without a word to
+         either party. If they cannot trade they have to know it. */
+      lines.push('');
+      lines.push('# Your trade');
+      lines.push('It is the middle of the night. You are not selling anything to anybody until ' +
+                 'morning — do not offer, do not name a price, and do not take their money, ' +
+                 'however much you would like the custom. Tell them to come back in the morning.');
+    }
+
+    {
+      /* The till: what the game actually did, as its own record rather than
+         buried in the conversational memory. Outside the block above on purpose
+         — a villager who has just been told a sale did not go through needs to
+         read that whether or not they are open for business. */
       const till = (npc.till || []).slice(-8);
       if (till.length) {
         lines.push('');
@@ -242,9 +262,6 @@ LG.dialogue = (function () {
           theirs.map(k => LG.ITEMS[k].en).join(', ') + '.');
         lines.push('This is the record. If it does not match what you thought, the record is right.');
       }
-      lines.push('Offer your goods the way you would to any customer, and haggle if it suits you.');
-      lines.push('If the traveller holds out their coins, that is them paying you — take the money and hand the goods over in the same breath.');
-      lines.push('Two things at once is still one sale: put both tags in "item" and the total in "price". Only list what you are actually handing over this turn.');
     }
 
     if (trade) {
@@ -534,8 +551,11 @@ LG.dialogue = (function () {
     else if (u === 'partial') status(npc.def.name + ' only caught part of that.', 'miss');
     else status('');
 
-    // Shopkeeping: the villager decides a sale has happened; the game makes it real.
-    if (gotIt && LG.game.atWork(npc)) {
+    /* Shopkeeping: the villager decides a sale has happened; the game makes it
+       real — or says why it did not. This used to be skipped entirely outside
+       working hours, so a midnight sale was neither made nor refused: the
+       villager described handing the tea over, and nothing anywhere disagreed. */
+    if (gotIt) {
       const act = String(reply.action || '').toLowerCase();
       if (act === 'sell' || act === 'buy') {
         if (LG.game.commerce(npc, act, reply.item, reply.price)) renderItems();

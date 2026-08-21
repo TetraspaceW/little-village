@@ -699,7 +699,8 @@ LG.PLACES = [
   { id: 'chapel', en: 'on the chapel steps', rect: { x: 28, y: 44, w: 8, h: 2 } },
   { id: 'graves', en: 'in the graveyard', rect: { x: 37, y: 49, w: 7, h: 4 } },
   { id: 'woodpile', en: 'by the woodpile', rect: { x: 16, y: 23, w: 8, h: 7 } },
-  { id: 'smithy', en: 'outside the smithy', rect: { x: 45, y: 43, w: 9, h: 3 } }
+  { id: 'smithy', en: 'outside the smithy', rect: { x: 45, y: 43, w: 9, h: 3 } },
+  { id: 'hut', en: 'by the hut at the east end', rect: { x: 70, y: 23, w: 5, h: 2 } }
 ];
 
 /* ------------------------------------------------------------- flavour */
@@ -835,6 +836,16 @@ LG.NPCS = [
     workRect: { x: 63, y: 24, w: 14, h: 7 },
     sells: [{ i: 'honey', p: 4 }, { i: 'candle', p: 2 }, { i: 'flower', p: 1 }],
     buys: [{ i: 'flower', p: 1 }, { i: 'herbs', p: 1 }]
+  },
+
+  {
+    id: 'mikhalych', name: 'Mikhalych', emoji: '🍚', color: '#a26769', job: 'the rice merchant',
+    persona: 'Old, unhurried, and certain. Never says "I don\'t know" \u2014 he would rather send you somewhere than send you away. Measures the world in bowls.',
+    x: 73, y: 21, home: { x: 72, y: 20, w: 4, h: 2 },
+    voice: { gender: 'male', age: 'old' },
+    workplace: 'Hut',
+    sells: [{ i: 'rice', p: 2 }, { i: 'noodles', p: 2 }, { i: 'tea', p: 2 }, { i: 'basket', p: 3 }],
+    buys: [{ i: 'wheat', p: 2 }, { i: 'corn', p: 1 }]
   },
 
   {

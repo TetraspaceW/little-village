@@ -126,6 +126,9 @@ LG.world = (function () {
     addBuilding(12, 45, 8,  6, 15, { label: 'School',    sign: '📚', roof: '#4f7a52', wall: '#f0e2c8' });
     addBuilding(28, 47, 7,  6, 31, { label: 'Chapel',    sign: '🕯️', roof: '#5b6b8a', wall: '#f3e9d6' });
     addBuilding(46, 47, 7,  6, 49, { label: 'Smithy',    sign: '🔨', roof: '#5a4436', wall: '#ddc9a6' });
+    // The hut at the far east end, past the farmhouse. Smaller than the rest:
+    // one room, and the man who lives in it also sells out of it.
+    addBuilding(71, 18, 6,  5, 73, { label: 'Hut',       sign: '🍚', roof: '#8a7048', wall: '#e6d7b4' });
 
     // ---- the mine, west
     rect(2, 10, 8, 9, T.ROCK);
@@ -167,10 +170,11 @@ LG.world = (function () {
     set(18, 27, T.CAVE); set(19, 27, T.CAVE);
     labels.push({ x: 19, y: 23.2, text: 'Woodpile' });
 
-    // Both of these face south, away from the street, so they need a lane down
-    // the side and along the front or their doors open onto nothing.
+    // These face south, away from the street, so they each need a lane down the
+    // side and along the front or their doors open onto nothing.
     rect(26, 44, 1, 10, T.PATH); rect(26, 53, 6, 1, T.PATH);   // to the chapel door
     rect(53, 44, 1, 10, T.PATH); rect(49, 53, 5, 1, T.PATH);   // to the smithy door
+    rect(70, 18, 1, 6, T.PATH);  rect(70, 23, 4, 1, T.PATH);   // to the hut door
 
     // ---- the graveyard behind the chapel
     for (let x = 36; x <= 44; x++) { set(x, 48, T.FENCE); set(x, 53, T.FENCE); }
@@ -212,6 +216,7 @@ LG.world = (function () {
     put('Chapel',       [['pew', 0, 1, 4], ['pew', 0, 2, 4], ['table', 2, 0]]);
     put('Smithy',       [['forge', 0, 0], ['anvil', 2, 1], ['barrel', 4, 0], ['shelf', 2, 0, 2],
                          ['counter', 3, 2, 2]]);
+    put('Hut',          [['sack', 0, 0], ['sack', 1, 0], ['bed', 3, 0], ['counter', 0, 1, 3]]);
     put('Village Hall', [['table', 3, 1], ['table', 5, 1], ['stool', 2, 1], ['stool', 6, 1],
                          ['pew', 1, 3, 4], ['pew', 5, 3, 4], ['shelf', 0, 0, 3], ['desk', 8, 1]]);
   }
@@ -259,6 +264,99 @@ LG.world = (function () {
           if (nx > 0 && ny > 0 && nx < W - 1 && ny < H - 1 && isWalkable(nx, ny)) return { x: nx, y: ny };
         }
     return { x: 22, y: 14 };
+  }
+
+  /* ---------------------------------------------------------------- snow
+     Lying snow is not a white wash over the finished picture. A sheet laid over
+     the whole village greys it out and reads as fog; what actually looks like
+     snow is the ground and the tops of things going white while trunks, walls,
+     windows and doors keep their own colour. So everything that would hold snow
+     is drawn holding it, and nothing else is touched.
+
+     Cover creeps in tile by tile rather than fading up evenly everywhere at
+     once: ground that pales uniformly looks like bad lighting, ground that goes
+     white in patches looks like weather. `LG.time.snow` is the depth; each tile
+     has a threshold of its own that it has to pass. */
+  let lying = 0;                              // re-read from the clock each frame
+  function readSnow() {
+    lying = (LG.time && typeof LG.time.snow === 'number') ? LG.time.snow : 0;
+  }
+  /* Smooth value noise, so the depth varies over stretches of the map rather
+     than tile by tile. Per-tile randomness alone puts an independent patch on
+     every square and the ground comes out as confetti; snow gathers. */
+  function vnoise(x, y, s) {
+    const fx = x / s, fy = y / s;
+    const x0 = Math.floor(fx), y0 = Math.floor(fy);
+    const tx = fx - x0, ty = fy - y0;
+    const u = tx * tx * (3 - 2 * tx), v = ty * ty * (3 - 2 * ty);
+    const a = hash(x0 * 3 + s, y0 * 7 + s), b = hash((x0 + 1) * 3 + s, y0 * 7 + s);
+    const c = hash(x0 * 3 + s, (y0 + 1) * 7 + s), d = hash((x0 + 1) * 3 + s, (y0 + 1) * 7 + s);
+    const top = a + (b - a) * u, bot = c + (d - c) * u;
+    return top + (bot - top) * v;
+  }
+
+  /* How deep it is on one tile. Every tile has its own threshold to clear, so
+     thin snow is a few drifts on bare ground rather than an even dusting over
+     all of it — and the deeper it gets the more of them join up. */
+  function snowAt(x, y) {
+    if (lying <= 0) return 0;
+    const n = vnoise(x, y, 6) * 0.6 + vnoise(x, y, 2.5) * 0.28 + hash(x * 5 + 1, y * 7 + 3) * 0.12;
+    // Sharpened, so a covered stretch is properly covered and only its border is
+    // half-and-half. A soft ramp everywhere leaves every tile part-white, and
+    // part-white tiles at a fixed spacing read as a pattern rather than as snow.
+    return Math.max(0, Math.min(1, (lying * 2.4 - n * 1.55) * 2.2));
+  }
+
+  /* White over ground that has already been drawn. A drift is a blob, not a
+     square: a tile filled corner to corner gives every patch of half-melted snow
+     a hard edge on the tile grid and the village turns into a chessboard. The
+     blob is jittered and drawn wider than its own tile, so neighbouring drifts
+     run into each other and the overlaps pile up whiter, which is what snow
+     actually does. It needs a pass of its own for that — see drawGround. */
+  function snowOnTile(ctx, x, y, px, py) {
+    const t = get(x, y);
+    if (t === T.FLOOR || t === T.CAVE) return;          // snow does not get indoors
+    /* Streets are walked all day: what lies on them is thin, packed and even,
+       never a drift. It is capped well short of white on purpose — under a deep
+       fall the lanes are the only thing telling you where the village goes, and
+       a white field with the roads erased out of it is not a village. Flat fills
+       edge to edge, so the packed snow has no seams and no patches. */
+    if (t === T.PATH || t === T.FOUNTAIN) {
+      const p = Math.min(0.5, lying * 0.62);
+      if (p <= 0.02) return;
+      ctx.fillStyle = 'rgba(250,251,255,' + p.toFixed(3) + ')';
+      ctx.fillRect(px, py, TILE, TILE);
+      return;
+    }
+    const a = snowAt(x, y);
+    if (a <= 0.02) return;
+    if (t === T.WATER) {                                // a skin of ice, not a drift
+      ctx.fillStyle = 'rgba(206,228,240,' + (a * 0.75).toFixed(3) + ')';
+      ctx.fillRect(px, py, TILE, TILE);
+      return;
+    }
+    /* Depth drives the *size* of the patch, not how see-through it is. Snow that
+       fades up in place is a white filter over the grass; snow that grows out
+       from patches and meets itself is snow. Nearly opaque, so the overlaps do
+       not stack into rings. */
+    const r = hash(x * 3 + 7, y * 9 + 1), r2 = hash(x * 11 + 2, y * 5 + 6);
+    /* Opaque well before it is deep. Leaving it part-transparent at depth means
+       the ground shows through wherever exactly one shape covers a pixel and not
+       where two do, which prints the tile grid back onto a field of snow as a
+       lattice of faint stars. */
+    ctx.fillStyle = 'rgba(252,253,255,' + Math.min(1, 0.55 + a * 0.75).toFixed(3) + ')';
+    /* Inside a drift it is a sheet, so the tile fills — with its corners taken
+       off, because a square of snow is the one shape that gives the tile grid
+       away. The blob bulges over the edges and makes the border ragged. Both go
+       into one path so the overlap is filled once and does not stack. */
+    ctx.beginPath();
+    if (a > 0.42) {
+      if (ctx.roundRect) ctx.roundRect(px - 2, py - 2, TILE + 4, TILE + 4, 8);
+      else ctx.rect(px, py, TILE, TILE);
+    }
+    ctx.ellipse(px + 8 + r * 16, py + 8 + r2 * 16,
+                5 + a * (20 + r * 18), 4 + a * (16 + r2 * 16), 0, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   /* ------------------------------------------------------------- drawing */
@@ -330,6 +428,7 @@ LG.world = (function () {
 
   function drawProps(ctx, x, y, px, py) {
     const t = get(x, y), r = hash(x, y);
+    const a = lying > 0 ? snowAt(x, y) : 0;
     if (t === T.TREE) {
       ctx.fillStyle = '#6b4a2f';
       ctx.fillRect(px + 13, py + 16, 6, 14);
@@ -338,7 +437,15 @@ LG.world = (function () {
       ctx.beginPath(); ctx.arc(px + 16, py + 12, 13, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = 'rgba(255,255,255,.10)';
       ctx.beginPath(); ctx.arc(px + 12, py + 8, 6, 0, Math.PI * 2); ctx.fill();
+      // It settles on top of the canopy and nowhere else: a green rim under a
+      // white crown is what makes a laden tree read as laden rather than dead.
+      if (a > 0.03) {
+        ctx.fillStyle = 'rgba(250,252,255,' + (a * 0.92).toFixed(3) + ')';
+        ctx.beginPath(); ctx.arc(px + 16, py + 11, 12, Math.PI, 0); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.arc(px + 13, py + 4, 4 + a * 2, 0, Math.PI * 2); ctx.fill();
+      }
     } else if (t === T.FLOWER) {
+      if (a > 0.55) return;                     // buried
       const cols = ['#f2c14e', '#e5798f', '#c8a2f2', '#f5f0e6'];
       ctx.fillStyle = cols[(r * 4) | 0];
       ctx.beginPath(); ctx.arc(px + 10 + (r * 12 | 0), py + 16 + (r * 10 | 0), 3.5, 0, Math.PI * 2); ctx.fill();
@@ -347,7 +454,21 @@ LG.world = (function () {
       ctx.fillRect(px + 4, py + 8, 4, 20);
       ctx.fillRect(px + 22, py + 8, 4, 20);
       ctx.fillRect(px, py + 13, TILE, 4);
+      if (a > 0.03) {
+        ctx.fillStyle = 'rgba(250,252,255,' + (a * 0.9).toFixed(3) + ')';
+        ctx.fillRect(px, py + 11, TILE, 3);                 // along the rail
+        ctx.fillRect(px + 4, py + 6, 4, 3); ctx.fillRect(px + 22, py + 6, 4, 3);
+      }
     }
+  }
+
+  /* Snow on the top of a standing thing. The shape is the caller's business —
+     this only sets the white and gets out of the way when there is none. */
+  function capSnow(ctx, p, shape) {
+    const a = lying > 0 ? snowAt(p.x, p.y) : 0;
+    if (a <= 0.03) return;
+    ctx.fillStyle = 'rgba(250,252,255,' + (a * 0.9).toFixed(3) + ')';
+    shape(a);
   }
 
   function drawProp(ctx, p) {
@@ -360,6 +481,7 @@ LG.world = (function () {
       ctx.fillStyle = '#c2963f'; ctx.fillRect(x + 6, y + 6, 20, 7);
       ctx.fillStyle = '#8a6a2f'; ctx.fillRect(x + 4, y + 3, 24, 4);
       ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(x + 13, y + 18, 6, 3);
+      capSnow(ctx, p, () => ctx.fillRect(x + 3, y, 26, 4));
       return;
     }
     if (p.type === 'bench') {
@@ -372,6 +494,7 @@ LG.world = (function () {
       ctx.fillStyle = '#7d6242';
       ctx.fillRect(x + 4, y + 16, 4, 7);
       ctx.fillRect(x + 24, y + 16, 4, 7);
+      capSnow(ctx, p, () => { ctx.fillRect(x + 2, y + 4, 28, 3); ctx.fillRect(x + 2, y + 10, 28, 3); });
       return;
     }
     if (p.type === 'grave') {
@@ -385,6 +508,9 @@ LG.world = (function () {
       ctx.lineTo(x + 22, y + 24);
       ctx.closePath(); ctx.fill();
       ctx.fillStyle = '#8d8779'; ctx.fillRect(x + 12, y + 16, 8, 2);
+      capSnow(ctx, p, () => {
+        ctx.beginPath(); ctx.arc(x + 16, y + 12, 6, Math.PI, 0); ctx.closePath(); ctx.fill();
+      });
       return;
     }
     if (p.type !== 'fountain') return;
@@ -397,20 +523,31 @@ LG.world = (function () {
     ctx.beginPath(); ctx.ellipse(cx, cy + 3, 33, 20, 0, 0, Math.PI); ctx.fill();
     ctx.fillStyle = '#4a90c4';                        // water
     ctx.beginPath(); ctx.ellipse(cx, cy, 25, 15, 0, 0, Math.PI * 2); ctx.fill();
-    const t = performance.now() / 700;
-    ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 2;
-    for (let i = 0; i < 2; i++) {
-      const rr = 6 + ((t + i * 0.5) % 1) * 16;
-      ctx.globalAlpha = 1 - ((t + i * 0.5) % 1);
-      ctx.beginPath(); ctx.ellipse(cx, cy, rr, rr * 0.6, 0, 0, Math.PI * 2); ctx.stroke();
+    const froze = snowAt(p.x, p.y);
+    if (froze > 0.55) {                               // iced over: nothing is moving
+      ctx.fillStyle = 'rgba(214,232,243,' + (froze * 0.85).toFixed(3) + ')';
+      ctx.beginPath(); ctx.ellipse(cx, cy, 25, 15, 0, 0, Math.PI * 2); ctx.fill();
+    } else {
+      const t = performance.now() / 700;
+      ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 2;
+      for (let i = 0; i < 2; i++) {
+        const rr = 6 + ((t + i * 0.5) % 1) * 16;
+        ctx.globalAlpha = 1 - ((t + i * 0.5) % 1);
+        ctx.beginPath(); ctx.ellipse(cx, cy, rr, rr * 0.6, 0, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
     }
-    ctx.globalAlpha = 1;
+    capSnow(ctx, p, () => {
+      ctx.beginPath(); ctx.ellipse(cx, cy - 4, 33, 20, 0, Math.PI, 0); ctx.closePath(); ctx.fill();
+    });
     ctx.fillStyle = '#c2bbac';                        // little central plinth
     ctx.fillRect(cx - 4, cy - 16, 8, 16);
     ctx.beginPath(); ctx.arc(cx, cy - 18, 6, 0, Math.PI * 2); ctx.fill();
+    capSnow(ctx, p, () => { ctx.beginPath(); ctx.arc(cx, cy - 20, 6, Math.PI, 0); ctx.closePath(); ctx.fill(); });
   }
 
   function drawBuildings(ctx, insideBuilding) {
+    readSnow();
     for (const p of props) drawProp(ctx, p);
     for (const b of buildings) {
       const px = b.x * TILE, py = b.y * TILE, pw = b.w * TILE, ph = b.h * TILE;
@@ -435,6 +572,16 @@ LG.world = (function () {
       ctx.fillRect(px - 6, py - 10, pw + 12, TILE * 2);
       ctx.fillStyle = 'rgba(0,0,0,.15)'; ctx.fillRect(px - 6, py + TILE * 2 - 16, pw + 12, 6);
       ctx.fillStyle = 'rgba(255,255,255,.16)'; ctx.fillRect(px - 6, py - 10, pw + 12, 4);
+      /* Roofs take it before the ground does and keep it after the ground has
+         lost it — they are the one surface nobody walks on. Well short of white
+         even then: a roof is how you tell one house from the next at a glance,
+         and eleven white rectangles are not a village. */
+      if (lying > 0.02) {
+        ctx.globalAlpha = (open ? 0.16 : 1) * Math.min(0.72, lying * 1.2);
+        ctx.fillStyle = 'rgba(250,252,255,1)';
+        if (!open) ctx.fillRect(px, py, pw, ph);
+        ctx.fillRect(px - 6, py - 10, pw + 12, TILE * 2 - 4);
+      }
       ctx.globalAlpha = 1;
 
       // windows and door sit on the walls either way
@@ -534,9 +681,14 @@ LG.world = (function () {
   }
 
   function drawGround(ctx, cam, vw, vh) {
+    readSnow();
     const x0 = Math.max(0, (cam.x / TILE) | 0), y0 = Math.max(0, (cam.y / TILE) | 0);
     const x1 = Math.min(W - 1, ((cam.x + vw) / TILE) | 0), y1 = Math.min(H - 1, ((cam.y + vh) / TILE) | 0);
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) drawTile(ctx, x, y, x * TILE, y * TILE);
+    // Snow after all the ground, never tile by tile with it: a drift that spills
+    // over its own tile would be cut off again by the next tile's grass.
+    if (lying > 0)
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) snowOnTile(ctx, x, y, x * TILE, y * TILE);
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) drawProps(ctx, x, y, x * TILE, y * TILE);
   }
 

@@ -321,8 +321,32 @@ LG.dialogue = (function () {
     lines.push('  "action": "' + acts.join(' | ') + '"');
     lines.push('}');
     // (the word-reading rule lives in LG.FURIGANA now, with the rest of the spec)
+    /* Which fields are never omitted, spelled out. Every field but "say" used to
+       carry a hedge — OPTIONAL, only with sell or buy, [] if none, when in doubt
+       leave it out — and nothing anywhere said that any field was mandatory, so
+       the object as a whole read as mostly-optional. On a turn with nothing to
+       report the model took the obvious next step and dropped the tail: a third
+       of the player-facing replies in one session came back as a bare
+       {"say": …}, every one of them a courtesy ("you're welcome") or a
+       vocabulary gloss ("a pig is a kind of animal") — exactly the turns where
+       "revealed" is [] and "action" is "none". The villager-to-villager call,
+       whose three fields carry no hedges at all, was perfect across the same
+       session, which is what makes this the schema's fault rather than the
+       model's. So: name the always-fields, and give "nothing happened" a
+       spelling of its own so it does not have to be expressed by absence. */
+    const always = ['"say"', '"translation"'];
+    if (L.romanize) always.push('"roman"');
+    always.push('"understood"');
+    lines.push('Every reply carries ' + always.slice(0, -1).join(', ') + ' and ' +
+               always[always.length - 1] + '. A one-word answer, a greeting, or ' +
+               'explaining what a word means carries them just the same as a long ' +
+               'reply — there is no short form of this object.');
+    lines.push('Where nothing happened, say so in the field rather than dropping it: ' +
+               '"revealed" is [], "action" is "none".' +
+               (working ? ' Only "remember", "item" and "price" are ever absent.'
+                        : ' Only "remember" is ever absent.'));
     lines.push('"translation" and "remember" are notes for the game, not speech — writing English there does not mean you understand any.');
-    lines.push('"revealed" is about what you asserted, not what you talked about: using the word, explaining what it means, or asking after it does not count. When in doubt, leave it out.');
+    lines.push('"revealed" is about what you asserted, not what you talked about: using the word, explaining what it means, or asking after it does not count. When in doubt, leave the tag out of the list.');
     if (working) {
       lines.push('Use "sell" at the moment you actually hand goods over and take the money, and "buy" when you take something off the traveller and pay for it — not while the two of you are still discussing it.');
     }

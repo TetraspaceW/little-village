@@ -571,6 +571,36 @@ note reading *"the traveller is carrying that for somebody, tell them they will 
 is a line written for someone whose whole job is writing their own, and it asserts
 something about the traveller's business that the villager has no way of knowing.
 
+**One sale does not go through twice.** Tomas agreed a knife for two coins and
+flagged the sale on the turn he agreed it — *"you give me two coins, the knife is
+yours"*, which is a bargain being struck rather than goods crossing a counter. The
+traveller then held out the coins, which is the obvious thing to do when you have
+just been told to, and the rule about that was unconditional: *holding out coins is
+them paying you, take the money and hand the goods over*. He did. Two knives, four
+coins, and a blacksmith who could not work out where the second knife had come from.
+
+The rule is conditional now — coins pay for something you have not handed over yet,
+and something the record already shows you were paid for is not being bought again.
+But that is a matter of the model reading its own last sentence, so it is not the
+whole fix: the same goods, from the same villager, on the turn straight after they
+were handed over and paid for, is refused outright and the refusal goes in the till.
+A repeat later is left alone, because wanting another knife tomorrow is an ordinary
+thing to want.
+
+**And the record says how many.** The ledger listed both sales and the line beside it
+said *"still in their hands, from you: knife"* — one object, no count. So when the
+traveller held a knife out, Tomas reasoned from his trade (*"I don't buy knives, I
+make them"*) rather than from the two he had just sold, and refused the return three
+times.
+
+**A refund is a gesture too.** Holding out something a villager sold you is the
+plainest way of asking for the money back. When he finally did understand, he
+described taking the knife and returning the coins — and flagged `"action": "none"`,
+so the traveller kept both knives and got nothing while the villager believed he had
+settled it. That is the same failure `confirmOffer` was written for, on the other side
+of the counter, and it is the same reader that catches it: offer back something the
+till says they sold you, and if the line agrees to take it, the money moves.
+
 **And nothing is exchanged for nothing.** An explicit price of zero is not a haggle, it is
 a villager narrating rather than dealing — and the haggle band would quietly round it up
 to a coin, which is how goods changed hands in a sale nobody meant to make.

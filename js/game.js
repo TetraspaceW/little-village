@@ -319,6 +319,32 @@ LG.game = (function () {
       : Math.max(Math.ceil(base * 0.4), Math.min(Math.ceil(base * 2.5), cost));
 
     const names = priced.map(w => LG.ITEMS[w.id].full).join(' and ');
+
+    /* One transaction, rung up twice. Tomas agreed a knife for two coins and
+       flagged the sale on the turn he agreed it — "you give me two coins, the
+       knife is yours", which is a bargain being struck, not goods crossing a
+       counter. The traveller then did the obvious thing and held out the coins,
+       and the sale went through a second time: two knives, four coins, and a
+       villager who could not work out where the second knife had come from.
+
+       The prompt asks for "sell" at the moment goods change hands and not while
+       the two of you are still discussing it, and that is worth asking for, but
+       it is a matter of the model's judgement about its own last sentence. This
+       is not: the same goods, from the same villager, on the turn straight after
+       they were already handed over and paid for, is one sale being counted
+       twice. A later repeat is left alone — wanting a second knife tomorrow is an
+       ordinary thing to want. The refusal goes in the till where they can read
+       it, rather than the traveller quietly paying twice. */
+    if (act === 'sell') {
+      const last = npc.till[npc.till.length - 1];
+      if (last && !last.failed && last.act === 'sell' && last.names === names &&
+          (npc.turns || 0) - (last.turn || 0) <= 1) {
+        return refuse('You had already handed over ' + names + ' and been paid for it, ' +
+                      'so nothing changed hands this time.',
+                      d.name + ' had already sold you ' + names + ' — nothing changed hands.');
+      }
+    }
+
     if (act === 'sell') {
       if (count('coins') < cost) {
         return refuse('The traveller could not afford that — they have ' +
@@ -353,7 +379,7 @@ LG.game = (function () {
        do their own arithmetic from a half-memory and it drifts — quoting six,
        being paid five, and insisting next turn that you have three left. */
     npc.till.push({ act: act, refund: refunding, names: names, coins: cost,
-                    asked: asking, at: LG.time.clock() });
+                    asked: asking, at: LG.time.clock(), turn: npc.turns || 0 });
     renderHUD();
     return true;
   }

@@ -231,7 +231,13 @@ LG.dialogue = (function () {
       lines.push('The traveller has ' + coins(LG.game.count('coins')) + ' on them.');
 
       lines.push('Offer your goods the way you would to any customer, and haggle if it suits you.');
-      lines.push('If the traveller holds out their coins, that is them paying you — take the money and hand the goods over in the same breath.');
+      /* This used to stop at "that is them paying you", unconditionally, which is
+         an instruction to complete a sale that says nothing about whether one is
+         outstanding. Tomas had already been paid for the knife and the till in
+         front of him said so — and then the traveller held out coins, because
+         from where they stood the deal struck a moment ago had not been settled
+         yet, and the rule told him to hand another knife over. He did. */
+      lines.push('If the traveller holds out their coins, that is them paying you for something you have not handed over yet — take the money and hand the goods over in the same breath. Something the record already shows you were paid for is not being bought a second time.');
       lines.push('Two things at once is still one sale: put both tags in "item" and the total in "price". Only list what you are actually handing over this turn.');
     } else if (v.trade.sells.length) {
       /* The small hours are the one time the shop is shut, and saying nothing
@@ -271,8 +277,13 @@ LG.dialogue = (function () {
           lines.push('- ' + t.at + ' \u2014 ' + line +
             (t.asked !== t.coins ? ' (you said ' + t.asked + ', the till took ' + t.coins + ')' : ''));
         });
+        /* With the count. Tomas sold the same traveller two knives, and this line
+           said "knife" — so the ledger above him listed two sales and the summary
+           beside it named one object, and when the traveller held a knife out he
+           reasoned from his trade ("I don't buy knives, I make them") rather than
+           from the two he had just sold. */
         if (v.trade.sold.length) lines.push('Still in their hands, from you: ' +
-          v.trade.sold.map(it => it.en).join(', ') + '.');
+          v.trade.sold.map(it => (it.n > 1 ? it.n + ' \u00d7 ' + it.en : it.en)).join(', ') + '.');
         lines.push('This is the record. If it does not match what you thought, the record is right.');
       }
     }
@@ -621,6 +632,7 @@ LG.dialogue = (function () {
 
     const turn = { player: shown, say: spoken, translation: reply.translation,
                    roman: reply.roman, ruby: ruby };
+    npc.turns = (npc.turns || 0) + 1;       // history is trimmed; this only ever goes up
     npc.history.push(turn);
     if (npc.history.length > 20) npc.history.shift();
     const gotIt = String(reply.understood || 'full').toLowerCase() !== 'none';
@@ -662,12 +674,22 @@ LG.dialogue = (function () {
        real — or says why it did not. This used to be skipped entirely outside
        working hours, so a midnight sale was neither made nor refused: the
        villager described handing the tea over, and nothing anywhere disagreed. */
-    if (gotIt) {
-      const act = String(reply.action || '').toLowerCase();
-      if (act === 'sell' || act === 'buy') {
-        if (LG.game.commerce(npc, act, reply.item, reply.price)) renderItems();
-        else status('That sale could not be squared up.', 'miss');
-      }
+    const act = gotIt ? String(reply.action || '').toLowerCase() : '';
+    if (act === 'sell' || act === 'buy') {
+      if (LG.game.commerce(npc, act, reply.item, reply.price)) renderItems();
+      else status('That sale could not be squared up.', 'miss');
+    }
+
+    /* A refund is a gesture too. Holding out something this villager sold you is
+       the plainest way of asking for the money back, and what comes back is
+       usually a villager agreeing to it in words and flagging nothing — the same
+       failure confirmOffer exists for, on the other side of the counter. Tomas
+       described taking a knife back and returning two coins with "action":
+       "none", so the traveller kept both knives and got nothing, and the villager
+       believed he had refunded one. */
+    const held = (npc.sold || {})[offered];
+    if (act !== 'buy' && offered && held && held.n > 0) {
+      pending.push(confirmRefund(npc, offered, held.price, spoken, reply.translation));
     }
 
     // A trade happens because the villager agreed to it, never because an object
@@ -719,6 +741,20 @@ LG.dialogue = (function () {
         if (row && row._roman) { row._roman.textContent = got.roman; row._roman.style.display = ''; }
       }
     } catch (e) { /* the line is still readable */ }
+  }
+
+  /* The same reader, pointed at the counter instead of the chain: did they take
+     it back and hand the money over? Being sorry it was no good, offering to look
+     at it, or promising to sort it out later all count as no. */
+  async function confirmRefund(npc, id, price, spoken, translation) {
+    try {
+      const yes = await LG.llm.confirmTrade(LG.game.llmConfig(), spoken, translation, {
+        npcName: npc.def.name,
+        wants: LG.ITEMS[id].full,
+        gives: 'the ' + price + (price === 1 ? ' coin' : ' coins') + ' they paid for it, back'
+      });
+      if (yes && LG.game.commerce(npc, 'buy', id, price)) renderItems();
+    } catch (e) { /* no refund on a failed check */ }
   }
 
   /* The player held out exactly the right thing and the villager did not flag a

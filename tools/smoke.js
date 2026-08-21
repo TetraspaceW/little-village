@@ -260,6 +260,53 @@ if (buyer) {
      'and the till records what actually happened');
 }
 
+/* -------------------------------------------------------- one sale, rung twice
+   Straight out of a session log. Tomas agreed a knife for two coins and flagged
+   the sale on the turn he agreed it; the traveller then held out the coins, as
+   anyone would who had just been told to, and the sale went through again. Two
+   knives, four coins. A repeat on the very next turn is one sale counted twice;
+   a repeat later is somebody wanting another knife. */
+section('the same sale does not go through twice');
+{
+  LG.time.start(LG.time.day, 0.5);
+  const who = npcs.find(n => (n.def.sells || []).some(w => !chainItem[w.i]));
+  ok(!!who, 'somebody in the village keeps a stall');
+  if (who) {
+    const ware = who.def.sells.find(w => !chainItem[w.i]);
+    who.till = []; who.sold = {}; who.stock = {};
+    LG.game.state.inv.coins = 20;
+    const held = () => LG.game.count(ware.i);
+    const purse = () => LG.game.count('coins');
+
+    who.turns = 1;
+    ok(LG.game.commerce(who, 'sell', ware.i, ware.p), 'the sale goes through');
+    const after = purse(), got = held();
+
+    who.turns = 2;                                   // the very next turn
+    ok(LG.game.commerce(who, 'sell', ware.i, ware.p) === false,
+       'and the same one on the next turn is refused');
+    ok(purse() === after && held() === got, 'nothing was taken and nothing handed over');
+    ok(who.till[who.till.length - 1].failed, 'and the refusal is in the till where they can read it');
+
+    who.turns = 9;                                   // later, on purpose
+    ok(LG.game.commerce(who, 'sell', ware.i, ware.p), 'wanting another one later still works');
+    ok(held() === got + 1, 'and they have two of them now');
+
+    /* What the villager is told they are holding has to say how many, or the
+       ledger says two sales and the summary beside it names one object. */
+    const v = LG.view.of(who, 'player');
+    const entry = v.trade.sold.find(it => it.id === ware.i);
+    ok(entry && entry.n === 2, 'the returnable record counts them');
+    ok(LG.dialogue._debugPrompt(who, null).indexOf('2 \u00d7 ' + LG.ITEMS[ware.i].en) !== -1,
+       'and the prompt says two, not one');
+
+    ok(LG.game.commerce(who, 'buy', ware.i, ware.p), 'one of them can be handed back');
+    ok(held() === got, 'and only one went back');
+    ok(LG.view.of(who, 'player').trade.sold.find(it => it.id === ware.i).n === 1,
+       'leaving one still returnable');
+  }
+}
+
 /* ------------------------------------------------------------- a spent errand
    A finished exchange has to stop being what the villager is about. Everything
    that turns over on a completed trade used to be the deal block alone, which

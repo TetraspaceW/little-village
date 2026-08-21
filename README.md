@@ -259,6 +259,13 @@ when they arrived, what they learned from whom, and what they said to each other
 your earshot. Most of the village happens where you are not, and this is the only window
 onto it. `LG.game.thoughts = false` turns it off.
 
+**What they hear reaches what they do.** A villager deciding where to go used to be
+given the facts the errand generator dealt them and nothing else — not what they had
+picked up by talking. So six villagers could learn that rice was for sale two minutes'
+walk away and none of them could act on it, and the village spent an entire afternoon
+discussing a bowl of rice that was on offer the whole time. Their recent memories go into
+the decision now, alongside their own business.
+
 They are asked only when something has changed — they arrived, the hour turned, the
 weather broke, they learned something — so a settled villager costs nothing, and there is
 a cooldown so a busy village cannot spin. With no key, or when a call fails, the old
@@ -525,7 +532,7 @@ speech is always in a language you can read.
 one does the bookkeeping they are bad at — checking what they actually told you before
 it reaches your notebook, filling in missing furigana, and confirming a trade was
 agreed. It defaults to Haiku 4.5 on either provider and is pickable in settings
-(OpenRouter offers MiMo-V2.5, Gemini Flash, GPT-4.1 mini, GLM-5.2), with an **Other**
+(OpenRouter offers MiMo-V2.5, Gemini Flash, GPT-4.1 mini, GLM-5.2, Ox Alpha), with an **Other**
 box for any id the picker does not list yet. Cheap and literal-minded beats clever
 here; it is answering yes/no questions about a transcript.
 

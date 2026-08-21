@@ -836,6 +836,12 @@ LG.game = (function () {
                 .slice(0, 6)
                 .map(o => ({ name: o.def.name, where: describeWhere(o) })),
       knows: n.facts.map(id => plan.facts[id] && plan.facts[id].text).filter(Boolean).slice(0, 6),
+      /* What they have picked up by talking, not only what the errand dealt them.
+         Without this a villager could learn that rice was for sale two minutes
+         away and have no way to act on it — the whole village spent an afternoon
+         discussing a bowl of rice that was on offer the entire time, because what
+         they knew and what they decided were separate channels. */
+      heard: (n.memory || []).slice(-8),
       places: opts.map(o => ({ name: o.name, note: o.note }))
     }).then(res => {
       done();

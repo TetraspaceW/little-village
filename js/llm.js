@@ -14,7 +14,8 @@ LG.llm = (function () {
       { id: 'anthropic/claude-haiku-4.5', label: 'Claude Haiku 4.5' },
       { id: 'openai/gpt-4.1-mini',        label: 'GPT-4.1 mini' },
       { id: 'google/gemini-2.5-flash',    label: 'Gemini 2.5 Flash' },
-      { id: 'z-ai/glm-5.2',               label: 'GLM-5.2 (Z.ai)' }
+      { id: 'z-ai/glm-5.2',               label: 'GLM-5.2 (Z.ai)' },
+      { id: 'stealth/ox-alpha',           label: 'Ox Alpha (stealth)' }
     ]
   };
 
@@ -33,7 +34,8 @@ LG.llm = (function () {
       { id: 'google/gemma-4-31b-it',      label: 'Gemma 4 31B — quick off the mark' },
       { id: 'google/gemini-2.5-flash',    label: 'Gemini 2.5 Flash' },
       { id: 'openai/gpt-4.1-mini',        label: 'GPT-4.1 mini' },
-      { id: 'z-ai/glm-5.2',               label: 'GLM-5.2' }
+      { id: 'z-ai/glm-5.2',               label: 'GLM-5.2' },
+      { id: 'stealth/ox-alpha',           label: 'Ox Alpha (stealth)' }
     ]
   };
   const VERIFIER = {
@@ -516,6 +518,8 @@ LG.llm = (function () {
       'You are ' + o.here + '.',
       '',
       o.knows && o.knows.length ? 'What you know:\n' + o.knows.map(k => '- ' + k).join('\n') : null,
+      o.heard && o.heard.length
+        ? 'What you have picked up lately:\n' + o.heard.map(k => '- ' + k).join('\n') : null,
       '',
       /* Who is where, so that knowing Sanna has the cards is something you can
          act on. Without it a villager can want a thing, know exactly who has it,

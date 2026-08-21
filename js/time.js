@@ -1,8 +1,11 @@
 /* time.js — the village calendar: hours, days, seasons and weather.
 
-   A monsoon climate on a 120-day year, thirty days to a season. The calendar
-   persists between sessions, and a fresh village starts on a random day, so you
-   are as likely to arrive in a blizzard as in high summer. */
+   A monsoon climate on a 120-day year, thirty days to a season. The calendar is
+   rolled with the village — a village is a fresh arrival on a random day of the
+   year, so you are as likely to turn up in a blizzard as in high summer — and
+   then kept with it: `start`, `setWeather` and `setSnow` take the day, the hour,
+   the sky and the snow lying back off a save, so coming back to a village is
+   coming back to the afternoon you left it in rather than to a new one. */
 window.LG = window.LG || {};
 
 LG.time = (function () {
@@ -171,6 +174,9 @@ LG.time = (function () {
     get day() { return day; },
     get frac() { return frac; },
     get weather() { return weather; },
+    // how much of a village day this weather has left to run — part of the
+    // calendar, so a save can put the sky back where it found it
+    get weatherLeft() { return weatherLeft; },
     get snow() { return lying; },
     setSnow(v) { lying = Math.max(0, Math.min(1, Number(v) || 0)); },
     get info() { return WEATHER[weather]; },

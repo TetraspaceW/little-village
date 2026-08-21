@@ -33,7 +33,8 @@ node tools/logserver.js      # then open http://localhost:8787
 cp .env.example .env         # then fill in your keys
 ```
 
-One process that serves the village, keeps its log, and hands over your keys. Serving it over http is
+One process that serves the village, keeps its log, keeps its save, and hands over your
+keys. Serving it over http is
 needed anyway — the providers reject `file://` origins — and doing both from the
 same place means there is no CORS to arrange and nothing to switch on.
 
@@ -217,9 +218,11 @@ footprints with an even-odd clip, so it stops at the eaves. Fog and haze are exe
 they sit around a building rather than landing on it, and cutting hard rectangles out of
 a soft cloud looked worse than the thing it fixed.
 
-A village day is six minutes by default (adjustable), the calendar keeps running
-between visits, and a new village starts on a random day, so you may well arrive in a
-blizzard. Villagers know the date and the weather and will remark on it.
+A village day is six minutes by default (adjustable), and the calendar is rolled with
+the village: every new village is a fresh arrival on a random day of the year, so you
+may well turn up in a blizzard. The hour is not rolled — you always arrive mid-morning,
+because arriving at three in the morning with nobody out of doors is no way to start.
+Villagers know the date and the weather and will remark on it.
 
 **Villagers decide where to go.** This was a probability table — morning meant a 60%
 chance of work, a 30% chance of the green — which made everyone a dumb NPC in a game
@@ -385,6 +388,67 @@ overhearing into a way to skip the language entirely. A queue smooths bursts (a 
 start their conversations a beat apart rather than all at once), and a meeting that
 goes stale because the pair wandered off is dropped rather than generated late.
 
+## Coming back to it
+
+The village writes itself down every twenty seconds, and again the moment anything
+happens that would be painful to lose — a link of the chain traded, the errand
+finished, a new village rolled — and once more on the way out of the tab. Open the
+page again and you are back in the same afternoon: the same seed, the same day and
+hour, the same weather and the same snow lying, your pockets, your notebook, the
+deeds behind you, and thirteen people standing where you left them and still
+remembering what you told them.
+
+**One format, and only one.** It is a plain JSON object with a version on it, built by
+exactly one function and read back by exactly one function, both in `js/save.js`. There
+are two places to put it — this browser's `localStorage`, and `saves/village.json` if the
+log server is running — and both are handed *the same bytes*. Nothing is converted at
+either end, so the file on disk is a save a browser can load and what is in
+`localStorage` is a save you can drop into the directory. That was the whole design
+constraint: two sinks with their own idea of what a village is would have drifted the
+way three copies of a villager's prompt once did.
+
+Both are written together and neither is a dependency: no server is ordinary, and a
+private window with no storage is ordinary too. On startup the local copy is read and put
+back instantly, and the server is asked in the same breath — its copy wins only if it is
+genuinely newer, which is what happens when you played in another browser, or cleared
+this one, and is exactly when you would want it to.
+
+```sh
+node tools/logserver.js
+# ... play ...
+cat saves/village.json | python3 -m json.tool | head
+```
+
+Without a server there is still one file, it just lives in `localStorage`. Because it is
+the same object either way, a save someone hands you loads from the console —
+`LG.save.restore(JSON.parse(text))` — and the village you are in comes out of it with
+`LG.save.snapshot()`. There is no import format to get wrong, because there is no import
+format.
+
+**What is in it, and what is not.** No API keys — the save is a file that gets written to
+disk and copied about, and the keys stay in `lg-settings` with the other settings, where
+they were. The language and the difficulty *are* in it, because the village is generated
+out of them.
+
+**The village is not stored, only its seed.** The generator is deterministic: the same
+seed and difficulty give the same chain, the same cast, and the same facts under the same
+ids — which matters, because your notebook is a list of those ids. So the save carries the
+seed and a short digest of what the generator made from it, and the digest is checked on
+the way back in. Change the generator and the digest stops matching, and the save is
+refused *out loud* — "that village was built by a different version of the generator" —
+rather than loaded on top of a chain whose fact ids no longer mean what the notebook
+thinks they mean. That is the trade: saves are small and self-checking, and they do not
+survive a change to how villages are built.
+
+**What is deliberately not kept** is everything a villager was in the middle of: a route
+being walked, a speech bubble, a decision the model had not answered yet, a conversation
+with someone who is now somewhere else. All of that is about a moment that is over. They
+come back thinking again, which they would have done within the minute anyway.
+
+⚙ → **Forget the saved village** clears both copies. **Start a new village** overwrites
+them, immediately rather than at the next autosave, so closing the tab straight afterwards
+does not bring the old one back.
+
 ## Playing
 
 - **WASD / arrow keys** to walk, **E** or **Space** to talk to whoever you're next to.
@@ -523,13 +587,40 @@ js/chain.js      generates a solvable errand chain + the facts that describe it
 js/llm.js        provider abstraction, key validation, JSON extraction from replies
 js/world.js      tile map, collision, pathfinding, interiors, all the canvas drawing
 js/sky.js        the hour, the season's colour, and whatever is falling
-js/npc.js        wandering, the gossip exchange, character/bubble rendering
+js/view.js       one villager as they see themselves — the single assembly
+js/npc.js        wandering, meeting each other, character/bubble rendering
 js/dialogue.js   prompt building, the conversation UI, trades
 js/game.js       state, main loop, input, notebook, settings
+js/save.js       the one save format: snapshot, restore, and both places to put it
+tools/logserver.js  serves the game, hands over .env, collects the log, keeps the save
+tools/smoke.js      runs the whole game headlessly and checks it still works
 ```
 
 Plain `<script>` tags and a global `LG` namespace — no modules, no bundler, so it
 runs by double-clicking.
+
+**One villager, assembled once.** Three separate things ask a model to be a villager:
+talking to the player, talking to another villager, and deciding where to stand. Each of
+them used to build "who this is and what they know" from scratch, and the three copies
+drifted — different slices of the same memory, different amounts of the same knowledge,
+and a fix that only ever landed in one of them, so Mira read her own opinion of Wren in
+the third person whenever the player was in front of her. `view.js` is the one assembly;
+each caller renders the parts it wants, and where they deliberately want different
+amounts the numbers sit together in one table so the next divergence is a decision rather
+than an accident.
+
+What it is *not* is an inventory. A villager's stock is a prior, not a manifest: the
+baker has whatever a baker would plausibly have, and if the traveller asks for a pain au
+chocolat then of course she has one. That looseness is the point and is passed through
+untouched — the only hard fact is what she is holding because she took it off you, which
+is the thing she used to deny having.
+
+**The tests run the real game.** `node tools/smoke.js` loads every script in the order
+`index.html` loads it, into a fake browser, builds a village and ticks it for a hundred
+seconds with no API key — so what is being checked is the code that ships, not a copy of
+it. `node tools/smoke.js --prompts` prints every villager's system prompt for one fixed
+village; diffing that between two checkouts is the only reliable way to know a refactor
+left the model looking at the same words.
 
 **Everything learnable is a fact with an id.** `chain.js` deals facts out to villagers —
 the holder of a fact always knows it, plus a few others (the spread scales with the

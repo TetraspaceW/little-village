@@ -140,8 +140,6 @@ The dice table is still there underneath for exactly that reason.
 - **Rooms worth being in.** Interiors exist but are only scenery. A villager who is
   *at* their anvil could be interruptible in a way they aren't on the street, and a
   bed you can sleep in would let you skip to morning rather than waiting out the night.
-- **Save/load.** Nothing persists but settings. Serialising inventory, notebook,
-  villager memory and positions would let a village span days.
 - **注音版 Chinese.** Chinese children's books annotate *every* character, because
   there is no phonetic base script to fall back on — pinyin above the characters on the
   mainland, zhuyin down the right-hand side in Taiwan, the latter sitting in exactly the

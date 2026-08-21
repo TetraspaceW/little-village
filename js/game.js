@@ -54,17 +54,6 @@ LG.game = (function () {
   function saveSettings() {
     try { localStorage.setItem('lg-settings', JSON.stringify(settings)); } catch (e) {}
   }
-  function saveClock() {
-    try { localStorage.setItem('lg-clock', JSON.stringify({ day: LG.time.day, frac: LG.time.frac })); }
-    catch (e) {}
-  }
-  function loadClock() {
-    try {
-      const raw = localStorage.getItem('lg-clock');
-      if (raw) { const c = JSON.parse(raw); return c; }
-    } catch (e) {}
-    return null;
-  }
   function ttsConfig() {
     const auto = (LG.LEVELS[settings.level] || {}).speed || 0.85;
     const speed = settings.voiceSpeed === 'auto' ? auto : Number(settings.voiceSpeed);
@@ -187,28 +176,8 @@ LG.game = (function () {
     });
   }
 
-  /* --------------------------------------------------------------- shops
-     The villager decides a sale has happened; this makes it real. Their price
-     stands as long as it is not wild, because the haggling is the point. */
-  /* A sale, of one thing or of several.
+  /* --------------------------------------------------------------- shops */
 
-     A villager will happily say "beer and wine, that's six" — it is the natural
-     way to sell two things — so `item` accepts a list and `price` is the total
-     for the lot. It used to be a single tag, which meant a two-item sale was
-     rung up as one item at the two-item price: you paid for the round and got
-     the beer. */
-  /* A sale, of one thing or of several — and its reverse.
-
-     A villager will happily say "beer and wine, that's six", so `item` takes a
-     list and `price` is the total for the lot. It used to be a single tag, which
-     rang a two-item sale up as one item at the two-item price: you paid for the
-     round and got the beer.
-
-     They will also take back what they sold you. Their `buys` list is what they
-     deal in as a trade — the innkeeper buys fish and meat — and does not include
-     their own stock, so a refund on a beer she poured you five minutes ago found
-     no price and quietly did nothing while she said the coins were on their way.
-     What they sold you is remembered, and comes back at what you actually paid. */
   /* Everything the errand runs on: what each villager wants, what each hands
      over, the prize at the end and the thing lying out in the world. Worked out
      once with the village rather than per sale, since it cannot change. */
@@ -223,6 +192,22 @@ LG.game = (function () {
   }
   function neededForChain(id) { return !!chainNeeds[id]; }
 
+  /* A sale, of one thing or of several — and its reverse.
+
+     The villager decides a sale has happened; this makes it real, or says why
+     it did not. Their price stands as long as it is not wild, because the
+     haggling is the point.
+
+     A villager will happily say "beer and wine, that's six", so `item` takes a
+     list and `price` is the total for the lot. It used to be a single tag, which
+     rang a two-item sale up as one item at the two-item price: you paid for the
+     round and got the beer.
+
+     They will also take back what they sold you. Their `buys` list is what they
+     deal in as a trade — the innkeeper buys fish and meat — and does not include
+     their own stock, so a refund on a beer she poured you five minutes ago found
+     no price and quietly did nothing while she said the coins were on their way.
+     What they sold you is remembered, and comes back at what you actually paid. */
   function commerce(npc, act, itemId, price) {
     const d = npc.def;
     const coins = n => n + (n === 1 ? ' coin' : ' coins');
@@ -235,7 +220,7 @@ LG.game = (function () {
        existed, which is to say the sale failed in silence: the villager had
        already described handing over the tea and taking the two coins, and
        nothing in the game or the conversation ever said otherwise. */
-    if (!atWork(npc)) {
+    if (!LG.view.open()) {
       return refuse('It is the middle of the night and you are not trading, so nothing changed hands.',
                     d.name + ' is not trading at this hour — nothing changed hands.');
     }
@@ -406,10 +391,13 @@ LG.game = (function () {
 
     if ((plan.roles[npc.def.id] || {}).link === 0) win();
     renderHUD();
+    // a link of the chain is not something to lose to a closed tab
+    if (saving()) LG.save.write();
   }
 
   function win() {
     state.won = true;
+    if (saving()) LG.save.write();
     const c = plan.links[0];
     document.getElementById('endingText').textContent =
       c.npcName + ' has ' + (LG.ITEMS[c.wants].full) + ' at last, and you have ' +
@@ -424,11 +412,12 @@ LG.game = (function () {
     ctx = canvas.getContext('2d');
     W.build();
 
-    newVillage(null, true);
-
     LG.time.dayLength = Math.max(1, Number(settings.dayMinutes) || 6) * 60 * 1000;
-    const saved = loadClock();
-    LG.time.start(saved && saved.day, saved && saved.frac);
+    /* A village you have already been to comes back as it was; only a first
+       arrival is rolled. `resume` puts the local copy back at once and asks the
+       log server for its own in the background, so a missing or slow server
+       delays nothing — the same bargain adoptEnv makes below. */
+    if (!LG.save.resume(log)) newVillage(null, true);
 
     LG.dialogue.init();
     wireUI();
@@ -475,9 +464,16 @@ LG.game = (function () {
 
     fromEnv = true;
     saveSettings();
-    // the village is built out of the language and the difficulty, so a change
-    // to either means starting it again — nothing has happened yet in any case
-    if (was.lang !== settings.lang || was.level !== settings.level) newVillage(null, true);
+    /* The village is built out of the language and the difficulty, so a change
+       to either means starting it again — nothing has happened yet in any case.
+       Unless something has: a resumed village is a village you were in the
+       middle of, and .env arriving late is no reason to throw it away. Its own
+       language and difficulty came back with it, so they are what the settings
+       now say. */
+    if (was.lang !== settings.lang || was.level !== settings.level) {
+      if (LG.save.resumed) { settings.lang = was.lang; settings.level = was.level; }
+      else newVillage(null, true);
+    }
     if (settings.apiKey && gated) {
       gated = false; gateMode = false;
       document.getElementById('settings').classList.remove('open');
@@ -491,6 +487,12 @@ LG.game = (function () {
   /* Roll a fresh errand chain and reset everything that depends on it. */
   function newVillage(seed, quiet) {
     plan = LG.chain.generate({ level: settings.level, seed: seed || null });
+
+    /* A new village is a new arrival, so the calendar is rolled with it: you
+       turn up on a random day of the year and take whatever weather that day
+       has. The hour is not rolled — arriving at three in the morning, in the
+       dark, with nobody out of doors, is nobody's idea of a start. */
+    LG.time.start();
 
     state.inv = { coins: 10 };          // a little money to be going on with
     state.notes = []; state.deeds = []; state.won = false;
@@ -528,7 +530,11 @@ LG.game = (function () {
     renderHUD();
     logLines.length = 0;
     log(quiet ? 'Use WASD or the arrow keys to walk. Press E next to someone to talk.'
-              : 'A new village. Nobody has told you anything yet.');
+              : 'A new village, in ' + LG.time.season().name.toLowerCase() +
+                '. Nobody has told you anything yet.');
+    /* Written down at once rather than at the next autosave, so that closing the
+       tab in the first twenty seconds does not bring the old village back. */
+    if (saving()) LG.save.write();
   }
 
   function resize() {
@@ -573,10 +579,20 @@ LG.game = (function () {
       newVillage();
     };
     document.getElementById('setTtsTest').onclick = testVoices;
+    document.getElementById('setForget').onclick = () => {
+      LG.save.forget();
+      log('\u00a4 The saved village has been forgotten. This one goes on until you start another.');
+      showSaveNote();
+    };
     document.getElementById('setSave').onclick = submitSettings;
     document.getElementById('setProvider').onchange = () => { refreshModelList(); refreshHelperList(); };
     document.getElementById('setHelper').onchange = syncHelperBox;
   }
+
+  /* Whether there is anything worth writing down. Behind the front door the
+     village is only a backdrop for the title screen — saving it would overwrite
+     a real one with a village nobody has played. */
+  function saving() { return !gated && !!plan; }
 
   function panelOpen() { return !!document.querySelector('.panel.open'); }
   function uiBlocked() { return gated || panelOpen() || LG.dialogue.isOpen(); }
@@ -640,7 +656,12 @@ LG.game = (function () {
       gated = false;
       gateMode = false;
       showChrome();
-      newVillage(null, true);
+      /* The front door used to roll a village on the way through, which is right
+         for a first visit and wrong for a save: you would come back to the
+         village you left, type your key, and watch it be replaced. A different
+         difficulty is a different village and still rolls one. */
+      if (LG.save.resumed && !levelChanged) LG.save.write();
+      else newVillage(null, true);
       document.getElementById('help').classList.add('open');
     } else if (levelChanged) {
       log('A different sort of errand, then.');
@@ -733,7 +754,25 @@ LG.game = (function () {
     refreshModelList();
     document.getElementById('setModel').value = settings.model;
     refreshHelperList();
+    showSaveNote();
     s.classList.add('open');
+  }
+
+  /* What the saved village is, in one line. The autosave is silent by design —
+     a message every twenty seconds would be noise — so this is the only place
+     that says out loud that the game is being kept, and where. */
+  function showSaveNote() {
+    const note = document.getElementById('setSaveNote');
+    const btn = document.getElementById('setForget');
+    if (!note || !btn) return;
+    const have = LG.save.has();
+    btn.disabled = !have;
+    if (!have) { note.textContent = 'Nothing saved yet — the village is written down every few seconds once you are in it.'; return; }
+    const when = LG.save.lastAt
+      ? 'last written ' + new Date(LG.save.lastAt).toLocaleTimeString()
+      : 'kept from an earlier session';
+    note.textContent = 'This village is saved in this browser (' + when +
+      ')' + (LG.save.onServer ? ' and in saves/village.json' : '') + '.';
   }
 
   /* "Other" reveals a free-text box, so a model newer than this picker can still
@@ -806,16 +845,8 @@ LG.game = (function () {
 
   function dist(a, b) { return Math.hypot(a.px - b.px, a.py - b.py); }
 
-  function inRect(a, r) {
-    return r && a.tx >= r.x && a.tx < r.x + r.w && a.ty >= r.y && a.ty < r.y + r.h;
-  }
-  /* Close enough to see into it. Villagers are aimed at a spot in a rectangle,
-     not at its middle, so "did they get there" has to allow for standing at the
-     edge of it looking in. */
-  function nearRect(a, r, pad) {
-    return r && a.tx >= r.x - pad && a.tx < r.x + r.w + pad &&
-                a.ty >= r.y - pad && a.ty < r.y + r.h + pad;
-  }
+  /* Tile geometry lives in world.js with the rest of it. */
+  const nearRect = W.nearRect;
 
   /* The one fact in the errand that can stop being true while you play: the
      thing lying out in the world gets picked up. Facts are dealt once, at the
@@ -841,11 +872,8 @@ LG.game = (function () {
     if (n.memory.indexOf(line) === -1) n.memory.push(line);
     think(n, 'finds nothing there', t.placeText);
   }
-  /* Somebody's trade goes with them: the baker will sell you bread on the street
-     as readily as across her counter. Only the small hours close the shop. */
-  function atWork(n) { return !LG.time.isNight(); }
-  /* Whether they are physically at their workplace — flavour, and a fuller stock. */
-  function behindTheCounter(n) { return inRect(n, n.work); }
+  /* Trading hours and standing-at-the-counter now live with everything else a
+     villager can see about themselves — see LG.view. */
 
   /* What this villager will sell, explicit wares first then anything their trade
      covers. Returns the price, or 0 if they would not sell it at all. */
@@ -874,7 +902,7 @@ LG.game = (function () {
   function think(n, what, detail) {
     // The log keeps these whether or not the console is printing them.
     if (LG.logbook) LG.logbook.note('villager', n.def ? n.def.name : '?', what,
-      { detail: detail || '', where: n.px !== undefined ? describeWhere(n) : '',
+      { detail: detail || '', where: n.px !== undefined ? LG.view.where(n) : '',
         clock: LG.time && LG.time.clock ? LG.time.clock() : '' });
     if (!thoughts || typeof console === 'undefined' || !console.log) return;
     const c = (n.def && n.def.color) || '#888';
@@ -905,9 +933,9 @@ LG.game = (function () {
     });
     npcs.forEach(o => {
       if (o === n) return;
-      if (dist(n, o) > TILE * 26) return;               // only people they can see
+      if (!LG.view.near(n, o, LG.view.SIGHT)) return;   // only people they can see
       out.push({ name: 'after ' + o.def.name, rect: besideThem(o),
-                 note: describeWhere(o), after: o.def.id });
+                 note: LG.view.where(o), after: o.def.id });
     });
     return out;
   }
@@ -922,22 +950,23 @@ LG.game = (function () {
     const opts = placesFor(n);
     const done = () => { n.deciding = false; n.decideCool = DECIDE_COOL; };
     if (n.decideCool > 0) { n.deciding = false; return false; }   // asked too recently
-    think(n, 'wonders where to be', describeWhere(n) + ', ' + LG.time.phase().name);
+    think(n, 'wonders where to be', LG.view.where(n) + ', ' + LG.time.phase().name);
+    /* Everything they can see about themselves comes from one place now, so
+       that the villager choosing where to stand is the same villager the player
+       will meet when they get there. `heard` is the half that used to be missing:
+       without it a villager could learn that rice was for sale two minutes away
+       and have no way to act on it — the whole village once spent an afternoon
+       discussing a bowl of rice that was on offer the entire time, because what
+       they knew and what they decided were separate channels. */
+    const v = LG.view.of(n, 'intent');
     LG.llm.intent(llmConfig(), {
-      me: { name: n.def.name, job: n.def.job, persona: n.def.persona },
-      goal: (plan.roles[n.def.id] || {}).goal || '',
-      when: LG.time.describe(),
-      here: describeWhere(n),
-      folk: npcs.filter(o => o !== n && dist(n, o) < TILE * 26)
-                .slice(0, 6)
-                .map(o => ({ name: o.def.name, where: describeWhere(o) })),
-      knows: n.facts.map(id => plan.facts[id] && plan.facts[id].text).filter(Boolean).slice(0, 6),
-      /* What they have picked up by talking, not only what the errand dealt them.
-         Without this a villager could learn that rice was for sale two minutes
-         away and have no way to act on it — the whole village spent an afternoon
-         discussing a bowl of rice that was on offer the entire time, because what
-         they knew and what they decided were separate channels. */
-      heard: (n.memory || []).slice(-8),
+      me: v,
+      goal: v.goal,
+      when: v.when,
+      here: v.here,
+      folk: v.folk,
+      knows: v.knows.map(f => f.text),
+      heard: v.memory,
       places: opts.map(o => ({ name: o.name, note: o.note }))
     }).then(res => {
       done();
@@ -965,47 +994,32 @@ LG.game = (function () {
     return true;
   }
 
-  function describeWhere(n) {
-    const b = W.buildingUnder(n);
-    if (b) return 'inside the ' + b.label;
-    if (inRect(n, LG.GREEN)) return 'on the village green';
-    if (inRect(n, n.def.home)) return 'at home';
-    return 'out in the village';
-  }
-
   /* Close enough to make out what they are saying? Only decides whether it goes
      in the log — the conversation happens either way. */
   function canOverhear(a, b) {
     return dist(player, a) < TILE * 11 || dist(player, b) < TILE * 11;
   }
 
-  /* Villagers talk to each other wherever they are; this only supplies the news
-     being passed. `factId` is the piece of gossip actually changing hands. */
   /* They have met and stopped to talk. Nothing is decided about what will be
      said — they have their own business, their own memories, and whatever the
-     weather is doing. What either of them keeps is settled afterwards. */
+     weather is doing. What either of them keeps is settled afterwards.
+
+     Both of them are photographed here, once, rather than handed to the
+     conversation as a bundle of callbacks it can ask again on every turn. A
+     conversation is about the two people who started it: reading their state
+     afresh four lines in meant it could change underneath the exchange. */
   function villagerTalk(a, b) {
     if (!settings.apiKey) return false;
-    /* A villager's own opinion is stored as "Mira thinks Wren talks too much",
-       which reads absurdly handed back to Mira — she does not think about
-       herself in the third person. */
-    const own = (n, t) => (t && t.indexOf(n.def.name + ' thinks ') === 0)
-      ? 'You think ' + t.slice((n.def.name + ' thinks ').length)
-      : t;
-    const mind = n => n.facts
-      .map(id => plan.facts[id] && own(n, plan.facts[id].text))
-      .filter(Boolean)
-      .slice(0, 5);
-    LG.dialogue.overheard(a, b, {
-      aKnows: mind(a), bKnows: mind(b),
-      where: n => describeWhere(n),
-      // what they came here for, and whether they came for each other
-      errandOf: n => n.why || '',
-      soughtBy: (n, other) => n.wentAfter === other.def.id,
-      factsOf: n => n.facts
-        .map(id => plan.facts[id] && { id: id, text: plan.facts[id].text })
-        .filter(Boolean)
-    });
+    const va = LG.view.of(a, 'chat'), vb = LG.view.of(b, 'chat');
+    /* Whether either of them came looking for the other, settled before the
+       first line and spent in the asking. It used to be read live from a flag
+       that was set when they set off and never cleared, so a villager who once
+       walked over to Mira greeted her with "I came looking for you" every time
+       the two of them met for the rest of the day. */
+    va.sought = va.errand.after === vb.id;
+    vb.sought = vb.errand.after === va.id;
+    LG.view.arrived(a); LG.view.arrived(b);
+    LG.dialogue.overheard(a, b, { a: va, b: vb });
     return true;
   }
 
@@ -1038,11 +1052,9 @@ LG.game = (function () {
     return true;
   }
 
-  let clockSave = 0;
   function update(dt) {
+    if (saving()) LG.save.tick(dt);
     if (LG.time.tick(dt)) log('🗓 ' + LG.time.season().name + ', day ' + LG.time.dayOfSeason() + '.');
-    clockSave += dt;
-    if (clockSave > 10) { clockSave = 0; saveClock(); }
     const el = document.getElementById('clock');
     if (el) el.textContent = LG.time.label();
 
@@ -1051,7 +1063,7 @@ LG.game = (function () {
     for (const n of npcs) {
       const walking = !!(n.route && n.route.length);
       A.routine(n, dt, LG.GREEN, settings.apiKey && settings.npcChatter ? decideWhereToGo : null);
-      if (n.wasWalking && !walking) think(n, 'arrives', describeWhere(n) + (n.why ? ' — ' + n.why : ''));
+      if (n.wasWalking && !walking) think(n, 'arrives', LG.view.where(n) + (n.why ? ' — ' + n.why : ''));
       n.wasWalking = walking;
       A.walk(n, dt, 34);
       noticeItemGone(n);
@@ -1180,7 +1192,6 @@ LG.game = (function () {
   }
 
   return { init, settings, state, llmConfig, ttsConfig, log, learn, hasNote, give, take, count,
-           atWork, behindTheCounter,
            _moveDir: moveDir, _isInteract: isInteract,
            canOverhear, logSpeech, think,
            factText: id => (plan && plan.facts[id]) ? plan.facts[id].text : null,
@@ -1193,6 +1204,12 @@ LG.game = (function () {
            inventoryList, doTrade, commerce, renderHUD, openSettings, uiBlocked, newVillage,
            get plan() { return plan; },
            get npcs() { return npcs; },
+           // what save.js reads and writes back; the rest of the world it can
+           // reach through the exports above
+           get player() { return player; },
+           get beast() { return beast; },
+           get worldItem() { return worldItem; },
+           get saving() { return saving(); },
            get canvas() { return canvas; } };
 })();
 

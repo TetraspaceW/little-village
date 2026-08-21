@@ -418,16 +418,6 @@ LG.llm = (function () {
     } catch (e) { return null; }
   }
 
-  /* Two villagers meeting in the street. The small model writes the exchange,
-     seeded with the piece of news actually being passed. */
-  /* One villager's next line in a conversation with another villager.
-
-     This is deliberately one call per turn rather than one call that writes the
-     whole exchange. Two actors improvising at each other produce a conversation;
-     one actor writing both halves produces a script, and it shows — the halves
-     agree too neatly, nobody misunderstands anybody, and the second speaker never
-     says anything the first did not set up. It runs on the small model precisely
-     so that this is affordable: a six-turn conversation is six cheap calls. */
   /* What two villagers took away from talking to each other.
 
      Gossip is not a mechanic here. Nothing is "shared" as a token: Ilya knows he
@@ -437,7 +427,7 @@ LG.llm = (function () {
      too if the other one found it interesting. So this is asked afterwards, of
      the conversation that actually happened, rather than decided in advance.
 
-     `learned` exists only because the errand chain needs to know when one of its
+     `said` exists only because the errand chain needs to know when one of its
      facts has genuinely travelled — the notebook is built on those ids. It is a
      record of what was said, not a licence: a fact nobody mentioned does not
      move, however convenient that would be. */
@@ -459,10 +449,6 @@ LG.llm = (function () {
       '',
       'The [f0]-style labels above are just ids for those statements; use them as they are.',
       '',
-      'Did anything change hands? Only if it plainly did in the words above —',
-      'someone handing something over, someone paying. An agreement to do it later',
-      'is not it happening.',
-      '',
       'For each of them, write down what they would come away remembering.',
       'Anything from the conversation worth keeping — what the other one told them,',
       'what they are like, what is going on with them. Not everything said is worth',
@@ -473,11 +459,8 @@ LG.llm = (function () {
       'Reply with only a JSON object:',
       '{',
       '  "' + o.a.name + '": {"remembers": ["..."], "said": ["ids ' + o.a.name + ' actually said, [] if none"]},',
-      '  "' + o.b.name + '": {"remembers": ["..."], "said": ["ids ' + o.b.name + ' actually said, [] if none"]},',
-      '  "exchanged": [{"from": "who handed it over", "to": "who took it", ' +
-        '"item": "what, in plain English", "coins": 0}]',
-      '}',
-      '"exchanged" is [] unless something actually passed between them.'
+      '  "' + o.b.name + '": {"remembers": ["..."], "said": ["ids ' + o.b.name + ' actually said, [] if none"]}',
+      '}'
     ].join('\n');
     const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg) };
     const sys = 'You note what people took away from a conversation. Answer with JSON only.';
@@ -492,8 +475,7 @@ LG.llm = (function () {
         return { remembers: Array.isArray(v.remembers) ? v.remembers.filter(x => typeof x === 'string') : [],
                  said: Array.isArray(v.said) ? v.said.map(String) : [] };
       };
-      const moved = Array.isArray(obj.exchanged) ? obj.exchanged.filter(x => x && x.item) : [];
-      return { a: pick(o.a.name), b: pick(o.b.name), exchanged: moved };
+      return { a: pick(o.a.name), b: pick(o.b.name) };
     } catch (e) { return null; }
   }
 
@@ -558,6 +540,14 @@ LG.llm = (function () {
     } catch (e) { return null; }
   }
 
+  /* One villager's next line in a conversation with another villager.
+
+     This is deliberately one call per turn rather than one call that writes the
+     whole exchange. Two actors improvising at each other produce a conversation;
+     one actor writing both halves produces a script, and it shows — the halves
+     agree too neatly, nobody misunderstands anybody, and the second speaker never
+     says anything the first did not set up. It runs on the small model precisely
+     so that this is affordable: a six-turn conversation is six cheap calls. */
   async function converse(cfg, opts) {
     const o = opts || {};
     const said = (o.transcript || []).map(t => t.who + ': ' + t.say);
@@ -582,15 +572,12 @@ LG.llm = (function () {
       o.recent && o.recent.length
         ? 'Lately you have picked up:\n' + o.recent.map(k => '- ' + k).join('\n') : null,
       '',
-      /* Villagers had no money and no way to hand anything over, so they agreed
-         to deals that never happened and went round in circles about them for a
-         whole afternoon. They can deal with each other now, and this is what
-         they have to deal with. */
-      o.purse !== undefined ? 'In your purse: ' + o.purse + (o.purse === 1 ? ' coin' : ' coins') + '.' : null,
-      o.wares && o.wares.length ? 'Yours to sell or hand over: ' + o.wares.join(', ') + '.' : null,
-      o.theirs && o.theirs.length ? o.them.name + ' has: ' + o.theirs.join(', ') + '.' : null,
-      o.after ? 'You are after: ' + o.after + '.' : null,
-      '',
+      /* There was a purse, a stock list and a wants list here, meant to let two
+         villagers deal with each other. Nothing ever passed them, and nothing
+         downstream could have executed a deal if they had struck one — a villager
+         handing something over is not a thing the game can do. Describing goods
+         they cannot exchange is how they ended up agreeing to deals that never
+         happened. They come back when there is an exchange behind them. */
       said.length ? 'So far:\n' + said.join('\n')
                   : 'Neither of you has said anything yet.',
       '',

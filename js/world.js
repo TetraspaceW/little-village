@@ -44,6 +44,20 @@ LG.world = (function () {
     return b;
   }
 
+  /* Is this character standing in that rectangle? Villager patches, the green
+     and building interiors are all rectangles in tile space, and "are they there
+     yet" was being asked in three files with three slightly different answers. */
+  function inRect(a, r) {
+    return !!r && a.tx >= r.x && a.tx < r.x + r.w && a.ty >= r.y && a.ty < r.y + r.h;
+  }
+  /* Close enough to see into it. Villagers are aimed at a spot in a rectangle,
+     not at its middle, so "did they get there" has to allow for standing at the
+     edge of it looking in. */
+  function nearRect(a, r, pad) {
+    return !!r && a.tx >= r.x - pad && a.tx < r.x + r.w + pad &&
+                  a.ty >= r.y - pad && a.ty < r.y + r.h + pad;
+  }
+
   /* Which building, if any, is this tile inside? */
   function buildingAt(tx, ty) {
     for (const b of buildings) {
@@ -693,6 +707,6 @@ LG.world = (function () {
   }
 
   return { TILE, W, H, T, build, get, isSolid, isWalkable, nearestOpen, pathTo,
-           buildingAt, buildingUnder, roofRects, buildingByLabel,
+           buildingAt, buildingUnder, roofRects, buildingByLabel, inRect, nearRect,
            drawGround, drawBuildings, drawLabels, buildings };
 })();

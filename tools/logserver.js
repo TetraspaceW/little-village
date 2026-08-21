@@ -11,11 +11,20 @@
    Everything the village does lands in logs/session-<when>.jsonl, one JSON
    object per line: every API call with its prompt, its raw reply and the
    model's own reasoning, plus what the villagers decided and remembered. If the
-   server is not running the game carries on and simply keeps no log. */
+   server is not running the game carries on and simply keeps no log.
+
+   It also keeps the save. The game writes its village to this browser's
+   localStorage every few seconds and posts the identical bytes here, where they
+   land in saves/village.json — the same JSON, in a file you can read, copy to
+   another machine, or hand back to a browser that has never seen it. There is
+   no server-side idea of what a village is: this end only stores what the game
+   wrote, and refuses anything that is not a save. */
 const http = require('http'), fs = require('fs'), path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 const LOGS = path.join(ROOT, 'logs');
+const SAVES = path.join(ROOT, 'saves');
+const SAVEFILE = path.join(SAVES, 'village.json');
 const ENVFILE = path.join(ROOT, '.env');
 
 /* ---------------------------------------------------------------- .env
@@ -79,9 +88,11 @@ function isLocal(req) {
 }
 
 fs.mkdirSync(LOGS, { recursive: true });
+fs.mkdirSync(SAVES, { recursive: true });
 const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 const LOGFILE = path.join(LOGS, 'session-' + stamp + '.jsonl');
 let lines = 0;
+let savedSeed = '';        // the village last written, so the log says so once
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
@@ -98,9 +109,11 @@ function serve(req, res) {
   /* The keys live in a dotfile in the directory this is serving, so serving
      dotfiles would hand them to anyone who guessed the name — /env is careful
      about who it answers and it would have been beside the point. The logs are
-     full of prompts and are nobody's business either. */
+     full of prompts and are nobody's business either. The save has its own
+     route in and out below, so there is one way to reach it rather than two. */
   const parts = path.relative(ROOT, file).split(path.sep);
-  if (parts.some(p => p[0] === '.') || parts[0] === 'logs' || parts[0] === 'node_modules') {
+  if (parts.some(p => p[0] === '.') || parts[0] === 'logs' || parts[0] === 'saves' ||
+      parts[0] === 'node_modules') {
     res.writeHead(404).end('not found');
     return;
   }
@@ -149,6 +162,54 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
+  /* The save, both ways.
+
+     What arrives is checked for being a save at all and then written whole; the
+     shape of it is the game's business and is described in js/save.js, which is
+     the only thing that builds one. Written to a temporary name and renamed, so
+     that a crash halfway through a write leaves the last good save rather than
+     half of a new one. */
+  if (req.method === 'POST' && req.url === '/save') {
+    if (!isLocal(req)) { res.writeHead(403).end('local connections only'); return; }
+    let body = '';
+    req.on('data', c => { body += c; if (body.length > 8e6) req.destroy(); });
+    req.on('end', () => {
+      let save = null;
+      try { save = JSON.parse(body); } catch (e) { res.writeHead(400).end('bad json'); return; }
+      if (!save || save.game !== 'little-village' || !save.village || !save.village.seed) {
+        res.writeHead(400).end('not a village');
+        return;
+      }
+      const tmp = SAVEFILE + '.tmp';
+      fs.writeFile(tmp, body, err => {
+        if (err) { res.writeHead(500).end('could not write'); return; }
+        fs.rename(tmp, SAVEFILE, err2 => {
+          if (err2) { res.writeHead(500).end('could not write'); return; }
+          if (save.village.seed !== savedSeed) {
+            savedSeed = save.village.seed;
+            console.log('  save      ' + savedSeed + ' \u2192 ' +
+                        path.relative(process.cwd(), SAVEFILE));
+          }
+          res.writeHead(204).end();
+        });
+      });
+    });
+    return;
+  }
+  if (req.method === 'GET' && req.url === '/save') {
+    if (!isLocal(req)) { res.writeHead(403).end('local connections only'); return; }
+    fs.readFile(SAVEFILE, (err, data) => {
+      if (err) { res.writeHead(404).end('no save'); return; }
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      res.end(data);
+    });
+    return;
+  }
+  if (req.method === 'DELETE' && req.url === '/save') {
+    if (!isLocal(req)) { res.writeHead(403).end('local connections only'); return; }
+    fs.unlink(SAVEFILE, () => { savedSeed = ''; res.writeHead(204).end(); });
+    return;
+  }
   if (req.method === 'GET' && req.url === '/env') {
     if (!isLocal(req)) { res.writeHead(403).end('local connections only'); return; }
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
@@ -171,6 +232,12 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log('env       ' + (ENV_LOADED ? ENV_LOADED + ' values from .env' : 'no .env'));
   console.log('keys      ' + (have.length ? have.join(', ')
                                           : 'none — paste them in the game'));
+  let held = null;
+  try { held = JSON.parse(fs.readFileSync(SAVEFILE, 'utf8')); } catch (e) {}
+  if (held && held.village) savedSeed = held.village.seed;
+  console.log('save      ' + (held && held.village
+    ? held.village.seed + ', saved ' + held.saved
+    : 'none yet — ' + path.relative(process.cwd(), SAVEFILE) + ' when there is'));
   console.log('');
 });
 process.on('SIGINT', () => {

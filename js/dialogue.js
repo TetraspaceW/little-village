@@ -135,38 +135,37 @@ LG.dialogue = (function () {
     const s = LG.game.settings;
     const L = LG.LANGUAGES[s.lang];
     const lvl = LG.LEVELS[s.level];
-    const d = npc.def;
-    const plan = LG.game.plan;
-    const role = plan.roles[d.id] || { goal: '', trade: null };
+    /* One villager, assembled once — the same assembly that decides where they
+       stand and what they say to each other. See view.js for why this stopped
+       being three separate readings of the same character. */
+    const v = LG.view.of(npc, 'player');
     const inv = LG.game.inventoryList();
-    const trade = npc.tradeDone ? null : role.trade;
+    const trade = v.trade.deal;
 
     const lines = [];
     const coins = n => n + (n === 1 ? ' coin' : ' coins');
-    lines.push('You are ' + d.name + ', who lives in this village and speaks ' + L.name + '.');
+    lines.push('You are ' + v.name + ', who lives in this village and speaks ' + L.name + '.');
     lines.push('');
     lines.push('# Your character');
-    lines.push('Name: ' + d.name + ' — ' + d.job + '.');
-    lines.push('Personality: ' + d.persona);
-    lines.push('Your current concern: ' + role.goal);
+    lines.push('Name: ' + v.name + ' — ' + v.job + '.');
+    lines.push('Personality: ' + v.persona);
+    lines.push('Your current concern: ' + v.goal);
     lines.push('');
     lines.push('# What you know');
     lines.push('Each of these carries a tag. Say them in your own words, as they come up.');
-    npc.facts.forEach(id => {
-      const f = plan.facts[id];
-      if (f) lines.push('- [' + id + '] ' + f.text);
-    });
-    if (!npc.facts.length) lines.push('- (nothing much, beyond your own business)');
-    if (npc.memory.length) {
+    v.knows.forEach(f => lines.push('- [' + f.id + '] ' + f.text));
+    if (!v.knows.length) lines.push('- (nothing much, beyond your own business)');
+    if (v.memory.length) {
       lines.push('');
       /* Not only the traveller any more — most of what a villager picks up they
          pick up from each other, and it is the same kind of knowing. */
       lines.push('# What you have picked up lately');
-      npc.memory.slice(-12).forEach(f => lines.push('- ' + f));
+      v.memory.forEach(f => lines.push('- ' + f));
     }
     lines.push('');
     lines.push('# Where you are right now');
-    lines.push(LG.time.describe());
+    lines.push(v.when);
+    lines.push('You are ' + v.here + '.');
     lines.push('');
     lines.push('# The player');
     lines.push('A traveller visiting the village, learning ' + L.name + '. Their grammar and pronunciation are rough.');
@@ -182,9 +181,9 @@ LG.dialogue = (function () {
     lines.push('Stay in character.');
     lines.push('A sentence or two at a time.');
     // What they have to sell, when they are standing where they work
-    const working = LG.game.atWork(npc) && d.sells && d.sells.length;
+    const working = v.trade.open && v.trade.sells.length;
     if (working) {
-      const counter = LG.game.behindTheCounter(npc);
+      const counter = v.trade.atCounter;
       lines.push('');
       lines.push('# Your trade');
       lines.push(counter
@@ -194,34 +193,33 @@ LG.dialogue = (function () {
          know it. Without this the apple they had just bought did not appear
          anywhere in what they could see, and they went on saying they had no
          apples — truthfully, from where they were standing. */
-      const held = Object.keys(npc.stock || {}).filter(k => npc.stock[k] > 0);
-      if (held.length) {
+      if (v.trade.stock.length) {
         lines.push('In your hands right now, bought off the traveller: ' +
-          held.map(k => LG.ITEMS[k].full + (npc.stock[k] > 1 ? ' \u00d7' + npc.stock[k] : '')).join(', ') +
+          v.trade.stock.map(it => it.full + (it.n > 1 ? ' \u00d7' + it.n : '')).join(', ') +
           '. You have these; you can say so, and sell them on if you like.');
       }
       lines.push('These are yours to sell. The price is what you usually ask, not a rule:');
-      d.sells.forEach(w => lines.push('- ' + LG.ITEMS[w.i].full + ' — ' + coins(w.p) + ' [' + w.i + ']'));
-      if (d.sellsTags && d.sellsTags.length) {
+      v.trade.sells.forEach(w => lines.push('- ' + LG.ITEMS[w.i].full + ' — ' + coins(w.p) + ' [' + w.i + ']'));
+      if (v.trade.sellsTags.length) {
         const more = Object.keys(LG.ITEMS)
-          .filter(k => k !== 'coins' && !d.sells.some(w => w.i === k) &&
-                       d.sellsTags.some(t => (LG.ITEMS[k].tags || []).indexOf(t) !== -1));
+          .filter(k => k !== 'coins' && !v.trade.sells.some(w => w.i === k) &&
+                       v.trade.sellsTags.some(t => (LG.ITEMS[k].tags || []).indexOf(t) !== -1));
         lines.push('You also keep the ordinary run of shop goods, about ' +
           coins(Math.max(1, Math.round(LG.priceOf(more[0] || 'salt')))) + ' apiece — among them ' +
           more.slice(0, 14).map(k => LG.ITEMS[k].en + ' [' + k + ']').join(', ') +
           ', and plenty besides. If the traveller asks for something a village shop would stock, you have it.');
       }
-      if (d.buys && d.buys.length) {
+      if (v.trade.buys.length) {
         lines.push('You would also buy, if the traveller happens to have one:');
-        d.buys.forEach(w => lines.push('- ' + LG.ITEMS[w.i].full + ' — you would pay about ' +
-          w.p + (w.p === 1 ? ' coin' : ' coins') + ' [' + w.i + ']'));
+        v.trade.buys.forEach(w => lines.push('- ' + LG.ITEMS[w.i].full + ' — you would pay about ' +
+          coins(w.p) + ' [' + w.i + ']'));
       }
       lines.push('The traveller has ' + coins(LG.game.count('coins')) + ' on them.');
 
       lines.push('Offer your goods the way you would to any customer, and haggle if it suits you.');
       lines.push('If the traveller holds out their coins, that is them paying you — take the money and hand the goods over in the same breath.');
       lines.push('Two things at once is still one sale: put both tags in "item" and the total in "price". Only list what you are actually handing over this turn.');
-    } else if (d.sells && d.sells.length) {
+    } else if (v.trade.sells.length) {
       /* The small hours are the one time the shop is shut, and saying nothing
          about it left them selling anyway: Mikhalych took two coins for a cup of
          tea at midnight, twice, and the game turned both down without a word to
@@ -245,7 +243,7 @@ LG.dialogue = (function () {
          a rule written for it. It sits outside the block above on purpose: a
          villager who has just been told a sale did not go through needs to read
          that whether or not they are open for business. */
-      const till = (npc.till || []).slice(-8);
+      const till = v.trade.till;
       if (till.length) {
         lines.push('');
         lines.push('# The till');
@@ -259,9 +257,8 @@ LG.dialogue = (function () {
           lines.push('- ' + t.at + ' \u2014 ' + line +
             (t.asked !== t.coins ? ' (you said ' + t.asked + ', the till took ' + t.coins + ')' : ''));
         });
-        const theirs = Object.keys(npc.sold || {}).filter(k => npc.sold[k].n > 0);
-        if (theirs.length) lines.push('Still in their hands, from you: ' +
-          theirs.map(k => LG.ITEMS[k].en).join(', ') + '.');
+        if (v.trade.sold.length) lines.push('Still in their hands, from you: ' +
+          v.trade.sold.map(it => it.en).join(', ') + '.');
         lines.push('This is the record. If it does not match what you thought, the record is right.');
       }
     }
@@ -281,8 +278,8 @@ LG.dialogue = (function () {
        the moment it completed, leaving the villager with no sign it had ever
        happened — so they went on trying to finish it, and the schema turned each
        attempt into another transaction. Silence is not the same as closure. */
-    if (npc.tradeDone && role.trade) {
-      const r = role.trade;
+    if (v.trade.done) {
+      const r = v.trade.done;
       lines.push('');
       lines.push('# Your deal');
       lines.push('Done, earlier today: the traveller gave you ' +
@@ -326,7 +323,7 @@ LG.dialogue = (function () {
     // (the word-reading rule lives in LG.FURIGANA now, with the rest of the spec)
     lines.push('"translation" and "remember" are notes for the game, not speech — writing English there does not mean you understand any.');
     lines.push('"revealed" is about what you asserted, not what you talked about: using the word, explaining what it means, or asking after it does not count. When in doubt, leave it out.');
-    if (working && d.sells && d.sells.length) {
+    if (working) {
       lines.push('Use "sell" at the moment you actually hand goods over and take the money, and "buy" when you take something off the traveller and pay for it — not while the two of you are still discussing it.');
     }
     if (trade) {
@@ -708,6 +705,7 @@ LG.dialogue = (function () {
   let chatGap = 0, chatBusy = 0;
   const CHAT_GAP = 1.2, CHAT_PARALLEL = 2, CHAT_STALE = 12;
 
+  /* `ctx` is two LG.view snapshots, {a, b}, taken when they met. */
   function overheard(a, b, ctx) {
     if (chatQueue.length > 8) return;                  // a crowd, not a queue
     if (a.chatting || b.chatting) return;
@@ -745,27 +743,28 @@ LG.dialogue = (function () {
     const turns = 4 + ((Math.random() * 3) | 0);        // 4–6 lines between them
     const transcript = [];
     const ctx = job.ctx || {};
-    const mind = {};
-    mind[a.def.id] = ctx.aKnows || [];
-    mind[b.def.id] = ctx.bKnows || [];
+    const view = {};
+    if (ctx.a) view[ctx.a.id] = ctx.a;
+    if (ctx.b) view[ctx.b.id] = ctx.b;
 
     try {
       for (let t = 0; t < turns; t++) {
         // the player pulling one of them into a conversation ends this one
         if (a.frozen || b.frozen) break;
         const me = (t % 2 === 0) ? a : b, them = (t % 2 === 0) ? b : a;
+        const vMe = view[me.def.id] || {}, vThem = view[them.def.id] || {};
         const turn = await LG.llm.converse(LG.game.llmConfig(), {
-          me: { name: me.def.name, job: me.def.job, persona: me.def.persona },
-          them: { name: them.def.name, job: them.def.job, persona: them.def.persona },
+          me: vMe,
+          them: vThem,
           /* No assignment to deliver. They have what is on their mind and what
              they are like, and whether any of it comes up is the conversation's
              business. Nothing downstream depends on a particular thing being
              said, so nothing has to make them say it. */
-          knows: mind[me.def.id],
-          recent: (me.memory || []).slice(-4),
-          here: ctx.where ? ctx.where(me) : '',
-          errand: ctx.errandOf ? ctx.errandOf(me) : '',
-          sought: ctx.soughtBy ? ctx.soughtBy(me, them) : false,
+          knows: (vMe.knows || []).map(f => f.text),
+          recent: vMe.memory || [],
+          here: vMe.here || '',
+          errand: (vMe.errand && vMe.errand.why) || '',
+          sought: !!vMe.sought,
           transcript: transcript,
           closing: t === turns - 1,
           when: t === 0 ? LG.time.describe() : '',
@@ -801,19 +800,22 @@ LG.dialogue = (function () {
 
     /* What either of them keeps is read off the conversation that happened,
        rather than decided before it started. */
-    if (transcript.length >= 2 && ctx.factsOf) remember(a, b, transcript, ctx);
+    if (transcript.length >= 2 && ctx.a && ctx.b) remember(a, b, transcript, ctx);
   }
 
   function remember(a, b, transcript, ctx) {
-    const factsOf = ctx.factsOf;
+    /* The reader is a third party working out what these two said to each other,
+       so it gets the facts as they are written down rather than in either
+       villager's own voice — "Mira thinks Wren talks too much", not "You think". */
+    const told = v => (v.knows || []).map(f => ({ id: f.id, text: f.plain }));
     LG.llm.recall(LG.game.llmConfig(), {
       transcript: transcript,
-      a: { name: a.def.name, facts: factsOf(a) },
-      b: { name: b.def.name, facts: factsOf(b) }
+      a: { name: ctx.a.name, facts: told(ctx.a) },
+      b: { name: ctx.b.name, facts: told(ctx.b) }
     }).then(res => {
       if (!res) return;
-      keep(a, b, res.a, factsOf(a));
-      keep(b, a, res.b, factsOf(b));
+      keep(a, b, res.a, told(ctx.a));
+      keep(b, a, res.b, told(ctx.b));
     }).catch(() => {});
   }
 

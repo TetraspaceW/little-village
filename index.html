@@ -114,8 +114,8 @@
           <option value="12">12 minutes</option>
           <option value="30">30 minutes — a slow, steady day</option>
         </select>
-        <small>Thirty days to a season, four seasons to a year. The calendar keeps
-        running between visits, and a new village starts on a random day.</small>
+        <small>Thirty days to a season, four seasons to a year. Every new village
+        starts on a random day of the year, mid-morning.</small>
       </label>
 
       <label>Which voices may be cast?
@@ -175,6 +175,9 @@
 
       <button id="setSave" class="primary">Save</button>
       <button id="setNew" class="secondary">Start a new village</button>
+      <button id="setForget" class="secondary" type="button">Forget the saved village</button>
+
+      <p class="note" id="setSaveNote"></p>
 
       <p class="note">The key lives in this browser's local storage and goes only to the
       provider above. Anyone with access to your browser profile can read it, so use a key
@@ -229,8 +232,10 @@
 <script src="js/tts.js"></script>
 <script src="js/world.js"></script>
 <script src="js/sky.js"></script>
+<script src="js/view.js"></script>
 <script src="js/npc.js"></script>
 <script src="js/dialogue.js"></script>
+<script src="js/save.js"></script>
 <script src="js/game.js"></script>
 </body>
 </html>

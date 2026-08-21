@@ -1,0 +1,515 @@
+/* smoke.js — run the real game headlessly and check it still works.
+ *
+ *   node tools/smoke.js
+ *
+ * The game is plain <script> tags: each file sets window.LG and then reads the
+ * bare global LG, which only works when the two are the same object. A vm
+ * context reproduces that; require() does not. The files are loaded in the order
+ * index.html loads them, read out of index.html, so this cannot drift from what
+ * a browser actually does.
+ *
+ * Nothing here talks to a model. Everything asserted is what the game does with
+ * no API key at all. */
+const vm = require('vm'), fs = require('fs'), path = require('path');
+
+const ROOT = path.join(__dirname, '..');
+let failures = 0, checks = 0;
+function ok(cond, what) {
+  checks++;
+  if (!cond) { failures++; console.log('FAILED: ' + what); }
+}
+function section(name) { console.log('\n-- ' + name); }
+
+/* ------------------------------------------------------------ a fake browser */
+const ctx2d = new Proxy({}, {
+  get(t, k) {
+    if (k in t) return t[k];
+    if (k === 'measureText') return () => ({ width: 10 });
+    if (k === 'createRadialGradient' || k === 'createLinearGradient')
+      return () => ({ addColorStop() {} });
+    return () => {};
+  },
+  set(t, k, v) { t[k] = v; return true; }
+});
+
+function elem(id) {
+  const e = {
+    id, textContent: '', innerHTML: '', value: '', checked: false,
+    disabled: false, title: '', className: '', style: {}, dataset: {},
+    children: [],
+    classList: {
+      _s: new Set(),
+      add(c) { this._s.add(c); }, remove(c) { this._s.delete(c); },
+      contains(c) { return this._s.has(c); },
+      toggle(c) { this._s.has(c) ? this._s.delete(c) : this._s.add(c); }
+    },
+    appendChild(c) { this.children.push(c); return c; },
+    querySelectorAll() { return []; },
+    addEventListener() {}, removeEventListener() {},
+    getBoundingClientRect() { return { width: 900, height: 640, left: 0, top: 0 }; },
+    getContext() { return ctx2d; },
+    focus() {}
+  };
+  e.parentElement = e;
+  return e;
+}
+
+/* A whole browser, built to order. Taking it as a function rather than one
+   global lets the test do the thing a save is for: close the tab and open a new
+   one, with nothing carried over but what was written down. */
+function makeSandbox(store) {
+const els = {};
+const sandbox = {
+  console,
+  Math, Date, JSON, Intl, Promise, Set, Map, Array, Object, String, Number,
+  RegExp, Error, parseInt, parseFloat, isFinite, isNaN, Uint8Array, Proxy,
+  setTimeout, clearTimeout, setInterval, clearInterval,
+  devicePixelRatio: 1,
+  performance: { now: () => Date.now() },
+  location: { protocol: 'file:', origin: 'null' },
+  localStorage: {
+    getItem: k => (k in store ? store[k] : null),
+    setItem: (k, v) => { store[k] = String(v); },
+    removeItem: k => { delete store[k]; }
+  },
+  // the loop is driven by hand below, so frames never fire on their own
+  requestAnimationFrame: () => 0,
+  addEventListener() {}, removeEventListener() {},
+  fetch: () => Promise.reject(new Error('no server in the smoke test')),
+  document: {
+    getElementById: id => els[id] || (els[id] = elem(id)),
+    querySelector: () => null,
+    querySelectorAll: () => ({ forEach() {}, length: 0 }),
+    createElement: tag => elem(tag),
+    addEventListener() {},
+    body: elem('body')
+  }
+};
+sandbox.window = sandbox;
+sandbox.self = sandbox;
+vm.createContext(sandbox);
+return sandbox;
+}
+
+const store = {};
+const sandbox = makeSandbox(store);
+
+/* ------------------------------------------------------------------- loading */
+section('loading, in index.html order');
+const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+const files = [];
+html.replace(/<script src="([^"]+)"><\/script>/g, (m, src) => { files.push(src); return m; });
+ok(files.length > 5, 'index.html lists its scripts');
+for (const f of files) {
+  const p = path.join(ROOT, f);
+  try { vm.runInContext(fs.readFileSync(p, 'utf8'), sandbox, { filename: f }); }
+  catch (e) { ok(false, f + ' threw on load: ' + e.message); }
+}
+console.log('   ' + files.length + ' files: ' + files.map(f => path.basename(f)).join(' '));
+
+const LG = sandbox.LG;
+
+/* Start the game the way the page does. No key, so nothing is ever sent. */
+sandbox.LG.game.init();
+if (LG.game.thoughts !== undefined) LG.game.thoughts = false;   // no narration in a test
+
+/* `node tools/smoke.js --prompts` prints every villager's system prompt for one
+   fixed village and stops. Two checkouts dumped this way diff cleanly, which is
+   the only way to be sure a refactor left the model looking at the same words. */
+if (process.argv.indexOf('--prompts') !== -1) {
+  LG.game.newVillage('elder-birch-quiet', true);
+  LG.time.start(10, 0.4);
+  LG.time.setWeather('clear', 999);                 // weather is rolled, so pin it
+  LG.game.npcs.forEach(n => {
+    console.log('\n########## ' + n.def.name + '\n');
+    console.log(LG.dialogue._debugPrompt(n, null));
+  });
+  process.exit(0);
+}
+ok(!!LG.view, 'LG.view exists');
+const npcs = LG.game.npcs, plan = LG.game.plan;
+ok(npcs.length > 0, 'the village has villagers');
+ok(!!plan && plan.links.length > 0, 'an errand chain was built');
+
+/* ------------------------------------------------------------------ the view */
+section('one villager, assembled once');
+for (const n of npcs) {
+  const v = LG.view.of(n, 'player');
+  ok(v.name === n.def.name && v.job === n.def.job && !!v.persona,
+     v.name + ': identity');
+  ok(typeof v.goal === 'string' && v.goal.length > 0, v.name + ': has something to be about');
+  ok(Array.isArray(v.knows) && v.knows.every(f => f.id && f.text && f.plain),
+     v.name + ': knows is [{id, text, plain}]');
+  ok(typeof v.here === 'string' && v.here.length > 0, v.name + ': knows where they are');
+  ok(v.trade && typeof v.trade.open === 'boolean' && Array.isArray(v.trade.till),
+     v.name + ': has a trade and a till');
+}
+
+section('a villager reads their own opinion in the first person');
+let opinionsChecked = 0;
+for (const id of Object.keys(plan.facts)) {
+  const f = plan.facts[id];
+  if (f.type !== 'opinion') continue;
+  for (const n of npcs) {
+    if (n.facts.indexOf(id) === -1) continue;
+    if (f.text.indexOf(n.def.name + ' thinks ') !== 0) continue;   // not the one thinking it
+    opinionsChecked++;
+    const entry = LG.view.of(n).knows.find(k => k.id === id);
+    ok(entry && entry.text.indexOf('You think ') === 0,
+       n.def.name + ' says "You think" about her own opinion');
+    ok(entry && entry.plain === f.text,
+       n.def.name + ': the plain wording is kept for anyone reading from outside');
+    const prompt = LG.dialogue._debugPrompt(n, null);
+    ok(prompt.indexOf(n.def.name + ' thinks ') === -1,
+       n.def.name + ' is not told about herself in the third person');
+  }
+}
+ok(opinionsChecked > 0, 'the village has opinions to check at all');
+
+section('the three callers get the amounts they asked for');
+for (const n of npcs) {
+  const i = LG.view.of(n, 'intent'), c = LG.view.of(n, 'chat'), p = LG.view.of(n, 'player');
+  ok(i.knows.length <= LG.view.TRIM.intent.knows, n.def.name + ': intent knows trimmed');
+  ok(i.memory.length <= LG.view.TRIM.intent.memory, n.def.name + ': intent memory trimmed');
+  ok(i.folk.length <= LG.view.TRIM.intent.folk, n.def.name + ': intent folk trimmed');
+  ok(c.knows.length <= LG.view.TRIM.chat.knows, n.def.name + ': chat knows trimmed');
+  ok(c.memory.length <= LG.view.TRIM.chat.memory, n.def.name + ': chat memory trimmed');
+  ok(p.knows.length === n.facts.length,
+     n.def.name + ': the player-facing prompt lists every fact, so every tag is nameable');
+}
+
+section('the prompt the player meets');
+for (const n of npcs) {
+  const prompt = LG.dialogue._debugPrompt(n, null);
+  for (const head of ['# Your character', '# What you know', '# Where you are right now',
+                      '# The player', '# Your language', '# Reply format']) {
+    ok(prompt.indexOf(head) !== -1, n.def.name + ': prompt has ' + head);
+  }
+  ok(prompt.indexOf('You are ' + LG.view.where(n) + '.') !== -1,
+     n.def.name + ': is told where they are standing');
+  ok(!/\bundefined\b/.test(prompt), n.def.name + ': no undefined in the prompt');
+  ok(!/\b1 coins\b|\b\d+ coin\b(?!s)/.test(prompt.replace(/\b1 coin\b/g, '')),
+     n.def.name + ': coins are pluralised');
+  n.facts.forEach(id => ok(prompt.indexOf('[' + id + ']') !== -1,
+     n.def.name + ': fact ' + id + ' is tagged in the prompt'));
+}
+
+section('what brought them here is spent when they get here');
+const someone = npcs[0];
+someone.wentAfter = npcs[1].def.id;
+ok(LG.view.of(someone).errand.after === npcs[1].def.id, 'the errand is readable');
+LG.view.arrived(someone);
+ok(LG.view.of(someone).errand.after === null, 'and cleared once they have arrived');
+
+/* ------------------------------------------------------------------ the world */
+section('the village runs');
+const before = npcs.map(n => n.tx + ',' + n.ty);
+for (let i = 0; i < 3000; i++) LG.game._debugTick(1 / 30);
+const stuck = npcs.filter((n, i) => (n.tx + ',' + n.ty) === before[i]);
+ok(stuck.length < npcs.length / 2, 'the village moves without a key');
+/* Known, and older than any of this: about one village in eight has somebody
+   who cannot move at all. `wander` only steps to a neighbouring tile that is
+   both walkable and inside their own patch, so a villager whose patch pins them
+   against trees or a wall has nowhere legal to go and stands there. It is the
+   same geometry that used to strand Ilya in the woods, in the one place the
+   eight-try pathfinding retry does not reach. Reported, not asserted, because
+   it is not what this refactor changed — measured at 8/60 villages before and
+   7/60 after. */
+if (stuck.length) {
+  console.log('   KNOWN ISSUE: penned in by their own patch — ' +
+              stuck.map(n => n.def.name + ' (' + LG.view.where(n) + ')').join(', '));
+}
+for (const n of npcs) {
+  ok(LG.world.isWalkable(n.tx, n.ty), n.def.name + ' is standing somewhere walkable');
+  ok(typeof LG.view.where(n) === 'string', n.def.name + ' can still say where they are');
+}
+
+section('trading still squares up');
+LG.time.start(LG.time.day, 0.5);                       // the middle of the day
+/* Nothing the errand needs, or the villager rightly refuses to buy it. */
+const chainItem = {};
+plan.links.forEach(lk => { chainItem[lk.wants] = chainItem[lk.gives] = true; });
+chainItem[plan.terminal.item] = chainItem[plan.prize] = true;
+
+/* Not a chain item either way: a villager rightly refuses to buy back something
+   the traveller is carrying for somebody else, which is a different test. */
+const shop = npcs.find(n => (n.def.sells || []).some(w => !chainItem[w.i]));
+if (shop) {
+  const ware = shop.def.sells.find(w => !chainItem[w.i]);
+  LG.game.state.inv.coins = 20;
+  const sold = LG.game.commerce(shop, 'sell', ware.i, ware.p);
+  ok(sold, shop.def.name + ' sold a ' + LG.ITEMS[ware.i].en);
+  ok(LG.game.count(ware.i) === 1, 'and the traveller is holding it');
+  ok(LG.game.commerce(shop, 'buy', ware.i, ware.p), 'and took it back when asked');
+}
+
+/* What a villager buys they hold, know they hold, and can say so. */
+const buyer = npcs.find(n => (n.def.buys || []).some(w => !chainItem[w.i]));
+if (buyer) {
+  const want = buyer.def.buys.find(w => !chainItem[w.i]);
+  LG.game.give(want.i, 1);
+  const bought = LG.game.commerce(buyer, 'buy', want.i, want.p);
+  ok(bought, buyer.def.name + ' bought a ' + LG.ITEMS[want.i].en + ' off the traveller');
+  ok((buyer.stock[want.i] || 0) === 1, 'and is holding it now');
+  const v = LG.view.of(buyer, 'player');
+  ok(v.trade.stock.some(it => it.id === want.i),
+     'and the view says so, so the villager can say so');
+  ok(LG.dialogue._debugPrompt(buyer, null).indexOf('In your hands right now') !== -1,
+     'and it reaches the prompt');
+  ok(LG.dialogue._debugPrompt(buyer, null).indexOf('# The till') !== -1,
+     'and the till records what actually happened');
+}
+
+/* ------------------------------------------------------------------- saving
+   One format, both ways round. What is checked here is that a village survives
+   being written down and read back — not that localStorage works, but that
+   everything the player has done is in the file and comes out the other side.
+   The same bytes are what the log server keeps in saves/village.json, so a
+   round trip through a string is the file, exactly. */
+section('a village, written down and read back');
+{
+  const g = LG.game;
+  g.settings.apiKey = 'sk-not-a-real-key';        // must not reach the file
+  g.settings.ttsKey = 'sk_not-a-real-voice-key';
+  g.state.deeds.push('Gave Mira a pie, got a shell.');
+  g.give('coins', 7);
+  const someFact = Object.keys(plan.facts)[0];
+  const holder = npcs.find(n => n.facts.indexOf(someFact) !== -1);
+  if (holder) {
+    g.learn(someFact, holder);
+    holder.memory.push('the traveller cannot say much yet');
+  }
+  npcs[0].coins = 41;
+  npcs[0].stock.apple = 2;
+  /* The one thing about a village that changes while you play it: the thing
+     lying at the end of the chain gets collected. */
+  if (g.beast) { g.beast.caught = true; g.beast.following = true; }
+  else if (g.worldItem) { g.worldItem.taken = true; }
+
+  const before = {
+    seed: plan.seed, day: LG.time.day, frac: LG.time.frac,
+    weather: LG.time.weather, snow: LG.time.snow,
+    inv: JSON.stringify(g.state.inv), notes: JSON.stringify(g.state.notes),
+    deeds: JSON.stringify(g.state.deeds),
+    px: Math.round(g.player.px * 10) / 10,
+    facts: npcs.map(n => n.facts.join(',')).join('|'),
+    memory: npcs.map(n => n.memory.join(';')).join('|'),
+    till: npcs.map(n => JSON.stringify(n.till || [])).join('|'),
+    where: npcs.map(n => n.tx + ',' + n.ty).join('|')
+  };
+
+  const shot = LG.save.snapshot();
+  ok(shot && shot.v === LG.save.VERSION && shot.game === 'little-village',
+     'a snapshot is a versioned little-village save');
+  ok(LG.save.check(shot) === null, 'and it is one this version will take back');
+  ok(shot.village.seed === plan.seed && shot.village.level === g.settings.level &&
+     shot.village.lang === g.settings.lang,
+     'it carries the seed, the difficulty and the language the village was built from');
+  ok(Object.keys(shot.villagers).length === npcs.length, 'and every villager');
+
+  const text = JSON.stringify(shot);
+  ok(text.indexOf('sk-not-a-real-key') === -1 && text.indexOf('sk_not-a-real-voice-key') === -1,
+     'no API keys go into a file that gets written to disk');
+  console.log('   ' + Math.round(text.length / 1024) + 'kB of village, ' +
+              Object.keys(shot.villagers).length + ' villagers, ' +
+              shot.notes.length + ' notes');
+
+  // somewhere else entirely, so a restore that quietly did nothing would show
+  g.newVillage('quite-another-village', true);
+  ok(LG.game.plan.seed !== before.seed, 'a different village, to lose the first one in');
+
+  // through a string and back: this is the file, not a live object
+  const why = LG.save.restore(JSON.parse(text));
+  ok(why === null, 'the save loads' + (why ? ': ' + why : ''));
+
+  const after = LG.game;
+  ok(after.plan.seed === before.seed, 'the same village came back');
+  ok(LG.save.digestOf(after.plan) === shot.village.digest,
+     'and the generator built the same chain from the seed');
+  ok(LG.time.day === before.day && Math.abs(LG.time.frac - before.frac) < 1e-9,
+     'on the same day, at the same hour');
+  ok(LG.time.weather === before.weather && Math.abs(LG.time.snow - before.snow) < 1e-9,
+     'under the same sky, with the same snow lying');
+  ok(JSON.stringify(after.state.inv) === before.inv, 'with the same pockets');
+  ok(JSON.stringify(after.state.notes) === before.notes, 'the same notebook');
+  ok(JSON.stringify(after.state.deeds) === before.deeds, 'and the same deeds behind you');
+  ok(Math.round(after.player.px * 10) / 10 === before.px, 'standing where you were');
+
+  const back = after.npcs;
+  ok(back.length === npcs.length, 'the same cast');
+  ok(back.map(n => n.facts.join(',')).join('|') === before.facts,
+     'everyone knows what they knew');
+  ok(back.map(n => n.memory.join(';')).join('|') === before.memory,
+     'and remembers what they had picked up');
+  ok(back.map(n => JSON.stringify(n.till || [])).join('|') === before.till,
+     'the tills square up');
+  ok(back.map(n => n.tx + ',' + n.ty).join('|') === before.where,
+     'and everybody is standing where they were left');
+  ok(back[0].coins === 41 && back[0].stock.apple === 2, 'purses and stock come back');
+  ok(after.beast ? (after.beast.caught && after.beast.following)
+                 : (after.worldItem && after.worldItem.taken),
+     'and the thing at the end of the chain is still collected, not lying there again');
+  ok(back.every(n => !n.route && !n.frozen && !n.chatting),
+     'nobody comes back mid-errand, mid-freeze or mid-conversation');
+  ok(back.every(n => LG.world.isWalkable(n.tx, n.ty)),
+     'and everybody comes back somewhere they can stand');
+  ok(back.every(n => n.patch && typeof n.patch.x === 'number'),
+     'their patch is a rectangle again, not four loose numbers');
+
+  const known = [back[0].def.home, back[0].work, back[0].shelter, LG.GREEN]
+    .concat(LG.world.buildings.map(b => b.inside));
+  ok(!known.some(r => r && r.x === back[0].patch.x && r.y === back[0].patch.y &&
+                      r.w === back[0].patch.w && r.h === back[0].patch.h) ||
+     known.indexOf(back[0].patch) !== -1,
+     'a patch that is one of the real rectangles comes back as that rectangle');
+
+  section('a save this version cannot use is refused, out loud');
+  ok(typeof LG.save.check({}) === 'string', 'something that is not a village');
+  ok(typeof LG.save.check(Object.assign({}, shot, { v: shot.v + 1 })) === 'string',
+     'a save from a later version');
+  ok(typeof LG.save.check(Object.assign({}, shot, { village: Object.assign({}, shot.village, { level: 'impossible' }) })) === 'string',
+     'a difficulty this version does not have');
+  const tampered = JSON.parse(text);
+  tampered.village.digest = 'notthedigest';
+  const standing = LG.game.plan.seed;
+  const refused = LG.save.restore(tampered);
+  ok(typeof refused === 'string' && refused.indexOf('generator') !== -1,
+     'and a village the generator would no longer build the same way');
+  ok(LG.game.plan.seed === standing,
+     'and being refused leaves the village you were in standing');
+  ok(LG.save.restore(JSON.parse(text)) === null, 'the good save still loads afterwards');
+
+  section('both sinks are handed the same bytes');
+  const written = LG.save.write();
+  ok(!!written, 'a write produces a save');
+  ok(JSON.stringify(LG.save._local()) === JSON.stringify(written),
+     'and what went into localStorage is what the log server was posted');
+  ok(LG.save.has(), 'so there is a village to come back to');
+  LG.save.forget();
+  ok(!LG.save.has(), 'and a way to be rid of it');
+}
+
+/* --------------------------------------------------- closing the tab
+   The half that in-process round trips cannot reach: a browser that has never
+   seen this village starts up with nothing but what was written to storage, and
+   has to arrive in the village rather than roll a new one. This is the path the
+   player actually takes, and the one that breaks when init() changes. */
+section('closing the tab and opening it again');
+{
+  const written = LG.save.write();                 // as the autosave would have
+  const store2 = {
+    'lg-save': JSON.stringify(written),
+    'lg-settings': JSON.stringify(LG.game.settings)
+  };
+  const s2 = makeSandbox(store2);
+  for (const f of files) {
+    vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), s2, { filename: f });
+  }
+  s2.LG.game.init();
+  s2.LG.game.thoughts = false;                     // no narration in a test
+  s2.LG.game.settings.npcChatter = false;          // and nothing sent, key or no key
+
+  ok(s2.LG.save.resumed, 'a fresh browser came back into the saved village');
+  ok(s2.LG.game.plan.seed === written.village.seed,
+     'the same village, not a new one: ' + s2.LG.game.plan.seed);
+  ok(s2.LG.time.day === written.time.day &&
+     Math.abs(s2.LG.time.frac - written.time.frac) < 1e-9, 'on the same day and hour');
+  ok(s2.LG.time.weather === written.time.weather, 'under the same sky');
+  ok(JSON.stringify(s2.LG.game.state.inv) === JSON.stringify(written.inventory),
+     'with what you were carrying');
+  ok(s2.LG.game.state.notes.length === written.notes.length, 'and the notebook you had');
+  ok(s2.LG.game.npcs.every(n => n.facts.join(',') === written.villagers[n.id].facts.join(',')),
+     'and everyone still knows what they knew');
+
+  // and it keeps running: the village that came back is a village, not a photograph
+  for (let i = 0; i < 600; i++) s2.LG.game._debugTick(1 / 30);
+  ok(s2.LG.game.npcs.every(n => s2.LG.world.isWalkable(n.tx, n.ty)),
+     'and it carries on from there without anyone walking into a wall');
+
+  const again = s2.LG.save.snapshot();
+  ok(again.village.digest === written.village.digest,
+     'a save of the resumed village is a save of the same village');
+}
+
+/* ------------------------------------------------------- nothing left behind */
+section('the old copies are gone');
+const src = {};
+for (const f of files) src[f] = fs.readFileSync(path.join(ROOT, f), 'utf8');
+const all = Object.values(src).join('\n');
+ok(!/function atWork\b|function behindTheCounter\b|function describeWhere\b/.test(all),
+   'atWork / behindTheCounter / describeWhere have one home');
+ok((all.match(/function inRect\(/g) || []).length === 1, 'inRect is defined once');
+ok((all.match(/function nearRect\(/g) || []).length === 1, 'nearRect is defined once');
+ok(!/"exchanged"|\.exchanged\b/.test(all), 'the exchange field nobody read is gone');
+ok(!/o\.purse|o\.wares|o\.theirs/.test(all), 'the unwired trade branches are gone');
+ok(!/\bctx\.factsOf\b|\bctx\.aKnows\b|\bctx\.soughtBy\b/.test(all),
+   'the conversation takes view snapshots, not callbacks');
+
+/* --------------------------------------------------- two villagers talking
+   The one path that cannot be reached without a key, so the model is replaced
+   by a stub that records what it was handed. What is being checked is the
+   plumbing: that a conversation is given two villagers who know who they are. */
+async function villagersTalking() {
+  section('two villagers stop for a word');
+  const seen = [];
+  LG.llm.converse = async (cfg, opts) => {
+    seen.push(opts);
+    return { say: 'Доброе утро.', translation: 'Good morning.' };
+  };
+  let recalled = null;
+  LG.llm.recall = async (cfg, opts) => { recalled = opts; return null; };
+  LG.llm.intent = async () => null;                 // nobody wanders off mid-test
+
+  // the cast is rebuilt by a restore, so read it now rather than trusting the
+  // copy taken at the top of the file
+  const cast = LG.game.npcs;
+  const a = cast[0], b = cast[1];
+  LG.game.settings.apiKey = 'not-a-real-key';       // both stubs above, so nothing is sent
+  LG.game.settings.npcChatter = true;
+  LG.dialogue.turnHold = 0;
+  LG.dialogue._chatReset();
+  a.frozen = b.frozen = false;
+  a.chatting = b.chatting = false;
+  a.route = b.route = null;
+  b.px = a.px + 8; b.py = a.py;
+  b.tx = a.tx; b.ty = a.ty;
+  a.gossipCool = b.gossipCool = 0;
+  a.wentAfter = b.def.id;                            // a came looking for b
+
+  for (let i = 0; i < 400 && seen.length < 2; i++) {
+    LG.game._debugTick(1 / 30);
+    await new Promise(r => setTimeout(r, 0));
+  }
+
+  ok(seen.length >= 2, 'they got as far as talking to each other');
+  if (seen.length >= 2) {
+    const first = seen[0];
+    ok(first.me && first.me.name && first.me.job && first.me.persona,
+       'the speaker knows who they are');
+    ok(first.them && first.them.name, 'and who they are talking to');
+    ok(Array.isArray(first.knows) && first.knows.every(k => typeof k === 'string'),
+       'their knowledge arrives as lines, not objects');
+    ok(typeof first.here === 'string' && first.here.length > 0,
+       'they know where the two of them are standing');
+    ok(seen.some(o => o.sought === true), 'and that one of them came looking for the other');
+    ok(seen[0].me.name !== seen[1].me.name, 'they take turns');
+  }
+  ok(a.wentAfter === null && b.wentAfter === null,
+     'and what brought them is spent, so the next meeting is a coincidence again');
+
+  for (let i = 0; i < 600 && !recalled; i++) {
+    LG.game._debugTick(1 / 30);
+    await new Promise(r => setTimeout(r, 0));
+  }
+  ok(!!recalled, 'and afterwards somebody works out what they took away');
+  if (recalled) {
+    const flat = JSON.stringify(recalled);
+    ok(flat.indexOf('You think') === -1,
+       'the reader gets the facts as written, not in either villager\'s own voice');
+  }
+
+  console.log('\n' + (failures ? failures + ' of ' + checks + ' CHECKS FAILED'
+                               : 'SMOKE TEST PASSED (' + checks + ' checks)'));
+  process.exit(failures ? 1 : 0);
+}
+villagersTalking();

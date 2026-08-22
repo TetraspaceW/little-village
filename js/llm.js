@@ -474,6 +474,52 @@ LG.llm = (function () {
     } catch (e) { return false; }        // no deal on a failed check
   }
 
+  /* Something arrived that may have overtaken something they already held.
+
+     Villagers are not a database with rows to expire — they are a model playing
+     a person, and a person who learns the shoes turned up does not delete "Yuri
+     is looking for shoes", they revise it to "Yuri was looking for shoes, and
+     has them now". So this does not ask what to remove. It asks whether the new
+     thing has overtaken one of the old ones, and for that one line written the
+     way it is true now.
+
+     One line at most, and nothing at all is a perfectly good answer — a villager
+     who hears something that does not bear on what they knew has nothing to
+     revise. It fails closed: no answer, no change. */
+  async function revise(cfg, opts) {
+    const o = opts || {};
+    const ask = [
+      o.who + ' already believes these, oldest first:',
+      o.held.map((h, i) => (i + 1) + '. ' + h).join('\n'),
+      '',
+      'They have just learned: ' + JSON.stringify(o.fresh),
+      '',
+      'Has that overtaken any ONE of the numbered lines — made it out of date, answered',
+      'it, or settled it? Something that merely mentions the same people or things has',
+      'not overtaken anything.',
+      '',
+      'If it has, give that number and the line rewritten so that it is true now — same',
+      'voice, no longer, and it should still say what it used to say happened, in the past.',
+      '',
+      'Reply with only a JSON object:',
+      '{"n": <the number, or 0 if nothing is out of date>, "line": "<the rewritten line, or an empty string>"}'
+    ].join('\n');
+    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg) };
+    try {
+      const raw = vcfg.provider === 'anthropic'
+        ? await anthropicCall(vcfg, 'You keep one person\'s beliefs up to date. Answer with JSON only.',
+            [{ role: 'user', content: ask }])
+        : await openrouterCall(vcfg, 'You keep one person\'s beliefs up to date. Answer with JSON only.',
+            [{ role: 'user', content: ask }]);
+      const obj = parseJSON(raw);
+      const n = obj && Number(obj.n);
+      if (!obj || !n || !(n > 0) || n > o.held.length) return null;
+      const line = String(obj.line || '').trim();
+      if (line.length < 4) return null;
+      return { n: n, line: line };
+    } catch (e) { return null; }
+  }
+
   /* A villager sometimes returns a line with no translation or no romanisation.
      Rather than showing a learner a bare sentence, ask the small model for the
      missing parts. */
@@ -585,9 +631,9 @@ LG.llm = (function () {
       o.when || null,
       'You are ' + o.here + '.',
       '',
-      o.knows && o.knows.length ? 'What you know:\n' + o.knows.map(k => '- ' + k).join('\n') : null,
-      o.heard && o.heard.length
-        ? 'What you have picked up lately:\n' + o.heard.map(k => '- ' + k).join('\n') : null,
+      // one list, dated and attributed — the same one the player-facing prompt shows
+      o.held && o.held.length
+        ? 'What you know, and how you came by it:\n' + o.held.map(k => '- ' + k).join('\n') : null,
       '',
       /* Who is where, so that knowing Sanna has the cards is something you can
          act on. Without it a villager can want a thing, know exactly who has it,
@@ -653,10 +699,10 @@ LG.llm = (function () {
       o.sought ? null : o.them.name + ', ' + o.them.job + ', is here too.',
       o.when || null,
       '',
-      o.knows && o.knows.length
-        ? 'On your mind, if any of it comes up:\n' + o.knows.map(k => '- ' + k).join('\n') : null,
-      o.recent && o.recent.length
-        ? 'Lately you have picked up:\n' + o.recent.map(k => '- ' + k).join('\n') : null,
+      // the same one dated list the other two calls get
+      o.held && o.held.length
+        ? 'What you know, and how you came by it — say any of it if it comes up:\n' +
+          o.held.map(k => '- ' + k).join('\n') : null,
       '',
       /* There was a purse, a stock list and a wants list here, meant to let two
          villagers deal with each other. Nothing ever passed them, and nothing
@@ -817,5 +863,5 @@ LG.llm = (function () {
   return { MODELS, HELPERS, VERIFIER, helperModel, speak, judge, furigana, gloss, converse, intent, recall,
            get transcript() { return transcript; }, dump,
            get audit() { return audit; }, set audit(v) { audit = !!v; }, confirmTrade,
-           validate, probe, schemaOK, parseJSON, repairJSON, salvage };
+           validate, probe, schemaOK, revise, parseJSON, repairJSON, salvage };
 })();

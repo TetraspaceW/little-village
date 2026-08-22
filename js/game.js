@@ -412,10 +412,8 @@ LG.game = (function () {
        otherwise, the same way nobody who never walks to the graveyard finds out
        the axe has gone. The memory line is how it can travel. */
     npc.facts = (npc.facts || []).filter(id => !spent(id));
-    npc.memory = npc.memory || [];
-    const settled = 'The traveller gave you ' + gave + ' and you handed over ' + got +
-                    '. That is done with.';
-    if (npc.memory.indexOf(settled) === -1) npc.memory.push(settled);
+    remember(npc, 'The traveller gave you ' + gave + ' and you handed over ' + got +
+                  '. That is done with.');
 
     if (beast && trade.wants === beast.item) {
       beast.following = false;
@@ -897,6 +895,35 @@ LG.game = (function () {
      on sending people to the pond for the rest of the session. Walk to the spot
      and find nothing, and they stop saying it — and remember why, so they can
      tell you and each other. Nobody who never goes there ever finds out. */
+  /* Everything a villager comes to believe goes through here, so it all carries
+     the same two things: when they came by it, and who from. Nothing in the
+     village is known better than anything else — a chain fact dealt at the start
+     and a rumour picked up on the green are the same kind of object, and the
+     only thing that separates them is how fresh they are and who said so. `from`
+     is left off for what they saw themselves.
+
+     Memories used to be bare strings. A string cannot be weighed against another
+     string, and a villager asked to reconcile two of them has nothing to reason
+     with; Mira held "Yuri is looking for shoes" and "the traveller gave Yuri
+     shoes" at the same time, said out loud that the two did not fit, and had no
+     way to tell which was older. */
+  function remember(npc, text, from) {
+    if (!text || typeof text !== 'string' || text.length < 3) return false;
+    npc.memory = npc.memory || [];
+    if (npc.memory.some(m => (m && m.text) === text)) return false;
+    npc.memory.push({ at: LG.time.clock(), text: text, from: from || null });
+    if (npc.memory.length > 24) npc.memory.shift();
+    return true;
+  }
+
+  /* A fact arriving from somebody else is dated and attributed the same way. The
+     ones dealt at the start carry nothing, which is what makes them read as
+     something you have simply always known. */
+  function noteFactSource(npc, id, from) {
+    npc.factAt = npc.factAt || {};
+    if (!npc.factAt[id]) npc.factAt[id] = { at: LG.time.clock(), from: from || null };
+  }
+
   function noticeItemGone(n) {
     if (!whereFact || !haveTerminal()) return;
     const i = n.facts.indexOf(whereFact);
@@ -912,7 +939,7 @@ LG.game = (function () {
       ? 'You went ' + t.placeText + ' yourself and ' + t.beastName + ' was not there.'
       : 'You went ' + t.placeText + ' yourself and there was no ' +
         LG.ITEMS[t.item].en + ' there.';
-    if (n.memory.indexOf(line) === -1) n.memory.push(line);
+    remember(n, line);                       // seen with their own eyes: no source to name
     think(n, 'finds nothing there', t.placeText);
   }
   /* Trading hours and standing-at-the-counter now live with everything else a
@@ -1008,8 +1035,7 @@ LG.game = (function () {
       when: v.when,
       here: v.here,
       folk: v.folk,
-      knows: v.knows.map(f => f.text),
-      heard: v.memory,
+      held: LG.view.held(v),
       places: opts.map(o => ({ name: o.name, note: o.note }))
     }).then(res => {
       done();
@@ -1235,6 +1261,7 @@ LG.game = (function () {
   }
 
   return { init, settings, state, llmConfig, ttsConfig, log, learn, hasNote, give, take, count,
+           remember, noteFactSource,
            _moveDir: moveDir, _isInteract: isInteract,
            canOverhear, logSpeech, think,
            factText: id => (plan && plan.facts[id]) ? plan.facts[id].text : null,

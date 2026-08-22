@@ -93,6 +93,8 @@ LG.save = (function () {
         x: round(n.px), y: round(n.py), tx: n.tx, ty: n.ty, dir: n.dir,
         facts: n.facts.slice(),
         memory: (n.memory || []).slice(),
+        factAt: Object.assign({}, n.factAt),
+        factNote: Object.assign({}, n.factNote),
         coins: n.coins,
         stock: Object.assign({}, n.stock),
         sold: Object.assign({}, n.sold),
@@ -187,7 +189,13 @@ LG.save = (function () {
       if (!s) return;
       n.px = s.x; n.py = s.y; n.tx = s.tx; n.ty = s.ty; n.dir = s.dir || 'down';
       n.facts = (s.facts || []).filter(id => g.plan.facts[id]);
-      n.memory = (s.memory || []).slice();
+      /* Memories were bare strings before they carried a time and a source. An
+         older save still loads: an undated line is one they have simply had a
+         while, which is true of anything written down before this existed. */
+      n.memory = (s.memory || []).map(m =>
+        typeof m === 'string' ? { at: null, text: m, from: null } : m).filter(m => m && m.text);
+      n.factAt = Object.assign({}, s.factAt);
+      n.factNote = Object.assign({}, s.factNote);
       n.coins = typeof s.coins === 'number' ? s.coins : n.coins;
       n.stock = Object.assign({}, s.stock);
       n.sold = Object.assign({}, s.sold);

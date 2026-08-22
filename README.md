@@ -786,6 +786,49 @@ you back across the village to fetch what is already in your pocket. It stays in
 notebook either way: a line that vanishes reads as a bug, and you lose the record of who
 told you.
 
+**One list, and it does not lie to them.** A villager used to read two: `# What you
+know`, holding the chain facts flat, undated, under an instruction to say them as they
+came up — and `# What you have picked up lately` for everything else, as though that
+were a lesser kind of knowing. Neither said when anything had arrived or who had said
+so.
+
+That scaffold lies, and then the villager says the lie. Mira was told, as a plain
+present-tense fact with no date on it, that *Yuri is looking for a pair of shoes* —
+twelve minutes after the traveller had given Yuri the shoes and taken a compass for
+them. She noticed, out loud: *"but that's odd, I heard Yuri is looking for shoes —
+isn't he wearing shoes?"* She had understood the traveller, remembered it accurately,
+and spotted the contradiction. Then she had nothing to resolve it with, because one of
+the two claims was dressed as knowledge and the other as gossip and neither carried a
+time.
+
+Now there is one list, and every line says when they came by it and who from:
+
+```
+- (a while now) [f0] Yuri is looking for a pair of shoes.
+- (10:27, from Olo) [f1] Mikhalych has a pair of shoes.
+- (14:31, from the traveller) Yuri took my shoes and never paid for them
+```
+
+Nothing tells them that newer beats older or that a witness beats hearsay. They are a
+language model playing a person, and a person holding a date on each of two claims does
+not need to be told what to do with them.
+
+**And they can change their mind.** A villager is not a table of rows to expire. When
+something arrives that overtakes something they held, a reader offers them that one line
+written the way it is true now — *Yuri is looking for shoes* becomes *Yuri was looking
+for shoes, and has them now*, which is still worth passing on. The village should be
+able to tell you the errand was run, not merely fall silent about it. A chain fact keeps
+its id through this and gains their own wording; the notebook is built on those ids and
+none of them move. It is asked only when something new has actually landed — from the
+traveller or from another villager, on the same terms, because the player is not a
+special kind of informant — and nothing overtaken is the ordinary answer.
+
+**Where the world may write on them directly** is what they saw with their own eyes: a
+villager who has just handed a teapot over knows they no longer have it, and one who
+walked to the graveyard knows what was not there. That is the world being accurate about
+itself, not the game doing their thinking. Everything that reaches them by report goes
+through them.
+
 **And the village finds out the same way you would.** Facts are dealt once, at the start,
 so a villager told there was an axe in the graveyard would go on saying so all session.
 Now, if they walk to the spot themselves and it is plainly not there, they stop believing

@@ -154,17 +154,35 @@ LG.dialogue = (function () {
     lines.push('Personality: ' + v.persona);
     lines.push('Your current concern: ' + v.goal);
     lines.push('');
+    /* One list, and it tells the truth about itself.
+
+       This used to be two. "# What you know" held the chain facts, flat and
+       undated, under an instruction to say them as they came up; "# What you
+       have picked up lately" held everything else, as though it were a lesser
+       kind of knowing. Nothing in either said when any of it arrived or who
+       said so.
+
+       That scaffold lies to the villager, and then the villager says the lie.
+       Mira was told, as a plain present-tense fact she had no date for, that
+       Yuri is looking for a pair of shoes — twelve minutes after the traveller
+       had given Yuri the shoes and taken a compass for them. She noticed, out
+       loud: "but that's odd, I heard Yuri is looking for shoes — isn't he
+       wearing shoes?" She had understood the traveller, remembered it
+       accurately, and spotted the contradiction, and then had nothing to
+       resolve it with, because one of the two claims was dressed as knowledge
+       and the other as gossip and neither carried a time.
+
+       So: everything they hold, in one list, each with when they came by it and
+       who from. What is old looks old and what is fresh looks fresh. There is
+       no line here telling them that newer beats older or that a witness beats
+       hearsay — they are a language model playing a person, and a person with a
+       date on each of two claims does not need to be told what to do with
+       them. */
     lines.push('# What you know');
-    lines.push('Each of these carries a tag. Say them in your own words, as they come up.');
-    v.knows.forEach(f => lines.push('- [' + f.id + '] ' + f.text));
-    if (!v.knows.length) lines.push('- (nothing much, beyond your own business)');
-    if (v.memory.length) {
-      lines.push('');
-      /* Not only the traveller any more — most of what a villager picks up they
-         pick up from each other, and it is the same kind of knowing. */
-      lines.push('# What you have picked up lately');
-      v.memory.forEach(f => lines.push('- ' + f));
-    }
+    lines.push('Everything you have picked up, with when you came by it and who from.');
+    const held = LG.view.held(v);
+    if (held.length) held.forEach(l => lines.push('- ' + l));
+    else lines.push('- (nothing much, beyond your own business)');
     lines.push('');
     lines.push('# Where you are right now');
     lines.push(v.when);
@@ -640,9 +658,11 @@ LG.dialogue = (function () {
       pending.push(verifyRevealed(npc, reply, spoken, ruby));   // deliberately not awaited
     }
     if (gotIt && reply.remember && typeof reply.remember === 'string' && reply.remember.length > 3) {
-      if (npc.memory.indexOf(reply.remember) === -1) {
-        npc.memory.push(reply.remember);
+      if (LG.game.remember(npc, reply.remember, 'the traveller')) {
         LG.game.log(npc.def.name + ' will remember: "' + reply.remember + '"');
+        /* And it may have overtaken something. Only asked when something new has
+           actually landed, so a turn that taught them nothing costs nothing. */
+        pending.push(reviseHeld(npc, reply.remember));
       }
     }
 
@@ -741,6 +761,34 @@ LG.dialogue = (function () {
         if (row && row._roman) { row._roman.textContent = got.roman; row._roman.style.display = ''; }
       }
     } catch (e) { /* the line is still readable */ }
+  }
+
+  /* A villager who has just learned something looks at what they already held and
+     may rewrite one line of it. Not a deletion: "Yuri is looking for shoes"
+     becomes "Yuri was looking for shoes, and has them now", which is both true
+     and still worth passing on — the village should be able to tell you the
+     errand was run, not just fall silent about it.
+
+     A chain fact keeps its id and gains their own wording; the notebook is built
+     on those ids and none of them move. Anything untagged is theirs outright and
+     is simply rewritten. Runs after the reply is on screen, and a failure leaves
+     them believing what they believed. */
+  async function reviseHeld(npc, fresh) {
+    try {
+      const v = LG.view.of(npc, 'player');
+      const entries = LG.view.heldEntries(v);
+      if (entries.length < 1) return;
+      const got = await LG.llm.revise(LG.game.llmConfig(), {
+        who: npc.def.name, held: LG.view.held(v), fresh: fresh
+      });
+      if (!got) return;
+      const e = entries[got.n - 1];
+      if (!e || e.text === got.line) return;
+      if (e.id) { npc.factNote = npc.factNote || {}; npc.factNote[e.id] = got.line; }
+      else e.text = got.line;                       // the view hands back the object itself
+      if (LG.game.think) LG.game.think(npc, 'thinks again', e.text + ' \u2192 ' + got.line);
+      LG.game.log(npc.def.name + ' now reckons: "' + got.line + '"');
+    } catch (err) { /* they go on believing what they believed */ }
   }
 
   /* The same reader, pointed at the counter instead of the chain: did they take
@@ -887,8 +935,7 @@ LG.dialogue = (function () {
              they are like, and whether any of it comes up is the conversation's
              business. Nothing downstream depends on a particular thing being
              said, so nothing has to make them say it. */
-          knows: (vMe.knows || []).map(f => f.text),
-          recent: vMe.memory || [],
+          held: LG.view.held(vMe),
           here: vMe.here || '',
           errand: (vMe.errand && vMe.errand.why) || '',
           sought: !!vMe.sought,
@@ -948,14 +995,19 @@ LG.dialogue = (function () {
 
   /* `speaker` said things; `listener` is the one who now knows them. */
   function keep(speaker, listener, took, mine) {
+    let landed = null;
     (took.remembers || []).slice(0, 4).forEach(m => {
       if (typeof m !== 'string' || m.length < 4) return;
-      if (speaker.memory.indexOf(m) === -1) {
-        speaker.memory.push(m);
-        if (speaker.memory.length > 24) speaker.memory.shift();
+      if (LG.game.remember(speaker, m, listener.def.name)) {
+        landed = m;
         if (LG.game.think) LG.game.think(speaker, 'remembers', m);
       }
     });
+    /* And the same second thought as after talking to the traveller. Revising
+       only what the player tells them would make the player a special kind of
+       informant, which they are not — a villager who hears from Olo that the
+       shoes turned up has learned the same thing by the same means. */
+    if (landed) reviseHeld(speaker, landed);
     // A chain fact travels only if it was genuinely said out loud.
     const ids = mine.map(f => f.id);
     (took.said || []).forEach(tag => {
@@ -963,6 +1015,7 @@ LG.dialogue = (function () {
       if (ids.indexOf(id) === -1) return;              // not theirs to tell
       if (listener.facts.indexOf(id) !== -1) return;   // already knew
       listener.facts.push(id);
+      LG.game.noteFactSource(listener, id, speaker.def.name);
       if (LG.game.think) LG.game.think(listener, 'now knows', LG.game.factText(id) || id);
     });
   }
@@ -987,7 +1040,8 @@ LG.dialogue = (function () {
            get chatRunning() { return chatBusy; },
            isOpen: () => !!current, renderItems, addLine, status,
            settled: () => { const all = pending.splice(0); return Promise.all(all); },
-           _debugPrompt: systemPrompt, _debugReply: buildReply, _rubyHTML: rubyHTML,
+           _debugPrompt: systemPrompt, _debugReply: buildReply, _reviseHeld: reviseHeld,
+           _rubyHTML: rubyHTML,
            _stripRuby: stripRuby, _rubyMatches: rubyMatches, _needsFurigana: needsFurigana,
            _looksEnglish: looksEnglish,
            rubyHTML: rubyHTML, _usableRuby: usableRuby };

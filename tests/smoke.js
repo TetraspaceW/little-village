@@ -338,7 +338,7 @@ section('a finished errand stops being what they want');
        'they are a villager with a job again, not one still wanting it');
     ok(mine.every(id => who.facts.indexOf(id) === -1),
        'the facts of the spent link are gone from what they know');
-    ok(who.memory.some(m => m.indexOf('That is done with') !== -1),
+    ok(who.memory.some(m => m.text.indexOf('That is done with') !== -1),
        'and they remember doing it, so it is theirs to pass on');
 
     /* The goal is what reaches the two calls that had no other way of knowing. */
@@ -391,6 +391,31 @@ section('a model nobody has looked up gets no schema');
      'and so does a real model that has not been probed in this session');
 }
 
+/* ------------------------------------------------------- what they believe now
+   Villagers are not a table of rows to expire. They hold things, each with a
+   time and a source, and when something arrives that overtakes one of them they
+   rewrite that one — "Yuri is looking for shoes" becomes "Yuri was looking for
+   shoes and has them now", which is still worth passing on. A chain fact keeps
+   its id through that, because the notebook is built on ids. */
+section('everything they hold says when it arrived and who from');
+{
+  const n = npcs.find(x => x.facts.length > 0) || npcs[0];
+  LG.game.remember(n, 'the traveller is looking for a saw', 'the traveller');
+  const v = LG.view.of(n, 'player');
+  const lines = LG.view.held(v), entries = LG.view.heldEntries(v);
+  ok(lines.length === entries.length, 'the lines and the things they name line up');
+  ok(lines.every(l => /^\([^)]+\) /.test(l)), 'every line opens with where it came from');
+  ok(lines.some(l => l.indexOf('from the traveller') !== -1), 'a source is named when there is one');
+  ok(lines.some(l => l.indexOf('(a while now)') !== -1),
+     'and what they have always had says so rather than inventing a time');
+
+  const prompt = LG.dialogue._debugPrompt(n, null);
+  ok(prompt.indexOf('# What you have picked up lately') === -1,
+     'there is no second-class list of things they merely heard');
+  ok(prompt.indexOf('Everything you have picked up, with when you came by it and who from.') !== -1,
+     'and the one list says what it is');
+}
+
 /* ------------------------------------------------------------------- saving
    One format, both ways round. What is checked here is that a village survives
    being written down and read back — not that localStorage works, but that
@@ -408,7 +433,7 @@ section('a village, written down and read back');
   const holder = npcs.find(n => n.facts.indexOf(someFact) !== -1);
   if (holder) {
     g.learn(someFact, holder);
-    holder.memory.push('the traveller cannot say much yet');
+    LG.game.remember(holder, 'the traveller cannot say much yet', 'the traveller');
   }
   npcs[0].coins = 41;
   npcs[0].stock.apple = 2;
@@ -424,7 +449,7 @@ section('a village, written down and read back');
     deeds: JSON.stringify(g.state.deeds),
     px: Math.round(g.player.px * 10) / 10,
     facts: npcs.map(n => n.facts.join(',')).join('|'),
-    memory: npcs.map(n => n.memory.join(';')).join('|'),
+    memory: npcs.map(n => JSON.stringify(n.memory)).join('|'),
     till: npcs.map(n => JSON.stringify(n.till || [])).join('|'),
     where: npcs.map(n => n.tx + ',' + n.ty).join('|')
   };
@@ -470,8 +495,8 @@ section('a village, written down and read back');
   ok(back.length === npcs.length, 'the same cast');
   ok(back.map(n => n.facts.join(',')).join('|') === before.facts,
      'everyone knows what they knew');
-  ok(back.map(n => n.memory.join(';')).join('|') === before.memory,
-     'and remembers what they had picked up');
+  ok(back.map(n => JSON.stringify(n.memory)).join('|') === before.memory,
+     'and remembers what they had picked up, with when and from whom');
   ok(back.map(n => JSON.stringify(n.till || [])).join('|') === before.till,
      'the tills square up');
   ok(back.map(n => n.tx + ',' + n.ty).join('|') === before.where,
@@ -580,6 +605,43 @@ ok(!/\bctx\.factsOf\b|\bctx\.aKnows\b|\bctx\.soughtBy\b/.test(all),
    The one path that cannot be reached without a key, so the model is replaced
    by a stub that records what it was handed. What is being checked is the
    plumbing: that a conversation is given two villagers who know who they are. */
+async function beliefsRevised() {
+  section('a villager can rewrite what they held');
+
+  const n = npcs.find(x => x.facts.length > 0);
+  ok(!!n, 'somebody holds a chain fact');
+  if (n) {
+    const id = n.facts[0];
+    const before = LG.view.of(n, 'player').knows.find(f => f.id === id);
+    const real = LG.llm.revise;
+
+    // the reader says line 1 has been overtaken, and gives it back rewritten
+    LG.llm.revise = async () => ({ n: 1, line: 'that was so, and has since been settled' });
+    await LG.dialogue._reviseHeld(n, 'the traveller settled it just now');
+    const after = LG.view.of(n, 'player').knows.find(f => f.id === id);
+
+    ok(n.facts.indexOf(id) !== -1, 'the fact is still theirs — nothing was deleted');
+    ok(after.text !== before.text, 'but they say it differently now');
+    ok(after.revised === true, 'and the view knows it is their own wording');
+    ok(after.plain === before.plain, 'while the canonical text is untouched, so ids still mean what they meant');
+    ok(LG.dialogue._debugPrompt(n, null).indexOf('has since been settled') !== -1,
+       'and it is what reaches the prompt');
+
+    // nothing overtaken is the ordinary answer, and must leave them alone
+    const held = LG.view.of(n, 'player').knows.find(f => f.id === id).text;
+    LG.llm.revise = async () => null;
+    await LG.dialogue._reviseHeld(n, 'the weather is grey');
+    ok(LG.view.of(n, 'player').knows.find(f => f.id === id).text === held,
+       'a reader that finds nothing out of date changes nothing');
+
+    LG.llm.revise = async () => { throw new Error('no key'); };
+    await LG.dialogue._reviseHeld(n, 'anything at all');
+    ok(LG.view.of(n, 'player').knows.find(f => f.id === id).text === held,
+       'and a failed call leaves them believing what they believed');
+    LG.llm.revise = real;
+  }
+}
+
 async function villagersTalking() {
   section('two villagers stop for a word');
   const seen = [];
@@ -618,8 +680,10 @@ async function villagersTalking() {
     ok(first.me && first.me.name && first.me.job && first.me.persona,
        'the speaker knows who they are');
     ok(first.them && first.them.name, 'and who they are talking to');
-    ok(Array.isArray(first.knows) && first.knows.every(k => typeof k === 'string'),
+    ok(Array.isArray(first.held) && first.held.every(k => typeof k === 'string'),
        'their knowledge arrives as lines, not objects');
+    ok(first.held.every(k => /^\(/.test(k)),
+       'and every line says when they came by it');
     ok(typeof first.here === 'string' && first.here.length > 0,
        'they know where the two of them are standing');
     ok(seen.some(o => o.sought === true), 'and that one of them came looking for the other');
@@ -643,4 +707,4 @@ async function villagersTalking() {
                                : 'SMOKE TEST PASSED (' + checks + ' checks)'));
   process.exit(failures ? 1 : 0);
 }
-villagersTalking();
+beliefsRevised().then(villagersTalking);

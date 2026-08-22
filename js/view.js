@@ -89,12 +89,22 @@ LG.view = (function () {
      anyone reasoning *about* the villager from outside — the reader that works
      out what two of them said to each other — wants the second, or it is handed
      a list of "You think..." with no idea whose "you" that is. */
+  /* A fact carries when they came by it and who from, the same as anything else
+     they have picked up — and `note` is their own version of it, if they have
+     since revised it. The id never moves, because the notebook is built on ids;
+     what changes is the sentence they would actually say. */
   function knows(n) {
     const p = plan();
     if (!p) return [];
+    const when = n.factAt || {}, mine = n.factNote || {};
     return (n.facts || [])
-      .map(id => p.facts[id] &&
-                 { id: id, text: ownVoice(n, p.facts[id].text), plain: p.facts[id].text })
+      .map(id => {
+        const f = p.facts[id];
+        if (!f) return null;
+        const src = when[id] || {};
+        return { id: id, text: ownVoice(n, mine[id] || f.text), plain: f.text,
+                 revised: !!mine[id], at: src.at || null, from: src.from || null };
+      })
       .filter(Boolean);
   }
 
@@ -130,6 +140,24 @@ LG.view = (function () {
   /* They got where they were going and had the conversation they came for. What
      brought them here stops being news. */
   function arrived(n) { n.wentAfter = null; }
+
+  /* When they came by it and who from, in front of the thing itself, so two
+     entries can be told apart at a glance. Nothing here says which to believe: a
+     villager holding a date on each of two claims is a person in the ordinary
+     situation of having heard two things, and they are a language model playing
+     a person. What they make of it is theirs.
+
+     `held` is the whole of it, facts and picked-up alike, in one list — because
+     they are the same kind of object and dressing one of them as knowledge and
+     the other as gossip is the scaffold telling the villager something that is
+     not true. */
+  function sourced(e) {
+    const when = e.at ? (e.from ? e.at + ', from ' + e.from : e.at)
+                      : (e.from ? 'from ' + e.from : 'a while now');
+    return '(' + when + ') ' + (e.id ? '[' + e.id + '] ' : '') + (e.text || '');
+  }
+  function heldEntries(v) { return (v.knows || []).concat(v.memory || []); }
+  function held(v) { return heldEntries(v).map(sourced); }
 
   /* ---------------------------------------------------------------- assembly */
   function of(n, kind) {
@@ -174,6 +202,6 @@ LG.view = (function () {
     };
   }
 
-  return { of, where, open, atCounter, arrived, knows, folk, ownVoice, near,
+  return { of, where, open, atCounter, arrived, knows, folk, ownVoice, near, sourced, held, heldEntries,
            TRIM, SIGHT };
 })();

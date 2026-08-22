@@ -93,14 +93,15 @@ LG.game = (function () {
     if (!plan || !plan.facts[factId]) return;
     if (hasNote(factId)) return;
     if (fromNpc && fromNpc.facts.indexOf(factId) === -1) return;   // they can't tell you what they don't know
-    /* Being told where the thing is when it is already in your pocket is not a
-       lead, and it used to arrive as one — you could pick something up, hear
-       about it an hour later, and be sent back to fetch what you were carrying.
-       It still goes in the notebook, because you were told it; it goes in
-       ticked. */
-    const stale = plan.facts[factId].type === 'where' && haveTerminal();
+    /* A note records that you were told something, and nothing else. Whether it
+       is still worth acting on is not stored here, because a stored answer is a
+       thing that can be stored wrongly — being told where the thing is when it
+       is already in your pocket used to arrive as a live lead, and being told
+       about a link you had already traded still did. It is read off the world at
+       render time instead, so there is no way to write a note that claims to be
+       live when it is not. */
     state.notes.push({ id: factId, text: note || plan.facts[factId].text,
-                       ruby: ruby || null, done: stale });
+                       ruby: ruby || null });
     log('📓 ' + (note || plan.facts[factId].text));
     renderHUD();
   }
@@ -163,9 +164,10 @@ LG.game = (function () {
         const heard = (n.ruby && L.furigana) ? LG.dialogue.rubyHTML(n.ruby) : escapeHTML(n.text);
         const gloss = plan.facts[n.id].text;
         const hide = settings.showTranslation ? '' : ' hidden-tr';
-        return '<div class="q' + (n.done ? ' done' : '') + '"><span class="heard" lang="' +
+        const done = factSpent(n.id);          // read off the world, never stored
+        return '<div class="q' + (done ? ' done' : '') + '"><span class="heard" lang="' +
                L.tag + '"' + (L.furigana && n.ruby ? ' style="line-height:2"' : '') +
-               '>' + (n.done ? '\u2714 ' : '\u2022 ') + heard + '</span>' +
+               '>' + (done ? '\u2714 ' : '\u2022 ') + heard + '</span>' +
                '<span class="gloss' + hide + '" lang="en" title="' + escapeHTML(gloss) + '">' +
                escapeHTML(gloss) + '</span></div>';
       }));
@@ -396,14 +398,18 @@ LG.game = (function () {
     state.deeds.push('Gave ' + npc.def.name + ' ' + gave + ', got ' + got + '.');
     log('✔ ' + npc.def.name + ' hands over ' + got + '.');
 
-    // whichever note described this deal is now spent
-    const spent = id => {
-      const f = plan.facts[id];
-      return !!(f && f.link === (plan.roles[npc.def.id] || {}).link && f.type !== 'opinion');
-    };
-    state.notes = state.notes.filter(n => !spent(n.id));
+    /* The notes that described this deal are spent, and say so by being struck
+       through rather than by vanishing — the same argument the note about where
+       something was lying already made: a line that disappears reads as a bug,
+       and you lose the record of who told you. Nothing is done to them here;
+       `factSpent` can see the completed trade and the notebook reads it. */
 
-    /* And the villager stops believing it too, on the same rule. Their facts were
+    /* And the villager stops believing it too — but on their own rule, not the
+       notebook's. `factSpent` asks whether a thing is true of the world, which is
+       what the player's notebook is entitled to know; this asks only what this
+       villager just did with their own hands. They are not the same question,
+       and answering the second with the first would tell a villager the axe had
+       been picked up because somebody else picked it up. Their facts were
        dealt once at the start and nothing ever took one back, so Wren went on
        holding "Wren has a teapot" and "Wren will only part with it for a pig"
        after handing the teapot over for the pig — and said both out loud, to the
@@ -411,7 +417,11 @@ LG.game = (function () {
        anyone else who was told it still believes it until somebody tells them
        otherwise, the same way nobody who never walks to the graveyard finds out
        the axe has gone. The memory line is how it can travel. */
-    npc.facts = (npc.facts || []).filter(id => !spent(id));
+    const ofThisDeal = id => {
+      const f = plan.facts[id];
+      return !!(f && f.link === (plan.roles[npc.def.id] || {}).link && f.type !== 'opinion');
+    };
+    npc.facts = (npc.facts || []).filter(id => !ofThisDeal(id));
     remember(npc, 'The traveller gave you ' + gave + ' and you handed over ' + got +
                   '. That is done with.');
 
@@ -863,24 +873,42 @@ LG.game = (function () {
     return !!((worldItem && worldItem.taken) || (beast && beast.caught));
   }
 
-  /* A note about where something was is no use once it is in your pocket, but
-     striking it through says so better than deleting it does: a line that
-     vanishes reads as a bug, and you lose the record of who told you. */
-  function retireWhereNote() {
-    state.notes.forEach(n => { if (plan.facts[n.id].type === 'where') n.done = true; });
-    renderHUD();
+  /* Has the thing this fact describes already happened?
+
+     There were three answers to that and none of them was this one. `learn` had
+     a line of its own that knew only about the thing lying in the world;
+     `doTrade` had a second, written inline, that knew only about its own link
+     and deleted the note outright; picking the terminal item up had a third that
+     ticked. So a villager could tell you "Yuri is looking for a pair of shoes"
+     after you had given Yuri the shoes, and it went in the notebook as a live
+     lead, because the one path that writes notes could not see the one kind of
+     resolution that had happened.
+
+     One predicate now, and both things it reads are one-way: `haveTerminal` is
+     explicitly once-ever, and a completed trade stays completed. That is what
+     makes the next part safe. */
+  function factSpent(id) {
+    const f = plan && plan.facts[id];
+    if (!f || f.type === 'opinion') return false;      // an opinion is never spent
+    if (f.type === 'where') return haveTerminal();
+    if (typeof f.link === 'number' && f.link >= 0) {
+      const lk = plan.links[f.link];
+      const owner = lk && npcs.find(n => n.def.id === lk.npcId);
+      return !!(owner && owner.tradeDone);
+    }
+    return false;
   }
 
   function catchBeast() {
     beast.caught = true; beast.following = true;
     give(beast.item);
-    retireWhereNote();
+    renderHUD();
     log(beast.emoji + ' ' + beast.name + ' lets you pick ' + (Math.random() < 0.5 ? 'her' : 'him') + ' up.');
   }
   function pickUp() {
     worldItem.taken = true;
     give(worldItem.item);
-    retireWhereNote();
+    renderHUD();
     log(LG.ITEMS[worldItem.item].icon + ' You pick up ' + LG.ITEMS[worldItem.item].full + '.');
   }
 
@@ -1261,7 +1289,7 @@ LG.game = (function () {
   }
 
   return { init, settings, state, llmConfig, ttsConfig, log, learn, hasNote, give, take, count,
-           remember, noteFactSource,
+           remember, noteFactSource, factSpent,
            _moveDir: moveDir, _isInteract: isInteract,
            canOverhear, logSpeech, think,
            factText: id => (plan && plan.facts[id]) ? plan.facts[id].text : null,

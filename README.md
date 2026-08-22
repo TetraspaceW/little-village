@@ -778,13 +778,37 @@ agreed. It defaults to Haiku 4.5 on either provider and is pickable in settings
 box for any id the picker does not list yet. Cheap and literal-minded beats clever
 here; it is answering yes/no questions about a transcript.
 
-**A lead you have already followed arrives ticked off.** The one thing in an errand
-that stops being true while you play is the thing lying out in the world, because you
-pick it up. The note saying where it was is struck through when you do — and if you find
-it before anyone tells you about it, the note arrives struck through, rather than sending
-you back across the village to fetch what is already in your pocket. It stays in the
-notebook either way: a line that vanishes reads as a bug, and you lose the record of who
-told you.
+**A lead you have already followed arrives ticked off**, and a spent one cannot arrive
+any other way. A note records that you were told something and nothing else. Whether it
+is still worth acting on is not written down: it is read off the world every time the
+notebook is drawn.
+
+That is the whole of the fix, and it is a fix to a shape rather than to a case. There
+were three answers to "has this already happened" and none of them agreed. Writing a
+note had a line of its own that knew about the thing lying in the world and nothing
+else. Completing a trade had a second, written inline, that knew only about its own
+link and deleted the note outright. Picking the terminal item up had a third, which
+ticked. So a villager could tell you *Yuri is looking for a pair of shoes* after you
+had handed Yuri the shoes and taken a compass for them, and it went in as a live lead —
+not because anybody decided it should, but because the one path that writes notes could
+not see the one kind of resolution that had happened.
+
+Now there is one predicate, and the notebook has no `done` field for it to disagree
+with. Both things the predicate reads are one-way — the thing in the world is collected
+*once, ever*, and a completed trade stays completed — so a struck-through line never
+comes back. Nothing is saved either; a note that persisted its own idea of being spent
+would be a second answer again, restored from a file.
+
+A spent lead is struck through rather than deleted, wherever it came from: a line that
+vanishes reads as a bug, and you lose the record of who told you.
+
+**The notebook and the villagers ask different questions,** on purpose. Whether a thing
+is true of the world is what your notebook is entitled to know, because keeping your
+side of the game consistent is the game's job. What a villager believes is not that:
+they retire a fact when they have handed the goods over themselves, or walked to the
+spot and found nothing, and otherwise they find out the way you would. Answering the
+second question with the first would have a villager know the axe was gone because
+somebody else picked it up.
 
 **One list, and it does not lie to them.** A villager used to read two: `# What you
 know`, holding the chain facts flat, undated, under an instruction to say them as they

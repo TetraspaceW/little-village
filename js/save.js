@@ -131,7 +131,8 @@ LG.save = (function () {
               hold: LG.time.weatherLeft, snow: LG.time.snow },
       player: { x: round(p.px), y: round(p.py), dir: p.dir },
       inventory: Object.assign({}, st.inv),
-      notes: st.notes.map(n => ({ id: n.id, text: n.text, ruby: n.ruby || null, done: !!n.done })),
+      // no `done`: whether a lead is spent is read off the world, not stored
+      notes: st.notes.map(n => ({ id: n.id, text: n.text, ruby: n.ruby || null })),
       deeds: st.deeds.slice(),
       won: !!st.won,
       terminal: t,
@@ -180,7 +181,7 @@ LG.save = (function () {
     const st = g.state;
     st.inv = Object.assign({}, data.inventory);
     st.notes = (data.notes || []).filter(n => g.plan.facts[n.id])
-      .map(n => ({ id: n.id, text: n.text, ruby: n.ruby || null, done: !!n.done }));
+      .map(n => ({ id: n.id, text: n.text, ruby: n.ruby || null }));
     st.deeds = (data.deeds || []).slice();
     st.won = !!data.won;
 

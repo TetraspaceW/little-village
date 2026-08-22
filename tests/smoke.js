@@ -416,6 +416,59 @@ section('everything they hold says when it arrived and who from');
      'and the one list says what it is');
 }
 
+/* ----------------------------------------------------- the notebook and truth
+   A note records that you were told something. Whether it is still worth acting
+   on is read off the world, not stored on the note — so there is no way to write
+   one that claims to be a live lead when the thing it describes has already
+   happened. That used to be possible: a villager could tell you "Yuri is looking
+   for a pair of shoes" after you had given Yuri the shoes, and it went in as a
+   fresh lead, because the writing path knew about one kind of resolution and not
+   the other. */
+section('a spent lead cannot be written as a live one');
+{
+  const g = LG.game;
+  const ownFacts = n => (n.facts || []).filter(id => {
+    const f = plan.facts[id];
+    return f && f.link === (plan.roles[n.def.id] || {}).link && f.type !== 'opinion';
+  });
+  // an earlier section already settled one link, so take a villager still owed theirs
+  const who = npcs.find(n => !n.tradeDone && (plan.roles[n.def.id] || {}).trade &&
+                             ownFacts(n).length > 0);
+  ok(!!who, 'somebody still has a deal of their own outstanding');
+  if (who) {
+    const lk = plan.links[plan.roles[who.def.id].link];
+    const id = ownFacts(who)[0];
+
+    ok(g.factSpent(id) === false, 'before the deal, the fact is live');
+    g.state.notes = [];
+    g.learn(id, null, 'told about it');
+    ok(g.hasNote(id), 'and a note can be taken about it');
+    ok(g.factSpent(id) === false, 'which reads as live');
+
+    g.give(lk.wants, lk.wantsCount || 1);
+    g.doTrade(who, plan.roles[who.def.id].trade);
+
+    ok(g.factSpent(id) === true, 'once the deal is done the fact is spent');
+    ok(g.hasNote(id), 'and the note is still there — a line that vanishes reads as a bug');
+
+    /* The point of the change: the same write, after the fact is spent, cannot
+       produce a live lead. There is no argument to `learn` that would let it. */
+    g.state.notes = [];
+    g.learn(id, null, 'told about it again, too late');
+    ok(g.hasNote(id), 'you can still be told, and it is still recorded');
+    ok(g.factSpent(id) === true, 'but it is spent the moment it is written');
+    ok(g.state.notes.every(n => !('done' in n)),
+       'and the note carries no doneness of its own to disagree with the world');
+  }
+}
+
+section('an opinion is never spent');
+{
+  const op = Object.keys(plan.facts).find(id => plan.facts[id].type === 'opinion');
+  ok(!!op, 'the village has opinions');
+  if (op) ok(LG.game.factSpent(op) === false, 'and no amount of trading settles one');
+}
+
 /* ------------------------------------------------------------------- saving
    One format, both ways round. What is checked here is that a village survives
    being written down and read back — not that localStorage works, but that

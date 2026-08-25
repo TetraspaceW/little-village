@@ -703,32 +703,180 @@ LG.priceOf = function (id) {
 
 LG.BEAST_NAMES = ['Musya', 'Bella', 'Pip', 'Nina', 'Rufus', 'Kolya', 'Tula', 'Bruno'];
 
+/* ------------------------------------------------------------- the map
+   The village sits in the southern half of the map. North of it is forest —
+   a real expanse of it, big enough to lose things in — and east of it, at the
+   end of the high street, the platform of an unmanned railway halt, which is
+   where the traveller gets off.
+
+   `NORTH_WOODS` is how far south of the map's top edge the village begins. It
+   is written down here rather than folded into the numbers because the forest
+   and the village are laid out against opposite edges: the village grew from
+   its own north edge and the woods run back from there to the treeline. Every
+   coordinate in this file and in world.js is nonetheless *absolute* — this
+   constant tells you where the boundary is, and is not an offset anyone has to
+   apply. Two answers to "where is the bakery" is exactly the drift this
+   codebase keeps paying for. */
+LG.NORTH_WOODS = 40;             // rows of forest before the village starts
+
+/* Where the traveller gets off the train: on the platform, a step from the
+   nameboard and a short walk from the end of the high street. */
+LG.START = { x: 86, y: 61 };
+
 /* The green in the middle of the village. Anyone idle drifts here by day. */
-LG.GREEN = { x: 31, y: 27, w: 20, h: 12 };
+LG.GREEN = { x: 31, y: 67, w: 20, h: 12 };
+
+/* Just past the hall, where a board stands for anyone to pin a note to. It is
+   a place a villager can choose to go, the same as the green or their own
+   work — see `placesFor` in game.js — and not a scripted stop on anyone's
+   round. */
+LG.BOARD_SPOT = { x: 43, y: 65, w: 3, h: 2 };
+
+/* --------------------------------------------------------- what a sign says
+   Buildings and flavour spots keep their plain English `label` everywhere in
+   the code — it is what everything else keys off, from `buildingByLabel` to a
+   villager's own workplace. A sign is read, not looked up, so what is
+   actually painted on it is in the language the village speaks, with English
+   the fallback and the gloss underneath. */
+LG.PLACENAMES = {
+  'Village Hall': { en: 'Village Hall', ru: 'Сельская управа', zh: '村公所', ja: '村役場', fr: 'Mairie', es: 'Ayuntamiento' },
+  Bakery:         { en: 'Bakery', ru: 'Пекарня', zh: '面包店', ja: 'パン屋', fr: 'Boulangerie', es: 'Panadería' },
+  Shop:           { en: 'Shop', ru: 'Лавка', zh: '杂货店', ja: '雑貨屋', fr: 'Épicerie', es: 'Tienda' },
+  Inn:            { en: 'Inn', ru: 'Трактир', zh: '客栈', ja: '宿屋', fr: 'Auberge', es: 'Posada' },
+  Farmhouse:      { en: 'Farmhouse', ru: 'Дом фермера', zh: '农舍', ja: '農家', fr: 'Ferme', es: 'Granja' },
+  Mill:           { en: 'Mill', ru: 'Мельница', zh: '磨坊', ja: '水車小屋', fr: 'Moulin', es: 'Molino' },
+  School:         { en: 'School', ru: 'Школа', zh: '学堂', ja: '学校', fr: 'École', es: 'Escuela' },
+  Chapel:         { en: 'Chapel', ru: 'Часовня', zh: '小教堂', ja: '礼拝堂', fr: 'Chapelle', es: 'Capilla' },
+  Smithy:         { en: 'Smithy', ru: 'Кузница', zh: '铁匠铺', ja: '鍛冶屋', fr: 'Forge', es: 'Herrería' },
+  Hut:            { en: 'Hut', ru: 'Хижина', zh: '小屋', ja: '小屋', fr: 'Cabane', es: 'Choza' },
+  'The Green':    { en: 'The Green', ru: 'Площадь', zh: '村中广场', ja: '広場', fr: 'La Place', es: 'La Plaza' },
+  Mine:           { en: 'Mine', ru: 'Шахта', zh: '矿场', ja: '鉱山', fr: 'Mine', es: 'Mina' },
+  Pond:           { en: 'Pond', ru: 'Пруд', zh: '池塘', ja: '池', fr: 'Étang', es: 'Estanque' },
+  Fields:         { en: 'Fields', ru: 'Поля', zh: '田地', ja: '畑', fr: 'Champs', es: 'Campos' },
+  Orchard:        { en: 'Orchard', ru: 'Сад', zh: '果园', ja: '果樹園', fr: 'Verger', es: 'Huerto' },
+  Beeyard:        { en: 'Beeyard', ru: 'Пасека', zh: '养蜂场', ja: '養蜂場', fr: 'Rucher', es: 'Colmenar' },
+  Woodpile:       { en: 'Woodpile', ru: 'Дровяной склад', zh: '木材堆场', ja: '薪置き場', fr: 'Tas de bois', es: 'Leñera' },
+  Graveyard:      { en: 'Graveyard', ru: 'Кладбище', zh: '墓地', ja: '墓地', fr: 'Cimetière', es: 'Cementerio' },
+  Noticeboard:    { en: 'Noticeboard', ru: 'Доска объявлений', zh: '布告栏', ja: '掲示板', fr: "Panneau d'affichage", es: 'Tablón de anuncios' },
+  Station:        { en: 'Station', ru: 'Станция', zh: '火车站', ja: '駅', fr: 'Gare', es: 'Estación' },
+  'The Woods':    { en: 'The Woods', ru: 'Лес', zh: '树林', ja: '森', fr: 'La Forêt', es: 'El Bosque' },
+  'Big Clearing': { en: 'Big Clearing', ru: 'Поляна', zh: '大空地', ja: '大きな空き地', fr: 'La Clairière', es: 'El Claro' },
+  'Old Oak':      { en: 'Old Oak', ru: 'Старый дуб', zh: '老橡树', ja: '古い樫の木', fr: 'Le Vieux Chêne', es: 'El Roble Viejo' },
+  'The Hollow':   { en: 'The Hollow', ru: 'Лощина', zh: '洼地', ja: 'くぼ地', fr: 'Le Vallon', es: 'La Hondonada' },
+  'Charcoal Pit': { en: 'Charcoal Pit', ru: 'Угольная яма', zh: '烧炭坑', ja: '炭焼き窯', fr: 'La Charbonnière', es: 'La Carbonera' },
+  'Forest Spring':{ en: 'Forest Spring', ru: 'Лесной родник', zh: '林中泉', ja: '森の泉', fr: 'La Source', es: 'El Manantial' },
+  'Deep Woods':   { en: 'Deep Woods', ru: 'Чаща', zh: '密林深处', ja: '森の奥', fr: 'Le Bois Profond', es: 'La Espesura' }
+};
+/* `label` is the internal id (a building's `label`, or one of the bare strings
+   above); everything else always addresses a place by that id and only ever
+   reaches for the translated form when it is about to put text on the screen. */
+LG.placeName = function (label, lang) {
+  const p = LG.PLACENAMES[label];
+  return (p && (p[lang] || p.en)) || label;
+};
+
+/* --------------------------------------------------------- what the game says
+   A handful of short lines the game narrates about a deal, in the language the
+   village speaks rather than English — "you hand over the rope" is as much a
+   chance to read the language as anything a villager says. {items} and {name}
+   are substituted in; {cost} is left as a bare number so it reads the same
+   everywhere. English doubles as the gloss shown underneath, click-to-reveal,
+   the same convention the notebook and overheard speech already use. */
+LG.CONJ = { ru: 'и', en: 'and', zh: '和', ja: 'と', fr: 'et', es: 'y' };
+
+LG.TXN = {
+  buy: {
+    en: 'You buy {items} from {name} for ¤{cost}.',
+    ru: 'Вы покупаете {items} у {name} за ¤{cost}.',
+    zh: '你以¤{cost}的价格从{name}那里买下了{items}。',
+    ja: '¤{cost}で{name}から{items}を買った。',
+    fr: 'Vous achetez {items} à {name} pour ¤{cost}.',
+    es: 'Le compras {items} a {name} por ¤{cost}.'
+  },
+  handOver: {
+    en: 'You hand over {items} to {name} for ¤{cost}.',
+    ru: 'Вы отдаёте {items} {name} за ¤{cost}.',
+    zh: '你以¤{cost}的价格把{items}交给了{name}。',
+    ja: '¤{cost}で{name}に{items}を渡した。',
+    fr: 'Vous remettez {items} à {name} pour ¤{cost}.',
+    es: 'Le entregas {items} a {name} por ¤{cost}.'
+  },
+  refund: {
+    en: 'You return {items} to {name} and get ¤{cost} back.',
+    ru: 'Вы возвращаете {items} {name} и получаете ¤{cost} обратно.',
+    zh: '你把{items}还给了{name}，拿回了¤{cost}。',
+    ja: '{name}に{items}を返して、¤{cost}を受け取った。',
+    fr: 'Vous rendez {items} à {name} et récupérez ¤{cost}.',
+    es: 'Le devuelves {items} a {name} y recuperas ¤{cost}.'
+  },
+  tradeReceive: {
+    en: '{name} hands over {item}.',
+    ru: '{name} отдаёт вам {item}.',
+    zh: '{name}把{item}交给了你。',
+    ja: '{name}が{item}を渡した。',
+    fr: '{name} vous remet {item}.',
+    es: '{name} te entrega {item}.'
+  }
+};
 
 /* --------------------------------------------------------------- places
    Where a dropped thing can turn up, and where an animal likes to loiter.
    Rectangles are in tile coordinates; the game snaps to the nearest
    walkable tile inside them. */
 LG.PLACES = [
-  { id: 'pond', en: 'down by the pond', rect: { x: 6, y: 25, w: 12, h: 3 } },
-  { id: 'mine', en: 'inside the mine', rect: { x: 3, y: 12, w: 5, h: 5 } },
-  { id: 'fields', en: 'out in the fields', rect: { x: 60, y: 34, w: 15, h: 5 } },
-  { id: 'green', en: 'on the village green', rect: { x: 32, y: 27, w: 18, h: 12 } },
-  { id: 'hall', en: 'outside the village hall', rect: { x: 36, y: 25, w: 10, h: 2 } },
-  { id: 'woods', en: 'at the edge of the woods', rect: { x: 12, y: 4, w: 10, h: 3 } },
-  { id: 'behind', en: 'behind the farmhouse', rect: { x: 60, y: 20, w: 2, h: 6 } },
-  { id: 'road', en: 'along the west road', rect: { x: 10, y: 18, w: 6, h: 4 } },
-  { id: 'orchard', en: 'out in the orchard', rect: { x: 63, y: 24, w: 14, h: 7 } },
-  { id: 'beeyard', en: 'up by the beeyard', rect: { x: 73, y: 12, w: 4, h: 3 } },
-  { id: 'mill', en: 'round the back of the mill', rect: { x: 66, y: 42, w: 9, h: 3 } },
-  { id: 'school', en: 'in the schoolyard', rect: { x: 16, y: 45, w: 8, h: 3 } },
-  { id: 'chapel', en: 'on the chapel steps', rect: { x: 28, y: 44, w: 8, h: 2 } },
-  { id: 'graves', en: 'in the graveyard', rect: { x: 37, y: 49, w: 7, h: 4 } },
-  { id: 'woodpile', en: 'by the woodpile', rect: { x: 16, y: 23, w: 8, h: 7 } },
-  { id: 'smithy', en: 'outside the smithy', rect: { x: 45, y: 43, w: 9, h: 3 } },
-  { id: 'hut', en: 'by the hut at the east end', rect: { x: 70, y: 23, w: 5, h: 2 } }
+  { id: 'pond', en: 'down by the pond', rect: { x: 6, y: 65, w: 12, h: 3 } },
+  { id: 'mine', en: 'inside the mine', rect: { x: 3, y: 52, w: 5, h: 5 } },
+  { id: 'fields', en: 'out in the fields', rect: { x: 60, y: 74, w: 15, h: 5 } },
+  { id: 'green', en: 'on the village green', rect: { x: 32, y: 67, w: 18, h: 12 } },
+  { id: 'hall', en: 'outside the village hall', rect: { x: 36, y: 65, w: 10, h: 2 } },
+  { id: 'woods', en: 'at the edge of the woods', rect: { x: 12, y: 44, w: 10, h: 3 } },
+  { id: 'behind', en: 'behind the farmhouse', rect: { x: 60, y: 60, w: 2, h: 6 } },
+  { id: 'road', en: 'along the west road', rect: { x: 10, y: 58, w: 6, h: 4 } },
+  { id: 'orchard', en: 'out in the orchard', rect: { x: 63, y: 64, w: 14, h: 7 } },
+  { id: 'beeyard', en: 'up by the beeyard', rect: { x: 73, y: 52, w: 4, h: 3 } },
+  { id: 'mill', en: 'round the back of the mill', rect: { x: 66, y: 82, w: 9, h: 3 } },
+  { id: 'school', en: 'in the schoolyard', rect: { x: 16, y: 85, w: 8, h: 3 } },
+  { id: 'chapel', en: 'on the chapel steps', rect: { x: 28, y: 84, w: 8, h: 2 } },
+  { id: 'graves', en: 'in the graveyard', rect: { x: 37, y: 89, w: 7, h: 4 } },
+  { id: 'woodpile', en: 'by the woodpile', rect: { x: 16, y: 63, w: 8, h: 7 } },
+  { id: 'smithy', en: 'outside the smithy', rect: { x: 45, y: 83, w: 9, h: 3 } },
+  { id: 'hut', en: 'by the hut at the east end', rect: { x: 70, y: 63, w: 5, h: 2 } },
+
+  /* Up in the woods. Each of these is a glade world.js clears to open ground
+     and threads a track to, which is what makes them findable — a thing lying
+     in a stand of trees nobody can walk into is not lost, it is gone. The
+     `label` is the name painted up on the map when you get near, so a glade
+     can be recognised from the sentence a villager said about it. */
+  { id: 'glade', en: 'in the big clearing', label: 'Big Clearing',
+    rect: { x: 30, y: 20, w: 8, h: 6 }, woods: true },
+  { id: 'oak', en: 'under the old oak', label: 'Old Oak',
+    rect: { x: 14, y: 12, w: 6, h: 5 }, woods: true },
+  { id: 'hollow', en: 'down in the hollow', label: 'The Hollow',
+    rect: { x: 52, y: 26, w: 7, h: 5 }, woods: true },
+  { id: 'charcoal', en: 'by the charcoal burner’s pit', label: 'Charcoal Pit',
+    rect: { x: 66, y: 14, w: 6, h: 5 }, woods: true },
+  { id: 'spring', en: 'at the forest spring', label: 'Forest Spring',
+    rect: { x: 22, y: 30, w: 6, h: 4 }, woods: true },
+  { id: 'deepwoods', en: 'deep in the woods', label: 'Deep Woods',
+    rect: { x: 44, y: 8, w: 7, h: 5 }, woods: true },
+
+  { id: 'platform', en: 'on the station platform', rect: { x: 84, y: 52, w: 4, h: 13 } }
 ];
+
+/* The order and membership LG.PLACES had before the forest and the station
+   joined it. `LG.chain.generate` picks the terminal item's home with
+   `pick(LG.PLACES..., rnd)`, which reads nothing but the list's length and
+   order — so growing the list from 17 places to 24 is, on its own, enough to
+   send the same seed's item somewhere else. A save written under the old
+   list is not wrong, it is answering a question that has since changed
+   shape, and the only way to still get its answer is to ask the old
+   question. See the v1 migration in save.js.
+
+   This is a historical fact about what LG.PLACES *used to be*, not a mirror
+   of what it is — it must never be "kept in sync" with the array above. */
+LG.PLACES_V1_IDS = ['pond', 'mine', 'fields', 'green', 'hall', 'woods', 'behind', 'road',
+                     'orchard', 'beeyard', 'mill', 'school', 'chapel', 'graves', 'woodpile',
+                     'smithy', 'hut'];
 
 /* ------------------------------------------------------------- flavour */
 LG.REASONS = [
@@ -757,7 +905,7 @@ LG.NPCS = [
   {
     id: 'mira', name: 'Mira', emoji: '👩‍🍳', color: '#e07a5f', job: 'the village baker',
     persona: 'Warm, chatty, a little scattered. Calls everyone "dear". Smells of flour.',
-    x: 17, y: 14, home: { x: 13, y: 13, w: 9, h: 3 },
+    x: 17, y: 54, home: { x: 13, y: 53, w: 9, h: 3 },
     voice: { gender: 'female', age: 'middle' },
     workplace: 'Bakery',
     sells: [{ i: 'bread', p: 2 }, { i: 'cake', p: 3 }, { i: 'pie', p: 3 }],
@@ -767,9 +915,9 @@ LG.NPCS = [
   {
     id: 'boris', name: 'Boris', emoji: '⛏️', color: '#6b705c', job: 'the miner',
     persona: 'Gruff, short sentences, secretly soft-hearted. Complains about his back.',
-    x: 6, y: 16, home: { x: 3, y: 13, w: 6, h: 6 },
+    x: 6, y: 56, home: { x: 3, y: 53, w: 6, h: 6 },
     voice: { gender: 'male', age: 'old' },
-    workRect: { x: 3, y: 12, w: 5, h: 5 },
+    workRect: { x: 3, y: 52, w: 5, h: 5 },
     sells: [{ i: 'stone', p: 1 }, { i: 'lantern', p: 4 }, { i: 'shiny_rock', p: 6 }],
     buys: [{ i: 'candle', p: 1 }, { i: 'rope', p: 2 }]
   },
@@ -777,7 +925,7 @@ LG.NPCS = [
   {
     id: 'nadia', name: 'Nadia', emoji: '🧕', color: '#81b29a', job: 'the shopkeeper',
     persona: 'Brisk and businesslike, proud of her shop, never gives anything away for free.',
-    x: 33, y: 15, home: { x: 29, y: 14, w: 9, h: 3 }, prefers: 'shop',
+    x: 33, y: 55, home: { x: 29, y: 54, w: 9, h: 3 }, prefers: 'shop',
     voice: { gender: 'female', age: 'young' },
     workplace: 'Shop',
     sells: [{ i: 'beans', p: 2 }, { i: 'candle', p: 2 }, { i: 'rope', p: 3 }, { i: 'soap', p: 2 }, { i: 'salt', p: 1 }, { i: 'sweets', p: 2 }, { i: 'paper', p: 1 }, { i: 'bucket', p: 3 }, { i: 'basket', p: 3 }],
@@ -788,7 +936,7 @@ LG.NPCS = [
   {
     id: 'olo', name: 'Olo', emoji: '👨‍🌾', color: '#c9a227', job: 'the farmer',
     persona: 'Slow, kindly, wanders off topic to talk about the weather and his turnips.',
-    x: 65, y: 27, home: { x: 61, y: 26, w: 9, h: 3 }, prefers: 'beast',
+    x: 65, y: 67, home: { x: 61, y: 66, w: 9, h: 3 }, prefers: 'beast',
     voice: { gender: 'male', age: 'old' },
     workplace: 'Farmhouse',
     sells: [{ i: 'egg', p: 1 }, { i: 'milk', p: 2 }, { i: 'apple', p: 1 }, { i: 'wool', p: 3 }, { i: 'pumpkin', p: 2 }, { i: 'carrot', p: 1 }],
@@ -798,9 +946,9 @@ LG.NPCS = [
   {
     id: 'petra', name: 'Petra', emoji: '🧒', color: '#9d4edd', job: 'a child who runs everywhere',
     persona: 'Excitable, nosy, knows everybody\'s business, speaks in short bursts. Asks questions back.',
-    x: 41, y: 35, home: { x: 34, y: 33, w: 14, h: 6 }, prefers: 'gossip',
+    x: 41, y: 75, home: { x: 34, y: 73, w: 14, h: 6 }, prefers: 'gossip',
     voice: { gender: 'female', age: 'young' },
-    workRect: { x: 32, y: 27, w: 18, h: 12 },
+    workRect: { x: 32, y: 67, w: 18, h: 12 },
     sells: [{ i: 'flower', p: 1 }, { i: 'shell', p: 1 }, { i: 'feather', p: 1 }],
     buys: [{ i: 'sweets', p: 1 }, { i: 'apple', p: 1 }]
   },
@@ -808,9 +956,9 @@ LG.NPCS = [
   {
     id: 'yuri', name: 'Yuri', emoji: '🎣', color: '#3d5a80', job: 'the fisherman',
     persona: 'Dreamy and philosophical, half asleep, answers questions with questions about fish.',
-    x: 12, y: 27, home: { x: 6, y: 26, w: 11, h: 2 },
+    x: 12, y: 67, home: { x: 6, y: 66, w: 11, h: 2 },
     voice: { gender: 'male', age: 'middle' },
-    workRect: { x: 6, y: 25, w: 12, h: 3 },
+    workRect: { x: 6, y: 65, w: 12, h: 3 },
     sells: [{ i: 'fish', p: 2 }, { i: 'rope', p: 3 }],
     buys: [{ i: 'bread', p: 2 }, { i: 'beer', p: 2 }]
   },
@@ -818,7 +966,7 @@ LG.NPCS = [
   {
     id: 'sanna', name: 'Sanna', emoji: '🍺', color: '#c46d3f', job: 'the innkeeper',
     persona: 'Loud, welcoming, remembers what everyone drinks and nothing else. Talks over you cheerfully.',
-    x: 65, y: 16, home: { x: 61, y: 15, w: 9, h: 3 },
+    x: 65, y: 56, home: { x: 61, y: 55, w: 9, h: 3 },
     voice: { gender: 'female', age: 'middle' },
     workplace: 'Inn',
     sells: [{ i: 'beer', p: 2 }, { i: 'soup', p: 2 }, { i: 'wine', p: 4 }, { i: 'bread', p: 2 }],
@@ -828,7 +976,7 @@ LG.NPCS = [
   {
     id: 'tomas', name: 'Tomas', emoji: '🔨', color: '#7a5c3e', job: 'the blacksmith',
     persona: 'Deliberate and deaf in one ear. Says "eh?" a lot and answers a beat late, then very precisely.',
-    x: 49, y: 44, home: { x: 45, y: 43, w: 9, h: 3 },
+    x: 49, y: 84, home: { x: 45, y: 83, w: 9, h: 3 },
     voice: { gender: 'male', age: 'old' },
     workplace: 'Smithy',
     sells: [{ i: 'hammer', p: 4 }, { i: 'screw', p: 1 }, { i: 'knife', p: 3 }, { i: 'key', p: 3 }, { i: 'chain', p: 4 }],
@@ -838,7 +986,7 @@ LG.NPCS = [
   {
     id: 'rosa', name: 'Rosa', emoji: '📚', color: '#4f7a52', job: 'the schoolteacher',
     persona: 'Precise and kind. Repeats your sentence back correctly before answering it, without making a fuss of it.',
-    x: 16, y: 43, home: { x: 12, y: 42, w: 9, h: 3 },
+    x: 16, y: 83, home: { x: 12, y: 82, w: 9, h: 3 },
     voice: { gender: 'female', age: 'old' },
     workplace: 'School',
     sells: [{ i: 'book', p: 4 }, { i: 'paper', p: 1 }, { i: 'pencil', p: 1 }, { i: 'pen', p: 2 }],
@@ -848,7 +996,7 @@ LG.NPCS = [
   {
     id: 'kesh', name: 'Kesh', emoji: '⚙️', color: '#8a8478', job: 'the miller',
     persona: 'Anxious and always mid-task. Talks while working and keeps losing the thread of what he was saying.',
-    x: 71, y: 43, home: { x: 66, y: 42, w: 9, h: 3 },
+    x: 71, y: 83, home: { x: 66, y: 82, w: 9, h: 3 },
     voice: { gender: 'male', age: 'young' },
     workplace: 'Mill',
     sells: [{ i: 'wheat', p: 2 }, { i: 'rice', p: 2 }, { i: 'noodles', p: 2 }],
@@ -858,9 +1006,9 @@ LG.NPCS = [
   {
     id: 'wren', name: 'Wren', emoji: '🐝', color: '#d9a441', job: 'the beekeeper',
     persona: 'Soft-spoken and easily distracted, trails off mid-sentence to look at something. Unbothered by everything.',
-    x: 70, y: 28, home: { x: 63, y: 26, w: 14, h: 6 },
+    x: 70, y: 68, home: { x: 63, y: 66, w: 14, h: 6 },
     voice: { gender: 'female', age: 'young' },
-    workRect: { x: 63, y: 24, w: 14, h: 7 },
+    workRect: { x: 63, y: 64, w: 14, h: 7 },
     sells: [{ i: 'honey', p: 4 }, { i: 'candle', p: 2 }, { i: 'flower', p: 1 }],
     buys: [{ i: 'flower', p: 1 }, { i: 'herbs', p: 1 }]
   },
@@ -868,7 +1016,7 @@ LG.NPCS = [
   {
     id: 'mikhalych', name: 'Mikhalych', emoji: '🍚', color: '#a26769', job: 'the rice merchant',
     persona: 'Old, unhurried, and certain. Never says "I don\'t know" \u2014 he would rather send you somewhere than send you away. Measures the world in bowls.',
-    x: 73, y: 21, home: { x: 72, y: 20, w: 4, h: 2 },
+    x: 73, y: 61, home: { x: 72, y: 60, w: 4, h: 2 },
     voice: { gender: 'male', age: 'old' },
     workplace: 'Hut',
     sells: [{ i: 'rice', p: 2 }, { i: 'noodles', p: 2 }, { i: 'tea', p: 2 }, { i: 'basket', p: 3 }],
@@ -878,9 +1026,9 @@ LG.NPCS = [
   {
     id: 'ilya', name: 'Ilya', emoji: '🪵', color: '#6b4a2f', job: 'the woodcutter',
     persona: 'Says little, and what he says is dry. Answers questions with one word unless the subject is trees.',
-    x: 19, y: 25, home: { x: 16, y: 23, w: 8, h: 7 },
+    x: 19, y: 65, home: { x: 16, y: 63, w: 8, h: 7 },
     voice: { gender: 'male', age: 'middle' },
-    workRect: { x: 16, y: 23, w: 8, h: 7 },
+    workRect: { x: 16, y: 63, w: 8, h: 7 },
     sells: [{ i: 'log', p: 2 }, { i: 'rope', p: 3 }, { i: 'mushrooms', p: 2 }, { i: 'chestnut', p: 1 }],
     buys: [{ i: 'axe', p: 4 }, { i: 'saw', p: 4 }]
   }
@@ -902,6 +1050,11 @@ LG.CHATTER = {
 LG.PHRASES = [
   { en: 'Hello!', ru: 'Привет!', zh: '你好！', fr: 'Bonjour !', es: '¡Hola!', ja: 'こんにちは！' },
   { en: 'Who are you?', ru: 'Кто ты?', zh: '你是谁？', fr: 'Qui es-tu ?', es: '¿Quién eres?', ja: 'あなたはだれですか？' },
+  {
+    en: 'What is your name?', ru: 'Как тебя зовут?', zh: '你叫什么名字？',
+    fr: "Comment tu t'appelles ?", es: '¿Cómo te llamas?', ja: 'お名前は何ですか？',
+    jaRuby: 'お<ruby>名前<rt>なまえ</rt></ruby>は<ruby>何<rt>なん</rt></ruby>ですか？'
+  },
   {
     en: 'What do you need?', ru: 'Что тебе нужно?', zh: '你需要什么？', fr: 'De quoi as-tu besoin ?', es: '¿Qué necesitas?', ja: '何がいりますか？',
     jaRuby: '<ruby>何<rt>なに</rt></ruby>がいりますか？'

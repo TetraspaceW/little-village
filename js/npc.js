@@ -19,6 +19,11 @@ LG.actors = (function () {
       bubble: null, bubbleT: 0,
       gossipCool: 5 + Math.random() * 10,
       metPlayer: false, tradeDone: false,
+      /* Whether the traveller has actually been told this villager's name —
+         see LG.game.displayName. Not the same thing as metPlayer: you can
+         stand across a counter from somebody all afternoon without either of
+         you asking. */
+      nameKnown: false,
       patch: def.home,          // the rectangle they are pottering about in
       route: null,              // a path being walked to somewhere else
       routeCool: 4 + Math.random() * 20
@@ -204,7 +209,7 @@ LG.actors = (function () {
         if (!spoken) {                                     // no key: they mime it
           a.bubble = chatterLine(); a.bubbleT = 5;
           b.bubble = chatterLine(); b.bubbleT = 5;
-          log(a.def.name + ' and ' + b.def.name + ' stopped for a word.');
+          log(LG.game.displayName(a) + ' and ' + LG.game.displayName(b) + ' stopped for a word.');
         }
       }
     }

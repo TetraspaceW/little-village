@@ -3,11 +3,16 @@ window.LG = window.LG || {};
 
 LG.world = (function () {
   const TILE = 32;
-  const W = 80, H = 56;
+  /* The village is the southern half of this. North of it is forest and east
+     of it the railway — see LG.NORTH_WOODS and the sections at the foot of
+     build(). */
+  const W = 96, H = 96;
 
   const T = { GRASS:0, PATH:1, TREE:2, WATER:3, WALL:4, DOOR:5, ROCK:6, FLOWER:7,
-              CROP:8, FENCE:9, SAND:10, CAVE:11, FLOOR:12, REED:13, FOUNTAIN:14 };
-  const SOLID = { 2:1, 3:1, 4:1, 6:1, 9:1, 14:1 };   // walls, trees, water, rock, fence, fountain
+              CROP:8, FENCE:9, SAND:10, CAVE:11, FLOOR:12, REED:13, FOUNTAIN:14,
+              PLATFORM:15, RAIL:16 };
+  // walls, trees, water, rock, fence, fountain, and the permanent way
+  const SOLID = { 2:1, 3:1, 4:1, 6:1, 9:1, 14:1, 16:1 };
 
   let tiles = null;
   const buildings = [];
@@ -40,7 +45,7 @@ LG.world = (function () {
     const b = Object.assign({ x, y, w, h, doorX, doorY: y + h - 1,
       inside: { x: x + 1, y: y + 2, w: w - 2, h: h - 3 }, furniture: [] }, opts);
     buildings.push(b);
-    labels.push({ x: x + w / 2, y: y - 0.4, text: opts.label });
+    labels.push({ x: x + w / 2, y: y - 0.4, label: opts.label });
     return b;
   }
 
@@ -99,6 +104,7 @@ LG.world = (function () {
   function build() {
     tiles = new Uint8Array(W * H).fill(T.GRASS);
     buildings.length = 0; labels.length = 0; props.length = 0;
+    signposts.length = 0; signBoxes = []; signRevealed = {};
 
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const edge = Math.min(x, y, W - 1 - x, H - 1 - y);
@@ -110,93 +116,111 @@ LG.world = (function () {
     }
 
     // ---- streets
-    rect(8, 16, 70, 2, T.PATH);           // the high street, west to east
-    rect(6, 42, 68, 2, T.PATH);           // the south street
-    rect(24, 4, 2, 48, T.PATH);           // the west lane
-    rect(58, 6, 2, 40, T.PATH);           // the east lane
-    rect(40, 18, 2, 24, T.PATH);          // through the green, hall to south street
-    rect(10, 22, 2, 6, T.PATH);           // down to the pond
-    rect(16, 45, 8, 2, T.PATH);           // schoolyard
-    rect(44, 45, 8, 2, T.PATH);           // to the smithy
+    // The high street runs the width of the village and on east past its old
+    // end, out to the railway platform: getting off the train and walking in
+    // is one street the whole way.
+    rect(8, 56, 76, 2, T.PATH);           // the high street, west to east
+    rect(6, 82, 68, 2, T.PATH);           // the south street
+    rect(24, 44, 2, 48, T.PATH);          // the west lane
+    rect(58, 46, 2, 40, T.PATH);          // the east lane
+    rect(40, 58, 2, 24, T.PATH);          // through the green, hall to south street
+    rect(10, 62, 2, 6, T.PATH);           // down to the pond
+    rect(16, 85, 8, 2, T.PATH);           // schoolyard
+    rect(44, 85, 8, 2, T.PATH);           // to the smithy
 
     // ---- the village green, with the hall standing at the north of it
-    rect(30, 26, 22, 14, T.GRASS);
-    rect(30, 32, 22, 2, T.PATH);          // the green's cross path
-    for (const [gx, gy] of [[33, 29], [49, 29], [33, 37], [49, 37], [36, 36], [46, 28]])
+    rect(30, 66, 22, 14, T.GRASS);
+    rect(30, 72, 22, 2, T.PATH);          // the green's cross path
+    for (const [gx, gy] of [[33, 69], [49, 69], [33, 77], [49, 77], [36, 76], [46, 68]])
       set(gx, gy, T.TREE);
-    rect(40, 30, 2, 2, T.FOUNTAIN);
-    props.push({ type: 'fountain', x: 40, y: 30 });
-    for (const [bx, by] of [[35, 31], [46, 31], [37, 34], [45, 34]])
+    rect(40, 70, 2, 2, T.FOUNTAIN);
+    props.push({ type: 'fountain', x: 40, y: 70 });
+    for (const [bx, by] of [[35, 71], [46, 71], [37, 74], [45, 74]])
       props.push({ type: 'bench', x: bx, y: by });
-    labels.push({ x: 41, y: 40.6, text: 'The Green' });
+    labels.push({ x: 41, y: 80.6, label: 'The Green' });
 
     // ---- buildings
-    addBuilding(35, 18, 12, 7, 41, { label: 'Village Hall', sign: '🏛️', roof: '#8a6a3f', wall: '#f3e7cc' });
-    addBuilding(14, 6,  7,  6, 17, { label: 'Bakery',    sign: '🥖', roof: '#b5563f', wall: '#e8d5b7' });
-    addBuilding(30, 7,  7,  6, 33, { label: 'Shop',      sign: '🏪', roof: '#4a6fa5', wall: '#e8d5b7' });
-    addBuilding(62, 8,  8,  7, 65, { label: 'Inn',       sign: '🍺', roof: '#8a5a2b', wall: '#efdcbc' });
-    addBuilding(62, 20, 7,  6, 65, { label: 'Farmhouse', sign: '🏡', roof: '#7a5c3e', wall: '#f0e2c8' });
-    addBuilding(68, 32, 8,  7, 71, { label: 'Mill',      sign: '⚙️', roof: '#6b705c', wall: '#e8d5b7' });
-    addBuilding(12, 45, 8,  6, 15, { label: 'School',    sign: '📚', roof: '#4f7a52', wall: '#f0e2c8' });
-    addBuilding(28, 47, 7,  6, 31, { label: 'Chapel',    sign: '🕯️', roof: '#5b6b8a', wall: '#f3e9d6' });
-    addBuilding(46, 47, 7,  6, 49, { label: 'Smithy',    sign: '🔨', roof: '#5a4436', wall: '#ddc9a6' });
+    addBuilding(35, 58, 12, 7, 41, { label: 'Village Hall', sign: '🏛️', roof: '#8a6a3f', wall: '#f3e7cc' });
+    addBuilding(14, 46, 7,  6, 17, { label: 'Bakery',    sign: '🥖', roof: '#b5563f', wall: '#e8d5b7' });
+    addBuilding(30, 47, 7,  6, 33, { label: 'Shop',      sign: '🏪', roof: '#4a6fa5', wall: '#e8d5b7' });
+    addBuilding(62, 48, 8,  7, 65, { label: 'Inn',       sign: '🍺', roof: '#8a5a2b', wall: '#efdcbc' });
+    addBuilding(62, 60, 7,  6, 65, { label: 'Farmhouse', sign: '🏡', roof: '#7a5c3e', wall: '#f0e2c8' });
+    addBuilding(68, 72, 8,  7, 71, { label: 'Mill',      sign: '⚙️', roof: '#6b705c', wall: '#e8d5b7' });
+    addBuilding(12, 85, 8,  6, 15, { label: 'School',    sign: '📚', roof: '#4f7a52', wall: '#f0e2c8' });
+    addBuilding(28, 87, 7,  6, 31, { label: 'Chapel',    sign: '🕯️', roof: '#5b6b8a', wall: '#f3e9d6' });
+    addBuilding(46, 87, 7,  6, 49, { label: 'Smithy',    sign: '🔨', roof: '#5a4436', wall: '#ddc9a6' });
     // The hut at the far east end, past the farmhouse. Smaller than the rest:
     // one room, and the man who lives in it also sells out of it.
-    addBuilding(71, 18, 6,  5, 73, { label: 'Hut',       sign: '🍚', roof: '#8a7048', wall: '#e6d7b4' });
+    addBuilding(71, 58, 6,  5, 73, { label: 'Hut',       sign: '🍚', roof: '#8a7048', wall: '#e6d7b4' });
+
+    // ---- the noticeboard, just past the hall, standing clear of its path
+    rect(LG.BOARD_SPOT.x, LG.BOARD_SPOT.y, LG.BOARD_SPOT.w, LG.BOARD_SPOT.h, T.GRASS);
+    props.push({ type: 'board', x: LG.BOARD_SPOT.x + 1, y: LG.BOARD_SPOT.y });
+    labels.push({ x: LG.BOARD_SPOT.x + 1.5, y: LG.BOARD_SPOT.y - 0.3, label: 'Noticeboard' });
+    signposts.push({ key: 'Noticeboard',
+                     x: (LG.BOARD_SPOT.x + 1.5) * TILE, y: (LG.BOARD_SPOT.y + 2) * TILE + 6 });
 
     // ---- the mine, west
-    rect(2, 10, 8, 9, T.ROCK);
-    rect(3, 12, 5, 5, T.CAVE);
-    rect(5, 17, 2, 3, T.PATH);
-    rect(5, 19, 6, 1, T.PATH);
-    rect(10, 18, 1, 2, T.PATH);
-    labels.push({ x: 6, y: 9.4, text: 'Mine' });
+    rect(2, 50, 8, 9, T.ROCK);
+    rect(3, 52, 5, 5, T.CAVE);
+    rect(5, 57, 2, 3, T.PATH);
+    rect(5, 59, 6, 1, T.PATH);
+    rect(10, 58, 1, 2, T.PATH);
+    labels.push({ x: 6, y: 49.4, label: 'Mine' });
 
     // ---- the pond, south-west
-    for (let y = 28; y < 39; y++) for (let x = 4; x < 21; x++) {
-      const dx = (x - 12) / 8, dy = (y - 33.5) / 5;
+    for (let y = 68; y < 79; y++) for (let x = 4; x < 21; x++) {
+      const dx = (x - 12) / 8, dy = (y - 73.5) / 5;
       const d = dx * dx + dy * dy;
       if (d < 1) set(x, y, T.WATER);
       else if (d < 1.2) set(x, y, hash(x, y) < 0.28 ? T.REED : T.SAND);
     }
-    labels.push({ x: 12, y: 39.6, text: 'Pond' });
+    labels.push({ x: 12, y: 79.6, label: 'Pond' });
 
     // ---- the fields, east
-    rect(60, 34, 15, 5, T.CROP);
-    for (let x = 59; x <= 76; x++) { set(x, 33, T.FENCE); set(x, 40, T.FENCE); }
-    for (let y = 33; y <= 40; y++) { set(59, y, T.FENCE); set(76, y, T.FENCE); }
-    set(66, 33, T.PATH);
-    labels.push({ x: 68, y: 32.4, text: 'Fields' });
+    rect(60, 74, 15, 5, T.CROP);
+    for (let x = 59; x <= 76; x++) { set(x, 73, T.FENCE); set(x, 80, T.FENCE); }
+    for (let y = 73; y <= 80; y++) { set(59, y, T.FENCE); set(76, y, T.FENCE); }
+    set(66, 73, T.PATH);
+    labels.push({ x: 68, y: 72.4, label: 'Fields' });
 
     // ---- the orchard and beeyard, north-east
-    rect(62, 24, 16, 8, T.GRASS);
-    for (let y = 25; y <= 30; y += 2) for (let x = 63; x <= 77; x += 2) set(x, y, T.TREE);
-    labels.push({ x: 70, y: 23.2, text: 'Orchard' });
-    rect(72, 11, 7, 4, T.GRASS);
-    for (let x = 73; x <= 77; x++) set(x, 11, T.FENCE);
-    for (let y = 12; y <= 14; y++) set(72, y, T.FENCE);
-    for (let x = 74; x <= 76; x += 2) props.push({ type: 'hive', x: x, y: 12 });
-    labels.push({ x: 75, y: 10.2, text: 'Beeyard' });
+    rect(62, 64, 16, 8, T.GRASS);
+    for (let y = 65; y <= 70; y += 2) for (let x = 63; x <= 77; x += 2) set(x, y, T.TREE);
+    labels.push({ x: 70, y: 63.2, label: 'Orchard' });
+    rect(72, 51, 7, 4, T.GRASS);
+    for (let x = 73; x <= 77; x++) set(x, 51, T.FENCE);
+    for (let y = 52; y <= 54; y++) set(72, y, T.FENCE);
+    for (let x = 74; x <= 76; x += 2) props.push({ type: 'hive', x: x, y: 52 });
+    labels.push({ x: 75, y: 50.2, label: 'Beeyard' });
 
-    // ---- the woodcutter's clearing
-    for (let y = 24; y <= 30; y++) for (let x = 16; x <= 22; x++)
-      if (hash(x * 3, y * 5) < 0.32) set(x, y, T.TREE);
-    set(18, 27, T.CAVE); set(19, 27, T.CAVE);
-    labels.push({ x: 19, y: 23.2, text: 'Woodpile' });
+    /* ---- the woodcutter's clearing
+       Only onto open ground. This stand overlaps the eastern shore of the
+       pond, and unguarded it will scatter a tree into the water wherever the
+       hash happens to land — which it duly did the moment the village moved
+       and every tile drew a different number. Nothing else here paints over
+       what was deliberately put down; this was the one that did. */
+    for (let y = 64; y <= 70; y++) for (let x = 16; x <= 22; x++)
+      if (get(x, y) === T.GRASS && hash(x * 3, y * 5) < 0.32) set(x, y, T.TREE);
+    set(18, 67, T.CAVE); set(19, 67, T.CAVE);
+    labels.push({ x: 19, y: 63.2, label: 'Woodpile' });
 
     // These face south, away from the street, so they each need a lane down the
     // side and along the front or their doors open onto nothing.
-    rect(26, 44, 1, 10, T.PATH); rect(26, 53, 6, 1, T.PATH);   // to the chapel door
-    rect(53, 44, 1, 10, T.PATH); rect(49, 53, 5, 1, T.PATH);   // to the smithy door
-    rect(70, 18, 1, 6, T.PATH);  rect(70, 23, 4, 1, T.PATH);   // to the hut door
+    rect(26, 84, 1, 10, T.PATH); rect(26, 93, 6, 1, T.PATH);   // to the chapel door
+    rect(53, 84, 1, 10, T.PATH); rect(49, 93, 5, 1, T.PATH);   // to the smithy door
+    rect(70, 58, 1, 6, T.PATH);  rect(70, 63, 4, 1, T.PATH);   // to the hut door
 
     // ---- the graveyard behind the chapel
-    for (let x = 36; x <= 44; x++) { set(x, 48, T.FENCE); set(x, 53, T.FENCE); }
-    for (let y = 48; y <= 53; y++) { set(36, y, T.FENCE); set(44, y, T.FENCE); }
-    set(36, 50, T.PATH);
-    for (let y = 49; y <= 52; y += 2) for (let x = 38; x <= 43; x += 2)
+    for (let x = 36; x <= 44; x++) { set(x, 88, T.FENCE); set(x, 93, T.FENCE); }
+    for (let y = 88; y <= 93; y++) { set(36, y, T.FENCE); set(44, y, T.FENCE); }
+    set(36, 90, T.PATH);
+    for (let y = 89; y <= 92; y += 2) for (let x = 38; x <= 43; x += 2)
       props.push({ type: 'grave', x: x, y: y });
-    labels.push({ x: 40, y: 47.4, text: 'Graveyard' });
+    labels.push({ x: 40, y: 87.4, label: 'Graveyard' });
+
+    northWoods();
+    station();
 
     // Terrain painted after the buildings can land on a doorway — an orchard row
     // sealed the farmhouse once. Clear every door and its step, last of all.
@@ -205,7 +229,192 @@ LG.world = (function () {
       if (b.doorY + 1 < H && isSolid(b.doorX, b.doorY + 1)) set(b.doorX, b.doorY + 1, T.PATH);
     }
     furnish();
+    openTheWay();
     return { W, H, TILE };
+  }
+
+  /* ------------------------------------------------------------- the woods
+     A proper expanse of forest north of the village — the kind of place a
+     thing can be lost in, which is the point: chain.js drops the last item of
+     an errand into one of LG.PLACES, and now a fair share of those are up
+     here rather than round the corner from whoever is looking for it.
+
+     Density is noise on top of noise. A flat probability gives an even
+     stipple of trees, which reads as an orchard; what makes a wood is that it
+     comes in stands, with the light getting through in some places and not
+     others. `vnoise` supplies the stands, `hash` roughens their edges, and
+     the whole thing thins out over the last few rows so the village looks out
+     on scattered birches rather than at a wall. */
+  function northWoods() {
+    const edgeOfTown = LG.NORTH_WOODS;                 // where the trees give out
+    for (let y = 2; y < edgeOfTown; y++) {
+      for (let x = 2; x < W - 2; x++) {
+        // Thins over the last eight rows, so the treeline is a fringe.
+        const deep = Math.min(1, (edgeOfTown - y) / 8);
+        const stand = vnoise(x, y, 11) * 0.62 + vnoise(x, y, 4) * 0.38;
+        /* The second factor is what makes it a wood rather than a hedge: at
+           the low end of the noise it opens out to almost nothing and at the
+           high end it closes to a thicket. A flat probability here — even a
+           high one — gives an even stipple with no thickets and no light, and
+           reads as an orchard that went wrong. */
+        const d = (0.10 + 0.50 * deep) * (0.20 + 1.30 * stand);
+        if (hash(x * 5 + 3, y * 7 + 11) < d) set(x, y, T.TREE);
+        else if (hash(x * 13 + 1, y * 3 + 5) > 0.986) set(x, y, T.FLOWER);
+      }
+    }
+    // Boulders, in the couple of places the ground breaks through.
+    for (const [bx, by, bw, bh] of [[8, 24, 3, 2], [58, 16, 2, 3], [37, 32, 3, 2]])
+      rect(bx, by, bw, bh, T.ROCK);
+
+    /* The glades. Each one is cleared outright rather than left to the noise:
+       a named place has to be somewhere a villager can stand and an animal can
+       potter about, and a rectangle with trees still in it pens both of them —
+       which is the bug that used to strand Ilya in his own patch. */
+    const glades = (LG.PLACES || []).filter(p => p.woods);
+    glades.forEach(p => {
+      const r = p.rect;
+      rect(r.x - 1, r.y - 1, r.w + 2, r.h + 2, T.GRASS);
+      if (p.label) labels.push({ x: r.x + r.w / 2, y: r.y - 1.4, label: p.label });
+    });
+
+    // The spring actually has water in it, off to one side of its glade.
+    const spring = glades.find(p => p.id === 'spring');
+    if (spring) {
+      set(spring.rect.x + 3, spring.rect.y + 1, T.WATER);
+      set(spring.rect.x + 4, spring.rect.y + 1, T.WATER);
+      set(spring.rect.x + 3, spring.rect.y + 2, T.REED);
+    }
+    // And the charcoal burner left his pit behind.
+    const pit = glades.find(p => p.id === 'charcoal');
+    if (pit) { set(pit.rect.x + 2, pit.rect.y + 2, T.CAVE); set(pit.rect.x + 3, pit.rect.y + 2, T.CAVE); }
+
+    /* Tracks. The woods are meant to be hard to read, not impassable — you
+       follow a track and it takes you somewhere. Each run is a chain of
+       orthogonal segments, and every glade hangs off one of them. */
+    [
+      [[24, 44], [24, 38], [21, 38], [21, 33], [24, 33], [24, 30], [26, 30]],   // up out of the village to the spring
+      [[24, 33], [28, 33], [28, 28], [32, 28], [32, 25], [34, 23]],             // on into the big clearing
+      [[34, 23], [34, 19], [26, 19], [22, 19], [19, 17], [17, 15]],             // west, to the old oak
+      [[34, 21], [40, 21], [40, 16], [44, 16], [46, 13], [46, 11]],             // north, to the deep woods
+      [[34, 23], [39, 23], [39, 26], [45, 26], [45, 23], [50, 23], [53, 27]],   // east, down to the hollow
+      [[50, 23], [56, 23], [56, 20], [62, 20], [62, 17], [68, 17]],             // and on to the charcoal pit
+      [[68, 17], [68, 22], [71, 22], [71, 30], [68, 30], [68, 38]]              // back down to the village's north side
+    ].forEach(track);
+    labels.push({ x: 40, y: 4.6, label: 'The Woods' });
+  }
+
+  /* One run of track, as a chain of orthogonal segments.
+
+     The spine is straight between its corners, which is what makes the
+     network provably joined up — every glade hangs off a run that reaches
+     back to the village, and that is checked rather than hoped for. What you
+     see is not the spine: each tile frays a step to one side or the other, so
+     it reads as something walked between trees rather than surveyed through
+     them. Fraying only ever *adds* walkable ground, so it cannot break the
+     connection it is decorating. */
+  function track(points) {
+    for (let i = 1; i < points.length; i++) {
+      const [x0, y0] = points[i - 1], [x1, y1] = points[i];
+      const dx = Math.sign(x1 - x0), dy = Math.sign(y1 - y0);
+      let x = x0, y = y0;
+      for (;;) {
+        set(x, y, T.PATH);
+        if (hash(x * 17 + 5, y * 23 + 9) < 0.36) {
+          const side = hash(x * 3 + 1, y * 7 + 2) < 0.5 ? 1 : -1;
+          if (x !== x1) set(x, y + side, T.PATH); else set(x + side, y, T.PATH);
+        }
+        if (x === x1 && y === y1) break;
+        if (x !== x1) x += dx; else y += dy;
+      }
+    }
+  }
+
+  /* ----------------------------------------------------------- the station
+     An unmanned halt at the end of the high street: a platform, a nameboard,
+     a shelter with a bench in it, and a single line running north to south
+     through the trees. Nobody works here and no train ever comes while you
+     are looking — it is where the traveller got off, and the reason they have
+     no way of asking anybody anything. */
+  function station() {
+    const p = (LG.PLACES || []).find(s => s.id === 'platform');
+    if (!p) return;
+    const r = p.rect;
+    // The permanent way, running the height of the map and out of sight both
+    // ways. Solid: the platform is the edge of the traveller's world.
+    rect(90, 2, 2, H - 4, T.RAIL);
+    // Ballast either side of it, so the line sits in something.
+    for (let y = 2; y < H - 2; y++) {
+      set(88, y, T.SAND); set(89, y, T.SAND);
+      set(92, y, T.SAND); set(93, y, T.SAND);
+    }
+    rect(r.x, r.y, r.w, r.h, T.PLATFORM);
+    // The forecourt, joining the platform to the end of the high street.
+    rect(r.x - 1, 56, 1, 2, T.PATH);
+
+    props.push({ type: 'shelter', x: r.x + 1, y: r.y + 1 });
+    props.push({ type: 'lamp', x: r.x, y: r.y + 6 });
+    props.push({ type: 'bench', x: r.x, y: r.y + 10 });
+    labels.push({ x: r.x + r.w / 2, y: r.y - 0.8, label: 'Station' });
+    /* The nameboard, where you would actually read it stepping off the train
+       — and, for most players, the first word of the language they get. */
+    signposts.push({ key: 'Station', x: (r.x + 2) * TILE, y: (r.y + 8) * TILE });
+  }
+
+  /* --------------------------------------------------- nowhere is sealed off
+     Open is not the same as reachable — the lesson the woodcutter's clearing
+     taught once already, and a forest is that failure waiting to happen at
+     scale. Everywhere the game can send you or a villager is checked against
+     a flood fill from the platform, and anything walled off has a way cut to
+     it rather than being left as an errand nobody can finish.
+
+     This is a guarantee, not a generator: with the tracks above it should
+     never have anything to do. It runs anyway, because "should" is how the
+     rice merchant happened. */
+  function openTheWay() {
+    const start = nearestOpen(LG.START.x, LG.START.y);
+    for (let pass = 0; pass < 4; pass++) {
+      const seen = flood(start.x, start.y);
+      const cut = [];
+      for (const p of (LG.PLACES || [])) {
+        const r = p.rect;
+        let reachable = false, mine = [];
+        for (let y = r.y; y < r.y + r.h && !reachable; y++)
+          for (let x = r.x; x < r.x + r.w; x++) {
+            if (seen.has(idx(x, y))) { reachable = true; break; }
+            if (isWalkable(x, y)) mine.push([x, y]);
+          }
+        if (!reachable) cut.push(mine[0] || [r.x, r.y]);
+      }
+      if (!cut.length) return;
+      // Cut straight from each stranded spot to the nearest tile we can reach.
+      cut.forEach(([tx, ty]) => {
+        let best = null, bestD = Infinity;
+        for (const k of seen) {
+          const x = k % W, y = (k / W) | 0;
+          const d = Math.abs(x - tx) + Math.abs(y - ty);
+          if (d < bestD) { bestD = d; best = [x, y]; }
+        }
+        if (best) track([best, [best[0], ty], [tx, ty]]);
+      });
+    }
+  }
+
+  /* Every tile you can walk to from here. */
+  function flood(sx, sy) {
+    const seen = new Set([idx(sx, sy)]);
+    const queue = [[sx, sy]];
+    while (queue.length) {
+      const [x, y] = queue.pop();
+      for (const [dx, dy] of DIRS) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const k = idx(nx, ny);
+        if (seen.has(k) || !isWalkable(nx, ny)) continue;
+        seen.add(k);
+        queue.push([nx, ny]);
+      }
+    }
+    return seen;
   }
 
   /* Enough in each room that you can tell whose it is from the doorway. */
@@ -278,7 +487,11 @@ LG.world = (function () {
      search pointed at the target instead. */
   function pathTo(sx, sy, tx, ty, limit) {
     if (sx === tx && sy === ty) return [];
-    const max = limit || 4000;
+    /* The cap is a safety valve, not a budget, so it scales with the map
+       rather than sitting at a number chosen when the village was the whole
+       world — a walk from the platform to a glade in the far woods is a long
+       way now, and through trees A* has to work for it. */
+    const max = limit || W * H;
     const h = (x, y) => Math.abs(x - tx) + Math.abs(y - ty);
 
     const gScore = new Map([[idx(sx, sy), 0]]);
@@ -325,7 +538,7 @@ LG.world = (function () {
           const nx = x + dx, ny = y + dy;
           if (nx > 0 && ny > 0 && nx < W - 1 && ny < H - 1 && isWalkable(nx, ny)) return { x: nx, y: ny };
         }
-    return { x: 22, y: 14 };
+    return { x: 22, y: 54 };            // the high street, if all else fails
   }
 
   /* ---------------------------------------------------------------- snow
@@ -383,7 +596,9 @@ LG.world = (function () {
        fall the lanes are the only thing telling you where the village goes, and
        a white field with the roads erased out of it is not a village. Flat fills
        edge to edge, so the packed snow has no seams and no patches. */
-    if (t === T.PATH || t === T.FOUNTAIN) {
+    /* The platform gets swept and the line gets used, so both take snow the
+       way the streets do — thin, packed and never a drift. */
+    if (t === T.PATH || t === T.FOUNTAIN || t === T.PLATFORM || t === T.RAIL) {
       const p = Math.min(0.5, lying * 0.62);
       if (p <= 0.02) return;
       ctx.fillStyle = 'rgba(250,251,255,' + p.toFixed(3) + ')';
@@ -461,6 +676,29 @@ LG.world = (function () {
         for (let i = 0; i < 3; i++) ctx.fillRect(px + 4 + i * 9, py + 8 + ((r * 10 * (i + 1)) % 8 | 0), 6, 16);
         break;
       case T.CAVE: ctx.fillStyle = COLORS.cave; ctx.fillRect(px, py, TILE, TILE); break;
+      case T.PLATFORM:
+        // Worn flags with the joints showing, and a painted edge along the
+        // side that faces the track — the one bit of maintenance anybody does.
+        ctx.fillStyle = '#b9b2a4'; ctx.fillRect(px, py, TILE, TILE);
+        ctx.fillStyle = 'rgba(255,255,255,.10)'; ctx.fillRect(px, py, TILE, 2);
+        ctx.fillStyle = 'rgba(60,52,40,.16)';
+        ctx.fillRect(px, py + TILE - 2, TILE, 2); ctx.fillRect(px + TILE - 2, py, 2, TILE);
+        if (r < 0.3) { ctx.fillStyle = 'rgba(60,52,40,.10)';
+          ctx.fillRect(px + 4 + (r * 40 | 0) % 20, py + 6 + (r * 33 | 0) % 18, 6, 4); }
+        if (get(x + 1, y) === T.SAND) {                 // the platform edge line
+          ctx.fillStyle = '#e6dcae'; ctx.fillRect(px + TILE - 5, py, 4, TILE);
+        }
+        break;
+      case T.RAIL: {
+        ctx.fillStyle = '#8d8578'; ctx.fillRect(px, py, TILE, TILE);   // ballast
+        ctx.fillStyle = '#6b573f';                                     // sleepers
+        for (let i = 0; i < 3; i++) ctx.fillRect(px, py + 2 + i * 11, TILE, 6);
+        ctx.fillStyle = '#b8b2ab';                                     // the rail itself
+        ctx.fillRect(px + (get(x - 1, y) === T.RAIL ? 6 : 20), py, 5, TILE);
+        ctx.fillStyle = 'rgba(255,255,255,.35)';
+        ctx.fillRect(px + (get(x - 1, y) === T.RAIL ? 6 : 20), py, 2, TILE);
+        break;
+      }
       case T.FLOOR:
         ctx.fillStyle = '#c6a173'; ctx.fillRect(px, py, TILE, TILE);
         ctx.fillStyle = 'rgba(120,86,52,.30)';               // floorboards
@@ -573,6 +811,63 @@ LG.world = (function () {
       capSnow(ctx, p, () => {
         ctx.beginPath(); ctx.arc(x + 16, y + 12, 6, Math.PI, 0); ctx.closePath(); ctx.fill();
       });
+      return;
+    }
+    if (p.type === 'shelter') {
+      // A lean-to open to the platform: three sides, a bench, and a roof that
+      // has been keeping the rain off nobody in particular for years.
+      const x = p.x * TILE, y = p.y * TILE;
+      ctx.fillStyle = 'rgba(0,0,0,.2)';
+      ctx.fillRect(x + 2, y + 34, TILE * 2, 6);
+      ctx.fillStyle = '#6f5a44';                        // back and side walls
+      ctx.fillRect(x, y + 6, TILE * 2, 28);
+      ctx.fillStyle = '#5d4a37';
+      ctx.fillRect(x + 4, y + 16, TILE * 2 - 8, 16);    // the shaded inside
+      ctx.fillStyle = '#8a6a45';                        // a bench under it
+      ctx.fillRect(x + 7, y + 24, TILE * 2 - 14, 5);
+      ctx.fillStyle = '#7d6a52';                        // the roof, overhanging
+      ctx.fillRect(x - 4, y, TILE * 2 + 8, 9);
+      ctx.fillStyle = 'rgba(255,255,255,.14)'; ctx.fillRect(x - 4, y, TILE * 2 + 8, 3);
+      capSnow(ctx, p, () => ctx.fillRect(x - 4, y - 3, TILE * 2 + 8, 4));
+      return;
+    }
+    if (p.type === 'lamp') {
+      const x = p.x * TILE, y = p.y * TILE;
+      ctx.fillStyle = 'rgba(0,0,0,.18)';
+      ctx.beginPath(); ctx.ellipse(x + 16, y + 26, 6, 3, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#4a443c';
+      ctx.fillRect(x + 14, y + 2, 4, 24);
+      ctx.fillStyle = '#3c3630';
+      ctx.fillRect(x + 10, y - 2, 12, 8);
+      // Lit after dark, which is the only thing here that ever changes.
+      const night = LG.time && LG.time.isNight && LG.time.isNight();
+      ctx.fillStyle = night ? '#ffe6a3' : '#cdd3d6';
+      ctx.fillRect(x + 12, y, 8, 5);
+      if (night) {
+        ctx.fillStyle = 'rgba(255,220,140,.16)';
+        ctx.beginPath(); ctx.arc(x + 16, y + 4, 20, 0, Math.PI * 2); ctx.fill();
+      }
+      capSnow(ctx, p, () => ctx.fillRect(x + 10, y - 4, 12, 3));
+      return;
+    }
+    if (p.type === 'board') {
+      const x = p.x * TILE, y = p.y * TILE;
+      ctx.fillStyle = 'rgba(0,0,0,.18)';
+      ctx.fillRect(x - 2, y + 26, 36, 5);
+      ctx.fillStyle = '#7d6242';                       // two posts
+      ctx.fillRect(x - 1, y + 6, 5, 26);
+      ctx.fillRect(x + 27, y + 6, 5, 26);
+      ctx.fillStyle = '#6b4a2f';                        // the board itself
+      ctx.fillRect(x - 4, y, 39, 20);
+      ctx.fillStyle = '#c9b892';                        // a few pinned scraps
+      ctx.fillRect(x, y + 3, 10, 7);
+      ctx.fillRect(x + 12, y + 6, 9, 6);
+      ctx.fillRect(x + 3, y + 11, 8, 6);
+      ctx.fillRect(x + 22, y + 3, 9, 7);
+      ctx.fillStyle = 'rgba(181,86,63,.85)';             // pins
+      [[x + 4, y + 4], [x + 16, y + 7], [x + 6, y + 12], [x + 26, y + 4]]
+        .forEach(([px, py]) => { ctx.beginPath(); ctx.arc(px, py, 1.6, 0, Math.PI * 2); ctx.fill(); });
+      capSnow(ctx, p, () => ctx.fillRect(x - 4, y - 3, 39, 4));
       return;
     }
     if (p.type !== 'fountain') return;
@@ -745,18 +1040,102 @@ LG.world = (function () {
     ctx.globalAlpha = 1;
   }
 
-  function drawLabels(ctx, cam, vw, vh) {
+  function drawLabels(ctx, cam, vw, vh, lang) {
     ctx.font = '600 13px system-ui';
     ctx.textAlign = 'center';
     for (const l of labels) {
+      const text = LG.placeName(l.label, lang);
       const x = l.x * TILE, y = l.y * TILE;
       if (!inView(x, y, 0, 0, cam, vw, vh, TILE * 4)) continue;
-      const w = ctx.measureText(l.text).width + 14;
+      const w = ctx.measureText(text).width + 14;
       ctx.fillStyle = 'rgba(28,24,20,.55)';
       ctx.fillRect(x - w / 2, y - 14, w, 19);
       ctx.fillStyle = '#f6efe2';
-      ctx.fillText(l.text, x, y);
+      ctx.fillText(text, x, y);
     }
+  }
+
+  /* ------------------------------------------------------------------ signs
+     A readable sign in front of every building's door, and one at the
+     noticeboard: the name in the language the village speaks, with an English
+     line underneath that stays blurred until clicked — the same convention
+     the notebook and overheard speech already use for a gloss. `signBoxes` is
+     rebuilt in world space every time this draws; a click is hit-tested
+     against it by whoever knows where the mouse actually was (game.js). */
+  let signBoxes = [];
+  let signRevealed = {};
+
+  /* Anything that is not a building but still has its name up: the
+     noticeboard, the station. Filled during build(); buildings get theirs
+     from their own door and are not listed here. */
+  const signposts = [];
+
+  function signSpots() {
+    const out = buildings.map(b => {
+      // Stood beside the door rather than across it, so it reads as a
+      // shingle hung by the doorway and not a barrier in the way.
+      const toRight = b.doorX < b.x + b.w - 1;
+      const sx = (toRight ? b.doorX + 1 : b.doorX - 1) * TILE + TILE / 2;
+      const sy = (b.doorY + 1) * TILE + 6;
+      return { key: b.label, x: sx, y: sy };
+    });
+    return out.concat(signposts);
+  }
+
+  function drawSigns(ctx, cam, vw, vh, lang, revealAll) {
+    signBoxes = [];
+    const L = LG.LANGUAGES && LG.LANGUAGES[lang];
+    const nativeFont = '600 11px ' + ((L && L.fontStack) || 'system-ui');
+    const glossFont = '10px system-ui';
+    ctx.textAlign = 'center';
+    for (const s of signSpots()) {
+      if (!inView(s.x - 40, s.y - 40, 80, 40, cam, vw, vh, TILE)) continue;
+      const native = LG.placeName(s.key, lang);
+      const gloss = lang === 'en' ? null : LG.placeName(s.key, 'en');
+      ctx.font = nativeFont;
+      let w = ctx.measureText(native).width;
+      if (gloss) { ctx.font = glossFont; w = Math.max(w, ctx.measureText(gloss).width); }
+      w += 16;
+      const h = gloss ? 34 : 20;
+      const bx = s.x - w / 2, by = s.y - h;
+
+      ctx.fillStyle = '#6b4a2f';                        // the post
+      ctx.fillRect(s.x - 2, s.y - 6, 4, 10);
+      ctx.fillStyle = '#e9dcbb';                         // the board
+      ctx.fillRect(bx, by, w, h);
+      ctx.strokeStyle = '#8a6a45'; ctx.lineWidth = 1.5;
+      ctx.strokeRect(bx + 0.75, by + 0.75, w - 1.5, h - 1.5);
+
+      ctx.fillStyle = '#3a2e1f';
+      ctx.font = nativeFont;
+      ctx.fillText(native, s.x, by + 15);
+      if (gloss) {
+        const revealed = revealAll || signRevealed[s.key];
+        ctx.save();
+        if (!revealed) ctx.filter = 'blur(2.2px)';       // click-to-reveal, as elsewhere
+        ctx.fillStyle = revealed ? '#6d5b45' : 'rgba(109,91,69,.65)';
+        ctx.font = glossFont;
+        ctx.fillText(gloss, s.x, by + 29);
+        ctx.restore();
+      }
+      signBoxes.push({ x: bx, y: by, w, h, key: s.key });
+    }
+  }
+
+  /* A click at this world-space point. Toggles whichever sign it landed on
+     and reports whether it hit one, so the caller does not also read it as a
+     click on the ground beneath. */
+  function hitSign(wx, wy) {
+    for (const b of signBoxes) {
+      if (wx >= b.x && wx <= b.x + b.w && wy >= b.y && wy <= b.y + b.h) {
+        signRevealed[b.key] = !signRevealed[b.key];
+        return true;
+      }
+    }
+    return false;
+  }
+  function overSign(wx, wy) {
+    return signBoxes.some(b => wx >= b.x && wx <= b.x + b.w && wy >= b.y && wy <= b.y + b.h);
   }
 
   function drawGround(ctx, cam, vw, vh) {
@@ -773,5 +1152,7 @@ LG.world = (function () {
 
   return { TILE, W, H, T, build, get, isSolid, isWalkable, nearestOpen, pathTo,
            buildingAt, buildingUnder, roofRects, buildingByLabel, inRect, nearRect,
-           drawGround, drawBuildings, drawLabels, buildings };
+           drawGround, drawBuildings, drawLabels, drawSigns, hitSign, overSign, buildings,
+           // for the tests: what got placed, and where you can get to from here
+           _labels: () => labels, _props: () => props, _signs: () => signSpots(), _flood: flood };
 })();

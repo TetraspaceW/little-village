@@ -578,6 +578,46 @@ would be a second answer again, restored from a file.
 A spent lead is struck through rather than deleted, wherever it came from: a line that
 vanishes reads as a bug, and you lose the record of who told you.
 
+## A name is a fact too, and it works the same way
+
+The game used to know everyone's name from the moment their sprite loaded, which made
+the nametag, the dialogue header and the hint text the one place in the whole village
+where the player was simply handed something rather than told it. Everything else here
+already runs on *a fact only appears once a villager actually tells you it* — the
+notebook, the till, what a villager believes. A name is a fact like any other, so it
+gets the same rule: `LG.game.displayName` returns a villager's job until `nameKnown`
+is set, and it is set exactly once, by that villager's own reply stating it.
+
+**Only that villager's own testimony counts.** Mira mentioning that she knows a Boris
+is not Boris telling you his name — the same distinction the notebook already draws
+between a fact a villager saw with their own eyes and one that reached them by report.
+Hearsay can tell you a name exists to be learned; it cannot do the learning for you.
+That is a real cost, not a technicality skipped for convenience: a fact arriving from
+a third party is exactly the channel gossip already travels on, and it would have been
+the easy way to make this feature look like it worked without actually changing what
+the player has to do, which is ask.
+
+**No new schema field, and no extra call.** The tempting version asks the model for a
+`"namedSelf": true/false` flag alongside everything else in the reply object, the same
+shape `revealed` and `remember` already have. That is a real cost for a low-stakes
+question: getting it wrong here means a name shows up a turn early or late, not a
+chain fact recorded that never happened, so it does not need the nominate-then-verify
+weight `revealed` earns by guarding something that matters. What it needs is data the
+turn already produces: `reply.translation` is guaranteed English or blanked (see
+*Getting a whole object back*), so a villager who states their own name states it there
+in Latin letters regardless of what the village speaks, and checking for it costs
+nothing beyond a regular expression run against a field that already exists. The check
+runs before that field can be blanked for looking non-English, not after.
+
+**The dialogue panel needed its own placeholder, not the general one.** Everywhere
+else, "the village baker" reads fine standing in for a name — the hint line, the event
+log, a notice on the board. The dialogue panel already has a second line for the job
+directly underneath the name, so the same placeholder there would print "the village
+baker" twice in two lines and read as a bug rather than a mystery. It gets the same
+mark the nametag over their head does instead: `?`, once as a title and once above a
+sprite, saying plainly that this is a person the game is choosing not to name yet,
+not a person it forgot to.
+
 ## There is no gossip mechanic
 
 There was one: two villagers in range each copied a random fact id to the other, and
@@ -612,6 +652,45 @@ in the log either. The gloss stays blurred **even with translations switched on*
 villager explaining something to you is a lesson and the setting applies; eavesdropping is
 a test, and printing the answer turns overhearing into a way to skip the language entirely.
 
+## The noticeboard is written by nobody in particular
+
+It would have been easy to make the noticeboard a rule: when a villager holds the
+current link of the chain, have them post it. That is a scripted event wearing the
+shape of a mechanic — a bulletin board that only ever advertises the errand looks
+designed the moment you notice it never says anything else, and it hands the
+player a wanted-poster leaderboard rather than a village.
+
+So it isn't a rule. A villager who chooses to visit the board — the same choice
+that already sends them to their work or the green, see *Villagers decide where to
+go* — is simply asked whether they have anything worth pinning up, with the same
+latitude `remember` gives them in a conversation with the player: nothing is a
+perfectly good answer, and nothing forces them past it. What they post does not
+have to be the errand. It can be a complaint, a warning, gossip, a stray thought —
+whatever a person standing at a public board with something on their mind would
+actually write. Most of the village's business was never going to reach the board
+at all, which is correct: a person does not pin up everything they know.
+
+**Nominated, then fact-checked**, the same rule a villager's own report of what
+they told the player is held to — see *Getting a whole object back* and *the
+notebook*. A note that mentions a chain fact is confirmed against what was
+actually written before it is trusted, for the same reason a `revealed` tag is:
+the villager will nominate a fact because it used the word, not because it said
+the thing.
+
+**Reading it is being told, not being handed a fact.** A confirmed note sits in
+`state.board` until the player actually walks up and reads the thing — pressing
+E is what puts it in the notebook, not the villager pinning it. That is the same
+principle the notebook already runs on for a conversation: nothing reaches you by
+report except through the moment you were actually there for it. A player who
+never visits the board never benefits from it, which is the trade-off a physical
+noticeboard is supposed to have.
+
+**Furigana does not apply here, on purpose.** Dialogue is spoken and annotated;
+an item's name and a building's sign are written labels and stay plain kanji — see
+*Furigana*. A notice is closer to the sign than to speech: it is something posted
+to be read, the way a real noticeboard is never annotated for the people walking
+past it, so it gets the plain-text treatment and nothing more.
+
 ## Difficulty is how hard the village is to read, not how far you walk
 
 Chain length used to scale with difficulty, and it was the wrong knob — a longer chain
@@ -623,6 +702,127 @@ the chain, and how much the village gossip knows. The README has the table.
 
 Petra was the loudest case. She was omniscient at every level, which is a skeleton key
 that makes every other knob moot: one conversation and you had the whole errand.
+
+## The map: a forest to lose things in, and a way in
+
+The village used to be the whole world, and it was a world with no outside. You began
+standing in the middle of it with no account of how you got there, and the furthest
+thing from you was ninety seconds' walk. Both of those are now different.
+
+**North is forest** — the top two-fifths of the map, and the point of it is that it is
+not scenery. `chain.js` puts the last item of every errand in one of `LG.PLACES`, and six
+of those are now clearings up in the trees, so roughly a quarter of villages end with
+*there is a shiny rock lying under the old oak* rather than *behind the farmhouse*.
+That sentence is worth more when it means a walk, because it is the one piece of the
+errand you can act on without talking to anybody, and it should be the piece that costs
+you something.
+
+Density is noise on top of noise. The first attempt was a flat probability, which gives
+an even stipple of trees at any setting you choose: low and it is an orchard, high and
+it is a hedge with corridors cut in it. What makes a wood is that it comes in *stands* —
+light getting through in some places and not others — so the density is `vnoise` at two
+scales multiplied into the base rate, opening to almost nothing at one end and closing
+to a thicket at the other. It thins over the last eight rows so the village looks out on
+scattered birches rather than at a wall. The test pins the result between 40% and 75%
+cover, because a density that quietly drifts either way is a forest that stops being one
+without anybody noticing.
+
+**Open is not the same as reachable, and a forest is that lesson at scale.** The
+woodcutter's clearing taught it once — a third of Ilya's own patch had no way into it.
+A forest is thousands of tiles of the same failure, and the failure is worse here: a
+glade walled in by trees is not a hard errand, it is an errand nobody can finish. So
+three things hold, in order of how much they are trusted. The glades are *cleared
+outright* rather than left to the noise, so every named place has room to stand in and
+an animal has room to potter. A network of tracks is carved after the trees are placed,
+and every glade hangs off a run that reaches back to the village. And then none of that
+is believed: `openTheWay` floods the map from the tile the traveller actually starts on
+and checks every place the game can point you at, cutting a way through to anything
+stranded. It has never had anything to do. It runs because *should* is how the rice
+merchant happened.
+
+The tracks are straight between their corners, which is what makes the network provably
+joined up, and that is not what you see: each tile frays a step to one side or the other,
+so a run reads as something walked between trees rather than surveyed through them.
+Fraying only ever adds walkable ground, so it cannot break the connection it is
+decorating — the pretty version and the correct version are the same object.
+
+**East is a railway halt, and it is where you begin.** An unmanned platform, a shelter,
+a bench, two lamps and a nameboard, at the end of a line that runs off the top and
+bottom of the map. It answers a question the game had been declining to: you are a
+person who does not speak the language and knows nobody, and now there is a reason —
+you got off a train at a place with nobody to meet you. The platform is the far east end
+of the high street, so the first thing you do is walk the length of the village past
+every shop sign in a language you cannot read yet. The nameboard is the first word most
+players will get.
+
+The line is solid. You cannot cross it, which makes the platform the edge of the
+traveller's world in the direction they came from, and that is the right shape for it.
+
+**Moving the village cost one bug, and it was already there.** Making room meant
+translating everything forty rows south, which is a hundred-odd coordinates across two
+files — so it was done under a harness that built the old map and the new one and
+compared every tile that had been placed deliberately, every building, label and prop,
+and every rectangle in `data.js`. Trees, flowers and grass are keyed on `hash(x, y)` and
+so were expected to differ; everything else had to land at exactly `y + 40`. One tile
+did not. The woodcutter's stand of trees overlaps the eastern shore of the pond and was
+never guarded against painting over what was already there — at the old coordinates the
+hash happened never to land on water, and at the new ones it did, and there was a tree
+standing in the pond. It is guarded now. The interesting part is that the bug did not
+arrive with the move: it had been one unlucky number away for as long as both features
+had existed, and the only thing that found it was checking a change that had nothing to
+do with it.
+
+## A save is not owed a refusal just because something moved
+
+The first version of this refused every save from before the map grew: bump the version
+number, explain why in the settings panel, done. That is the honest answer when a save
+genuinely cannot be read any more — a fact id that no longer means what it used to — but
+this was not that. Nothing about the errand changed. A villager who wanted a saw still
+wanted a saw; the notebook's fact ids still meant the same facts. The only thing wrong
+with an old save was that its numbers pointed at a map that had since moved out from
+under them, and a village whose problem is *arithmetic* deserves arithmetic, not a
+shrug.
+
+The move itself was a uniform shift — every y grows by forty tiles, nothing rotates or
+resizes — so a save's player, its villagers, and whatever the chain's last item was doing
+all migrate the same way: add the same fixed number to every pixel point, tile point, and
+rectangle in the file. That part was the easy half.
+
+**The hard half was that the village itself had quietly stopped being reproducible from
+its own seed.** The save format's whole design rests on not storing the village, only its
+seed and a digest — regenerate from the seed, check the digest still matches, and if it
+does the notebook's fact ids are still good. `LG.chain.generate` draws the errand's last
+item from `LG.PLACES` with `pick(list, rnd)`, which reads nothing about a place but its
+position in the list — so extending that list from seventeen entries to twenty-four, to
+add the glades and the platform, was on its own enough to send an *unchanged* seed's item
+somewhere else. The generator's logic never changed. The list it draws from got longer,
+which turns out to be exactly as disruptive.
+
+So a migrating save can't just be handed to today's generator — it has to be replayed
+against the seventeen-entry list it was actually drawn from, or the digest it carries will
+disagree with a village that never actually changed. `LG.PLACES_V1_IDS` is that old order,
+kept as a named historical fact rather than folded into `LG.PLACES` itself, and
+`withPlacesV1` swaps the live global out for exactly one synchronous call and puts it back
+in a `finally`.
+
+**And that has to keep being true, not just be true once.** The first working version of
+this passed its own test and then failed the very next section of the smoke suite —
+closing the tab and opening it again on the *already-migrated* village refused it,
+because by then it was tagged version 2 like any other save, and a version 2 save is
+regenerated against today's `LG.PLACES`, which has the platform and the glades in it. The
+seed had not stopped needing the old list; the save format had just stopped remembering
+that it did. A property of *this seed*, decided once at generation time, was being
+inferred from a version tag that only ever describes the file format — two different
+questions wearing one flag.
+
+They're separate now. `_placesV1` lives on the plan itself, set the moment it's built
+under the old list, and `snapshot` writes it into `village.placesV1` on every single save
+from then on — not only the first one. `restore` reads that back rather than asking
+whether the *file* is version 1, because by the second save it never is. A village that
+started life migrated says so forever, the same way a `done` field never got to (see *the
+notebook*): a fact that can be read off something durable is safer than a flag that has to
+be remembered to be carried forward, and this one is read off the plan the same moment it
+is written.
 
 ## The weather, and the screen
 

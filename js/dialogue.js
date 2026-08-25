@@ -481,7 +481,10 @@ LG.dialogue = (function () {
        as that: it is what an IME keys off, and what stops a browser's English
        spellchecker underlining every word the player gets right. */
     el.dlgInput.lang = L.tag;
-    el.dlgName.textContent = npc.def.name;
+    // The role sits right underneath, so a name placeholder that repeated it
+    // ("the village baker" over "the village baker") would read as a glitch
+    // rather than a mystery — the same mark the nametag over their head uses.
+    el.dlgName.textContent = npc.nameKnown ? npc.def.name : '?';
     el.dlgRole.textContent = npc.def.job;
     el.dlgAvatar.textContent = npc.def.emoji;
     el.dlgAvatar.style.background = npc.def.color;
@@ -625,7 +628,7 @@ LG.dialogue = (function () {
       : text;
     addLine('player', shown);
     el.dlgInput.value = '';
-    status(npc.def.name + ' is thinking…', 'thinking');
+    status(LG.game.displayName(npc) + ' is thinking…', 'thinking');
 
     let reply;
     try {
@@ -641,7 +644,7 @@ LG.dialogue = (function () {
     }
 
     if (!reply || !reply.say) {
-      status('⚠ ' + npc.def.name + ' said something the game could not read. Try again.', 'error');
+      status('⚠ ' + LG.game.displayName(npc) + ' said something the game could not read. Try again.', 'error');
       busy = false; el.dlgSend.disabled = false;
       return;
     }
@@ -663,12 +666,30 @@ LG.dialogue = (function () {
     npc.history.push(turn);
     if (npc.history.length > 20) npc.history.shift();
     const gotIt = String(reply.understood || 'full').toLowerCase() !== 'none';
+
+    /* Their name is unknown until they actually say it — see LG.game.displayName.
+       There is no schema field for this, deliberately: it would be one more
+       thing to hedge and drop the way the rest of the reply object once did
+       (see "Getting a whole object back"), for a fact that is easy to check
+       for free against something the turn already gives us. The translation
+       is guaranteed English or blanked below, so a villager stating their own
+       name shows up there as their name, in Latin letters, whatever the
+       village speaks — checked against `reply.translation` before that
+       blanking happens, not against `turn.translation` afterward. */
+    if (gotIt && !npc.nameKnown && looksEnglish(reply.translation) &&
+        new RegExp('\\b' + npc.def.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i')
+          .test(reply.translation)) {
+      npc.nameKnown = true;
+      el.dlgName.textContent = npc.def.name;
+      LG.game.log('You learn their name — ' + npc.def.name + '.');
+    }
+
     if (gotIt && Array.isArray(reply.revealed) && reply.revealed.length) {
       pending.push(verifyRevealed(npc, reply, spoken, ruby));   // deliberately not awaited
     }
     if (gotIt && reply.remember && typeof reply.remember === 'string' && reply.remember.length > 3) {
       if (LG.game.remember(npc, reply.remember, 'the traveller')) {
-        LG.game.log(npc.def.name + ' will remember: "' + reply.remember + '"');
+        LG.game.log(LG.game.displayName(npc) + ' will remember: "' + reply.remember + '"');
         /* And it may have overtaken something. Only asked when something new has
            actually landed, so a turn that taught them nothing costs nothing. */
         pending.push(reviseHeld(npc, reply.remember));
@@ -695,8 +716,8 @@ LG.dialogue = (function () {
     npc.bubble = spoken; npc.bubbleT = 6;   // the canvas bubble stays plain text
 
     const u = String(reply.understood || '').toLowerCase();
-    if (u === 'none') status(npc.def.name + ' did not understand you at all.', 'miss');
-    else if (u === 'partial') status(npc.def.name + ' only caught part of that.', 'miss');
+    if (u === 'none') status(LG.game.displayName(npc) + ' did not understand you at all.', 'miss');
+    else if (u === 'partial') status(LG.game.displayName(npc) + ' only caught part of that.', 'miss');
     else status('');
 
     /* Shopkeeping: the villager decides a sale has happened; the game makes it
@@ -735,10 +756,10 @@ LG.dialogue = (function () {
       } else if (offered === trade.wants && haveEnough) {
         pending.push(confirmOffer(npc, trade, spoken, reply.translation));
       } else if (offered) {
-        status(npc.def.name + ' does not want your ' + LG.ITEMS[offered].en + '.');
+        status(LG.game.displayName(npc) + ' does not want your ' + LG.ITEMS[offered].en + '.');
       }
     } else if (offered) {
-      status(npc.def.name + ' has no use for that.');
+      status(LG.game.displayName(npc) + ' has no use for that.');
     }
 
     busy = false;
@@ -796,7 +817,7 @@ LG.dialogue = (function () {
       if (e.id) { npc.factNote = npc.factNote || {}; npc.factNote[e.id] = got.line; }
       else e.text = got.line;                       // the view hands back the object itself
       if (LG.game.think) LG.game.think(npc, 'thinks again', e.text + ' \u2192 ' + got.line);
-      LG.game.log(npc.def.name + ' now reckons: "' + got.line + '"');
+      LG.game.log(LG.game.displayName(npc) + ' now reckons: "' + got.line + '"');
     } catch (err) { /* they go on believing what they believed */ }
   }
 
@@ -972,7 +993,7 @@ LG.dialogue = (function () {
           (turn.translation ? '  \u2014 ' + turn.translation : ''));
         if (LG.game.canOverhear(a, b)) {
           const ruby = (L.furigana && plain !== turn.say) ? turn.say : null;
-          LG.game.logSpeech(me.def.name, plain, ruby, turn.roman, turn.translation);
+          LG.game.logSpeech(LG.game.displayName(me), plain, ruby, turn.roman, turn.translation);
         }
         await sleep(turnHold);
       }

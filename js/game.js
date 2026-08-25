@@ -16,7 +16,7 @@ LG.game = (function () {
   let gated = true, gateMode = false, lastValidated = '';
   let fromEnv = false;             // the keys were handed to us, not typed
 
-  const state = { inv: {}, notes: [], deeds: [], won: false };
+  const state = { inv: {}, notes: [], deeds: [], won: false, board: [] };
 
   let plan = null;                 // the generated errand chain (chain.js)
   let canvas, ctx, cam = { x: 0, y: 0 }, vw = 0, vh = 0;
@@ -81,6 +81,50 @@ LG.game = (function () {
   function itemLabel(id) {
     const it = LG.ITEMS[id];
     return (it && (it[settings.lang] || it.en)) || id;
+  }
+
+  /* Names are unknown until a villager actually tells you theirs — the same
+     rule the notebook already runs on for everything else a villager knows,
+     just applied to the one thing about them that used to be free. Every
+     place the game would otherwise print `npc.def.name` in front of the
+     player goes through here instead. What the model itself is told — its
+     own name, in its own system prompt — is untouched: this is only ever
+     about what the *player* has been told, and only by asking. `nameKnown`
+     is set the moment a villager's own reply states it — see the check in
+     dialogue.js — never by a fact arriving from anyone else, however
+     reliable, because that is not this villager telling you their name. */
+  function displayName(n) {
+    return (n.nameKnown && n.def.name) || n.def.job;
+  }
+  /* For a line written *in the village's language*, where an English job
+     description would read as a word dropped in from nowhere. The emoji
+     already marks every character on screen — see drawCharacter — so it
+     reads the same way there: someone you can place, but not yet name. */
+  function nameOrEmoji(n) {
+    return (n.nameKnown && n.def.name) || n.def.emoji;
+  }
+
+  /* A short line the game itself narrates about a deal — "you hand over the
+     rope" — written in the language the village speaks rather than English.
+     See LG.TXN. `native`/`english` are the same template's placeholders filled
+     in each language; the English fill doubles as the gloss underneath,
+     click-to-reveal like everything else the notebook shows. */
+  function itemsPhrase(ids, lang) {
+    const conj = ' ' + (LG.CONJ[lang] || LG.CONJ.en) + ' ';
+    return ids.map(id => (LG.ITEMS[id] && (LG.ITEMS[id][lang] || LG.ITEMS[id].en)) || id).join(conj);
+  }
+  function fillTemplate(tpl, vars) {
+    return tpl.replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null ? vars[k] : ''));
+  }
+  function txnLog(icon, key, native, english) {
+    const set = LG.TXN[key];
+    if (!set) return;
+    const L = LG.LANGUAGES[settings.lang];
+    const line = fillTemplate(set[settings.lang] || set.en, native);
+    const gloss = fillTemplate(set.en, english);
+    const hide = settings.showTranslation ? '' : ' hidden-tr';
+    pushLog(icon + ' <span class="heard" lang="' + L.tag + '">' + escapeHTML(line) + '</span>' +
+            '<span class="gloss' + hide + '" lang="en" title="click to read">' + escapeHTML(gloss) + '</span>');
   }
 
   /* ------------------------------------------------------------ notebook
@@ -374,8 +418,10 @@ LG.game = (function () {
     }
 
     if (asking !== cost) log('¤ ' + d.name + ' said ' + asking + ', the going rate is ' + cost + '.');
-    log('¤ ' + (act === 'sell' ? 'Bought ' : refunding ? 'Returned ' : 'Sold ') + names +
-        (act === 'sell' ? ' from ' : ' to ') + d.name + ' for ' + cost + '.');
+    const dealKey = act === 'sell' ? 'buy' : refunding ? 'refund' : 'handOver';
+    const ids = priced.map(w => w.id);
+    txnLog('¤', dealKey, { items: itemsPhrase(ids, settings.lang), name: nameOrEmoji(npc), cost: cost },
+                          { items: itemsPhrase(ids, 'en'), name: displayName(npc), cost: cost });
 
     /* What the villager remembers has to be what the game actually did, or they
        do their own arithmetic from a half-memory and it drifts — quoting six,
@@ -395,8 +441,14 @@ LG.game = (function () {
 
     const got = trade.gives === 'coins' ? giveN + ' coins' : LG.ITEMS[trade.gives].full;
     const gave = trade.wants === 'coins' ? needN + ' coins' : LG.ITEMS[trade.wants].full;
-    state.deeds.push('Gave ' + npc.def.name + ' ' + gave + ', got ' + got + '.');
-    log('✔ ' + npc.def.name + ' hands over ' + got + '.');
+    state.deeds.push('Gave ' + displayName(npc) + ' ' + gave + ', got ' + got + '.');
+    const oneItem = (id, n, lang) => {
+      const nm = (LG.ITEMS[id] && (LG.ITEMS[id][lang] || LG.ITEMS[id].en)) || id;
+      return id === 'coins' ? n + ' ' + nm : nm;
+    };
+    txnLog('✔', 'tradeReceive',
+      { item: oneItem(trade.gives, giveN, settings.lang), name: nameOrEmoji(npc) },
+      { item: oneItem(trade.gives, giveN, 'en'), name: displayName(npc) });
 
     /* The notes that described this deal are spent, and say so by being struck
        through rather than by vanishing — the same argument the note about where
@@ -544,10 +596,13 @@ LG.game = (function () {
     LG.time.start();
 
     state.inv = { coins: 10 };          // a little money to be going on with
-    state.notes = []; state.deeds = []; state.won = false;
+    state.notes = []; state.deeds = []; state.won = false; state.board = [];
 
-    const p = W.nearestOpen(23, 20);
-    player = { px: p.x * TILE + TILE / 2, py: p.y * TILE + TILE / 2, dir: 'down',
+    /* You arrive by train. The platform is the far east end of the high
+       street, so the first thing you do is walk the length of it into a
+       village where nobody is expecting you. */
+    const p = W.nearestOpen(LG.START.x, LG.START.y);
+    player = { px: p.x * TILE + TILE / 2, py: p.y * TILE + TILE / 2, dir: 'left',
                tx: p.x, ty: p.y, bubble: null, bubbleT: 0 };
     npcs = LG.NPCS.map(d => A.makeNPC(d, plan.npcFacts[d.id]));
     // Everyone needs somewhere to work, and somewhere with a roof to bolt to.
@@ -612,11 +667,31 @@ LG.game = (function () {
     });
     window.addEventListener('blur', () => { for (const k in held) held[k] = false; });
 
+    /* A sign's English gloss is click-to-reveal, the same as a note in the
+       notebook — so a click on the canvas has to be tested against whatever
+       signs are actually on screen before it is allowed to mean anything
+       else. */
+    const toWorld = e => {
+      const r = canvas.getBoundingClientRect();
+      return { x: (e.clientX - r.left) + cam.x, y: (e.clientY - r.top) + cam.y };
+    };
+    canvas.addEventListener('click', e => {
+      if (uiBlocked()) return;
+      const p = toWorld(e);
+      W.hitSign(p.x, p.y);
+    });
+    canvas.addEventListener('mousemove', e => {
+      const p = toWorld(e);
+      canvas.style.cursor = (!uiBlocked() && W.overSign(p.x, p.y)) ? 'pointer' : 'default';
+    });
+
     document.getElementById('btnSettings').onclick = () => openSettings(false);
     document.getElementById('btnHelp').onclick = () =>
       document.getElementById('help').classList.toggle('open');
     document.getElementById('helpClose').onclick = () =>
       document.getElementById('help').classList.remove('open');
+    document.getElementById('boardClose').onclick = () =>
+      document.getElementById('board').classList.remove('open');
     document.getElementById('endingClose').onclick = () =>
       document.getElementById('ending').classList.remove('open');
     document.getElementById('endingAgain').onclick = () => {
@@ -865,6 +940,7 @@ LG.game = (function () {
     if (nearby) { LG.dialogue.open(nearby); return; }
     if (beast && !beast.caught && dist(player, beast) < TILE * 1.4) catchBeast();
     else if (worldItem && !worldItem.taken && dist(player, worldItem) < TILE * 1.4) pickUp();
+    else if (nearBoard()) openBoard();
   }
 
   /* Whether the thing at the end of the chain has been collected — once, ever.
@@ -913,6 +989,10 @@ LG.game = (function () {
   }
 
   function dist(a, b) { return Math.hypot(a.px - b.px, a.py - b.py); }
+
+  /* The noticeboard has no actor to measure a distance from, only a patch of
+     ground — the same rectangle villagers are sent to. */
+  function nearBoard() { return nearRect(player, LG.BOARD_SPOT, 1); }
 
   /* Tile geometry lives in world.js with the rest of it. */
   const nearRect = W.nearRect;
@@ -1025,6 +1105,20 @@ LG.game = (function () {
       out.push({ name: label, rect: n.work, note: 'where you work' });
     }
     out.push({ name: 'the village green', rect: LG.GREEN, note: 'where people gather' });
+    out.push({ name: 'the noticeboard', rect: LG.BOARD_SPOT,
+               note: 'where anyone may pin up a note for the village to read' });
+    /* The two edges of the map worth walking to. Not every glade in the woods
+       — thirteen villagers each given six clearings to choose between would
+       empty the village out, and a place nobody can be found in is a place
+       the errand goes to die. One way into the trees and one way out of the
+       village is enough for either to be somewhere a person might actually
+       be. */
+    const glade = (LG.PLACES.find(p => p.id === 'glade') || {}).rect;
+    if (glade) out.push({ name: 'the big clearing', rect: glade,
+                          note: 'up in the woods north of the village, a fair walk' });
+    const platform = (LG.PLACES.find(p => p.id === 'platform') || {}).rect;
+    if (platform) out.push({ name: 'the station platform', rect: platform,
+                             note: 'the far end of the high street, where the train comes in' });
     W.buildings.forEach(b => {
       if (n.workBuilding && b === n.workBuilding) return;
       out.push({ name: b.label, rect: b.inside });
@@ -1120,6 +1214,104 @@ LG.game = (function () {
     return true;
   }
 
+  /* ------------------------------------------------------------- the board
+     A villager who chose to come here (see `placesFor`) is given the chance to
+     pin something up, and nothing is decided about what — it does not have to
+     be their own errand, or an errand at all. Wanting to say nothing is a
+     perfectly good answer, the same latitude "remember" gets in a player
+     conversation, so this does not fire on every arrival either: only when
+     they have not just posted. */
+  const BOARD_MAX = 6;
+  function maybePostNotice(n) {
+    if (!settings.apiKey || !settings.npcChatter) return;
+    if (n.boardCool > 0) return;
+    n.boardCool = 90 + Math.random() * 150;
+    const v = LG.view.of(n, 'board');
+    const L = LG.LANGUAGES[settings.lang];
+    const lvl = LG.LEVELS[settings.level] || {};
+    think(n, 'wonders whether to pin anything up', '');
+    LG.llm.notice(llmConfig(), {
+      me: v, goal: v.goal, when: v.when,
+      held: LG.view.held(v),
+      board: (state.board || []).map(b => b.translation || b.text),
+      langName: L.name, register: lvl.register,
+      romanLabel: L.romanize ? L.romanLabel : null, romanNote: L.romanNote
+    }).then(res => {
+      if (!res || !res.post || !String(res.text || '').trim()) {
+        think(n, 'had nothing to pin up', '');
+        return;
+      }
+      pinNotice(n, res);
+    }).catch(() => {});
+  }
+
+  function pinNotice(n, res) {
+    const text = String(res.text).trim();
+    const entry = { npcId: n.def.id, name: n.def.name, text: text,
+                    translation: String(res.translation || '').trim(),
+                    roman: String(res.roman || '').trim(), factIds: [], at: LG.time.clock() };
+    state.board = state.board || [];
+    state.board.push(entry);
+    while (state.board.length > BOARD_MAX) state.board.shift();
+    think(n, 'pins something up', text);
+    log('📌 ' + displayName(n) + ' pins something up at the noticeboard.');
+    if (saving()) LG.save.write();
+
+    // Nominated, then fact-checked — the same rule a villager's own report of
+    // what they told the player is held to, and for the same reason: a
+    // villager will flag a fact because it used the word, not because it
+    // actually said the thing.
+    const claimed = Array.isArray(res.revealed)
+      ? res.revealed.map(id => String(id).replace(/[^\w]/g, ''))
+                     .filter(id => plan.facts[id] && n.facts.indexOf(id) !== -1)
+      : [];
+    if (!claimed.length) return;
+    const candidates = claimed.map(id => ({ id, text: plan.facts[id].text }));
+    const L = LG.LANGUAGES[settings.lang];
+    LG.llm.judge(llmConfig(), text, entry.translation, candidates, { langName: L.name })
+      .then(confirmed => { confirmed.forEach(c => entry.factIds.push(c.id)); })
+      .catch(() => {});
+  }
+
+  /* The player reads what is currently pinned up. Facts a confirmed notice
+     states are learned here, not when they were posted — a note only reaches
+     the player's notebook once they have actually gone and read it, the same
+     as anything a villager says. `learn` is passed no source villager: a
+     pinned notice is a fixed thing on a board, true regardless of whether its
+     writer would still say it. */
+  function openBoard() {
+    (state.board || []).forEach(entry => {
+      entry.factIds.forEach(id => learn(id, null, entry.text, null));
+    });
+    renderBoard();
+    document.getElementById('board').classList.add('open');
+  }
+
+  function renderBoard() {
+    const L = LG.LANGUAGES[settings.lang];
+    const box = document.getElementById('boardList');
+    const rows = (state.board || []).slice().reverse().map(entry => {
+      const hide = settings.showTranslation ? '' : ' hidden-tr';
+      // A notice is signed with the poster's real name outright, unlike a
+      // nametag or a line of spoken dialogue — a pinned note is a public,
+      // written thing, and a village that could not name its own notices
+      // would not be much of a noticeboard.
+      const who = entry.name;
+      return '<div class="notice"><span class="who">' + escapeHTML(who) + '</span>' +
+             '<span class="heard" lang="' + L.tag + '">' + escapeHTML(entry.text) + '</span>' +
+             (entry.roman && L.romanize ? '<span class="roman" lang="' + L.romanTag + '">' +
+               escapeHTML(entry.roman) + '</span>' : '') +
+             (entry.translation ? '<span class="gloss' + hide + '" lang="en" title="click to read">' +
+               escapeHTML(entry.translation) + '</span>' : '') +
+             '</div>';
+    });
+    box.innerHTML = rows.length ? rows.join('')
+      : '<div class="notice muted">Nothing pinned up yet.</div>';
+    Array.prototype.forEach.call(box.querySelectorAll('.gloss.hidden-tr'), el => {
+      el.onclick = () => el.classList.remove('hidden-tr');
+    });
+  }
+
   /* ---------------------------------------------------------------- loop */
   function movePlayer(dt) {
     if (uiBlocked()) return;
@@ -1160,11 +1352,15 @@ LG.game = (function () {
     for (const n of npcs) {
       const walking = !!(n.route && n.route.length);
       A.routine(n, dt, LG.GREEN, settings.apiKey && settings.npcChatter ? decideWhereToGo : null);
-      if (n.wasWalking && !walking) think(n, 'arrives', LG.view.where(n) + (n.why ? ' — ' + n.why : ''));
+      if (n.wasWalking && !walking) {
+        think(n, 'arrives', LG.view.where(n) + (n.why ? ' — ' + n.why : ''));
+        if (n.patch === LG.BOARD_SPOT) maybePostNotice(n);
+      }
       n.wasWalking = walking;
       A.walk(n, dt, 34);
       noticeItemGone(n);
       if (n.bubbleT > 0) n.bubbleT -= dt;
+      if (n.boardCool > 0) n.boardCool -= dt;
     }
     if (settings.npcChatter) {
       LG.dialogue.chatTick(dt);
@@ -1195,13 +1391,16 @@ LG.game = (function () {
     if (uiBlocked()) {
       hint.classList.remove('show');
     } else if (nearby) {
-      hint.textContent = 'Press E to talk to ' + nearby.def.name;
+      hint.textContent = 'Press E to talk to ' + displayName(nearby);
       hint.classList.add('show');
     } else if (beast && !beast.caught && dist(player, beast) < TILE * 1.8) {
       hint.textContent = 'Press E to pick up ' + beast.name;
       hint.classList.add('show');
     } else if (worldItem && !worldItem.taken && dist(player, worldItem) < TILE * 1.8) {
       hint.textContent = 'Press E to pick it up';
+      hint.classList.add('show');
+    } else if (nearBoard()) {
+      hint.textContent = 'Press E to read the noticeboard';
       hint.classList.add('show');
     } else {
       hint.classList.remove('show');
@@ -1237,7 +1436,8 @@ LG.game = (function () {
 
     W.drawGround(ctx, cam, vw, vh);
     W.drawBuildings(ctx, room, cam, vw, vh);
-    W.drawLabels(ctx, cam, vw, vh);
+    W.drawLabels(ctx, cam, vw, vh, settings.lang);
+    W.drawSigns(ctx, cam, vw, vh, settings.lang, settings.showTranslation);
     drawWorldItem();
 
     /* A villager under a roof is out of sight. You can see into the room you are
@@ -1258,8 +1458,10 @@ LG.game = (function () {
       } else if (a.isBeast) {
         A.drawCharacter(ctx, a, { name: a.caught ? '' : a.name });
       } else {
+        // The role badge (the emoji) is always visible — what is withheld is
+        // the name, not what they do for a living.
         A.drawCharacter(ctx, a, {
-          color: a.def.color, emoji: a.def.emoji, name: a.def.name,
+          color: a.def.color, emoji: a.def.emoji, name: a.nameKnown ? a.def.name : '?',
           skin: '#f0c8a0', hair: '#3b2b20'
         });
       }
@@ -1289,7 +1491,7 @@ LG.game = (function () {
   }
 
   return { init, settings, state, llmConfig, ttsConfig, log, learn, hasNote, give, take, count,
-           remember, noteFactSource, factSpent,
+           remember, noteFactSource, factSpent, displayName, nameOrEmoji,
            _moveDir: moveDir, _isInteract: isInteract,
            canOverhear, logSpeech, think,
            factText: id => (plan && plan.facts[id]) ? plan.facts[id].text : null,

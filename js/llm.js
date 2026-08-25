@@ -697,6 +697,57 @@ LG.llm = (function () {
     } catch (e) { return null; }
   }
 
+  /* A villager who has come to the noticeboard, deciding whether they have
+     anything worth pinning up.
+
+     Nothing is chosen for them to post, the same as nothing is chosen for two
+     villagers to gossip about — see LG.llm.recall. It does not have to be
+     their own errand, or an errand at all: a complaint, a warning, an offer,
+     news, whatever a person standing at a public board might actually write
+     up. Having nothing to say is a perfectly good answer, the same latitude
+     "remember" gets in a player conversation, and nothing forces them past it. */
+  async function notice(cfg, opts) {
+    const o = opts || {};
+    const lines = [
+      'You are ' + o.me.name + ' — ' + o.me.job + '. ' + o.me.persona,
+      o.goal ? 'What you are about: ' + o.goal : null,
+      '',
+      o.when || null,
+      'You are at the village noticeboard, where anyone may pin up a note for the whole village to read.',
+      '',
+      o.held && o.held.length
+        ? 'What you know, and how you came by it:\n' + o.held.map(k => '- ' + k).join('\n') : null,
+      '',
+      o.board && o.board.length
+        ? 'Already pinned up there:\n' + o.board.map(t => '- ' + t).join('\n')
+        : 'Nothing is pinned up there right now.',
+      '',
+      'Decide whether you have anything worth pinning up right now. It does not have to be your own business — a complaint, a warning, an offer, news, anything a person standing here might actually post. Having nothing to say is a perfectly good answer; do not invent something just to have posted.',
+      '',
+      'If you do post, write it the way it would actually be written up — short, public, in your own words.',
+      '',
+      ('In ' + o.langName + '. ' + (o.register || '')).trim(),
+      '',
+      'Reply with only a JSON object:',
+      '{"post": true or false,',
+      ' "text": "what you pin up, in ' + o.langName + ' — empty string if post is false",',
+      ' "translation": "plain English, or empty string if post is false"' +
+        (o.romanLabel ? ',\n "roman": "' + o.romanLabel +
+          (o.romanNote ? ', ' + o.romanNote : '') + ', or empty string if post is false"' : '') + ',',
+      ' "revealed": ["ids from what you know that this notice states outright, [] if none or if post is false"]}'
+    ].filter(x => x !== null && x !== undefined).join('\n');
+    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg), fast: true };
+    const sys = 'You decide whether a villager posts a notice, and write it if so. Answer with JSON only.';
+    try {
+      const raw = vcfg.provider === 'anthropic'
+        ? await anthropicCall(vcfg, sys, [{ role: 'user', content: lines }])
+        : await openrouterCall(vcfg, sys, [{ role: 'user', content: lines }]);
+      const obj = parseJSON(raw);
+      if (!obj) return null;
+      return obj;
+    } catch (e) { return null; }
+  }
+
   /* One villager's next line in a conversation with another villager.
 
      This is deliberately one call per turn rather than one call that writes the
@@ -885,7 +936,7 @@ LG.llm = (function () {
     return obj;
   }
 
-  return { MODELS, HELPERS, VERIFIER, helperModel, speak, judge, furigana, gloss, converse, intent, recall,
+  return { MODELS, HELPERS, VERIFIER, helperModel, speak, judge, furigana, gloss, converse, intent, notice, recall,
            get transcript() { return transcript; }, dump,
            get audit() { return audit; }, set audit(v) { audit = !!v; }, confirmTrade,
            validate, probe, schemaOK, revise, parseJSON, repairJSON, salvage };

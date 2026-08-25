@@ -32,7 +32,8 @@ LG.view = (function () {
     all:    { knows: 0, memory: 0,  folk: 0 },
     player: { knows: 0, memory: 12, folk: 0 },
     intent: { knows: 6, memory: 8,  folk: 6 },
-    chat:   { knows: 5, memory: 4,  folk: 0 }
+    chat:   { knows: 5, memory: 4,  folk: 0 },
+    board:  { knows: 6, memory: 6,  folk: 0 }
   };
   const TILL = 8;                 // how far back the ledger is worth reading
   const SIGHT = 26;               // tiles — far enough down the street to see who that is

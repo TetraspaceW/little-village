@@ -26,11 +26,25 @@
    generator produced from it, and the digest is checked on the way back in. If a
    later version of the generator builds something different from that seed the
    save is refused, out loud, rather than loaded on top of a chain whose fact ids
-   no longer mean what the notebook thinks they mean. */
+   no longer mean what the notebook thinks they mean.
+
+   **Except when the difference is one this version knows how to undo.** The
+   map moving south for the forest changed what a save's numbers mean without
+   changing the village they describe, and `migrateV1` says so explicitly
+   rather than making that save collateral damage of a change that had
+   nothing to do with it. That is a deliberate, one-off act of translation —
+   not a promise that every future save is forwards-readable forever. */
 window.LG = window.LG || {};
 
 LG.save = (function () {
-  const VERSION = 1;
+  /* 2: the map grew — forest to the north, the railway halt to the east, and
+     the village itself shifted south to make room. A version 1 save is not
+     refused for that on its own: everything coordinate-shaped in it moves by
+     the same fixed amount the village did, in `migrateV1` below, and the one
+     part that isn't a coordinate — where the errand's last item ended up —
+     is re-derived under the old rules rather than shifted, because it was
+     never a coordinate to begin with. See `migrateV1`. */
+  const VERSION = 2;
   const KEY = 'lg-save';                 // localStorage
   const ENDPOINT = '/save';              // the log server, when there is one
   const EVERY = 20;                      // seconds between autosaves
@@ -76,9 +90,78 @@ LG.save = (function () {
   }
   function rectIn(npc, r) {
     if (!r) return npc.def.home;
-    const known = [npc.def.home, npc.work, npc.shelter, LG.GREEN]
+    const known = [npc.def.home, npc.work, npc.shelter, LG.GREEN, LG.BOARD_SPOT]
       .concat(LG.world.buildings.map(b => b.inside));
     return known.find(k => sameRect(k, r)) || { x: r.x, y: r.y, w: r.w, h: r.h };
+  }
+
+  /* ------------------------------------------------------- migrating v1
+     The village moved 40 tiles south, as a block, to make room for the
+     forest — nothing rotated or resized, so "migrate" is only ever "add the
+     same number to every y". `V1_SHIFT_TILES` is that number, and it is a
+     historical fact about how v1 became v2: it must stay 40 forever, however
+     LG.NORTH_WOODS (which happens to be 40 today too) goes on to change.
+
+     A save has exactly three shapes of coordinate in it — a pixel point, a
+     tile point, and a rectangle — and every one of them gets the same
+     treatment regardless of which villager or object it belongs to, which is
+     the point of pulling it out to one place rather than shifting fields by
+     hand wherever they turn up. */
+  const V1_SHIFT_TILES = 40;
+  function shiftPx(n) { return n + V1_SHIFT_TILES * LG.world.TILE; }
+  function shiftTile(n) { return n + V1_SHIFT_TILES; }
+  function shiftRectV1(r) { return r ? { x: r.x, y: r.y + V1_SHIFT_TILES, w: r.w, h: r.h } : null; }
+
+  /* `LG.chain.generate` reads `LG.PLACES` only for its length and the order
+     of ids in it — see `pick` in chain.js — so a longer list is on its own
+     enough to send an unchanged seed's terminal item somewhere else, exactly
+     as if the generator's logic had changed. It hasn't; only the list it
+     draws from has grown. Replaying the old draw means asking with the old
+     list, which is what `LG.PLACES_V1_IDS` is for.
+
+     This is not only asked of a raw version-1 file. Once a village has been
+     migrated it goes on saving as version 2 — its coordinates really are
+     version 2 now — but its seed still only ever produced this exact plan
+     under the old list, forever: `LG.PLACES` is longer with every passing
+     version, potentially, and this plan is pinned to how long it was the day
+     this village was born. So the plan itself carries `_placesV1`, and
+     `snapshot` writes it into `village.placesV1` on every single save from
+     then on, and `restore` reads it back rather than inferring it from `v`.
+     Without that, the second time this village was ever closed and reopened
+     would regenerate it against a `LG.PLACES` that had grown again, fail the
+     digest it had itself just written, and refuse a save that was never
+     wrong — see the round trip this is tested against in the smoke test.
+
+     This function is the only place the global gets touched, and only for
+     the one synchronous call that needs it — put back in a `finally`
+     whether or not that call throws. */
+  function withPlacesV1(fn) {
+    const real = LG.PLACES;
+    const byId = {};
+    real.forEach(p => { byId[p.id] = p; });
+    LG.PLACES = LG.PLACES_V1_IDS.map(id => byId[id]).filter(Boolean);
+    try { return fn(); } finally { LG.PLACES = real; }
+  }
+
+  /* Everything else in a save — notes, deeds, the till, the board, who knows
+     what — is not shaped like a place, and is left exactly as it was. */
+  function migrateV1(data) {
+    const out = JSON.parse(JSON.stringify(data));
+    out.v = VERSION;
+    if (out.player) out.player.y = shiftPx(out.player.y);
+    Object.keys(out.villagers || {}).forEach(id => {
+      const v = out.villagers[id];
+      v.y = shiftPx(v.y);
+      if (typeof v.ty === 'number') v.ty = shiftTile(v.ty);
+      v.patch = shiftRectV1(v.patch);
+    });
+    const t = out.terminal;
+    if (t) {
+      t.y = shiftPx(t.y);
+      if (typeof t.ty === 'number') t.ty = shiftTile(t.ty);
+      if (t.home) t.home = shiftRectV1(t.home);
+    }
+    return out;
   }
 
   /* ------------------------------------------------------------ snapshot */
@@ -100,7 +183,7 @@ LG.save = (function () {
         sold: Object.assign({}, n.sold),
         till: (n.till || []).slice(),
         history: (n.history || []).slice(),
-        met: !!n.metPlayer, traded: !!n.tradeDone,
+        met: !!n.metPlayer, traded: !!n.tradeDone, named: !!n.nameKnown,
         patch: rectOut(n.patch)
       };
     });
@@ -123,7 +206,7 @@ LG.save = (function () {
       game: 'little-village',
       saved: new Date().toISOString(),
       village: { seed: plan.seed, level: g.settings.level, lang: g.settings.lang,
-                 digest: digestOf(plan) },
+                 digest: digestOf(plan), placesV1: !!plan._placesV1 },
       /* The weather is part of the calendar, not scenery: villagers decide where
          to stand by it, and the snow that is lying took several village days to
          get there. Reloading into a random sky would undo all of that. */
@@ -134,6 +217,9 @@ LG.save = (function () {
       // no `done`: whether a lead is spent is read off the world, not stored
       notes: st.notes.map(n => ({ id: n.id, text: n.text, ruby: n.ruby || null })),
       deeds: st.deeds.slice(),
+      board: (st.board || []).map(b => ({ npcId: b.npcId, name: b.name, text: b.text,
+                                          translation: b.translation || '', roman: b.roman || '',
+                                          factIds: (b.factIds || []).slice(), at: b.at || '' })),
       won: !!st.won,
       terminal: t,
       villagers: villagers
@@ -151,23 +237,49 @@ LG.save = (function () {
     if (why) return why;
     const g = LG.game;
 
+    /* Two separate questions, easy to conflate because the same file answers
+       both of them today. "Is this a raw version-1 file" decides whether its
+       coordinates need shifting — a one-off, done at most once for any given
+       save, since the result is written back out as version 2. "Was this
+       village's plan built under the old place list" decides how to *ask*
+       for that plan, and stays true forever once it is — see `withPlacesV1`.
+       A raw v1 file is both; a v2 resave of a village that started as one is
+       only the second. `data` itself is never touched by the shift: this is
+       a save arriving from the server as easily as from disk, and mutating
+       the caller's object would be a surprise for whoever sent it. */
+    const isRawV1 = data.v === 1;
+    const usePlacesV1 = isRawV1 || !!(data.village && data.village.placesV1);
+    data = isRawV1 ? migrateV1(data) : data;
+
     /* Everything that could refuse the save is asked before anything is touched.
        The village is rebuilt from its seed, so the generator is run once here to
        see whether it still makes the same village — a refusal after the rebuild
        would already have thrown away the one you were in, which matters because
        this can also be a save arriving from the server mid-session. */
     let candidate = null;
-    try { candidate = LG.chain.generate({ level: data.village.level, seed: data.village.seed }); }
+    try {
+      candidate = usePlacesV1
+        ? withPlacesV1(() => LG.chain.generate({ level: data.village.level, seed: data.village.seed }))
+        : LG.chain.generate({ level: data.village.level, seed: data.village.seed });
+    }
     catch (e) { return 'the generator could not rebuild that village at all'; }
     if (digestOf(candidate) !== data.village.digest) {
       return 'that village was built by a different version of the generator';
     }
 
     /* The village is generated out of the difficulty, so that has to be true
-       before it is built rather than after. */
+       before it is built rather than after. `newVillage` builds its own plan
+       from the seed rather than being handed `candidate` above, so it needs
+       the same place list in scope for this call too — otherwise the digest
+       above would have verified one plan while the game went on to build a
+       different one from the same seed. The plan it builds is tagged with
+       how it was asked for, so every save this village makes from here goes
+       on asking the same way. */
     g.settings.lang = data.village.lang;
     g.settings.level = data.village.level;
-    g.newVillage(data.village.seed, true);
+    if (usePlacesV1) withPlacesV1(() => g.newVillage(data.village.seed, true));
+    else g.newVillage(data.village.seed, true);
+    g.plan._placesV1 = usePlacesV1;
 
     const tm = data.time || {};
     LG.time.start(tm.day, tm.frac);
@@ -183,6 +295,11 @@ LG.save = (function () {
     st.notes = (data.notes || []).filter(n => g.plan.facts[n.id])
       .map(n => ({ id: n.id, text: n.text, ruby: n.ruby || null }));
     st.deeds = (data.deeds || []).slice();
+    st.board = (data.board || []).map(b => ({
+      npcId: b.npcId, name: b.name, text: b.text,
+      translation: b.translation || '', roman: b.roman || '',
+      factIds: (b.factIds || []).filter(id => g.plan.facts[id]), at: b.at || ''
+    }));
     st.won = !!data.won;
 
     g.npcs.forEach(n => {
@@ -202,7 +319,7 @@ LG.save = (function () {
       n.sold = Object.assign({}, s.sold);
       n.till = (s.till || []).slice();
       n.history = (s.history || []).slice();
-      n.metPlayer = !!s.met; n.tradeDone = !!s.traded;
+      n.metPlayer = !!s.met; n.tradeDone = !!s.traded; n.nameKnown = !!s.named;
       n.patch = rectIn(n, s.patch);
       /* Everything they were in the middle of is dropped. A route, a bubble, a
          decision the model had not answered yet and a conversation with someone
@@ -227,11 +344,20 @@ LG.save = (function () {
     return null;
   }
 
-  /* What has to be true of a file before it is allowed near the game. */
+  /* What has to be true of a file before it is allowed near the game.
+
+     Version 1 is let through here on purpose — `restore` migrates it rather
+     than refusing it — so this is the one place "current version" and
+     "loadable version" are different questions. Anything older than that, or
+     from a future version this code does not know how to read backwards, is
+     still refused outright: a migration path is something this version
+     writes on purpose, not something owed to every version forever. */
   function check(data) {
     if (!data || typeof data !== 'object') return 'there was nothing readable in it';
     if (data.game !== 'little-village') return 'that is not a village';
-    if (data.v !== VERSION) return 'that save is from version ' + data.v + ', and this is version ' + VERSION;
+    if (data.v !== VERSION && data.v !== 1) {
+      return 'that save is from version ' + data.v + ', and this is version ' + VERSION;
+    }
     const v = data.village || {};
     if (!v.seed) return 'it does not say which village it is';
     if (!LG.LEVELS[v.level]) return 'it is at a difficulty this version does not have';
@@ -308,6 +434,8 @@ LG.save = (function () {
     if (local) {
       const why = restore(local);
       if (why) { have = ''; say('¤ The saved village would not load: ' + why + '.'); }
+      else if (local.v === 1) say('¤ Back — the map has grown since you were last here, ' +
+                                  'so everyone has been moved to where they now stand.');
       else say('¤ Back in ' + LG.time.season().name.toLowerCase() + ', where you left off.');
     }
     fromServer().then(remote => {
@@ -319,6 +447,8 @@ LG.save = (function () {
       if (writes !== wrote) return;
       const why = restore(remote);
       if (why) say('¤ The server\'s saved village would not load: ' + why + '.');
+      else if (remote.v === 1) say('¤ Picked up the village the log server had kept — ' +
+                                   'the map has grown since, so everyone has moved to match.');
       else say('¤ Picked up the village the log server had kept.');
     });
     return !!local && resumed;
@@ -343,5 +473,7 @@ LG.save = (function () {
            get lastAt() { return lastAt; },
            get onServer() { return serverOk; },
            get resumed() { return resumed; },
-           _local: fromLocal, _toLocal: toLocal };
+           _local: fromLocal, _toLocal: toLocal,
+           // so a test can build a plan the way a v1 save's digest was built
+           _withPlacesV1: withPlacesV1 };
 })();

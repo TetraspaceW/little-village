@@ -50,10 +50,20 @@ the settings screen rather than failing partway through a conversation.
 
 ## Gameplay
 
+- **Arriving.** You get off the train at an unmanned rural halt on the east
+  edge of the map. The platform is the far end of the high street; walk west
+  into the village. The nameboard on the platform is the first word of the
+  language you get.
 - **Errands.** Each village generates a chain: someone wants an item, whoever
   has it wants something else, and so on back to something just lying in the
   world. The village name (bottom of the notebook) is the seed — the same
   name regenerates the same errand.
+- **The woods.** A large forest fills the northern two-fifths of the map,
+  with tracks running through it and six named clearings: the big
+  clearing, the old oak, the hollow, the charcoal burner's pit, the forest
+  spring, the deep woods. About a quarter of villages leave the last item of
+  the errand somewhere up there, so "there is a shiny rock lying under the old
+  oak" means a walk. Follow the tracks; every clearing is on one.
 - **Language only.** Villagers don't understand English and can't be talked
   into anything in it. Holding an item out to them works regardless of
   language, but doesn't complete a trade by itself — they still have to
@@ -61,6 +71,11 @@ the settings screen rather than failing partway through a conversation.
 - **Notebook.** Starts empty. A fact only appears once a villager actually
   tells you it, in the language they told it to you in, with an English
   gloss underneath. Leads you've already followed show struck through.
+- **Names.** Nobody's name shows up on screen — the nametag, the dialogue
+  panel, the log — until that villager has actually told it to you. Ask
+  *"What is your name?"* (in the Phrases row) and they will. Being told
+  about someone by a third party doesn't count; you have to hear it from
+  them.
 - **Money.** You start with ¤10. A villager at their own counter, in daytime,
   will buy and sell — the baker sells bread, the smith sells tools, and so
   on. Prices are fixed per item with a haggling band either side. Villagers
@@ -68,6 +83,16 @@ the settings screen rather than failing partway through a conversation.
   chain.
 - **Interiors.** Walking through a door lifts the roof off that building, and
   villagers who went inside are visible to you but not to anyone outside.
+- **Signs.** Every shop and the hall has a sign out front, in the village's
+  language; click it for the English underneath. Building names and the
+  overhead place labels are in that language too.
+- **The noticeboard**, by the hall, is written entirely by the villagers: any
+  of them may wander over and decide they have something worth pinning up —
+  their own errand, somebody else's, or nothing to do with the chain at all.
+  Nothing is scripted about what gets posted, or whether anything does. Press
+  **E** beside it to read what is currently pinned; anything it states that
+  you did not already know is added to your notebook the same as if you had
+  been told it in person.
 - **Autonomy.** Villagers move and talk to each other on their own schedule —
   busiest around midday, home by dark — whether or not you're nearby. If
   you're close enough to overhear, the exchange (in their language, with a
@@ -212,6 +237,13 @@ separate import/export format. Saves store the village's seed rather than
 its full state, and are rejected (with an explanation) if the generator has
 changed since the save was made.
 
+Save format is at version 2. Version 1 saves — from before the map grew a
+forest and a railway and the village shifted south to make room — are
+migrated automatically rather than refused: every coordinate moves by the
+same amount the village did, and the errand itself is unchanged, right down
+to which fact is which. You'll see a line in the log the first time an old
+save comes back saying so.
+
 ⚙ → **Forget the saved village** clears both copies. **Start a new village**
 overwrites them immediately.
 
@@ -246,11 +278,11 @@ index.html
 css/style.css
 js/logbook.js       ships everything the village does to the log server
 js/time.js           calendar: hours, seasons, weather
-js/data.js           languages, phrasebook, gossip lines, ~140 items, 17 places, 13 villagers
+js/data.js           languages, phrasebook, place names, ~140 items, 24 places, 13 villagers
 js/chain.js          errand chain generator + associated facts
 js/llm.js            provider abstraction, key validation, reply parsing
 js/tts.js            ElevenLabs voice casting and playback
-js/world.js          tile map, collision, pathfinding, interiors, canvas rendering
+js/world.js          tile map, forest, station, collision, pathfinding, interiors, rendering
 js/sky.js            hour/season colour, precipitation
 js/view.js           per-villager prompt assembly (single source of truth)
 js/npc.js            villager movement, meetings, rendering

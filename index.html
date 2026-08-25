@@ -193,14 +193,23 @@
     <div class="panel-card">
       <h2>Little Village</h2>
       <p>A small place where nobody speaks your language. You have to talk your way through it.</p>
+      <p>You have just got off the train. The platform is the far end of the high street —
+      walk west and keep going.</p>
       <ul>
         <li><b>WASD</b> or <b>arrow keys</b> to walk.</li>
         <li><b>E</b> or <b>Space</b> to talk to whoever you are standing next to.</li>
         <li>In a conversation, type in <em>their</em> language. The <b>Phrases</b> row gives you
             something to start from, and <b>Offer an item</b> holds something out from your pockets.</li>
         <li>They remember what you tell them — and they repeat it to each other.</li>
+        <li>Nobody's <b>name</b> is on screen until they tell you it. Ask
+            <em>"What is your name?"</em> — it's in the Phrases row.</li>
         <li>Your <b>notebook</b> only fills in with things a villager has actually told you.
             If it is empty, go and ask.</li>
+        <li>Shops and the hall have a <b>sign</b> out front — click it to check the English
+            underneath. The <b>noticeboard</b> near the hall is whatever the village felt like
+            pinning up; press <b>E</b> beside it to read.</li>
+        <li>North of the village is <b>forest</b>, with tracks through it and clearings that
+            have names. Things get lost up there.</li>
       </ul>
       <p><b>Where to start:</b> somebody in this village wants something, and somebody else
       has it. Nobody will volunteer that — knock on doors and ask. Every village is a new
@@ -208,6 +217,16 @@
       <p class="note">Change the language, the difficulty or the model at any time with the
       <b>⚙</b> button at the top of the screen.</p>
       <button id="helpClose" class="primary">Off you go</button>
+    </div>
+  </div>
+
+  <!-- ------------------------------------------------------ noticeboard -->
+  <div id="board" class="panel">
+    <div class="panel-card">
+      <h2>📌 The Noticeboard</h2>
+      <p class="lede">Whatever anyone in the village felt was worth pinning up.</p>
+      <div id="boardList"></div>
+      <button id="boardClose" class="primary">Close</button>
     </div>
   </div>
 

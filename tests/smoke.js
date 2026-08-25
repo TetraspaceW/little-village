@@ -224,6 +224,115 @@ for (const n of npcs) {
   ok(typeof LG.view.where(n) === 'string', n.def.name + ' can still say where they are');
 }
 
+/* Open is not the same as reachable, and a forest is that failure at scale:
+   chain.js will happily leave the last item of an errand in a glade, and a
+   glade walled in by trees is an errand nobody can finish. Everything the
+   game can point you at is checked against a flood fill from the platform —
+   the tile the traveller actually starts on — rather than trusted. */
+section('everywhere the errand can send you can be got to');
+const start = LG.world.nearestOpen(LG.START.x, LG.START.y);
+const reachable = LG.world._flood(start.x, start.y);
+const canGet = (x, y) => reachable.has(y * LG.world.W + x);
+
+ok(LG.world.get(start.x, start.y) === LG.world.T.PLATFORM,
+   'the traveller gets off the train onto the platform');
+
+for (const p of LG.PLACES) {
+  let found = false;
+  for (let y = p.rect.y; y < p.rect.y + p.rect.h && !found; y++)
+    for (let x = p.rect.x; x < p.rect.x + p.rect.w; x++)
+      if (canGet(x, y)) { found = true; break; }
+  ok(found, 'you can walk to "' + p.en + '"');
+}
+for (const b of LG.world.buildings) {
+  ok(canGet(b.doorX, b.doorY), 'the door of the ' + b.label + ' can be reached');
+  ok(canGet(b.inside.x, b.inside.y), 'and you can get inside the ' + b.label);
+}
+for (const n of npcs) ok(canGet(n.tx, n.ty), n.def.name + ' is somewhere you can walk to');
+
+/* The woods have to actually be woods. A density that quietly drifts to nothing
+   would leave the glades sitting in a field, and one that closes up entirely
+   would make the tracks the only ground in the north — this pins it between. */
+let trees = 0, north = 0;
+for (let y = 2; y < LG.NORTH_WOODS; y++) for (let x = 2; x < LG.world.W - 2; x++) {
+  north++;
+  if (LG.world.get(x, y) === LG.world.T.TREE) trees++;
+}
+const cover = trees / north;
+ok(cover > 0.40 && cover < 0.75,
+   'the forest is a forest: ' + Math.round(cover * 100) + '% tree cover north of the village');
+console.log('   ' + trees + ' trees over ' + north + ' tiles of forest');
+
+/* Every named place is somewhere a villager could stand and an animal could
+   potter, which is what the glades are cleared outright for. */
+for (const p of LG.PLACES) {
+  let open = 0;
+  for (let y = p.rect.y; y < p.rect.y + p.rect.h; y++)
+    for (let x = p.rect.x; x < p.rect.x + p.rect.w; x++)
+      if (LG.world.isWalkable(x, y)) open++;
+  ok(open >= 2, '"' + p.en + '" has room to stand in (' + open + ' tiles)');
+}
+
+/* The map is drawn from a switch over tile types and a switch over prop types,
+   and a new arm of either is a runtime error nobody sees until they walk that
+   far. Draw the whole thing, in every language, dry and under snow and after
+   dark, with the viewport wide enough that nothing is culled. */
+section('the whole map draws');
+{
+  const cam = { x: 0, y: 0 };
+  const fullW = LG.world.W * LG.world.TILE, fullH = LG.world.H * LG.world.TILE;
+  let drew = 0;
+  for (const lang of Object.keys(LG.LANGUAGES)) {
+    for (const snow of [0, 0.8]) {
+      LG.time.setSnow(snow);
+      LG.world.drawGround(ctx2d, cam, fullW, fullH);
+      LG.world.drawBuildings(ctx2d, LG.world.buildings[0], cam, fullW, fullH);
+      LG.world.drawLabels(ctx2d, cam, fullW, fullH, lang);
+      LG.world.drawSigns(ctx2d, cam, fullW, fullH, lang, false);
+      LG.world.drawSigns(ctx2d, cam, fullW, fullH, lang, true);
+      drew++;
+    }
+  }
+  LG.time.setSnow(0);
+  ok(drew === Object.keys(LG.LANGUAGES).length * 2, 'drew the map ' + drew + ' times without throwing');
+
+  // Every tile type the map actually contains has been through drawTile above.
+  const present = new Set();
+  for (let y = 0; y < LG.world.H; y++) for (let x = 0; x < LG.world.W; x++)
+    present.add(LG.world.get(x, y));
+  ok(present.has(LG.world.T.PLATFORM), 'the platform is on the map');
+  ok(present.has(LG.world.T.RAIL), 'so is the line');
+  ok(present.has(LG.world.T.TREE) && present.has(LG.world.T.WATER),
+     'and the ordinary ground it used to have');
+
+  // A sign is only clickable if it left a box behind to be clicked.
+  LG.world.drawSigns(ctx2d, cam, fullW, fullH, 'ru', false);
+  const st = LG.world._signs().find(s => s.key === 'Station');
+  ok(st && LG.world.overSign(st.x, st.y - 10), 'the station nameboard can be clicked');
+  ok(!LG.world.overSign(0, 0), 'and the empty corner of the map cannot');
+}
+
+section('every building says what it is, in the language you are learning');
+const signs = LG.world._signs();
+for (const b of LG.world.buildings) {
+  ok(signs.some(s => s.key === b.label), 'the ' + b.label + ' has a sign outside it');
+}
+for (const key of ['Noticeboard', 'Station']) {
+  ok(signs.some(s => s.key === key), key + ' has a sign');
+}
+for (const s of signs) {
+  ok(LG.PLACENAMES[s.key], s.key + ' has a name to put on its sign');
+}
+/* A label with no translation falls back to English, which is silent and
+   wrong: the whole point is that the map is in their language. */
+for (const l of LG.world._labels()) {
+  const p = LG.PLACENAMES[l.label];
+  ok(p, 'the map label "' + l.label + '" has a place name');
+  if (p) for (const lang of Object.keys(LG.LANGUAGES)) {
+    ok(p[lang], '"' + l.label + '" is written in ' + lang);
+  }
+}
+
 section('trading still squares up');
 LG.time.start(LG.time.day, 0.5);                       // the middle of the day
 /* Nothing the errand needs, or the villager rightly refuses to buy it. */
@@ -588,6 +697,75 @@ section('a village, written down and read back');
      'and being refused leaves the village you were in standing');
   ok(LG.save.restore(JSON.parse(text)) === null, 'the good save still loads afterwards');
 
+  /* A version-1 save is a save from the map before the forest and the
+     station — every coordinate in it means somewhere 40 tiles further north
+     than it should. It is not hand-built by loading the old code (heavy, and
+     not what a real v1 save looks like from the outside): it is built the
+     way `restore` itself would check one, by generating a plan under the old
+     LG.PLACES order and taking its digest, then shifting a couple of
+     coordinates back by hand to stand in for what an old save's numbers
+     would have been. */
+  section('a version-1 save is migrated, not refused');
+  {
+    // A requested seed is not always the seed a village ends up with — an
+    // unsolvable draw gets retried under a suffixed one (see chain.js), so
+    // what a save actually names is whatever `plan.seed` came back as, the
+    // same as `snapshot` reads off the live plan rather than off a request.
+    const v1Plan = LG.save._withPlacesV1(() =>
+      LG.chain.generate({ level: 'beginner', seed: 'migration-check-' + plan.seed }));
+    const v1Digest = LG.save.digestOf(v1Plan);
+
+    const mira = LG.NPCS.find(n => n.id === 'mira');
+    const oldHome = { x: mira.home.x, y: mira.home.y - 40, w: mira.home.w, h: mira.home.h };
+
+    const v1save = {
+      v: 1, game: 'little-village', saved: new Date().toISOString(),
+      village: { seed: v1Plan.seed, level: 'beginner', lang: 'en', digest: v1Digest },
+      time: { day: 3, frac: 0.4, weather: 'clear', hold: 0, snow: 0 },
+      player: { x: 200, y: 300, dir: 'down' },
+      inventory: { coins: 7 },
+      notes: [], deeds: [], board: [], won: false,
+      terminal: null,
+      villagers: {
+        mira: { x: 400, y: 400, tx: 12, ty: 12, dir: 'down', facts: [], memory: [],
+                factAt: {}, factNote: {}, coins: 5, stock: {}, sold: {}, till: [],
+                history: [], met: false, traded: false, patch: oldHome }
+      }
+    };
+
+    ok(typeof LG.save.check(v1save) !== 'string', 'check() lets a v1 shape through');
+    const why = LG.save.restore(v1save);
+    ok(why === null, 'a v1 save is accepted rather than refused' + (why ? ': ' + why : ''));
+    ok(LG.game.plan.seed === v1Plan.seed, 'and it is the village the save actually named');
+
+    ok(LG.game.player.py === 300 + 40 * 32, 'the player comes back 40 tiles further south');
+    ok(LG.game.player.px === 200, 'and not shifted east or west, which never moved');
+
+    const back = LG.game.npcs.find(n => n.id === 'mira');
+    ok(back.py === 400 + 40 * 32 && back.ty === 12 + 40, 'the villager moves by the same amount');
+    ok(back.patch === back.def.home,
+       'and her old home rectangle resolves to her actual, current home — not a lookalike copy');
+
+    /* The village now saves as version 2 — its coordinates really are v2 —
+       but its seed only ever produced this plan under the *old* LG.PLACES,
+       and LG.PLACES has grown again since (the platform and the six glades
+       joined it this same change). Losing track of that would make the
+       *second* close-and-reopen of a migrated village fail exactly the
+       failure this whole feature exists to avoid: a save that is still
+       correct being refused for a change that has nothing to do with it. */
+    const resaved = LG.save.snapshot();
+    ok(resaved.v === LG.save.VERSION, 'the next save this village writes is tagged current');
+    ok(resaved.village.placesV1 === true,
+       'and still says which place list its seed has to be replayed against');
+    ok(LG.save.restore(JSON.parse(JSON.stringify(resaved))) === null,
+       'so closing and reopening it a second time still works');
+    ok(LG.game.plan.seed === v1Plan.seed, 'as the same village, not a refusal or a new one');
+  }
+
+  section('a save this version cannot read backwards is still refused');
+  ok(typeof LG.save.check(Object.assign({}, shot, { v: 0 })) === 'string',
+     'nothing this old has a migration');
+
   section('both sinks are handed the same bytes');
   const written = LG.save.write();
   ok(!!written, 'a write produces a save');
@@ -756,8 +934,64 @@ async function villagersTalking() {
        'the reader gets the facts as written, not in either villager\'s own voice');
   }
 
+  await namesUnknownUntilTold();
+
   console.log('\n' + (failures ? failures + ' of ' + checks + ' CHECKS FAILED'
                                : 'SMOKE TEST PASSED (' + checks + ' checks)'));
   process.exit(failures ? 1 : 0);
 }
+
+/* Everywhere the game speaks in its own voice about a villager — the
+   nametag, the dialogue header, the hint, the log — has to fall back to
+   their job until that particular villager has actually said their name to
+   the player. Nothing else should be able to set it: not a fact arriving
+   from someone else, not talking to them about something other than who
+   they are. */
+async function namesUnknownUntilTold() {
+  section('names are unknown until you are told them');
+  const g = LG.game, npc = g.npcs.find(n => !n.nameKnown) || g.npcs[0];
+  npc.nameKnown = false;                              // in case an earlier section set it
+
+  ok(g.displayName(npc) === npc.def.job, 'unmet, the game calls them by their job');
+  ok(g.nameOrEmoji(npc) === npc.def.emoji, 'and a native-language line uses the emoji, not English');
+
+  // Being told about them by someone else does not count — only they can tell you.
+  g.remember(npc, 'somebody else told the traveller this villager\'s name is ' + npc.def.name, 'a bystander');
+  ok(!npc.nameKnown, 'hearsay about their name is not the same as being told it');
+
+  const real = LG.llm.speak;
+
+  // A reply that never states their own name teaches nothing.
+  LG.llm.speak = async () => ({ say: 'Hmm?', translation: 'What do you want?', understood: 'full' });
+  LG.dialogue.open(npc);
+  await LG.dialogue.send('Hello!');
+  ok(!npc.nameKnown, 'an ordinary reply does not reveal it');
+  ok(sandbox.document.getElementById('dlgName').textContent === '?',
+     'and the open dialogue panel marks the name unknown rather than repeating the job line beneath it');
+  LG.dialogue.close();
+
+  // Asking outright, and being told, does.
+  LG.llm.speak = async () => ({
+    say: 'stand-in for a line in the village\'s language', understood: 'full',
+    translation: 'My name is ' + npc.def.name + ', nice to meet you.'
+  });
+  LG.dialogue.open(npc);
+  await LG.dialogue.send('What is your name?');
+  ok(npc.nameKnown, 'stating their own name in the translation is what teaches it');
+  ok(sandbox.document.getElementById('dlgName').textContent === npc.def.name,
+     'and the panel already open updates mid-conversation, without being reopened');
+  ok(g.displayName(npc) === npc.def.name, 'from here on the game uses their name');
+  ok(g.nameOrEmoji(npc) === npc.def.name, 'in every language, not only English');
+  LG.dialogue.close();
+
+  // It survives a save and comes back, the same as anything else about them.
+  const shot = LG.save.snapshot();
+  const why = LG.save.restore(JSON.parse(JSON.stringify(shot)));
+  ok(why === null, 'the village reloads' + (why ? ': ' + why : ''));
+  const back = LG.game.npcs.find(n => n.id === npc.id);
+  ok(back.nameKnown === true, 'and a name once learned is not forgotten on reload');
+
+  LG.llm.speak = real;
+}
+
 beliefsRevised().then(villagersTalking);

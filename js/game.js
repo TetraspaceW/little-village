@@ -1236,8 +1236,8 @@ LG.game = (function () {
     const room = W.buildingUnder(player);
 
     W.drawGround(ctx, cam, vw, vh);
-    W.drawBuildings(ctx, room);
-    W.drawLabels(ctx);
+    W.drawBuildings(ctx, room, cam, vw, vh);
+    W.drawLabels(ctx, cam, vw, vh);
     drawWorldItem();
 
     /* A villager under a roof is out of sight. You can see into the room you are

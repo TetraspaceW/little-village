@@ -235,35 +235,83 @@ LG.world = (function () {
                          ['pew', 1, 3, 4], ['pew', 5, 3, 4], ['shelf', 0, 0, 3], ['desk', 8, 1]]);
   }
 
+  const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+  /* Binary min-heap keyed by .f, for A*'s open set. A stale, since-beaten
+     copy of a tile can sit in here more than once; pathTo drops those on
+     pop rather than keeping the heap free of them, which is cheaper. */
+  function heapPush(heap, item) {
+    heap.push(item);
+    let i = heap.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (heap[p].f <= heap[i].f) break;
+      [heap[p], heap[i]] = [heap[i], heap[p]];
+      i = p;
+    }
+  }
+  function heapPop(heap) {
+    const top = heap[0], last = heap.pop();
+    if (heap.length) {
+      heap[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = i * 2 + 1, r = l + 1;
+        let m = i;
+        if (l < heap.length && heap[l].f < heap[m].f) m = l;
+        if (r < heap.length && heap[r].f < heap[m].f) m = r;
+        if (m === i) break;
+        [heap[m], heap[i]] = [heap[i], heap[m]];
+        i = m;
+      }
+    }
+    return top;
+  }
+
   /* A short path between two tiles, so a villager can actually cross the
-     village rather than bumping into the first wall. Breadth-first, and only
-     run when a villager picks a new destination. */
+     village rather than bumping into the first wall. A*, run only when a
+     villager picks a new destination. Manhattan distance is an exact
+     lower bound under 4-directional movement, so it finds the same
+     shortest path a flood-fill would while touching far fewer tiles the
+     farther apart the two ends are — a flood-fill expands a ring that
+     grows with the *square* of the distance; the heuristic here keeps the
+     search pointed at the target instead. */
   function pathTo(sx, sy, tx, ty, limit) {
     if (sx === tx && sy === ty) return [];
     const max = limit || 4000;
-    const prev = new Map();
-    const startKey = sx + ',' + sy;
-    prev.set(startKey, null);
-    let frontier = [[sx, sy]], visited = 0;
-    while (frontier.length && visited < max) {
-      const next = [];
-      for (const [cx, cy] of frontier) {
-        visited++;
-        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          const nx = cx + dx, ny = cy + dy, k = nx + ',' + ny;
-          if (nx < 0 || ny < 0 || nx >= W || ny >= H || prev.has(k)) continue;
-          if (!isWalkable(nx, ny)) continue;
-          prev.set(k, [cx, cy]);
-          if (nx === tx && ny === ty) {
-            const out = [];
-            let cur = [nx, ny];
-            while (cur) { out.push({ x: cur[0], y: cur[1] }); cur = prev.get(cur[0] + ',' + cur[1]); }
-            return out.reverse().slice(1);
-          }
-          next.push([nx, ny]);
-        }
+    const h = (x, y) => Math.abs(x - tx) + Math.abs(y - ty);
+
+    const gScore = new Map([[idx(sx, sy), 0]]);
+    const cameFrom = new Map([[idx(sx, sy), null]]);
+    const open = [{ x: sx, y: sy, f: h(sx, sy) }];
+    const closed = new Set();
+    let visited = 0;
+
+    while (open.length && visited < max) {
+      const cur = heapPop(open);
+      const ck = idx(cur.x, cur.y);
+      if (closed.has(ck)) continue;
+      closed.add(ck);
+      visited++;
+
+      if (cur.x === tx && cur.y === ty) {
+        const out = [];
+        let xy = [cur.x, cur.y];
+        while (xy) { out.push({ x: xy[0], y: xy[1] }); xy = cameFrom.get(idx(xy[0], xy[1])); }
+        return out.reverse().slice(1);
       }
-      frontier = next;
+
+      const cg = gScore.get(ck);
+      for (const [dx, dy] of DIRS) {
+        const nx = cur.x + dx, ny = cur.y + dy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        if (!isWalkable(nx, ny)) continue;
+        const nk = idx(nx, ny), ng = cg + 1;
+        if (closed.has(nk) || (gScore.has(nk) && gScore.get(nk) <= ng)) continue;
+        gScore.set(nk, ng);
+        cameFrom.set(nk, [cur.x, cur.y]);
+        heapPush(open, { x: nx, y: ny, f: ng + h(nx, ny) });
+      }
     }
     return null;
   }
@@ -560,11 +608,27 @@ LG.world = (function () {
     capSnow(ctx, p, () => { ctx.beginPath(); ctx.arc(cx, cy - 20, 6, Math.PI, 0); ctx.closePath(); ctx.fill(); });
   }
 
-  function drawBuildings(ctx, insideBuilding) {
+  /* Is this world-space box anywhere near the camera? Ground tiles are
+     already culled per-tile in drawGround; buildings, props and labels are
+     drawn from flat arrays instead, so they need the same test done by
+     hand before each one — otherwise the cost of this pass grows with the
+     size of the whole village rather than with what's actually on screen.
+     margin covers roofs, signs and shadows that overhang a building's own
+     tile footprint. */
+  function inView(px, py, w, h, cam, vw, vh, margin) {
+    return px + w + margin > cam.x && px - margin < cam.x + vw &&
+           py + h + margin > cam.y && py - margin < cam.y + vh;
+  }
+
+  function drawBuildings(ctx, insideBuilding, cam, vw, vh) {
     readSnow();
-    for (const p of props) drawProp(ctx, p);
+    for (const p of props) {
+      if (!inView(p.x * TILE, p.y * TILE, TILE, TILE, cam, vw, vh, TILE * 3)) continue;
+      drawProp(ctx, p);
+    }
     for (const b of buildings) {
       const px = b.x * TILE, py = b.y * TILE, pw = b.w * TILE, ph = b.h * TILE;
+      if (!inView(px, py, pw, ph, cam, vw, vh, TILE * 2)) continue;
       const open = (b === insideBuilding);
 
       ctx.fillStyle = 'rgba(0,0,0,.18)';
@@ -681,11 +745,12 @@ LG.world = (function () {
     ctx.globalAlpha = 1;
   }
 
-  function drawLabels(ctx) {
+  function drawLabels(ctx, cam, vw, vh) {
     ctx.font = '600 13px system-ui';
     ctx.textAlign = 'center';
     for (const l of labels) {
       const x = l.x * TILE, y = l.y * TILE;
+      if (!inView(x, y, 0, 0, cam, vw, vh, TILE * 4)) continue;
       const w = ctx.measureText(l.text).width + 14;
       ctx.fillStyle = 'rgba(28,24,20,.55)';
       ctx.fillRect(x - w / 2, y - 14, w, 19);

@@ -14,8 +14,15 @@
    language (see LG.LANGUAGES in data.js) — a romanisation or an English
    gloss never gets that value, so keying off it here reaches exactly the
    spoken/written line and nothing else, with no call site needing to know
-   about direction at all. */
-[lang="ar"]{direction:rtl}
+   about direction at all. The one exception is #setLang's own <option>:
+   it carries lang="ar" on the whole row (an <option> can't tag just the
+   endonym half — see index.html), but that row is "Arabic (MSA) —
+   العربية", English-first with the endonym tacked on, and flipping the
+   whole row rtl reorders the flag/English/dash ahead of the Arabic text
+   too. Excluding it here leaves the row in document order, which already
+   reads correctly since the Arabic word is itself a normal embedded RTL
+   run inside it. */
+[lang="ar"]:not(#setLang option){direction:rtl}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{

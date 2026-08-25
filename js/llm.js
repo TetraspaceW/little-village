@@ -435,6 +435,10 @@ LG.llm = (function () {
       lines.push('  "ruby" - the same note, annotated:');
       lines.push(LG.FURIGANA);
     }
+    if (opts && opts.diacritics) {
+      lines.push('           Write it fully vocalised, tashkeel and all:');
+      lines.push(LG.TASHKEEL);
+    }
     lines.push('');
     lines.push('Leave out anything that was not told. Reply [] if none of them were.');
 
@@ -805,6 +809,7 @@ LG.llm = (function () {
          they are sentences is not. */
       'Say it the way a real ' + o.langName + ' speaker would actually say it out loud.',
       o.furigana ? 'Put the furigana in "say".\n' + LG.FURIGANA : null,
+      o.diacritics ? 'Write "say" fully vocalised, tashkeel and all.\n' + LG.TASHKEEL : null,
       '',
       'Reply with only a JSON object:',
       '{"say": "your line", "translation": "plain English"' +

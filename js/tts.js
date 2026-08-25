@@ -232,6 +232,11 @@ LG.tts = (function () {
         body: JSON.stringify({
           text: text,
           model_id: MODEL,
+          // Left unset, a cross-lingual voice guesses the language from the text
+          // alone — on a short line that guess slips, and French comes out read
+          // with an English accent. Flash v2.5 supports forcing it outright, and
+          // our language keys are already ISO 639-1 (fr, ru, ja, es, ar, zh, en).
+          language_code: cfg.lang || undefined,
           voice_settings: { speed: clampSpeed(cfg.speed) }
         })
       });

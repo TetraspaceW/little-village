@@ -287,7 +287,6 @@ section('the whole map draws');
       LG.time.setSnow(snow);
       LG.world.drawGround(ctx2d, cam, fullW, fullH);
       LG.world.drawBuildings(ctx2d, LG.world.buildings[0], cam, fullW, fullH);
-      LG.world.drawLabels(ctx2d, cam, fullW, fullH, lang);
       LG.world.drawSigns(ctx2d, cam, fullW, fullH, lang, false);
       LG.world.drawSigns(ctx2d, cam, fullW, fullH, lang, true);
       drew++;
@@ -320,16 +319,13 @@ for (const b of LG.world.buildings) {
 for (const key of ['Noticeboard', 'Station']) {
   ok(signs.some(s => s.key === key), key + ' has a sign');
 }
-for (const s of signs) {
-  ok(LG.PLACENAMES[s.key], s.key + ' has a name to put on its sign');
-}
-/* A label with no translation falls back to English, which is silent and
+/* A sign with no translation falls back to English, which is silent and
    wrong: the whole point is that the map is in their language. */
-for (const l of LG.world._labels()) {
-  const p = LG.PLACENAMES[l.label];
-  ok(p, 'the map label "' + l.label + '" has a place name');
+for (const s of signs) {
+  const p = LG.PLACENAMES[s.key];
+  ok(p, s.key + ' has a name to put on its sign');
   if (p) for (const lang of Object.keys(LG.LANGUAGES)) {
-    ok(p[lang], '"' + l.label + '" is written in ' + lang);
+    ok(p[lang], '"' + s.key + '" is written in ' + lang);
   }
 }
 

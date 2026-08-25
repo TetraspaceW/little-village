@@ -1452,7 +1452,6 @@ LG.game = (function () {
 
     W.drawGround(ctx, cam, vw, vh);
     W.drawBuildings(ctx, room, cam, vw, vh);
-    W.drawLabels(ctx, cam, vw, vh, settings.lang);
     W.drawSigns(ctx, cam, vw, vh, settings.lang, settings.showTranslation);
     drawWorldItem();
 

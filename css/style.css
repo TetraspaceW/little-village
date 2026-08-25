@@ -9,6 +9,13 @@
   --good:#4f8a52;
   --shadow:0 10px 30px rgba(40,26,12,.28);
 }
+/* Arabic is the one language here written right-to-left. Every span that
+   carries the village's own words is already tagged lang="ar" for that
+   language (see LG.LANGUAGES in data.js) — a romanisation or an English
+   gloss never gets that value, so keying off it here reaches exactly the
+   spoken/written line and nothing else, with no call site needing to know
+   about direction at all. */
+[lang="ar"]{direction:rtl}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{

@@ -189,7 +189,7 @@ LG.dialogue = (function () {
     lines.push('You are ' + v.here + '.');
     lines.push('');
     lines.push('# The player');
-    lines.push('A traveller visiting the village, learning ' + L.name + '. Their grammar and pronunciation are rough.');
+    lines.push('A traveller visiting the village.');
     lines.push('They are carrying: ' + (inv || 'nothing'));
     if (offered) lines.push('RIGHT NOW the player is holding out their ' + LG.ITEMS[offered].en + ' towards you.');
     lines.push('');
@@ -342,6 +342,12 @@ LG.dialogue = (function () {
       lines.push('What you say goes in "say" with the readings already in it.');
       lines.push(LG.FURIGANA);
     }
+    if (L.diacritics) {
+      lines.push('');
+      lines.push('# Diacritics');
+      lines.push('What you say goes in "say" fully vocalised, tashkeel and all.');
+      lines.push(LG.TASHKEEL);
+    }
     const acts = ['none'];
     if (trade) acts.push('trade');
     if (working) acts.push('sell', 'buy');
@@ -356,7 +362,8 @@ LG.dialogue = (function () {
     const fields = [
       { k: 'say', always: true, type: { type: 'string' },
         desc: 'what you say out loud, in ' + L.name +
-              (L.furigana ? ', with the furigana as above' : '') },
+              (L.furigana ? ', with the furigana as above' : '') +
+              (L.diacritics ? ', with the tashkeel as above' : '') },
       { k: 'translation', always: true, type: { type: 'string' },
         desc: 'an English translation of exactly what you said' }
     ];
@@ -892,7 +899,7 @@ LG.dialogue = (function () {
     const L = LG.LANGUAGES[LG.game.settings.lang];
     try {
       const confirmed = await LG.llm.judge(LG.game.llmConfig(), spoken, reply.translation, candidates,
-                                           { langName: L.name, furigana: !!L.furigana });
+                                           { langName: L.name, furigana: !!L.furigana, diacritics: !!L.diacritics });
       confirmed.forEach(c => {
         // fall back to the line as spoken, so a note is never in the wrong language
         const note = c.note || spoken;
@@ -974,6 +981,7 @@ LG.dialogue = (function () {
           when: t === 0 ? LG.time.describe() : '',
           langName: L.name,
           furigana: !!L.furigana,
+          diacritics: !!L.diacritics,
           romanLabel: L.romanize ? L.romanLabel : null,
           register: (LG.LEVELS[s.level] || {}).register || ''
         });

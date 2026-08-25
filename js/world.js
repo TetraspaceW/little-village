@@ -16,7 +16,6 @@ LG.world = (function () {
 
   let tiles = null;
   const buildings = [];
-  const labels = [];
   const props = [];
 
   function idx(x, y) { return y * W + x; }
@@ -45,7 +44,6 @@ LG.world = (function () {
     const b = Object.assign({ x, y, w, h, doorX, doorY: y + h - 1,
       inside: { x: x + 1, y: y + 2, w: w - 2, h: h - 3 }, furniture: [] }, opts);
     buildings.push(b);
-    labels.push({ x: x + w / 2, y: y - 0.4, label: opts.label });
     return b;
   }
 
@@ -103,7 +101,7 @@ LG.world = (function () {
 
   function build() {
     tiles = new Uint8Array(W * H).fill(T.GRASS);
-    buildings.length = 0; labels.length = 0; props.length = 0;
+    buildings.length = 0; props.length = 0;
     signposts.length = 0; signBoxes = []; signRevealed = {};
 
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
@@ -137,7 +135,6 @@ LG.world = (function () {
     props.push({ type: 'fountain', x: 40, y: 70 });
     for (const [bx, by] of [[35, 71], [46, 71], [37, 74], [45, 74]])
       props.push({ type: 'bench', x: bx, y: by });
-    labels.push({ x: 41, y: 80.6, label: 'The Green' });
 
     // ---- buildings
     addBuilding(35, 58, 12, 7, 41, { label: 'Village Hall', sign: '🏛️', roof: '#8a6a3f', wall: '#f3e7cc' });
@@ -156,7 +153,6 @@ LG.world = (function () {
     // ---- the noticeboard, just past the hall, standing clear of its path
     rect(LG.BOARD_SPOT.x, LG.BOARD_SPOT.y, LG.BOARD_SPOT.w, LG.BOARD_SPOT.h, T.GRASS);
     props.push({ type: 'board', x: LG.BOARD_SPOT.x + 1, y: LG.BOARD_SPOT.y });
-    labels.push({ x: LG.BOARD_SPOT.x + 1.5, y: LG.BOARD_SPOT.y - 0.3, label: 'Noticeboard' });
     signposts.push({ key: 'Noticeboard',
                      x: (LG.BOARD_SPOT.x + 1.5) * TILE, y: (LG.BOARD_SPOT.y + 2) * TILE + 6 });
 
@@ -166,7 +162,6 @@ LG.world = (function () {
     rect(5, 57, 2, 3, T.PATH);
     rect(5, 59, 6, 1, T.PATH);
     rect(10, 58, 1, 2, T.PATH);
-    labels.push({ x: 6, y: 49.4, label: 'Mine' });
 
     // ---- the pond, south-west
     for (let y = 68; y < 79; y++) for (let x = 4; x < 21; x++) {
@@ -175,24 +170,20 @@ LG.world = (function () {
       if (d < 1) set(x, y, T.WATER);
       else if (d < 1.2) set(x, y, hash(x, y) < 0.28 ? T.REED : T.SAND);
     }
-    labels.push({ x: 12, y: 79.6, label: 'Pond' });
 
     // ---- the fields, east
     rect(60, 74, 15, 5, T.CROP);
     for (let x = 59; x <= 76; x++) { set(x, 73, T.FENCE); set(x, 80, T.FENCE); }
     for (let y = 73; y <= 80; y++) { set(59, y, T.FENCE); set(76, y, T.FENCE); }
     set(66, 73, T.PATH);
-    labels.push({ x: 68, y: 72.4, label: 'Fields' });
 
     // ---- the orchard and beeyard, north-east
     rect(62, 64, 16, 8, T.GRASS);
     for (let y = 65; y <= 70; y += 2) for (let x = 63; x <= 77; x += 2) set(x, y, T.TREE);
-    labels.push({ x: 70, y: 63.2, label: 'Orchard' });
     rect(72, 51, 7, 4, T.GRASS);
     for (let x = 73; x <= 77; x++) set(x, 51, T.FENCE);
     for (let y = 52; y <= 54; y++) set(72, y, T.FENCE);
     for (let x = 74; x <= 76; x += 2) props.push({ type: 'hive', x: x, y: 52 });
-    labels.push({ x: 75, y: 50.2, label: 'Beeyard' });
 
     /* ---- the woodcutter's clearing
        Only onto open ground. This stand overlaps the eastern shore of the
@@ -203,7 +194,6 @@ LG.world = (function () {
     for (let y = 64; y <= 70; y++) for (let x = 16; x <= 22; x++)
       if (get(x, y) === T.GRASS && hash(x * 3, y * 5) < 0.32) set(x, y, T.TREE);
     set(18, 67, T.CAVE); set(19, 67, T.CAVE);
-    labels.push({ x: 19, y: 63.2, label: 'Woodpile' });
 
     // These face south, away from the street, so they each need a lane down the
     // side and along the front or their doors open onto nothing.
@@ -217,7 +207,6 @@ LG.world = (function () {
     set(36, 90, T.PATH);
     for (let y = 89; y <= 92; y += 2) for (let x = 38; x <= 43; x += 2)
       props.push({ type: 'grave', x: x, y: y });
-    labels.push({ x: 40, y: 87.4, label: 'Graveyard' });
 
     northWoods();
     station();
@@ -274,7 +263,6 @@ LG.world = (function () {
     glades.forEach(p => {
       const r = p.rect;
       rect(r.x - 1, r.y - 1, r.w + 2, r.h + 2, T.GRASS);
-      if (p.label) labels.push({ x: r.x + r.w / 2, y: r.y - 1.4, label: p.label });
     });
 
     // The spring actually has water in it, off to one side of its glade.
@@ -300,7 +288,6 @@ LG.world = (function () {
       [[50, 23], [56, 23], [56, 20], [62, 20], [62, 17], [68, 17]],             // and on to the charcoal pit
       [[68, 17], [68, 22], [71, 22], [71, 30], [68, 30], [68, 38]]              // back down to the village's north side
     ].forEach(track);
-    labels.push({ x: 40, y: 4.6, label: 'The Woods' });
   }
 
   /* One run of track, as a chain of orthogonal segments.
@@ -354,7 +341,6 @@ LG.world = (function () {
     props.push({ type: 'shelter', x: r.x + 1, y: r.y + 1 });
     props.push({ type: 'lamp', x: r.x, y: r.y + 6 });
     props.push({ type: 'bench', x: r.x, y: r.y + 10 });
-    labels.push({ x: r.x + r.w / 2, y: r.y - 0.8, label: 'Station' });
     /* The nameboard, where you would actually read it stepping off the train
        — and, for most players, the first word of the language they get. */
     signposts.push({ key: 'Station', x: (r.x + 2) * TILE, y: (r.y + 8) * TILE });
@@ -553,8 +539,22 @@ LG.world = (function () {
      white in patches looks like weather. `LG.time.snow` is the depth; each tile
      has a threshold of its own that it has to pass. */
   let lying = 0;                              // re-read from the clock each frame
+  /* `lying` creeps by a fraction of a percent every tick, so a cache keyed on
+     its exact value would miss almost every frame and buy nothing. It is
+     quantised into buckets fine enough that no bucket edge shows on screen
+     (the alpha it feeds is rounded to 3 decimals anyway), so a tile computed
+     once is reused for every frame that falls in the same bucket — which, for
+     snow that has finished falling and is just lying there, is all of them. */
+  let snowBucket = -1;
+  let snowCache = null;                       // Float32Array(W*H), -1 = not yet computed
   function readSnow() {
     lying = (LG.time && typeof LG.time.snow === 'number') ? LG.time.snow : 0;
+    const b = Math.round(lying * 400);
+    if (b !== snowBucket) {
+      snowBucket = b;
+      if (!snowCache) snowCache = new Float32Array(W * H);
+      snowCache.fill(-1);
+    }
   }
   /* Smooth value noise, so the depth varies over stretches of the map rather
      than tile by tile. Per-tile randomness alone puts an independent patch on
@@ -572,14 +572,25 @@ LG.world = (function () {
 
   /* How deep it is on one tile. Every tile has its own threshold to clear, so
      thin snow is a few drifts on bare ground rather than an even dusting over
-     all of it — and the deeper it gets the more of them join up. */
+     all of it — and the deeper it gets the more of them join up. Memoised per
+     bucket of `lying` — this is walked twice a tile a frame (once for the
+     ground blob, once for whatever prop sits on it) and read again on every
+     frame a tile stays on screen, and the noise underneath it is unchanged. */
   function snowAt(x, y) {
     if (lying <= 0) return 0;
+    const inBounds = x >= 0 && y >= 0 && x < W && y < H;
+    const i = inBounds ? idx(x, y) : -1;
+    if (i >= 0) {
+      const c = snowCache[i];
+      if (c >= 0) return c;
+    }
     const n = vnoise(x, y, 6) * 0.6 + vnoise(x, y, 2.5) * 0.28 + hash(x * 5 + 1, y * 7 + 3) * 0.12;
     // Sharpened, so a covered stretch is properly covered and only its border is
     // half-and-half. A soft ramp everywhere leaves every tile part-white, and
     // part-white tiles at a fixed spacing read as a pattern rather than as snow.
-    return Math.max(0, Math.min(1, (lying * 2.4 - n * 1.55) * 2.2));
+    const v = Math.max(0, Math.min(1, (lying * 2.4 - n * 1.55) * 2.2));
+    if (i >= 0) snowCache[i] = v;
+    return v;
   }
 
   /* White over ground that has already been drawn. A drift is a blob, not a
@@ -728,7 +739,10 @@ LG.world = (function () {
 
   function drawProps(ctx, x, y, px, py) {
     const t = get(x, y), r = hash(x, y);
-    const a = lying > 0 ? snowAt(x, y) : 0;
+    // Only the three prop types below ever look at the snow depth — most
+    // tiles are plain grass or path, and asking the noise field for a value
+    // nothing will use is pure waste on the majority of every frame.
+    const a = (lying > 0 && (t === T.TREE || t === T.FLOWER || t === T.FENCE)) ? snowAt(x, y) : 0;
     if (t === T.TREE) {
       ctx.fillStyle = '#6b4a2f';
       ctx.fillRect(px + 13, py + 16, 6, 14);
@@ -904,7 +918,7 @@ LG.world = (function () {
   }
 
   /* Is this world-space box anywhere near the camera? Ground tiles are
-     already culled per-tile in drawGround; buildings, props and labels are
+     already culled per-tile in drawGround; buildings, props and signs are
      drawn from flat arrays instead, so they need the same test done by
      hand before each one — otherwise the cost of this pass grows with the
      size of the whole village rather than with what's actually on screen.
@@ -1040,21 +1054,6 @@ LG.world = (function () {
     ctx.globalAlpha = 1;
   }
 
-  function drawLabels(ctx, cam, vw, vh, lang) {
-    ctx.font = '600 13px system-ui';
-    ctx.textAlign = 'center';
-    for (const l of labels) {
-      const text = LG.placeName(l.label, lang);
-      const x = l.x * TILE, y = l.y * TILE;
-      if (!inView(x, y, 0, 0, cam, vw, vh, TILE * 4)) continue;
-      const w = ctx.measureText(text).width + 14;
-      ctx.fillStyle = 'rgba(28,24,20,.55)';
-      ctx.fillRect(x - w / 2, y - 14, w, 19);
-      ctx.fillStyle = '#f6efe2';
-      ctx.fillText(text, x, y);
-    }
-  }
-
   /* ------------------------------------------------------------------ signs
      A readable sign in front of every building's door, and one at the
      noticeboard: the name in the language the village speaks, with an English
@@ -1138,6 +1137,35 @@ LG.world = (function () {
     return signBoxes.some(b => wx >= b.x && wx <= b.x + b.w && wy >= b.y && wy <= b.y + b.h);
   }
 
+  /* The ground snow pass redrawn straight into the visible ctx every frame is
+     the choppy part: every tile in view gets a jittered ellipse (sometimes a
+     rounded rect too) filled fresh sixty times a second, for a picture that
+     is not actually changing — the noise field is fixed and `lying` barely
+     moves frame to frame. Walking rarely even scrolls the tile grid (the
+     camera has to cross a whole tile before x0/y0 change), so the same blobs
+     get redrawn in the same places for a dozen-plus frames running. Cache
+     them to an offscreen canvas instead and just blit it; only rebuild when
+     the visible tile range or the snow bucket actually changes. */
+  let snowLayer = null, snowLayerCtx = null, snowLayerKey = null;
+  function drawSnowLayer(ctx, x0, y0, x1, y1) {
+    const key = x0 + ',' + y0 + ',' + x1 + ',' + y1 + ',' + snowBucket;
+    const w = (x1 - x0 + 1) * TILE, h = (y1 - y0 + 1) * TILE;
+    if (key !== snowLayerKey) {
+      if (!snowLayer) snowLayer = document.createElement('canvas');
+      if (snowLayer.width !== w || snowLayer.height !== h) {
+        snowLayer.width = w; snowLayer.height = h;
+        snowLayerCtx = snowLayer.getContext('2d');
+      } else {
+        snowLayerCtx.clearRect(0, 0, w, h);
+      }
+      for (let y = y0; y <= y1; y++)
+        for (let x = x0; x <= x1; x++)
+          snowOnTile(snowLayerCtx, x, y, (x - x0) * TILE, (y - y0) * TILE);
+      snowLayerKey = key;
+    }
+    ctx.drawImage(snowLayer, x0 * TILE, y0 * TILE);
+  }
+
   function drawGround(ctx, cam, vw, vh) {
     readSnow();
     const x0 = Math.max(0, (cam.x / TILE) | 0), y0 = Math.max(0, (cam.y / TILE) | 0);
@@ -1145,14 +1173,13 @@ LG.world = (function () {
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) drawTile(ctx, x, y, x * TILE, y * TILE);
     // Snow after all the ground, never tile by tile with it: a drift that spills
     // over its own tile would be cut off again by the next tile's grass.
-    if (lying > 0)
-      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) snowOnTile(ctx, x, y, x * TILE, y * TILE);
+    if (lying > 0) drawSnowLayer(ctx, x0, y0, x1, y1);
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) drawProps(ctx, x, y, x * TILE, y * TILE);
   }
 
   return { TILE, W, H, T, build, get, isSolid, isWalkable, nearestOpen, pathTo,
            buildingAt, buildingUnder, roofRects, buildingByLabel, inRect, nearRect,
-           drawGround, drawBuildings, drawLabels, drawSigns, hitSign, overSign, buildings,
+           drawGround, drawBuildings, drawSigns, hitSign, overSign, buildings,
            // for the tests: what got placed, and where you can get to from here
-           _labels: () => labels, _props: () => props, _signs: () => signSpots(), _flood: flood };
+           _props: () => props, _signs: () => signSpots(), _flood: flood };
 })();

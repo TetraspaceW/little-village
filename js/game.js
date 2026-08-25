@@ -710,6 +710,7 @@ LG.game = (function () {
     };
     document.getElementById('setSave').onclick = submitSettings;
     document.getElementById('setProvider').onchange = () => { refreshModelList(); refreshHelperList(); };
+    document.getElementById('setModel').onchange = syncModelBox;
     document.getElementById('setHelper').onchange = syncHelperBox;
   }
 
@@ -733,7 +734,7 @@ LG.game = (function () {
       level: document.getElementById('setLevel').value,
       provider: document.getElementById('setProvider').value,
       apiKey: document.getElementById('setKey').value.trim(),
-      model: document.getElementById('setModel').value || settings.model,
+      model: readModel() || settings.model,
       helper: readHelper(),
       showTranslation: document.getElementById('setTrans').checked,
       npcChatter: document.getElementById('setChatter').checked,
@@ -878,7 +879,6 @@ LG.game = (function () {
     document.getElementById('setQuality').value = settings.voiceQuality;
     document.getElementById('setDayLength').value = String(settings.dayMinutes || 6);
     refreshModelList();
-    document.getElementById('setModel').value = settings.model;
     refreshHelperList();
     showSaveNote();
     s.classList.add('open');
@@ -903,6 +903,12 @@ LG.game = (function () {
 
   /* "Other" reveals a free-text box, so a model newer than this picker can still
      be used without editing the source. */
+  function readModel() {
+    const sel = document.getElementById('setModel');
+    if (sel.value !== 'other') return sel.value;
+    return document.getElementById('setModelCustom').value.trim();
+  }
+
   function readHelper() {
     const sel = document.getElementById('setHelper');
     if (sel.value !== 'other') return sel.value;
@@ -930,10 +936,20 @@ LG.game = (function () {
     const prov = document.getElementById('setProvider').value;
     const sel = document.getElementById('setModel');
     const list = LG.llm.MODELS[prov] || [];
-    sel.innerHTML = list.map(m => '<option value="' + m.id + '">' + m.label + '</option>').join('');
+    sel.innerHTML = list.map(m => '<option value="' + m.id + '">' + m.label + '</option>').join('')
+      + '<option value="other">Other — type an id below</option>';
+    const known = list.some(m => m.id === settings.model);
+    sel.value = settings.model && !known ? 'other' : (settings.model || (list[0] && list[0].id) || 'other');
+    document.getElementById('setModelCustom').value = known ? '' : settings.model;
+    syncModelBox();
     document.getElementById('keyHint').textContent = prov === 'anthropic'
       ? 'From console.anthropic.com. Sent straight from your browser to api.anthropic.com.'
       : 'From openrouter.ai/keys.';
+  }
+
+  function syncModelBox() {
+    const other = document.getElementById('setModel').value === 'other';
+    document.getElementById('setModelCustom').style.display = other ? '' : 'none';
   }
 
   function interact() {

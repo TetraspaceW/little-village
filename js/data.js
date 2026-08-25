@@ -78,7 +78,7 @@ LG.LANGUAGES = {
    蔫了, 白拿人家东西 and 回头再聊. What a register constrains is the words and the
    sentences, so that is all it names now; who they are speaking to stays out of it,
    which is the whole reason it is not `prompt`. */
-LG.DEPTH = [2, 4];                       // links per errand, rolled per village
+LG.DEPTH = [4, 7];                       // links per errand, rolled per village
 
 /* How to write furigana — one spec, used by every call site that asks for it.
 

@@ -369,8 +369,16 @@ LG.dialogue = (function () {
     fields.push({ k: 'revealed', arr: true,
       type: { type: 'array', items: { type: 'string' } },
       desc: 'tags of any facts above that you plainly TOLD the traveller this turn — [] if none' });
+    /* This used to read "OPTIONAL: ... a NEW fact you just learned from the
+       traveller. Omit this unless you understood them." — which makes
+       understanding them the whole of the test, and a villager who understood a
+       greeting perfectly well has been told a new fact is there to be stated. So
+       one did: Petra met "こんにちは！" and wrote down that the traveller's name
+       was Mira — a name nobody had said. Ask instead for what was worth keeping,
+       the way the villager-to-villager call already does, and give "nothing was"
+       a spelling of its own. */
     fields.push({ k: 'remember', type: { type: ['string', 'null'] },
-      desc: 'OPTIONAL: one short English sentence stating a NEW fact you just learned from the traveller. Omit this unless you understood them.' });
+      desc: 'anything the traveller has said that is worth remembering, as one short English sentence — null if nothing was' });
     if (working) {
       /* commerce() already takes either a tag or a list, so the schema asks for
          the list — one shape to check rather than two to allow. */
@@ -411,9 +419,9 @@ LG.dialogue = (function () {
                'explaining what a word means carries them just the same as a long ' +
                'reply — there is no short form of this object.');
     lines.push('Where nothing happened, say so in the field rather than dropping it: ' +
-               '"revealed" is [], "action" is "none".' +
-               (working ? ' Only "remember", "item" and "price" are ever absent.'
-                        : ' Only "remember" is ever absent.'));
+               '"revealed" is [], "remember" is null, "action" is "none".' +
+               (working ? ' Only "item" and "price" are ever absent.'
+                        : ' No field is ever absent.'));
     /* And a worked one, because this project has learned twice now that a filled-in
        example specifies a format better than a sentence about it does — the
        furigana spec moved out of the schema for the same reason. The rule above
@@ -425,12 +433,13 @@ LG.dialogue = (function () {
                     roman: '"<the ' + L.romanLabel + '>"',
                     understood: '"full"' };
     const ex = fields.filter(f => f.always).map(f => '"' + f.k + '": ' + shown[f.k]);
-    ex.push('"revealed": []', '"action": "none"');
+    ex.push('"revealed": []', '"remember": null, "action": "none"');
     lines.push('A turn where nothing at all happened — a greeting, a thank-you, ' +
                'telling them what a word means — still looks like this:');
     lines.push('{' + ex.join(', ') + '}');
     lines.push('"translation" and "remember" are notes for the game, not speech — writing English there does not mean you understand any.');
     lines.push('"revealed" is about what you asserted, not what you talked about: using the word, explaining what it means, or asking after it does not count. When in doubt, leave the tag out of the list.');
+    lines.push('"remember" is about what they told you — what they want, who they are, what they are carrying, what they are like. Not everything said is worth remembering: a greeting, a thank-you, or a word they were asking after tells you nothing, and that is null. Write down what they said, never what you assumed.');
     if (working) {
       lines.push('Use "sell" at the moment you actually hand goods over and take the money, and "buy" when you take something off the traveller and pay for it — not while the two of you are still discussing it.');
     }

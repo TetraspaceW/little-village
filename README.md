@@ -95,7 +95,7 @@ client-side either way.
   from a conversation, filling in missing furigana, confirming trades, and
   choosing where each villager goes. Defaults to Haiku 4.5 on either
   provider; also selectable on OpenRouter: MiMo-V2.5, MiMo-V2.5 Pro, Gemma 4
-  31B, Gemini 2.5 Flash, GPT-4.1 mini, GLM-5.2, Ox Alpha, or any other model
+  31B, Gemini 2.5 Flash, GPT-4.1 mini, GLM-5.2, or any other model
   ID via the **Other** field.
 
 Use a fast, non-reasoning model for the helper if you can — see below.
@@ -145,19 +145,18 @@ Spanish, at three difficulty levels. Russian and Chinese lines carry a
 romanisation; Japanese gets furigana over kanji in dialogue (via `<ruby>`
 tags — not on item names, which stay plain kanji).
 
-Chain length is randomised (2–4 links) at every difficulty. What changes with
+Chain length is randomised (4–7 links) at every difficulty. What changes with
 difficulty is who knows what:
 
 | | Beginner | Intermediate | Advanced |
 |---|---|---|---|
 | Villagers told each fact (beyond the owner) | 4 | 2 | 1 |
 | The village gossip (Petra) knows | the whole errand | about half | only opinions |
+| Villagers per fact, on average | ~5.0 | ~2.0 | ~1.5 |
 
 Fact-holders also thin out further down the chain the harder the difficulty,
-so a longer chain buries its tail instead of exposing it — in practice ~5.4 →
-2.1 → 1.2 villagers per fact as difficulty rises, while average chain length
-stays flat at about three links. At advanced you generally have to walk the
-chain in order.
+so a longer chain buries its tail instead of exposing it. At advanced you
+generally have to walk the chain in order.
 
 ## Voices (optional)
 

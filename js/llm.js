@@ -14,8 +14,8 @@ LG.llm = (function () {
       { id: 'anthropic/claude-haiku-4.5', label: 'Claude Haiku 4.5' },
       { id: 'openai/gpt-4.1-mini',        label: 'GPT-4.1 mini' },
       { id: 'google/gemini-2.5-flash',    label: 'Gemini 2.5 Flash' },
-      { id: 'z-ai/glm-5.2',               label: 'GLM-5.2 (Z.ai)' },
-      { id: 'stealth/ox-alpha',           label: 'Ox Alpha (stealth)' }
+      { id: 'google/gemini-3.7-flash',    label: 'Gemini 3.7 Flash' },
+      { id: 'z-ai/glm-5.2',               label: 'GLM-5.2 (Z.ai)' }
     ]
   };
 
@@ -34,8 +34,7 @@ LG.llm = (function () {
       { id: 'google/gemma-4-31b-it',      label: 'Gemma 4 31B — quick off the mark' },
       { id: 'google/gemini-2.5-flash',    label: 'Gemini 2.5 Flash' },
       { id: 'openai/gpt-4.1-mini',        label: 'GPT-4.1 mini' },
-      { id: 'z-ai/glm-5.2',               label: 'GLM-5.2' },
-      { id: 'stealth/ox-alpha',           label: 'Ox Alpha (stealth)' }
+      { id: 'z-ai/glm-5.2',               label: 'GLM-5.2' }
     ]
   };
   const VERIFIER = {
@@ -106,12 +105,25 @@ LG.llm = (function () {
     };
   }
 
+  /* OpenRouter attributes a call to an app by its URL, and the calls were coming
+     through as "unknown" because we sent `location.origin` — the literal string
+     "null" when the page is opened from a file:// path, which names no app at
+     all. The URL is the app's primary key (the app page is
+     openrouter.ai/apps?url=<this>), so it is fixed rather than derived: served
+     on one port or another, or from a file, every call belongs to one village.
+     Localhost is attributed only when a title comes with it, which it does.
+
+     Changing APP_URL later starts a fresh app with its own history; the title
+     beside it can be rewritten any time and stays with the same app. */
+  const APP_URL = 'http://localhost';
+  const APP_TITLE = 'Little Village (Beta)';
+
   function openrouterHeaders(cfg) {
     return {
       'content-type': 'application/json',
       'authorization': 'Bearer ' + cfg.apiKey,
-      'HTTP-Referer': location.origin || 'https://localhost',
-      'X-Title': 'Little Village Language Game'
+      'HTTP-Referer': APP_URL,
+      'X-Title': APP_TITLE
     };
   }
 
@@ -128,8 +140,8 @@ LG.llm = (function () {
      What it cannot be is unconditional. Support is per endpoint, not per model:
      OpenRouter rejects the request outright rather than ignoring the field, so
      sending a schema to a model that has none turns a reply that merely arrived
-     thin into no reply at all. `stealth/ox-alpha` is exactly that case today —
-     it takes `response_format` for plain JSON mode but is not on the
+     thin into no reply at all. Some listed models are exactly that case — they
+     take `response_format` for plain JSON mode but are not on the
      structured-outputs list.
 
      So it is asked once, when the key is accepted, and it fails closed: anything
@@ -336,9 +348,22 @@ LG.llm = (function () {
              schema: !!schema };
   }
 
+  /* The helper model's calls are small bookkeeping judgements — deciding an
+     intent, checking a claim, confirming a trade — not something that benefits
+     from extended thinking, and a reasoning model left to itself will burn
+     tokens ruminating on them. The prompts these calls send run to about 490
+     tokens characteristically (session logs put the median at 489, mean 480),
+     so a third of that is a reasonable ceiling. A model with no reasoning
+     budget of its own just ignores the field — OpenRouter's default is to
+     drop parameters a provider doesn't support rather than reject the
+     request — except Anthropic models, where OpenRouter clamps anything below
+     its own 1024-token floor up to 1024 rather than honouring a smaller one. */
+  const FAST_REASONING_TOKENS = 160;
+
   async function openrouterSend(cfg, system, messages, schema) {
     const body = { model: cfg.model,
                    messages: [{ role: 'system', content: system }].concat(messages) };
+    if (cfg.fast) body.reasoning = { max_tokens: FAST_REASONING_TOKENS };
     if (schema) {
       body.response_format = { type: 'json_schema',
                                json_schema: { name: 'reply', strict: true, schema: schema } };
@@ -413,7 +438,7 @@ LG.llm = (function () {
     lines.push('');
     lines.push('Leave out anything that was not told. Reply [] if none of them were.');
 
-    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg) };
+    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg), fast: true };
     let raw;
     try {
       raw = vcfg.provider === 'anthropic'
@@ -463,7 +488,7 @@ LG.llm = (function () {
       '',
       'Answer with one word: yes or no.'
     ].join('\n');
-    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg) };
+    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg), fast: true };
     try {
       const raw = vcfg.provider === 'anthropic'
         ? await anthropicCall(vcfg, 'You answer yes or no about what a line of dialogue did.',
@@ -504,7 +529,7 @@ LG.llm = (function () {
       'Reply with only a JSON object:',
       '{"n": <the number, or 0 if nothing is out of date>, "line": "<the rewritten line, or an empty string>"}'
     ].join('\n');
-    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg) };
+    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg), fast: true };
     try {
       const raw = vcfg.provider === 'anthropic'
         ? await anthropicCall(vcfg, 'You keep one person\'s beliefs up to date. Answer with JSON only.',
@@ -538,7 +563,7 @@ LG.llm = (function () {
       want.join(',\n'),
       '}'
     ].join('\n');
-    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg) };
+    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg), fast: true };
     try {
       const raw = vcfg.provider === 'anthropic'
         ? await anthropicCall(vcfg, 'You translate and romanise single lines. Answer with JSON only.',
@@ -594,7 +619,7 @@ LG.llm = (function () {
       '  "' + o.b.name + '": {"remembers": ["..."], "said": ["ids ' + o.b.name + ' actually said, [] if none"]}',
       '}'
     ].join('\n');
-    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg) };
+    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg), fast: true };
     const sys = 'You note what people took away from a conversation. Answer with JSON only.';
     try {
       const raw = vcfg.provider === 'anthropic'
@@ -660,7 +685,7 @@ LG.llm = (function () {
       'Reply with only a JSON object:',
       '{"go": "exactly one of the strings listed above", "why": "a few words, in English"}'
     ].filter(x => x !== null && x !== undefined).join('\n');
-    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg) };
+    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg), fast: true };
     const sys = 'You decide what a villager does next. Answer with JSON only.';
     try {
       const raw = vcfg.provider === 'anthropic'
@@ -735,7 +760,7 @@ LG.llm = (function () {
         (o.romanLabel ? ', "roman": "' + o.romanLabel +
           (o.romanNote ? ', ' + o.romanNote : '') + '"' : '') + '}'
     ].filter(x => x !== null && x !== undefined).join('\n');
-    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg) };
+    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg), fast: true };
     const sys = 'You play one villager in a two-person conversation. Answer with JSON only.';
     try {
       const raw = vcfg.provider === 'anthropic'
@@ -768,7 +793,7 @@ LG.llm = (function () {
       'character for character and add ruby tags around the kanji — do not reword it, do not',
       'add or remove punctuation, and do not wrap it in quotes.'
     ] : []).join('\n');
-    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg) };
+    const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg), fast: true };
     try {
       const raw = vcfg.provider === 'anthropic'
         ? await anthropicCall(vcfg, 'You add furigana to Japanese text. Output the sentence only.',

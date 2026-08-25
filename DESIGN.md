@@ -214,9 +214,9 @@ ignoring the field — so sending one blindly would turn a reply that merely arr
 thin into no reply at all. When the key is accepted the game looks the pair up —
 `capabilities.structured_outputs` on Anthropic, `supported_parameters` on OpenRouter
 — and remembers the answer. Anything it could not look up, could not reach, or does
-not recognise counts as no. `stealth/ox-alpha` is exactly that case today: it takes
-`response_format` for plain JSON mode but is not on the structured-outputs list, so
-it gets the prompt and the repair, the way everything did before.
+not recognise counts as no. Some listed models are exactly that case: they take
+`response_format` for plain JSON mode but are not on the structured-outputs list, so
+they get the prompt and the repair, the way everything did before.
 
 **The prompt block and the schema are one list.** They are rendered from the same
 array of fields, so a field cannot be described to the villager and missing from the
@@ -516,6 +516,24 @@ theft they did not witness — and, this being the village where a baker's turn 
 became a rice merchant, a supplied conclusion is exactly the kind of thing that gets
 passed on as a fact. They looked, and it was not there. What they make of that is theirs.
 
+**And what they take from you is asked about the conversation, not about them.** The
+field a villager writes that down in used to read *"OPTIONAL: one short English sentence
+stating a NEW fact you just learned from the traveller. Omit this unless you understood
+them"*, which puts the whole test on comprehension. Understanding someone is not the same
+as being told anything by them, but not following them was the only stated reason to
+leave the field empty — so a villager who understood perfectly well had been told, in
+effect, that there was a new fact there to be produced. Petra met こんにちは！, understood
+it fully, and wrote down that the traveller's name was Mira. Nobody had said a name.
+
+It asks for anything worth remembering now, which is the question the villager-to-villager
+call has always asked of a conversation that already happened, and *nothing was* has a
+spelling of its own. This is the same fix the rest of the reply object got and this one
+field missed: `revealed` was given `[]` and `action` was given `"none"`, while `remember`
+kept both its *OPTIONAL* and its hedge and so had no way to say that a turn had taught
+them nothing except to say nothing — which a model obliges by inventing something. The
+worked example of a turn where nothing happened is a greeting, because that is the exact
+turn that went wrong.
+
 **The notebook and the villagers ask different questions,** on purpose. Whether a thing
 is true of the world is what your notebook is entitled to know, because keeping your
 side of the game consistent is the game's job. What a villager believes is not that:
@@ -598,8 +616,8 @@ a test, and printing the answer turns overhearing into a way to skip the languag
 
 Chain length used to scale with difficulty, and it was the wrong knob — a longer chain
 deals out *more* facts to *more* villagers, so it gives you more places to break in. A
-five-link errand could comfortably be easier than a two-link one. Length is now rolled
-per village from the same 2–4 range at every level, purely for variety, and difficulty
+seven-link errand could comfortably be easier than a four-link one. Length is now rolled
+per village from the same 4–7 range at every level, purely for variety, and difficulty
 is carried by who knows what: the spread of each fact, a taper that buries the tail of
 the chain, and how much the village gossip knows. The README has the table.
 

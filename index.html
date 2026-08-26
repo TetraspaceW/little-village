@@ -83,6 +83,12 @@
              row carries the language. It is the endonym that needs it: 中文
              and 日本語 share characters and only the tag says which font
              draws them. The English half is unharmed by riding along. -->
+        <!-- Arabic (MSA) isn't a country, so it has no Unicode flag and no
+             glyph in any emoji font — the Arab League one below is a custom
+             glyph instead, U+F0000 (a made-up private-use codepoint, not a
+             real emoji sequence) resolved by the @font-face in style.css to
+             a hand-rendered flag matching the local Noto Color Emoji style.
+             See tools/flags/README.md for how it was made. -->
         <select id="setLang">
           <option value="ru" lang="ru">🇷🇺 Russian — Русский</option>
           <option value="en" lang="en">🇬🇧 English</option>
@@ -90,7 +96,7 @@
           <option value="ja" lang="ja">🇯🇵 Japanese — 日本語</option>
           <option value="fr" lang="fr">🇫🇷 French — Français</option>
           <option value="es" lang="es">🇪🇸 Spanish — Español</option>
-          <option value="ar" lang="ar">🇸🇦 Arabic (MSA) — العربية</option>
+          <option value="ar" lang="ar">󰀀 Arabic (MSA) — العربية</option>
         </select>
       </label>
 

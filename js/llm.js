@@ -779,6 +779,15 @@ LG.llm = (function () {
       o.sought ? null : o.them.name + ', ' + o.them.job + ', is here too.',
       o.when || null,
       '',
+      /* Everyone else in the village is somebody both of you already know by
+         name and trade — that is the same background a villager gets talking
+         to the traveller, and here it is what lets a third party come up by
+         name ("Tomas has one of those") without it reading as a name pulled
+         from nowhere. */
+      o.me.roster && o.me.roster.length
+        ? 'Everyone else in the village, by name and trade:\n' +
+          o.me.roster.map(r => '- ' + r.name + ' — ' + r.job).join('\n') : null,
+      '',
       // the same one dated list the other two calls get
       o.held && o.held.length
         ? 'What you know, and how you came by it — say any of it if it comes up:\n' +

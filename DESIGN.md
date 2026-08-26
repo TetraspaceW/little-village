@@ -618,6 +618,30 @@ mark the nametag over their head does instead: `?`, once as a title and once abo
 sprite, saying plainly that this is a person the game is choosing not to name yet,
 not a person it forgot to.
 
+## Villagers already know each other
+
+That a name is a fact, earned only from its owner, is a rule about the *player*.
+Applied to the villagers themselves it produced the wrong thing: a villager asked
+about a neighbour they had no chain fact or memory about had nothing to answer from
+— which is the exact shape of gap that produced a rice merchant nobody had sold
+anything (`OLD-LI.md`). Thirteen people who have shared one small village for years
+already know who the blacksmith is; that is background, not something anyone had to
+tell them, and treating it as unknown until proven otherwise just made room for
+another invention.
+
+So every villager now carries a plain roster of everyone else in the village — name
+and trade, nothing more — alongside what they actually know. It says nothing about
+where anybody currently is, on purpose: knowing of Tomas is not the same as knowing
+where to find him right now, and that second thing is still `folk`, still keyed to
+who they can actually see.
+
+This does not weaken the rule it sits next to. A villager saying "Tomas" to the
+traveller is not Tomas telling the traveller his own name — `nameKnown` still checks
+only a villager's own testimony about themselves, so a name surfacing in someone
+else's speech does not put it on screen. What changed is only what a villager is
+allowed to already know about their own neighbours, not what the player is handed
+for free.
+
 ## There is no gossip mechanic
 
 There was one: two villagers in range each copied a random fact id to the other, and

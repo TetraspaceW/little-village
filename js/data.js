@@ -53,7 +53,15 @@ LG.LANGUAGES = {
     romanize: false, fontStack: "system-ui, sans-serif"
   },
   ar: {
-    name: 'Arabic (MSA)', native: 'العربية', flag: '🇸🇦',
+    // Standard Arabic isn't a country, so there's no Unicode flag sequence
+    // and no glyph for it in any emoji font. flag holds U+F0000 instead, a
+    // made-up private-use codepoint that a custom one-glyph font (see
+    // css/style.css's @font-face and tools/flags/README.md) resolves to a
+    // hand-rendered Arab League flag matching the local Noto Color Emoji
+    // style — everywhere else this string just goes into the DOM as text.
+    // Overridden just below on Gecko, where that glyph doesn't survive
+    // #setLang's own dropdown popup.
+    name: 'Arabic (MSA)', native: 'العربية', flag: '\u{F0000}',
     tag: 'ar', romanTag: 'ar',
     // Bare Arabic script carries no short vowels, so an unvocalised sentence
     // is legible only to someone who already half knows it — no help at all
@@ -72,6 +80,32 @@ LG.LANGUAGES = {
     fontStack: "'Noto Naskh Arabic', 'Noto Sans Arabic', system-ui, sans-serif"
   }
 };
+
+/* Gecko's own #setLang renders the closed box from page @font-face fonts
+   fine, but its *open* dropdown popup — at least on Linux — doesn't
+   consult page fonts for <option> text at all, so the custom glyph above
+   shows there as a bare "no glyph anywhere" placeholder instead of a flag
+   (see tools/flags/README.md's "Known limitation" section for how that
+   was confirmed). A plain Unicode flag has no such gap, since it's drawn
+   by the platform's own emoji font rather than a page-authored one — so
+   Gecko gets Saudi Arabia's flag here instead of the custom glyph: not
+   accurate to the Arab League, but a real flag beats a broken one.
+   Sniffed by the Gecko+rv: pair MDN recommends over a bare "Firefox"
+   check: the bug is a property of the engine, so this should catch any
+   Gecko fork (Floorp included), and other engines are known to plant a
+   "like Gecko" token specifically to dodge sniffing that checks for the
+   word "Gecko" alone.
+   https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Browser_detection_using_the_user_agent
+   This DOM patch runs inline here rather than waiting for DOMContentLoaded
+   because data.js loads at the end of <body>, after #setLang already
+   exists in the parsed document — see index.html's script order. */
+if (/Gecko/.test(navigator.userAgent) && /rv:/.test(navigator.userAgent)) {
+  LG.LANGUAGES.ar.flag = '\u{1F1F8}\u{1F1E6}';
+  var arOption = document.querySelector('#setLang option[value="ar"]');
+  if (arOption) {
+    arOption.textContent = arOption.textContent.replace('\u{F0000}', '\u{1F1F8}\u{1F1E6}');
+  }
+}
 
 /* Difficulty is how hard the village is to *read*, not how far you have to walk.
    Chain length is rolled per village (see `depth` below) and is the same range at

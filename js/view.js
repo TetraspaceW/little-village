@@ -117,6 +117,19 @@ LG.view = (function () {
               .map(o => ({ id: o.def.id, name: o.def.name, job: o.def.job, where: where(o) }));
   }
 
+  /* Everyone else in the village, by name and trade — not something a
+     villager has to be told, the way a chain fact is, or the way the
+     *player* has to hear a name from its owner (see `nameKnown`). Thirteen
+     people who have lived alongside each other for years already know who
+     the blacksmith is; not knowing would be the surprising thing. This is
+     silent on where anyone currently is, on purpose — that is `folk`, and it
+     stays keyed to who they can actually see, because a villager can know of
+     someone without knowing where to find them right now. */
+  function roster(n) {
+    const all = (LG.game && LG.game.npcs) || [];
+    return all.filter(o => o !== n).map(o => ({ id: o.def.id, name: o.def.name, job: o.def.job }));
+  }
+
   /* --------------------------------------------------------- what they hold */
   function itemised(counts, extra) {
     const c = counts || {};
@@ -182,6 +195,7 @@ LG.view = (function () {
       here: where(n),
       when: LG.time.describe(),
       folk: firstOf(folk(n), t.folk),
+      roster: roster(n),
       errand: errand(n),
       /* What a villager may sell is a prior, not a list: `sells` is what they
          plainly keep and `sellsTags` is the run of the trade. `stock` is the
@@ -203,6 +217,6 @@ LG.view = (function () {
     };
   }
 
-  return { of, where, open, atCounter, arrived, knows, folk, ownVoice, near, sourced, held, heldEntries,
+  return { of, where, open, atCounter, arrived, knows, folk, roster, ownVoice, near, sourced, held, heldEntries,
            TRIM, SIGHT };
 })();

@@ -82,9 +82,14 @@ LG.world = (function () {
   /* Building roofs in screen space, for the sky to keep the rain off. The
      overhang is included, so precipitation stops at the eaves rather than at
      the wall. */
-  function roofRects(cam, vw, vh) {
+  function roofRects(cam, vw, vh, dpr) {
     const out = [];
-    const ox = Math.round(cam.x), oy = Math.round(cam.y);
+    /* Must land on the exact same offset draw() actually translated by, or the
+       weather clip drifts off the roof it's meant to mask by up to a device
+       pixel at a fractional dpr. Snapping to whole *device* pixels here (not
+       re-rounding to a whole CSS pixel) is what keeps the two in step. */
+    const d = dpr || 1;
+    const ox = Math.round(cam.x * d) / d, oy = Math.round(cam.y * d) / d;
     for (const b of buildings) {
       const x = b.x * TILE - 6 - ox, y = b.y * TILE - 10 - oy;
       const w = b.w * TILE + 12, h = b.h * TILE + 10;

@@ -1492,7 +1492,7 @@ LG.game = (function () {
     }
 
     ctx.restore();
-    LG.sky.draw(ctx, vw, vh, W.roofRects(cam, vw, vh));
+    LG.sky.draw(ctx, vw, vh, W.roofRects(cam, vw, vh, dpr));
 
     const g = ctx.createRadialGradient(vw / 2, vh / 2, Math.min(vw, vh) * 0.42,
                                        vw / 2, vh / 2, Math.max(vw, vh) * 0.75);

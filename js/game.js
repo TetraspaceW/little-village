@@ -19,7 +19,7 @@ LG.game = (function () {
   const state = { inv: {}, notes: [], deeds: [], won: false, board: [] };
 
   let plan = null;                 // the generated errand chain (chain.js)
-  let canvas, ctx, cam = { x: 0, y: 0 }, vw = 0, vh = 0;
+  let canvas, ctx, cam = { x: 0, y: 0 }, vw = 0, vh = 0, dpr = 1;
   let player, npcs = [], beast = null, worldItem = null;
   let whereFact = null;             // the fact saying where the world thing is lying
   let chainNeeds = {};              // items the errand cannot be finished without
@@ -643,7 +643,7 @@ LG.game = (function () {
 
   function resize() {
     const r = canvas.parentElement.getBoundingClientRect();
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    dpr = Math.min(2, window.devicePixelRatio || 1);
     vw = Math.floor(r.width); vh = Math.floor(r.height);
     canvas.width = vw * dpr; canvas.height = vh * dpr;
     canvas.style.width = vw + 'px'; canvas.style.height = vh + 'px';
@@ -1446,7 +1446,13 @@ LG.game = (function () {
     ctx.fillStyle = '#3f6b3a';
     ctx.fillRect(0, 0, vw, vh);
     ctx.save();
-    ctx.translate(-Math.round(cam.x), -Math.round(cam.y));
+    /* Rounded to whole *device* pixels, not CSS pixels: the canvas is scaled by
+       dpr, so at a fractional dpr (125%/150% display scaling is common) a
+       camera offset that is merely a whole CSS pixel can still land tile edges
+       on a fractional device pixel. Adjacent ground tiles then each get their
+       own antialiased edge instead of sharing one crisp seam, which prints the
+       tile grid as a lattice of faint lines over the terrain. */
+    ctx.translate(-Math.round(cam.x * dpr) / dpr, -Math.round(cam.y * dpr) / dpr);
 
     const room = W.buildingUnder(player);
 

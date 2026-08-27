@@ -1,21 +1,25 @@
-/* data.js — languages, phrasebook, the item pool, places, and the six villagers.
-   The quest chain itself is generated at runtime; see chain.js.
-   Plain <script> (no modules) so the game runs from file:// by double-click. */
+/* data.js — static game data: languages, phrasebook, item pool, places,
+   and the villager roster.
+   The errand chain itself is generated at runtime; see chain.js.
+   Plain <script> tags (no ES modules), so the game can be run by opening
+   index.html directly as a file:// URL. */
 window.LG = window.LG || {};
 
-/* `tag` and `romanTag` are BCP-47, and they are what goes in the `lang`
-   attribute wherever a villager's words reach the page. A font stack is a
-   request; `lang` is the fact, and the browser needs the fact: Han characters
-   are shared between Chinese and Japanese but drawn differently in each, so an
-   untagged 直 gets whichever of the two the browser happened to reach for. It
-   also tells the line breaker, the spellchecker, an IME and a screen reader
-   which language they are looking at — none of which a font can say.
+/* `tag` and `romanTag` are BCP-47 codes, used in the `lang` attribute
+   wherever a villager's words appear on the page. A font stack is a
+   rendering preference; `lang` is the actual fact the browser needs — Han
+   characters are shared between Chinese and Japanese but rendered
+   differently in each, so an untagged 直 could render with either
+   language's glyph shapes depending on browser default. `lang` also
+   drives the line breaker, spellchecker, IME, and screen reader — none of
+   which a font stack alone can inform.
 
-   `zh-Hans` rather than plain `zh` because the village writes simplified, and
-   `zh` alone leaves the browser to guess between the two scripts. The `-Latn`
-   tags mark a romanisation for what it is: the same language written in Latin
-   letters. Pinyin is still Chinese, just not in its own script — and tagging it
-   `en` would invite an English spellchecker to underline every syllable. */
+   `zh-Hans` rather than plain `zh`, since the village writes simplified
+   Chinese and `zh` alone leaves the script ambiguous. The `-Latn` suffix
+   marks a romanization as what it is — the same language, written in
+   Latin letters. Pinyin is still Chinese, just not in Chinese script;
+   tagging it `en` would incorrectly invite an English spellchecker to
+   flag every syllable. */
 LG.LANGUAGES = {
   ru: {
     name: 'Russian', native: 'Русский', flag: '🇷🇺',
@@ -32,7 +36,7 @@ LG.LANGUAGES = {
     name: 'Chinese (Mandarin)', native: '中文', flag: '🇨🇳',
     tag: 'zh-Hans', romanTag: 'zh-Latn',
     romanize: true, romanLabel: 'pinyin',
-    // asking for "pinyin" alone got tone marks on some syllables and not others
+    // Asking for plain "pinyin" produced inconsistent tone-mark coverage across syllables.
     romanNote: 'with tone marks on every syllable \u2014 n\u01d0 h\u01ceo, not ni hao',
     fontStack: "'Noto Sans SC', system-ui, sans-serif"
   },
@@ -53,52 +57,52 @@ LG.LANGUAGES = {
     romanize: false, fontStack: "system-ui, sans-serif"
   },
   ar: {
-    // Standard Arabic isn't a country, so there's no Unicode flag sequence
-    // and no glyph for it in any emoji font. flag holds U+F0000 instead, a
-    // made-up private-use codepoint that a custom one-glyph font (see
-    // css/style.css's @font-face and tools/flags/README.md) resolves to a
-    // hand-rendered Arab League flag matching the local Noto Color Emoji
-    // style — everywhere else this string just goes into the DOM as text.
-    // Overridden just below on Gecko, where that glyph doesn't survive
-    // #setLang's own dropdown popup.
+    // Standard Arabic isn't a country, so there's no Unicode flag
+    // sequence or emoji-font glyph for it. `flag` holds U+F0000 instead,
+    // a private-use codepoint that a custom one-glyph font (see
+    // css/style.css's @font-face and tools/flags/README.md) maps to a
+    // custom flag glyph styled to match Noto Color Emoji. Elsewhere this
+    // string is just inserted into the DOM as text.
+    // Overridden below on Gecko, where that glyph doesn't render inside
+    // #setLang's dropdown popup.
     name: 'Arabic (MSA)', native: 'العربية', flag: '\u{F0000}',
     tag: 'ar', romanTag: 'ar',
-    // Bare Arabic script carries no short vowels, so an unvocalised sentence
-    // is legible only to someone who already half knows it — no help at all
-    // to a learner. A parallel Latin line is how zh and ja solve that, but
-    // Arabic already has the tool built in: tashkeel, the diacritics that
-    // children's books, the Qur'an and learner texts write and everyone
-    // else omits. That is the native answer, not a transliteration bolted
-    // on beside it — so `romanize` stays off and `diacritics` (below) asks
-    // for full tashkeel in the Arabic itself, the same slot furigana fills
-    // for kanji: an annotation on the actual script, not a second script.
+    // Bare Arabic script has no short vowels, so an unvocalized
+    // sentence is only legible to someone who already half-knows the
+    // word — no help to a learner. zh and ja solve this with a separate
+    // Latin romanization line; Arabic instead has tashkeel, the
+    // diacritics used in children's books, the Qur'an, and learner texts
+    // (and omitted everywhere else). That's the native solution, not a
+    // transliteration bolted on — so `romanize` stays off, and
+    // `diacritics` (below) requests full tashkeel on the Arabic text
+    // itself, the same role furigana plays for kanji: annotation on the
+    // actual script, not a second script alongside it.
     romanize: false,
     diacritics: true,
-    // right-to-left is a fact about the script, the same as `tag` and
-    // `fontStack` are; css/style.css keys off `lang="ar"` to set it, so
-    // nothing that already tags a span with L.tag needs to change here
+    // Right-to-left is a property of the script itself, same as `tag`
+    // and `fontStack` — css/style.css sets it via a `[lang="ar"]` CSS
+    // rule, so any span already tagged with L.tag gets it automatically.
     fontStack: "'Noto Naskh Arabic', 'Noto Sans Arabic', system-ui, sans-serif"
   }
 };
 
-/* Gecko's own #setLang renders the closed box from page @font-face fonts
-   fine, but its *open* dropdown popup — at least on Linux — doesn't
-   consult page fonts for <option> text at all, so the custom glyph above
-   shows there as a bare "no glyph anywhere" placeholder instead of a flag
-   (see tools/flags/README.md's "Known limitation" section for how that
-   was confirmed). A plain Unicode flag has no such gap, since it's drawn
-   by the platform's own emoji font rather than a page-authored one — so
-   Gecko gets Saudi Arabia's flag here instead of the custom glyph: not
-   accurate to the Arab League, but a real flag beats a broken one.
-   Sniffed by the Gecko+rv: pair MDN recommends over a bare "Firefox"
-   check: the bug is a property of the engine, so this should catch any
-   Gecko fork (Floorp included), and other engines are known to plant a
-   "like Gecko" token specifically to dodge sniffing that checks for the
-   word "Gecko" alone.
+/* Workaround for a Gecko bug: #setLang's *closed* box renders page
+   @font-face fonts correctly, but its *open* dropdown popup (at least on
+   Linux) doesn't apply page fonts to <option> text at all, so the custom
+   flag glyph renders as a missing-glyph placeholder there instead of a
+   flag (confirmed in tools/flags/README.md's "Known limitation" section).
+   A plain Unicode flag doesn't have this problem, since it's rendered by
+   the platform's emoji font rather than a page-supplied one — so Gecko
+   gets Saudi Arabia's flag substituted here: not accurate to the Arab
+   League, but a working flag beats a broken glyph.
+   Detected via the Gecko+"rv:" pair MDN recommends over a bare "Firefox"
+   check — this is an engine-level bug, so it should also catch Gecko
+   forks (e.g. Floorp), and some other engines deliberately include a
+   "like Gecko" token to avoid being caught by checks for "Gecko" alone.
    https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Browser_detection_using_the_user_agent
-   This DOM patch runs inline here rather than waiting for DOMContentLoaded
-   because data.js loads at the end of <body>, after #setLang already
-   exists in the parsed document — see index.html's script order. */
+   Runs inline here rather than on DOMContentLoaded because data.js is
+   loaded at the end of <body>, by which point #setLang already exists in
+   the parsed document — see index.html's script order. */
 if (/Gecko/.test(navigator.userAgent) && /rv:/.test(navigator.userAgent)) {
   LG.LANGUAGES.ar.flag = '\u{1F1F8}\u{1F1E6}';
   var arOption = document.querySelector('#setLang option[value="ar"]');
@@ -107,39 +111,47 @@ if (/Gecko/.test(navigator.userAgent) && /rv:/.test(navigator.userAgent)) {
   }
 }
 
-/* Difficulty is how hard the village is to *read*, not how far you have to walk.
-   Chain length is rolled per village (see `depth` below) and is the same range at
-   every level, because length turned out to be a poor difficulty knob — a longer
-   chain deals out more facts to more villagers, which gives you more places to
-   break in, so a five-link errand could easily be easier than a two-link one.
-   What difficulty actually sets is who knows what: `spread` is how many villagers
-   beyond the owner are told a chain fact, `taper` takes holders away as you go
-   deeper down the chain (so length now *buries* the tail instead of exposing it),
-   and `gossip` is how much of the chain the village gossip has picked up — she is
-   a skeleton key at beginner and knows nothing but opinions at advanced.
+/* Difficulty controls how hard the village is to *understand*, not how
+   far the player has to walk. Chain length is randomized per village
+   (see `depth` in chain.js) using the same range at every difficulty —
+   length turned out to be a poor difficulty knob, since a longer chain
+   distributes facts to more villagers, giving more entry points to solve
+   it, so a longer errand could easily be *easier* than a short one.
+   What difficulty actually controls is who knows what: `spread` is how
+   many villagers beyond a fact's owner also know it, `taper` reduces
+   that count for facts further down the chain (so length now hides
+   information rather than exposing more of it), and `gossip` sets how
+   much of the whole chain the designated village gossip has picked up —
+   she knows nearly everything at beginner and only opinions at advanced.
 
-   `prompt` is how a villager speaks *to the traveller*, so it is written as
-   accommodation — meeting a learner where they are. `register` is for villagers
-   talking to each other, where accommodation would be absurd: they are natives and
-   the player is only overhearing. At advanced it is empty, because two natives with
-   nobody to accommodate simply talk.
+   `prompt` governs how a villager speaks *to the player* — written as
+   deliberate accommodation of a learner. `register` governs villager-to-
+   villager speech, where accommodation wouldn't make sense (two natives
+   talking, with the player only overhearing) — empty at advanced, since
+   two natives speaking freely need no register constraint at all.
 
-   But overhearing is a mechanic, not scenery, so `register` still has to land near
-   the level. The beginner line used to end — the way you talk when you are not
-   thinking about it — which is an instruction to be unguarded, and it beat the
-   plain-words clause in front of it every time: a beginner village gossiped in
-   蔫了, 白拿人家东西 and 回头再聊. What a register constrains is the words and the
-   sentences, so that is all it names now; who they are speaking to stays out of it,
-   which is the whole reason it is not `prompt`. */
+   `register` still has to roughly track difficulty, though, since
+   overhearing is a real mechanic, not just flavor text. An earlier
+   version of the beginner `register` ended with "the way you talk when
+   you're not thinking about it," meant to license natural, unguarded
+   speech — but models weighted that phrase over the plain-words
+   instruction before it, producing beginner-village gossip using
+   advanced vocabulary and idiom. `register` now only constrains
+   vocabulary/sentence complexity, not who's being addressed — which is
+   also why it's a separate field from `prompt` rather than reused. */
 LG.DEPTH = [4, 7];                       // links per errand, rolled per village
 
-/* How to write furigana — one spec, used by every call site that asks for it.
+/* Furigana formatting spec — one shared definition, used by every call
+   site that requests it.
 
-   It was five separate wordings before, and four of the five illustrated it with
-   the bare word \u6f22\u5b57, which never shows what to do about okurigana. \u7d50\u3076 is exactly
-   the ambiguous case, and with no example for it the model fell back to writing
-   \u7d50\u3076[\u3080\u3059\u3076] \u2014 a perfectly normal plain-text convention that our markup
-   was not expecting. The worked line below carries an okurigana word on purpose. */
+   Previously five separate, slightly different wordings existed. Four of
+   them illustrated the format using the bare word \u6f22\u5b57 ("kanji"), which
+   never demonstrates how to handle okurigana (a word's non-kanji tail).
+   \u7d50\u3076 ("to tie") is exactly that ambiguous case, and with no example
+   covering it, models fell back to the plain-text bracket convention
+   \u7d50\u3076[\u3080\u3059\u3076] instead of ruby markup — a legitimate convention, just
+   not the one this game's markup parser expects. The worked example line
+   below deliberately includes an okurigana word to cover this case. */
 LG.FURIGANA = [
   'Write the readings as ruby tags, inline: <ruby>\u6751<rt>\u3080\u3089</rt></ruby>',
   'Okurigana stays outside the tag \u2014 \u7d50\u3076 is <ruby>\u7d50<rt>\u3080\u3059</rt></ruby>\u3076, not <ruby>\u7d50\u3076<rt>\u3080\u3059\u3076</rt></ruby>.',
@@ -149,11 +161,12 @@ LG.FURIGANA = [
   'Ruby tags, not square brackets \u2014 \u7cf8[\u3044\u3068] is not the format.'
 ].join('\n');
 
-/* How to write tashkeel \u2014 Arabic's equivalent of furigana: not a separate
-   romanisation line but full vowel marks on the script that is actually
-   spoken, the way a children's book, the Qur'an or a learner's textbook
-   writes it, rather than the bare consonantal skeleton adults read from
-   context. One spec, used by every call site that asks for it. */
+/* Tashkeel formatting spec — Arabic's equivalent of furigana. Not a
+   separate romanization line, but full vowel diacritics on the Arabic
+   script itself, the way children's books, the Qur'an, and learner texts
+   write it — as opposed to the bare consonantal skeleton fluent readers
+   normally read from context. One shared spec, used by every call site
+   that requests it. */
 LG.TASHKEEL = [
   'Mark every letter: the three short vowels (\u064e fatha, \u064f damma, \u0650 kasra), sukun \u0652 on a vowel-less consonant, shadda \u0651 on a doubled one, and tanween (\u064b \u064c \u064d) where the grammar calls for it.',
   'A whole line, fully marked: \u0623\u064e\u064a\u0652\u0646\u064e \u0627\u0644\u0645\u064e\u0637\u0652\u0639\u064e\u0645\u064f\u061f',
@@ -754,7 +767,7 @@ LG.ITEMS = {
   }
 };
 
-/* What a thing is worth when nobody has priced it explicitly. */
+/* Fallback price when an item has no explicit `price` field. */
 LG.PRICE_BY_TAG = { beast: 6, prize: 4, shop: 2, hold: 2, ground: 1 };
 LG.priceOf = function (id) {
   const it = LG.ITEMS[id];
@@ -768,40 +781,42 @@ LG.priceOf = function (id) {
 LG.BEAST_NAMES = ['Musya', 'Bella', 'Pip', 'Nina', 'Rufus', 'Kolya', 'Tula', 'Bruno'];
 
 /* ------------------------------------------------------------- the map
-   The village sits in the southern half of the map. North of it is forest —
-   a real expanse of it, big enough to lose things in — and east of it, at the
-   end of the high street, the platform of an unmanned railway halt, which is
-   where the traveller gets off.
+   The village occupies the southern half of the map. North of it is a
+   large forest, big enough to plausibly lose things in; east of it, at
+   the end of the high street, is the platform of an unmanned railway
+   halt where the traveller arrives.
 
-   `NORTH_WOODS` is how far south of the map's top edge the village begins. It
-   is written down here rather than folded into the numbers because the forest
-   and the village are laid out against opposite edges: the village grew from
-   its own north edge and the woods run back from there to the treeline. Every
-   coordinate in this file and in world.js is nonetheless *absolute* — this
-   constant tells you where the boundary is, and is not an offset anyone has to
-   apply. Two answers to "where is the bakery" is exactly the drift this
-   codebase keeps paying for. */
+   `NORTH_WOODS` is the row where the village begins, counting from the
+   map's top edge. Kept as a separate named constant rather than baked
+   into other coordinates, since the forest and village are laid out from
+   opposite edges (the village grows south from its own north edge; the
+   woods extend north from the treeline). Every coordinate in this file
+   and world.js is still *absolute* — this constant only marks where the
+   boundary between the two regions is, not an offset to apply elsewhere.
+   Coordinates expressed relative to each other in some places and
+   absolutely in others is exactly the kind of drift that's caused bugs
+   in this codebase before. */
 LG.NORTH_WOODS = 40;             // rows of forest before the village starts
 
-/* Where the traveller gets off the train: on the platform, a step from the
-   nameboard and a short walk from the end of the high street. */
+/* Where the traveller arrives: on the platform, near the nameboard and
+   a short walk from the end of the high street. */
 LG.START = { x: 86, y: 61 };
 
-/* The green in the middle of the village. Anyone idle drifts here by day. */
+/* The village green. Idle villagers drift here during the day. */
 LG.GREEN = { x: 31, y: 67, w: 20, h: 12 };
 
-/* Just past the hall, where a board stands for anyone to pin a note to. It is
-   a place a villager can choose to go, the same as the green or their own
-   work — see `placesFor` in game.js — and not a scripted stop on anyone's
-   round. */
+/* The noticeboard's location, just past the hall. This is a place a
+   villager can freely choose to walk to (see `placesFor` in game.js),
+   same as the green or their own workplace — not a scripted stop on any
+   fixed routine. */
 LG.BOARD_SPOT = { x: 43, y: 65, w: 3, h: 2 };
 
 /* --------------------------------------------------------- what a sign says
-   Buildings and flavour spots keep their plain English `label` everywhere in
-   the code — it is what everything else keys off, from `buildingByLabel` to a
-   villager's own workplace. A sign is read, not looked up, so what is
-   actually painted on it is in the language the village speaks, with English
-   the fallback and the gloss underneath. */
+   Buildings and flavor spots use their plain English `label` as an
+   internal id everywhere in the code (buildingByLabel, a villager's
+   workplace, etc). A sign, though, is something the player reads, so its
+   displayed text is in the village's actual language, falling back to
+   English, with the English gloss shown underneath. */
 LG.PLACENAMES = {
   'Village Hall': { en: 'Village Hall', ru: 'Сельская управа', zh: '村公所', ja: '村役場', fr: 'Mairie', es: 'Ayuntamiento', ar: 'قاعة القرية' },
   Bakery:         { en: 'Bakery', ru: 'Пекарня', zh: '面包店', ja: 'パン屋', fr: 'Boulangerie', es: 'Panadería', ar: 'مخبز' },
@@ -831,21 +846,22 @@ LG.PLACENAMES = {
   'Forest Spring':{ en: 'Forest Spring', ru: 'Лесной родник', zh: '林中泉', ja: '森の泉', fr: 'La Source', es: 'El Manantial', ar: 'نبع الغابة' },
   'Deep Woods':   { en: 'Deep Woods', ru: 'Чаща', zh: '密林深处', ja: '森の奥', fr: 'Le Bois Profond', es: 'La Espesura', ar: 'الغابة العميقة' }
 };
-/* `label` is the internal id (a building's `label`, or one of the bare strings
-   above); everything else always addresses a place by that id and only ever
-   reaches for the translated form when it is about to put text on the screen. */
+/* `label` is always the internal id (a building's `label`, or one of the
+   bare strings above); code addresses places by that id everywhere and
+   only looks up the translated form right before displaying text. */
 LG.placeName = function (label, lang) {
   const p = LG.PLACENAMES[label];
   return (p && (p[lang] || p.en)) || label;
 };
 
 /* --------------------------------------------------------- what the game says
-   A handful of short lines the game narrates about a deal, in the language the
-   village speaks rather than English — "you hand over the rope" is as much a
-   chance to read the language as anything a villager says. {items} and {name}
-   are substituted in; {cost} is left as a bare number so it reads the same
-   everywhere. English doubles as the gloss shown underneath, click-to-reveal,
-   the same convention the notebook and overheard speech already use. */
+   Short lines the game itself narrates about a completed deal, in the
+   village's language rather than English — "you hand over the rope" is
+   as much language-learning content as anything a villager says. {items}
+   and {name} are substituted in; {cost} stays a bare number so it reads
+   consistently across languages. The English version doubles as the
+   click-to-reveal gloss, same convention as the notebook and overheard
+   speech. */
 LG.CONJ = { ru: 'и', en: 'and', zh: '和', ja: 'と', fr: 'et', es: 'y', ar: 'و' };
 
 LG.TXN = {
@@ -886,19 +902,18 @@ LG.TXN = {
     ar: 'تم تسليم {item} من {name}.'
   }
 };
-/* Every other language's four lines put the traveller in the grammatical
-   subject seat — "you buy", "vous remettez" — because none of them mark the
-   subject's gender for it. Arabic verbs do, and the traveller's gender is
-   nothing the game ever asks after. Real Arabic solves exactly this problem
-   in exactly this genre — a receipt, a sign, a notice — by dropping the
-   personal subject altogether: تم + المصدر ("the buying/handing over/
-   returning of X took place"), the same impersonal construction that keeps
-   a road sign from having to guess who is reading it. So the Arabic lines
-   are impersonal throughout, not translations of "you" with a gender
-   picked for it. */
+/* All other languages' four lines put the traveller in the grammatical
+   subject position ("you buy", "vous remettez") since none of them mark
+   the subject's gender. Arabic verbs do, and the game never asks the
+   player's gender. Real Arabic solves this in exactly this genre —
+   receipts, signs, notices — by dropping the personal subject: تم +
+   المصدر ("the buying/handing over/returning of X took place"), the
+   same impersonal construction a road sign uses to avoid assuming who's
+   reading it. So the Arabic lines here are impersonal throughout, not
+   "you"-translations with an arbitrarily picked gender. */
 
 /* --------------------------------------------------------------- places
-   Where a dropped thing can turn up, and where an animal likes to loiter.
+   Locations where an item can turn up or an animal can be found.
    Rectangles are in tile coordinates; the game snaps to the nearest
    walkable tile inside them. */
 LG.PLACES = [
@@ -920,11 +935,11 @@ LG.PLACES = [
   { id: 'smithy', en: 'outside the smithy', rect: { x: 45, y: 83, w: 9, h: 3 } },
   { id: 'hut', en: 'by the hut at the east end', rect: { x: 70, y: 63, w: 5, h: 2 } },
 
-  /* Up in the woods. Each of these is a glade world.js clears to open ground
-     and threads a track to, which is what makes them findable — a thing lying
-     in a stand of trees nobody can walk into is not lost, it is gone. The
-     `label` is the name painted up on the map when you get near, so a glade
-     can be recognised from the sentence a villager said about it. */
+  /* Forest locations. Each is a glade that world.js clears to open,
+     walkable ground and connects via a track — without both, an item
+     placed inside an unreachable stand of trees would be effectively
+     gone, not just hidden. `label` is the name shown on a sign near the
+     glade, so a player can match it against what a villager described. */
   { id: 'glade', en: 'in the big clearing', label: 'Big Clearing',
     rect: { x: 30, y: 20, w: 8, h: 6 }, woods: true },
   { id: 'oak', en: 'under the old oak', label: 'Old Oak',
@@ -941,17 +956,18 @@ LG.PLACES = [
   { id: 'platform', en: 'on the station platform', rect: { x: 84, y: 52, w: 4, h: 13 } }
 ];
 
-/* The order and membership LG.PLACES had before the forest and the station
-   joined it. `LG.chain.generate` picks the terminal item's home with
-   `pick(LG.PLACES..., rnd)`, which reads nothing but the list's length and
-   order — so growing the list from 17 places to 24 is, on its own, enough to
-   send the same seed's item somewhere else. A save written under the old
-   list is not wrong, it is answering a question that has since changed
-   shape, and the only way to still get its answer is to ask the old
-   question. See the v1 migration in save.js.
+/* The order and membership LG.PLACES had before the forest and station
+   were added. `LG.chain.generate` picks the terminal item's location via
+   `pick(LG.PLACES..., rnd)`, which depends only on the list's length and
+   order — so growing the list from 17 to 24 entries is, on its own,
+   enough to send an unchanged seed's item to a different location. A
+   save written against the old list isn't wrong; it was answering a
+   question (which of N places) whose N has since changed, so replaying
+   that same seed correctly requires asking with the old list. See the v1
+   migration in save.js.
 
-   This is a historical fact about what LG.PLACES *used to be*, not a mirror
-   of what it is — it must never be "kept in sync" with the array above. */
+   This is a frozen historical snapshot of what LG.PLACES used to contain
+   — it must NOT be kept in sync with the array above. */
 LG.PLACES_V1_IDS = ['pond', 'mine', 'fields', 'green', 'hall', 'woods', 'behind', 'road',
                      'orchard', 'beeyard', 'mill', 'school', 'chapel', 'graves', 'woodpile',
                      'smithy', 'hut'];
@@ -977,8 +993,9 @@ LG.OPINIONS = [
 ];
 
 /* ----------------------------------------------------------- villagers
-   Identity only. What each one wants, knows and will trade is decided
-   per playthrough by chain.js. */
+   Static identity data only — name, job, appearance, base stock. What
+   each villager wants, knows, and will trade in a given playthrough is
+   decided per-game by chain.js. */
 LG.NPCS = [
   {
     id: 'mira', name: 'Mira', emoji: '👩‍🍳', color: '#e07a5f', job: 'the village baker',
@@ -1113,7 +1130,8 @@ LG.NPCS = [
 ];
 
 /* ---------------------------------------------------- gossip mutterings
-   What villagers say to each other in passing when they swap news. */
+   Filler lines shown as speech bubbles when villagers chat without an
+   API key available (see LG.dialogue.chatterLine). */
 LG.CHATTER = {
   ru: ['Слышал новость?', 'Да ты что!', 'Ага, точно.', 'Не может быть!'],
   en: ['Did you hear?', "You don't say!", "Aye, that's right.", 'Never!'],
@@ -1125,14 +1143,15 @@ LG.CHATTER = {
 };
 
 /* ------------------------------------------------------------ phrasebook
-   Clickable starter phrases. Keep these SHORT — they are training wheels.
+   Clickable starter phrases for the player. Keep these SHORT — they're
+   training wheels, not full sentences to study.
 
-   These are the traveller's own lines, several of them addressed to
-   whichever villager is on the other side of the box — a different register
-   from LG.TXN's impersonal captions, and one real Arabic phrasebooks don't
-   dodge the same way a sign does: they give the masculine second-person
-   form and leave it there, the ordinary convention for a phrasebook rather
-   than a notice. So these do too. */
+   These are the player's own lines, several addressed directly to the
+   villager — a different register from LG.TXN's impersonal captions.
+   Unlike LG.TXN's Arabic (which avoids gendering the player), these use
+   the masculine second-person form and leave it there, matching the
+   ordinary convention of a phrasebook (rather than a public notice, which
+   avoids assuming who's reading it). */
 LG.PHRASES = [
   { en: 'Hello!', ru: 'Привет!', zh: '你好！', fr: 'Bonjour !', es: '¡Hola!', ja: 'こんにちは！', ar: 'مرحباً!' },
   { en: 'Who are you?', ru: 'Кто ты?', zh: '你是谁？', fr: 'Qui es-tu ?', es: '¿Quién eres?', ja: 'あなたはだれですか？', ar: 'من أنت؟' },

@@ -1,24 +1,26 @@
 #!/usr/bin/env node
-/* logserver.js — serves the game and keeps the log.
+/* logserver.js — local dev server: serves the game, logs API calls, and
+   persists saves.
 
-   Two jobs in one process, on purpose. It serves the village over http, which
-   the API providers need anyway (they reject file:// origins), and it accepts
-   the game's own log posts on the same origin, so there is no CORS to arrange
-   and nothing to configure.
+   Combines these three jobs in one process deliberately: it serves the
+   game over http (required anyway, since the API providers reject
+   file:// origins), and having log/save posts land on that same origin
+   avoids any CORS configuration.
 
        node tools/logserver.js          then open http://localhost:8787
 
-   Everything the village does lands in logs/session-<when>.jsonl, one JSON
-   object per line: every API call with its prompt, its raw reply and the
-   model's own reasoning, plus what the villagers decided and remembered. If the
-   server is not running the game carries on and simply keeps no log.
+   Logs every game event to logs/session-<when>.jsonl (one JSON object per
+   line): each API call's prompt, raw reply, and reasoning trace, plus
+   villager decisions and memory updates. If this server isn't running,
+   the game runs fine but produces no log.
 
-   It also keeps the save. The game writes its village to this browser's
-   localStorage every few seconds and posts the identical bytes here, where they
-   land in saves/village.json — the same JSON, in a file you can read, copy to
-   another machine, or hand back to a browser that has never seen it. There is
-   no server-side idea of what a village is: this end only stores what the game
-   wrote, and refuses anything that is not a save. */
+   Also persists saves. The game writes to this browser's localStorage
+   every few seconds and POSTs the same bytes here, written to
+   saves/village.json as plain JSON — readable, copyable to another
+   machine, or loadable into a browser that's never seen it. The server
+   has no independent model of what a village is: it just stores
+   whatever the game posts (after checking it looks like a save) and
+   returns it unchanged. */
 const http = require('http'), fs = require('fs'), path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -29,18 +31,18 @@ const ENVFILE = path.join(ROOT, '.env');
 
 /* ---------------------------------------------------------------- .env
 
-   A browser cannot read a file off your disk, which is why the game used to
-   have no choice but to ask you to paste keys. A server can, so now that one is
-   here anyway, it reads .env and hands the keys to the page over the loopback
-   interface it is already serving from.
+   A browser can't read files off disk, so without this server the game
+   would have to ask the user to paste API keys manually. This server
+   reads .env and serves the keys to the page over the loopback interface
+   it's already serving from — saving a paste, not adding a new place the
+   keys are exposed to (they still end up in the browser either way). The
+   /env route only answers local connections, so nothing else on the
+   network can request them.
 
-   The keys do reach the browser, which is the same place they lived before —
-   this saves the pasting, not the trust. It refuses to answer anything that is
-   not a local connection, so nothing on your network can ask it for them. */
-/* Read .env into the process at startup, the way dotenv does it: anything
-   already in the environment wins, so `ANTHROPIC_API_KEY=… node tools/logserver.js`
-   beats the file without having to edit it. Loaded once — restart to pick up a
-   change, which is what everyone expects of a .env. */
+   .env is loaded once at startup, dotenv-style: values already present
+   in process.env take priority, so `ANTHROPIC_API_KEY=… node
+   tools/logserver.js` overrides the file without editing it. Changes to
+   .env require a restart to take effect. */
 function loadEnvFile() {
   let text = '';
   try { text = fs.readFileSync(ENVFILE, 'utf8'); } catch (e) { return 0; }
@@ -66,7 +68,8 @@ const PORT = Number(process.env.PORT || 8787);
 const FAKE = process.env.LOGSERVER_FAKE === '1';
 
 
-/* Only what the game has a use for, and only over the loopback interface. */
+/* Returns only the env values the game actually uses; served only over
+   the loopback interface (see isLocal()). */
 function settingsFromEnv() {
   const e = process.env;
   const pick = (...names) => { for (const n of names) if (e[n]) return e[n]; return ''; };
@@ -92,7 +95,7 @@ fs.mkdirSync(SAVES, { recursive: true });
 const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 const LOGFILE = path.join(LOGS, 'session-' + stamp + '.jsonl');
 let lines = 0;
-let savedSeed = '';        // the village last written, so the log says so once
+let savedSeed = '';        // seed of the last-written village, so we only log a save once per new village
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
@@ -106,11 +109,10 @@ function serve(req, res) {
   if (rel === '/') rel = '/index.html';
   const file = path.join(ROOT, path.normalize(rel).replace(/^(\.\.[/\\])+/, ''));
   if (!file.startsWith(ROOT)) { res.writeHead(403).end('no'); return; }
-  /* The keys live in a dotfile in the directory this is serving, so serving
-     dotfiles would hand them to anyone who guessed the name — /env is careful
-     about who it answers and it would have been beside the point. The logs are
-     full of prompts and are nobody's business either. The save has its own
-     route in and out below, so there is one way to reach it rather than two. */
+  /* Block static serving of dotfiles (.env lives in this directory —
+     serving it directly would leak keys even though /env itself is
+     access-controlled), logs/ (full of prompts), and saves/ (has its own
+     dedicated routes below, so there should be exactly one way to reach it). */
   const parts = path.relative(ROOT, file).split(path.sep);
   if (parts.some(p => p[0] === '.') || parts[0] === 'logs' || parts[0] === 'saves' ||
       parts[0] === 'node_modules') {
@@ -135,7 +137,7 @@ const server = http.createServer((req, res) => {
       const out = batch.map(e => JSON.stringify(e)).join('\n') + '\n';
       fs.appendFile(LOGFILE, out, () => {});
       lines += batch.length;
-      // one terse line per entry, so the terminal is a live view of the village
+      // print one terse line per entry, so the terminal shows the village live
       batch.forEach(e => {
         if (e.type === 'call') {
           console.log('  ' + String(e.kind).padEnd(9) + (e.who || '').padEnd(8) +
@@ -162,13 +164,13 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
-  /* The save, both ways.
+  /* POST /save — write the save file.
 
-     What arrives is checked for being a save at all and then written whole; the
-     shape of it is the game's business and is described in js/save.js, which is
-     the only thing that builds one. Written to a temporary name and renamed, so
-     that a crash halfway through a write leaves the last good save rather than
-     half of a new one. */
+     Only checks that the body looks like a save (has the right `game`
+     field and a village seed); the actual save shape is js/save.js's
+     responsibility, and this just stores whatever it's given. Written to
+     a temp file and renamed atomically, so a crash mid-write leaves the
+     previous good save intact rather than a corrupted partial file. */
   if (req.method === 'POST' && req.url === '/save') {
     if (!isLocal(req)) { res.writeHead(403).end('local connections only'); return; }
     let body = '';
@@ -220,8 +222,8 @@ const server = http.createServer((req, res) => {
   res.writeHead(405).end();
 });
 
-/* Loopback only. This process reads your keys and serves them; there is no
-   reason for anything else on the network to be able to reach it. */
+/* Bind to loopback only — this process reads and serves API keys, so
+   nothing else on the network should be able to reach it. */
 server.listen(PORT, '127.0.0.1', () => {
   console.log('village   http://localhost:' + PORT);
   console.log('log       ' + path.relative(process.cwd(), LOGFILE));

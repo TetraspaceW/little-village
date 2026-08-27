@@ -1,11 +1,10 @@
 /* time.js — the village calendar: hours, days, seasons and weather.
 
-   A monsoon climate on a 120-day year, thirty days to a season. The calendar is
-   rolled with the village — a village is a fresh arrival on a random day of the
-   year, so you are as likely to turn up in a blizzard as in high summer — and
-   then kept with it: `start`, `setWeather` and `setSnow` take the day, the hour,
-   the sky and the snow lying back off a save, so coming back to a village is
-   coming back to the afternoon you left it in rather than to a new one. */
+   Monsoon climate, 120-day year, 30 days per season. A new village rolls a
+   random day of the year (so you might arrive in a blizzard or in high
+   summer), and that state persists across saves: `start`, `setWeather` and
+   `setSnow` can be given the saved day/hour/weather/snow depth so a
+   reloaded village resumes at the point it was left, not at a fresh roll. */
 window.LG = window.LG || {};
 
 LG.time = (function () {
@@ -13,10 +12,11 @@ LG.time = (function () {
   const YEAR_DAYS = SEASON_DAYS * 4;
   let dayMs = 6 * 60 * 1000;          // real milliseconds per village day
 
-  /* Seasons do not tint the screen. A wash that is always on is a wash you stop
-     seeing, and it costs you the actual colours of the village all day long —
-     the hour is allowed to colour the world because it changes; the season is
-     told, not shown. `tone` is only the colour weather gloom takes on. */
+  /* Seasons do NOT tint the screen — an always-on wash becomes invisible
+     with use, and it would wash out the village's actual colors all day.
+     Only the hour tints the screen (it changes over the day, so it reads).
+     Season is communicated in text, not visuals. `tone` here is only used
+     as the color of the weather-gloom overlay (see `dim` below). */
   const SEASONS = [
     { id: 'winter', name: 'Winter', tone: '#b9c8de', warmth: 'cold and dry',
       note: 'The cold is dry and hard, and the blizzards come without much warning.' },
@@ -28,14 +28,14 @@ LG.time = (function () {
       note: 'Autumn is brief and cools steadily, a little more each morning.' }
   ];
 
-  /* Weather the villagers can actually feel. `talk` is what goes into their
-     prompt, so it reads as description rather than a label. */
-  /* `dim` is a grey laid over the whole screen, so it is kept for the four kinds
-     of weather that genuinely take the light away. Everything else is legible
-     from its particles alone — you can see that it is snowing without the
-     village being greyed out to tell you. `indoors` is what actually drives the
-     villagers under a roof, and is deliberately a separate knob: drizzle is
-     miserable to stand in without darkening the sky. */
+  /* Weather table. `talk` is the phrase inserted into the villagers' prompt
+     (a description, not a label). `dim` (0–1) is a grey overlay over the
+     whole screen — only set for weather that actually reduces visibility
+     (fog, heavy rain/snow, sandstorm); everything else is conveyed by its
+     particles alone, so e.g. plain snow doesn't grey out the scene. `indoors`
+     is a separate flag that drives villagers under a roof — kept independent
+     of `dim` because e.g. drizzle should send people indoors without
+     darkening the sky. */
   const WEATHER = {
     clear:     { name: 'clear',      talk: 'a clear sky', particles: null },
     cloud:     { name: 'overcast',   talk: 'a low grey overcast', particles: null },
@@ -57,7 +57,7 @@ LG.time = (function () {
     wind:      { name: 'high wind',  talk: 'a hard dry wind', particles: 'sand', rate: 0.5, wind: 1.8 }
   };
 
-  // what each season is likely to throw at you
+  // weighted [weather, weight] pairs per season, for pickWeather()
   const CLIMATE = {
     winter: [['clear', 6], ['frost', 4], ['cloud', 3], ['snow', 3], ['blizzard', 2], ['fog', 1]],
     spring: [['clear', 6], ['wind', 3], ['sandstorm', 2], ['cloud', 2], ['drizzle', 2]],
@@ -80,13 +80,13 @@ LG.time = (function () {
   let weather = 'clear';
   let weatherLeft = 0.2;
 
-  /* How much snow is lying, 0..1. The weather is what is falling; this is what
-     is left on the ground afterwards, and it is the half you can still see an
-     hour after the sky clears. It builds while snow falls and melts at a rate
-     the season sets — in a hard frost it does not melt at all, which is why a
-     winter can stay white through several changes of weather. */
+  /* Snow depth on the ground, 0..1 — distinct from current weather (what's
+     falling right now). Builds while snow falls, and persists/melts after it
+     stops, at a per-season rate; visible for a while after the sky clears.
+     Doesn't melt at all during a hard frost, so a winter can stay white
+     through several weather changes. */
   let lying = 0;
-  const MELT = { winter: 0.5, spring: 2.5, summer: 8, autumn: 3 };   // per village day
+  const MELT = { winter: 0.5, spring: 2.5, summer: 8, autumn: 3 };   // melt rate per village day
 
   function seasonIndex(d) { return Math.floor((d % YEAR_DAYS) / SEASON_DAYS); }
   function season() { return SEASONS[seasonIndex(day)]; }
@@ -112,8 +112,9 @@ LG.time = (function () {
     return table[0][0];
   }
 
-  /* Weather sits for a good part of a day — two or three turns of the sky is
-     plenty, and more than that just churns. */
+  /* Picks how long the new weather lasts, in village-day fractions.
+     Defaults to roughly a quarter to two-thirds of a day, so weather
+     doesn't flip too often. */
   function setWeather(id, hold) {
     weather = WEATHER[id] ? id : 'clear';
     weatherLeft = (typeof hold === 'number') ? hold : 0.22 + Math.random() * 0.4;
@@ -137,32 +138,32 @@ LG.time = (function () {
     day = (typeof d === 'number' && isFinite(d)) ? d : Math.floor(Math.random() * YEAR_DAYS);
     frac = (typeof f === 'number' && isFinite(f)) ? f : 0.35;
     setWeather(pickWeather());
-    /* Arrive in winter and the ground is already white — snow that fell before
-       you got here. Waiting the two minutes it takes to settle would make every
-       winter arrival look like autumn. */
+    // Seed snow depth on arrival in winter, rather than starting bare and
+    // waiting for it to accumulate — otherwise every winter start would
+    // look like autumn until enough snow had fallen in-game.
     lying = season().id === 'winter'
       ? (WEATHER[weather].particles === 'snow' ? 0.9 : 0.45) : 0;
   }
 
-  /* Where and when they are, for their prompt. Just the situation — the season's
-     standing note is only worth adding when the weather is not already saying it,
-     or you get "a blizzard" followed by a sentence about blizzards. */
+  /* Builds the situation description inserted into villagers' prompts.
+     Only appends the season's standing `note` when the current weather
+     isn't already descriptive (`w.particles` unset) — otherwise you'd get
+     "a blizzard" immediately followed by a sentence about blizzards. */
   function describe() {
     const s = season(), w = WEATHER[weather];
     const line = 'It is ' + phase().name + ' of day ' + dayOfSeason() + ' of ' + s.name +
                  ', ' + s.warmth + '. Outside: ' + w.talk + '.';
-    /* What is lying is not what is falling: a clear winter morning over a white
-       village should not have them talking as though the snow had gone. The
-       depth, and nothing read into it — "over everything" is a flourish and
-       "old snow" dates it, and both are the sort of thing a villager should be
-       arriving at rather than being handed. */
+    // Ground snow depth is reported separately from current weather (a
+    // clear winter morning can still have snow on the ground). Kept as a
+    // plain depth statement — no embellishment like "old snow" that would
+    // imply a timeline the game doesn't track.
     const under = lying > 0.5 ? ' There is snow lying on the ground.'
                 : lying > 0.12 ? ' There is snow lying in patches on the ground.' : '';
-    const dull = !w.particles;                 // nothing falling, so nothing to remark on
+    const dull = !w.particles;                 // nothing falling — weather has nothing to add
     return (dull ? line + ' ' + s.note : line) + under;
   }
 
-  /* A short label for the HUD. */
+  /* Short weather/date label for the HUD. */
   function label() {
     return season().name + ' ' + dayOfSeason() + ' · ' + clock() + ' · ' + WEATHER[weather].name;
   }

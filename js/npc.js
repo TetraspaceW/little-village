@@ -1,4 +1,4 @@
-/* npc.js — the little guys: wandering, memory, meeting, and how they're drawn. */
+/* npc.js — villager/creature state, movement, meetings, and rendering. */
 window.LG = window.LG || {};
 
 LG.actors = (function () {
@@ -19,18 +19,17 @@ LG.actors = (function () {
       bubble: null, bubbleT: 0,
       gossipCool: 5 + Math.random() * 10,
       metPlayer: false, tradeDone: false,
-      /* Whether the traveller has actually been told this villager's name —
-         see LG.game.displayName. Not the same thing as metPlayer: you can
-         stand across a counter from somebody all afternoon without either of
-         you asking. */
+      /* Whether the player has actually been told this villager's name —
+         see LG.game.displayName. Distinct from metPlayer: they can have
+         talked without a name ever being exchanged. */
       nameKnown: false,
-      patch: def.home,          // the rectangle they are pottering about in
-      route: null,              // a path being walked to somewhere else
+      patch: def.home,          // rectangle they currently wander within
+      route: null,              // path currently being walked, if any
       routeCool: 4 + Math.random() * 20
     };
   }
 
-  /* An animal that wanders its patch until somebody picks it up. */
+  /* Creates an animal that wanders within its home patch until caught. */
   function makeCreature(spec) {
     const home = spec.home;
     const spot = W.nearestOpen(home.x + (home.w >> 1), home.y + (home.h >> 1));
@@ -55,18 +54,19 @@ LG.actors = (function () {
     return false;
   }
 
-  /* Villagers keep their own hours: out and about on the green by day, back to
-     their own patch at night, and a slow drift between the two in between. */
-  /* Where the villager decides to be.
+  /* Decides where a villager should be and walks them there.
 
-     The decision belongs to the helper model — see LG.llm.intent for why. This
-     function's job is to notice that a decision is due, ask for one, and walk
-     there. `decide` is supplied by the game so this file stays free of the API.
+     The actual decision is made by the helper model (see LG.llm.intent).
+     This function's job is only to notice a decision is due, request one,
+     and execute the resulting walk. `decide` is injected by the caller
+     (game.js) so this module doesn't depend on the API layer.
 
-     A decision is due when something has actually changed: they got where they
-     were going, the hour turned, the weather broke, or they learned something.
-     A villager with no reason to move does not get asked, and so costs nothing. */
-  const PHASE_TABLE = {                 // the fallback, for no key and failed calls
+     A decision is only requested when something has actually changed
+     (arrived, hour changed, weather changed, or learned a new fact) — a
+     villager with no reason to move isn't asked, so idle villagers cost
+     nothing. PHASE_TABLE below is the fallback used with no API key or on
+     a failed call. */
+  const PHASE_TABLE = {
     dawn:      { work: 0.2, green: 0.1 },
     morning:   { work: 0.6, green: 0.3 },
     midday:    { work: 0.4, green: 0.5 },
@@ -86,11 +86,13 @@ LG.actors = (function () {
     return a.def.home;
   }
 
-  /* What has to be true for the world to be worth reconsidering. The last term
-     is just the passage of time: people finish what they came to do and think
-     again. Without it a villager who settles at midday stands there until dusk,
-     and a village where nobody ever changes their mind within an hour is dead. */
-  const RETHINK = 45;                             // seconds before it is worth another look
+  /* Builds a string key summarizing the villager's current situation; a
+     change in this key is what triggers reconsidering their location (see
+     routine() below). The last term is a periodic timer (RETHINK seconds)
+     so villagers reconsider occasionally even with nothing else changed —
+     without it, a villager who settled at midday would stay put until
+     dusk regardless of anything else happening around them. */
+  const RETHINK = 45;                             // seconds between periodic reconsiderations
   function situation(a) {
     return LG.time.phase().id + '|' + (LG.time.info.name || '') + '|' +
            (a.patch ? a.patch.x + ',' + a.patch.y : '-') + '|' + a.facts.length +
@@ -99,7 +101,7 @@ LG.actors = (function () {
 
   function routine(a, dt, green, decide) {
     if (a.frozen) { a.route = null; return; }
-    if (a.route && a.route.length) return;          // already on their way
+    if (a.route && a.route.length) return;          // still walking a previous route
 
     a.lived = (a.lived || 0) + dt;
     a.routeCool -= dt;
@@ -107,34 +109,34 @@ LG.actors = (function () {
     if (a.routeCool > 0) return;
 
     const now = situation(a);
-    if (a.thought === now && !a.wantsGo) return;    // nothing has changed; stay put
+    if (a.thought === now && !a.wantsGo) return;    // situation() unchanged — nothing to do
     a.routeCool = 6 + Math.random() * 8;
 
-    let want = a.wantsGo;                           // a decision that arrived earlier
+    let want = a.wantsGo;                           // a decision that arrived asynchronously earlier
     if (want) { a.wantsGo = null; a.thought = now; }
     else if (a.deciding) {
-      // A call that never comes back must not freeze someone mid-street forever.
+      // An async decide() call may never resolve — don't let that freeze the
+      // villager in place indefinitely; give up on it after 12s.
       a.deciding += dt;
       if (a.deciding < 12) return;
       a.deciding = false;
     }
     else {
       a.thought = now;
-      // If they can be asked, ask; the answer lands in a.wantsGo and they walk
-      // next tick. If they were asked too recently, the table covers the gap
-      // rather than leaving them standing in the road.
+      // Request a decision if possible; the result lands in a.wantsGo and
+      // is picked up next tick. If decide() declines (rate-limited, no key,
+      // etc.), fall back to the PHASE_TABLE dice roll immediately instead
+      // of leaving the villager standing still.
       if (decide && decide(a, green)) { a.deciding = 0.0001; return; }
       want = byDice(a, green);
     }
     if (!want || want === a.patch) return;
 
-    /* Aim for somewhere in the patch you can actually get to.
-
-       Open is not the same as reachable. The woods have little clearings walled
-       in by trees, and Ilya the woodcutter lives among them — a third of the
-       tiles in his own home patch have no way in. One dart at a random spot
-       meant he regularly failed to go home and stood in the trees until his next
-       think. Try a handful of spots before giving up on the whole idea. */
+    /* Find a walkable point inside the target patch — "open" tile isn't
+       the same as "reachable": e.g. the woodcutter Ilya's home patch is in
+       forest clearings, where roughly a third of tiles have no path in
+       from outside. A single random-point attempt would regularly fail
+       and leave him stuck. Retry a few random points before giving up. */
     let route = null;
     for (let tries = 0; tries < 8 && !route; tries++) {
       const cx = want.x + (Math.random() * want.w | 0);
@@ -144,12 +146,13 @@ LG.actors = (function () {
       if (path && path.length) route = path;
     }
     if (route) { a.route = route; a.patch = want; }
-    // Nowhere in it they can reach — forget having thought about it, so they try
-    // somewhere else rather than standing in the road for the rest of the day.
+    // No reachable point found — clear `thought` so situation() is treated
+    // as changed next tick, letting the villager try a different target
+    // instead of getting stuck standing still.
     else a.thought = null;
   }
 
-  /* Follow a route if we are on one, otherwise potter about the current patch. */
+  /* Follows the current route if any; otherwise wanders within the current patch. */
   function walk(a, dt, speed) {
     if (a.frozen) return;
     if (a.route && a.route.length) {
@@ -181,18 +184,16 @@ LG.actors = (function () {
     }
   }
 
-  /* ------------------------------------------------------------- gossip
-     Two nearby idle NPCs swap one fact each. This is free (no model call),
-     so the village's knowledge really does spread by word of mouth. */
-  /* Two villagers run into each other and stop to talk.
+  /* ------------------------------------------------------------- gossip */
+  /* Makes two nearby idle villagers stop and talk to each other.
 
-     There is no gossip mechanic. Nothing is picked to be transferred and nothing
-     changes hands here: they simply talk, and what either of them takes away is
-     worked out afterwards from what was actually said — see LG.llm.recall. Ilya
-     knows he has a dog; if the dog comes up, whoever he was talking to now knows
-     about the dog, and if instead he talks about his back then that is what they
-     remember. A conversation that turns out to be nothing but weather leaves
-     nothing behind, which is right. */
+     There's no separate fact-transfer mechanic here — this function just
+     triggers the conversation (via `onChat`, or a mimed bubble if no LLM
+     call is available). What each villager takes away from the
+     conversation is determined afterwards from what was actually said —
+     see LG.llm.recall. So if the conversation happens to mention Ilya's
+     dog, the other villager now knows about the dog; if it's just about
+     the weather, nothing is retained. */
   function meet(npcs, dt, log, chatterLine, onChat) {
     for (const a of npcs) a.gossipCool -= dt;
     for (let i = 0; i < npcs.length; i++) {

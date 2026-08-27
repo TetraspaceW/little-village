@@ -1,15 +1,15 @@
-/* smoke.js — run the real game headlessly and check it still works.
+/* smoke.js — headless test suite: runs the real game and checks it still works.
  *
  *   node tests/smoke.js
  *
- * The game is plain <script> tags: each file sets window.LG and then reads the
- * bare global LG, which only works when the two are the same object. A vm
- * context reproduces that; require() does not. The files are loaded in the order
- * index.html loads them, read out of index.html, so this cannot drift from what
- * a browser actually does.
+ * The game is loaded via plain <script> tags (each file sets window.LG and
+ * reads the bare global LG, which only works when window and the global
+ * scope are the same object). Node's `vm` module reproduces that;
+ * require() does not. Script order is read directly out of index.html
+ * rather than hardcoded, so it can't drift from what a browser loads.
  *
- * Nothing here talks to a model. Everything asserted is what the game does with
- * no API key at all. */
+ * No API calls are made -- everything asserted here is behavior with no
+ * API key present. */
 const vm = require('vm'), fs = require('fs'), path = require('path');
 
 const ROOT = path.join(__dirname, '..');
@@ -54,9 +54,10 @@ function elem(id) {
   return e;
 }
 
-/* A whole browser, built to order. Taking it as a function rather than one
-   global lets the test do the thing a save is for: close the tab and open a new
-   one, with nothing carried over but what was written down. */
+/* Builds a fresh fake-browser sandbox. Implemented as a function
+   (rather than one shared global) so tests can simulate closing and
+   reopening the tab -- a fresh sandbox carries over nothing except
+   whatever was actually written to `store` (localStorage). */
 function makeSandbox(store) {
 const els = {};
 const sandbox = {
@@ -72,7 +73,7 @@ const sandbox = {
     setItem: (k, v) => { store[k] = String(v); },
     removeItem: k => { delete store[k]; }
   },
-  // the loop is driven by hand below, so frames never fire on their own
+  // The game loop is driven manually via _debugTick below -- frames never fire on their own in this sandbox.
   requestAnimationFrame: () => 0,
   addEventListener() {}, removeEventListener() {},
   fetch: () => Promise.reject(new Error('no server in the smoke test')),
@@ -109,13 +110,14 @@ console.log('   ' + files.length + ' files: ' + files.map(f => path.basename(f))
 
 const LG = sandbox.LG;
 
-/* Start the game the way the page does. No key, so nothing is ever sent. */
+/* Starts the game exactly as index.html does. No API key is set, so no request is ever sent. */
 sandbox.LG.game.init();
 if (LG.game.thoughts !== undefined) LG.game.thoughts = false;   // no narration in a test
 
-/* `node tests/smoke.js --prompts` prints every villager's system prompt for one
-   fixed village and stops. Two checkouts dumped this way diff cleanly, which is
-   the only way to be sure a refactor left the model looking at the same words. */
+/* `node tests/smoke.js --prompts` prints every villager's system prompt
+   for one fixed village and exits. Diffing this output between two
+   checkouts is the reliable way to confirm a refactor left the model
+   seeing the exact same prompt text. */
 if (process.argv.indexOf('--prompts') !== -1) {
   LG.game.newVillage('elder-birch-quiet', true);
   LG.time.start(10, 0.4);
@@ -207,14 +209,16 @@ const before = npcs.map(n => n.tx + ',' + n.ty);
 for (let i = 0; i < 3000; i++) LG.game._debugTick(1 / 30);
 const stuck = npcs.filter((n, i) => (n.tx + ',' + n.ty) === before[i]);
 ok(stuck.length < npcs.length / 2, 'the village moves without a key');
-/* Known, and older than any of this: about one village in eight has somebody
-   who cannot move at all. `wander` only steps to a neighbouring tile that is
-   both walkable and inside their own patch, so a villager whose patch pins them
-   against trees or a wall has nowhere legal to go and stands there. It is the
-   same geometry that used to strand Ilya in the woods, in the one place the
-   eight-try pathfinding retry does not reach. Reported, not asserted, because
-   it is not what this refactor changed — measured at 8/60 villages before and
-   7/60 after. */
+/* Known pre-existing issue: roughly 1 in 8 villages has a villager who
+   can't move at all. `wander` (npc.js) only steps to a neighboring tile
+   that's both walkable and inside the villager's own patch, so a
+   villager whose patch is entirely boxed in by trees/walls has no legal
+   move and just stands still -- the same underlying geometry issue that
+   used to strand Ilya in the woods, just not covered by the 8-try
+   pathfinding retry that fixed that case. Logged rather than asserted,
+   since it isn't something any particular change here is responsible
+   for fixing -- measured at 8/60 villages before this refactor, 7/60
+   after. */
 if (stuck.length) {
   console.log('   KNOWN ISSUE: penned in by their own patch — ' +
               stuck.map(n => n.def.name + ' (' + LG.view.where(n) + ')').join(', '));
@@ -224,11 +228,12 @@ for (const n of npcs) {
   ok(typeof LG.view.where(n) === 'string', n.def.name + ' can still say where they are');
 }
 
-/* Open is not the same as reachable, and a forest is that failure at scale:
-   chain.js will happily leave the last item of an errand in a glade, and a
-   glade walled in by trees is an errand nobody can finish. Everything the
-   game can point you at is checked against a flood fill from the platform —
-   the tile the traveller actually starts on — rather than trusted. */
+/* "Open" isn't the same as "reachable" -- a forest is where that gap
+   matters most, since chain.js can leave the errand's terminal item in
+   any glade, and a glade sealed off by trees would make the errand
+   unwinnable. Verifies every location the game can point the player to
+   is actually reachable via flood fill from the platform (the player's
+   actual starting tile), rather than assuming it. */
 section('everywhere the errand can send you can be got to');
 const start = LG.world.nearestOpen(LG.START.x, LG.START.y);
 const reachable = LG.world._flood(start.x, start.y);
@@ -250,9 +255,10 @@ for (const b of LG.world.buildings) {
 }
 for (const n of npcs) ok(canGet(n.tx, n.ty), n.def.name + ' is somewhere you can walk to');
 
-/* The woods have to actually be woods. A density that quietly drifts to nothing
-   would leave the glades sitting in a field, and one that closes up entirely
-   would make the tracks the only ground in the north — this pins it between. */
+/* Confirms the forest generator actually produces forest-like density
+   -- too sparse and the glades would sit in an open field; too dense and
+   the hand-cut tracks would be the only open ground. This pins tree
+   cover between those extremes. */
 let trees = 0, north = 0;
 for (let y = 2; y < LG.NORTH_WOODS; y++) for (let x = 2; x < LG.world.W - 2; x++) {
   north++;
@@ -263,8 +269,9 @@ ok(cover > 0.40 && cover < 0.75,
    'the forest is a forest: ' + Math.round(cover * 100) + '% tree cover north of the village');
 console.log('   ' + trees + ' trees over ' + north + ' tiles of forest');
 
-/* Every named place is somewhere a villager could stand and an animal could
-   potter, which is what the glades are cleared outright for. */
+/* Every named place must be a large enough walkable area for a
+   villager to stand in and an animal to wander around -- this is what
+   world.js clears the glades outright to guarantee. */
 for (const p of LG.PLACES) {
   let open = 0;
   for (let y = p.rect.y; y < p.rect.y + p.rect.h; y++)
@@ -273,10 +280,11 @@ for (const p of LG.PLACES) {
   ok(open >= 2, '"' + p.en + '" has room to stand in (' + open + ' tiles)');
 }
 
-/* The map is drawn from a switch over tile types and a switch over prop types,
-   and a new arm of either is a runtime error nobody sees until they walk that
-   far. Draw the whole thing, in every language, dry and under snow and after
-   dark, with the viewport wide enough that nothing is culled. */
+/* The map renderer is a switch statement over tile types and another
+   over prop types -- an unhandled case in either would only surface as
+   a runtime error when a player happens to walk far enough to see it.
+   Renders the entire map, in every language, with and without snow,
+   with a viewport wide enough that nothing gets culled from the draw call. */
 section('the whole map draws');
 {
   const cam = { x: 0, y: 0 };
@@ -295,7 +303,7 @@ section('the whole map draws');
   LG.time.setSnow(0);
   ok(drew === Object.keys(LG.LANGUAGES).length * 2, 'drew the map ' + drew + ' times without throwing');
 
-  // Every tile type the map actually contains has been through drawTile above.
+  // Confirms every tile type present on the map was actually exercised by the drawTile() calls above.
   const present = new Set();
   for (let y = 0; y < LG.world.H; y++) for (let x = 0; x < LG.world.W; x++)
     present.add(LG.world.get(x, y));
@@ -304,7 +312,7 @@ section('the whole map draws');
   ok(present.has(LG.world.T.TREE) && present.has(LG.world.T.WATER),
      'and the ordinary ground it used to have');
 
-  // A sign is only clickable if it left a box behind to be clicked.
+  // A sign is only clickable if its draw call registered a hit-box for it.
   LG.world.drawSigns(ctx2d, cam, fullW, fullH, 'ru', false);
   const st = LG.world._signs().find(s => s.key === 'Station');
   ok(st && LG.world.overSign(st.x, st.y - 10), 'the station nameboard can be clicked');
@@ -319,8 +327,9 @@ for (const b of LG.world.buildings) {
 for (const key of ['Noticeboard', 'Station']) {
   ok(signs.some(s => s.key === key), key + ' has a sign');
 }
-/* A sign with no translation falls back to English, which is silent and
-   wrong: the whole point is that the map is in their language. */
+/* A sign with no translation would silently fall back to English --
+   defeating the whole point that the map should be in the village's
+   language. */
 for (const s of signs) {
   const p = LG.PLACENAMES[s.key];
   ok(p, s.key + ' has a name to put on its sign');
@@ -330,14 +339,16 @@ for (const s of signs) {
 }
 
 section('trading still squares up');
-LG.time.start(LG.time.day, 0.5);                       // the middle of the day
-/* Nothing the errand needs, or the villager rightly refuses to buy it. */
+LG.time.start(LG.time.day, 0.5);                       // set to midday, so shops are open
+/* Tracks which items the errand chain needs, so tests avoid trading
+   away one of them (which the villager would correctly refuse anyway). */
 const chainItem = {};
 plan.links.forEach(lk => { chainItem[lk.wants] = chainItem[lk.gives] = true; });
 chainItem[plan.terminal.item] = chainItem[plan.prize] = true;
 
-/* Not a chain item either way: a villager rightly refuses to buy back something
-   the traveller is carrying for somebody else, which is a different test. */
+/* Deliberately picks a non-chain item -- a villager correctly refusing
+   to buy back an item the traveller is carrying for someone else is
+   tested separately. */
 const shop = npcs.find(n => (n.def.sells || []).some(w => !chainItem[w.i]));
 if (shop) {
   const ware = shop.def.sells.find(w => !chainItem[w.i]);
@@ -366,11 +377,13 @@ if (buyer) {
 }
 
 /* -------------------------------------------------------- one sale, rung twice
-   Straight out of a session log. Tomas agreed a knife for two coins and flagged
-   the sale on the turn he agreed it; the traveller then held out the coins, as
-   anyone would who had just been told to, and the sale went through again. Two
-   knives, four coins. A repeat on the very next turn is one sale counted twice;
-   a repeat later is somebody wanting another knife. */
+   Regression test for a real bug found in a session log: a villager
+   flagged a sale as complete on the turn they merely agreed to a price,
+   then flagged it again on the next turn when the player naturally held
+   out payment in response -- resulting in double the goods and double
+   the payment. A repeat on the immediately following turn should be
+   treated as one sale counted twice; a repeat later should be treated
+   as a genuine second purchase. */
 section('the same sale does not go through twice');
 {
   LG.time.start(LG.time.day, 0.5);
@@ -397,8 +410,9 @@ section('the same sale does not go through twice');
     ok(LG.game.commerce(who, 'sell', ware.i, ware.p), 'wanting another one later still works');
     ok(held() === got + 1, 'and they have two of them now');
 
-    /* What the villager is told they are holding has to say how many, or the
-       ledger says two sales and the summary beside it names one object. */
+    /* Verifies the villager's held-stock summary includes the count --
+       without it, the till could log two sales while the stock summary
+       named only one object, i.e. under-reporting the total held. */
     const v = LG.view.of(who, 'player');
     const entry = v.trade.sold.find(it => it.id === ware.i);
     ok(entry && entry.n === 2, 'the returnable record counts them');
@@ -413,15 +427,15 @@ section('the same sale does not go through twice');
 }
 
 /* ------------------------------------------------------------- a spent errand
-   A finished exchange has to stop being what the villager is about. Everything
-   that turns over on a completed trade used to be the deal block alone, which
-   only the player-facing prompt renders — so the two calls that decide where a
-   villager walks and what they say to each other went on being handed a goal
-   that wanted a thing already sitting in the villager's own house, and facts
-   saying they still held what they had just given away. */
+   A completed trade has to stop being reflected as the villager's
+   active goal. Previously, only the "deal" block (rendered solely into
+   the player-facing prompt) updated on trade completion -- the calls
+   that decide where a villager walks and what they say to other
+   villagers kept using the stale pre-trade goal and stale facts, even
+   after the trade completed. */
 section('a finished errand stops being what they want');
 {
-  const lk = plan.links[plan.links.length - 1];       // the deepest link: no chain of its own to disturb
+  const lk = plan.links[plan.links.length - 1];       // deepest link -- completing it doesn't disturb any other link's chain
   const who = npcs.find(n => n.def.id === lk.npcId);
   ok(!!who, 'the deepest link belongs to somebody in the village');
   if (who) {
@@ -446,18 +460,20 @@ section('a finished errand stops being what they want');
     ok(who.memory.some(m => m.text.indexOf('That is done with') !== -1),
        'and they remember doing it, so it is theirs to pass on');
 
-    /* The goal is what reaches the two calls that had no other way of knowing. */
+    /* Confirms the updated goal reaches the two calls (chat, intent)
+       that previously had no way to see it. */
     ok(LG.view.of(who, 'chat').goal === after, 'the chatter call sees it too');
     ok(LG.view.of(who, 'intent').goal === after, 'and so does the one that walks them about');
   }
 }
 
 /* ------------------------------------------------------------ the reply schema
-   The prompt block and the JSON Schema are rendered from one field list, so the
-   thing worth checking is that they cannot disagree: every key the villager is
-   shown is a key the provider is told to enforce. The gate is checked too — a
-   model nobody has looked up must read as "no schema", because sending one to a
-   provider that cannot take it fails the whole request rather than being
+   The prompt's field list and the JSON Schema are both derived from one
+   shared array, so what's worth checking is that they stay consistent:
+   every field named in the prompt must also be enforced by the schema.
+   Also checks the schema-support gate: a model that hasn't been probed
+   must read as "unsupported," since sending a schema to a provider that
+   can't accept one fails the whole request rather than being silently
    ignored. */
 section('the prompt and the schema are the same list');
 {
@@ -471,7 +487,7 @@ section('the prompt and the schema are the same list');
   ok(sc && sc.type === 'object', 'a schema came back');
   ok(sc.additionalProperties === false, 'closed to fields nobody asked for');
 
-  // the keys the villager is actually shown, read back out of the block
+  // Parses out the field names actually shown in the "# Reply format" block.
   const block = built.text.split('# Reply format')[1].split('}')[0];
   const shown = [];
   block.replace(/^ {2}"([a-z]+)":/gm, (m, k) => { shown.push(k); return m; });
@@ -497,11 +513,12 @@ section('a model nobody has looked up gets no schema');
 }
 
 /* ------------------------------------------------------- what they believe now
-   Villagers are not a table of rows to expire. They hold things, each with a
-   time and a source, and when something arrives that overtakes one of them they
-   rewrite that one — "Yuri is looking for shoes" becomes "Yuri was looking for
-   shoes and has them now", which is still worth passing on. A chain fact keeps
-   its id through that, because the notebook is built on ids. */
+   Every entry a villager holds has a timestamp and source, and when
+   something new supersedes one of them, that entry gets rewritten
+   rather than just left contradictory or deleted -- e.g. "X is looking
+   for shoes" becomes "X was looking for shoes and has them now," which
+   is still worth being able to say. A chain fact's id is preserved
+   through this rewriting, since the notebook is built on those ids. */
 section('everything they hold says when it arrived and who from');
 {
   const n = npcs.find(x => x.facts.length > 0) || npcs[0];
@@ -522,13 +539,14 @@ section('everything they hold says when it arrived and who from');
 }
 
 /* ----------------------------------------------------- the notebook and truth
-   A note records that you were told something. Whether it is still worth acting
-   on is read off the world, not stored on the note — so there is no way to write
-   one that claims to be a live lead when the thing it describes has already
-   happened. That used to be possible: a villager could tell you "Yuri is looking
-   for a pair of shoes" after you had given Yuri the shoes, and it went in as a
-   fresh lead, because the writing path knew about one kind of resolution and not
-   the other. */
+   A note records only that the player was told something -- whether
+   it's still actionable is read live from game state (via factSpent),
+   never cached on the note itself, so there's no way to write a note
+   that incorrectly claims to be a live lead for something already
+   resolved. This used to be possible: a villager could restate an
+   already-fulfilled want and it would be recorded as a fresh lead,
+   because the note-writing path only checked one of the ways a fact
+   could be resolved. */
 section('a spent lead cannot be written as a live one');
 {
   const g = LG.game;
@@ -536,7 +554,7 @@ section('a spent lead cannot be written as a live one');
     const f = plan.facts[id];
     return f && f.link === (plan.roles[n.def.id] || {}).link && f.type !== 'opinion';
   });
-  // an earlier section already settled one link, so take a villager still owed theirs
+  // A previous section already completed one link's trade, so pick a villager whose trade is still outstanding.
   const who = npcs.find(n => !n.tradeDone && (plan.roles[n.def.id] || {}).trade &&
                              ownFacts(n).length > 0);
   ok(!!who, 'somebody still has a deal of their own outstanding');
@@ -556,8 +574,9 @@ section('a spent lead cannot be written as a live one');
     ok(g.factSpent(id) === true, 'once the deal is done the fact is spent');
     ok(g.hasNote(id), 'and the note is still there — a line that vanishes reads as a bug');
 
-    /* The point of the change: the same write, after the fact is spent, cannot
-       produce a live lead. There is no argument to `learn` that would let it. */
+    /* Core assertion: writing the same note again after the fact is
+       spent cannot produce a live lead -- there's no `learn` argument
+       that can override this. */
     g.state.notes = [];
     g.learn(id, null, 'told about it again, too late');
     ok(g.hasNote(id), 'you can still be told, and it is still recorded');
@@ -575,11 +594,11 @@ section('an opinion is never spent');
 }
 
 /* ------------------------------------------------------------------- saving
-   One format, both ways round. What is checked here is that a village survives
-   being written down and read back — not that localStorage works, but that
-   everything the player has done is in the file and comes out the other side.
-   The same bytes are what the log server keeps in saves/village.json, so a
-   round trip through a string is the file, exactly. */
+   Verifies a village survives being serialized and restored -- not that
+   localStorage itself works, but that everything the player has done
+   round-trips correctly through the save format. These are the same
+   bytes the log server writes to saves/village.json, so round-tripping
+   through a JSON string exercises exactly what that file contains. */
 section('a village, written down and read back');
 {
   const g = LG.game;
@@ -595,8 +614,8 @@ section('a village, written down and read back');
   }
   npcs[0].coins = 41;
   npcs[0].stock.apple = 2;
-  /* The one thing about a village that changes while you play it: the thing
-     lying at the end of the chain gets collected. */
+  /* The one piece of world state that changes during play: the
+     chain's terminal item gets collected. */
   if (g.beast) { g.beast.caught = true; g.beast.following = true; }
   else if (g.worldItem) { g.worldItem.taken = true; }
 
@@ -628,11 +647,11 @@ section('a village, written down and read back');
               Object.keys(shot.villagers).length + ' villagers, ' +
               shot.notes.length + ' notes');
 
-  // somewhere else entirely, so a restore that quietly did nothing would show
+  // Switches to a completely different village first, so a restore that silently did nothing would be caught.
   g.newVillage('quite-another-village', true);
   ok(LG.game.plan.seed !== before.seed, 'a different village, to lose the first one in');
 
-  // through a string and back: this is the file, not a live object
+  // Round-trips through a JSON string, not a live object reference -- exercising exactly what the file on disk contains.
   const why = LG.save.restore(JSON.parse(text));
   ok(why === null, 'the save loads' + (why ? ': ' + why : ''));
 
@@ -693,20 +712,21 @@ section('a village, written down and read back');
      'and being refused leaves the village you were in standing');
   ok(LG.save.restore(JSON.parse(text)) === null, 'the good save still loads afterwards');
 
-  /* A version-1 save is a save from the map before the forest and the
-     station — every coordinate in it means somewhere 40 tiles further north
-     than it should. It is not hand-built by loading the old code (heavy, and
-     not what a real v1 save looks like from the outside): it is built the
-     way `restore` itself would check one, by generating a plan under the old
-     LG.PLACES order and taking its digest, then shifting a couple of
-     coordinates back by hand to stand in for what an old save's numbers
-     would have been. */
+  /* A version-1 save is from the map before the forest and station
+     were added -- every coordinate in it means somewhere 40 tiles
+     further north than it should be. Rather than hand-building one by
+     loading old game code (heavy, and not representative of a real v1
+     save's actual shape), this constructs one the way `restore` itself
+     would validate it: generating a plan under the old LG.PLACES order
+     and its digest, then manually shifting a couple of coordinates to
+     stand in for what an old save's stored numbers would have been. */
   section('a version-1 save is migrated, not refused');
   {
-    // A requested seed is not always the seed a village ends up with — an
-    // unsolvable draw gets retried under a suffixed one (see chain.js), so
-    // what a save actually names is whatever `plan.seed` came back as, the
-    // same as `snapshot` reads off the live plan rather than off a request.
+    // A requested seed isn't always the seed a village ends up using --
+    // an unsolvable draw gets retried with a suffixed seed (see
+    // chain.js), so what a save records is whatever `plan.seed` actually
+    // came back as, same as `snapshot` reads from the live plan rather
+    // than from the original request.
     const v1Plan = LG.save._withPlacesV1(() =>
       LG.chain.generate({ level: 'beginner', seed: 'migration-check-' + plan.seed }));
     const v1Digest = LG.save.digestOf(v1Plan);
@@ -742,13 +762,13 @@ section('a village, written down and read back');
     ok(back.patch === back.def.home,
        'and her old home rectangle resolves to her actual, current home — not a lookalike copy');
 
-    /* The village now saves as version 2 — its coordinates really are v2 —
-       but its seed only ever produced this plan under the *old* LG.PLACES,
-       and LG.PLACES has grown again since (the platform and the six glades
-       joined it this same change). Losing track of that would make the
-       *second* close-and-reopen of a migrated village fail exactly the
-       failure this whole feature exists to avoid: a save that is still
-       correct being refused for a change that has nothing to do with it. */
+    /* The village now saves as version 2 (its coordinates really are
+       v2), but its seed only ever produced this plan under the *old*
+       LG.PLACES list, which has since grown again (the platform and six
+       glades were added in this same change). Losing track of that
+       would make the *second* close-and-reopen of a migrated village
+       fail in exactly the way this whole migration feature exists to
+       prevent: a still-correct save being refused over an unrelated change. */
     const resaved = LG.save.snapshot();
     ok(resaved.v === LG.save.VERSION, 'the next save this village writes is tagged current');
     ok(resaved.village.placesV1 === true,
@@ -773,13 +793,14 @@ section('a village, written down and read back');
 }
 
 /* --------------------------------------------------- closing the tab
-   The half that in-process round trips cannot reach: a browser that has never
-   seen this village starts up with nothing but what was written to storage, and
-   has to arrive in the village rather than roll a new one. This is the path the
-   player actually takes, and the one that breaks when init() changes. */
+   Covers what an in-process save/restore round-trip cannot: a fresh
+   sandbox that's never seen this village, starting with nothing but
+   what was persisted to storage, must resume the saved village rather
+   than generate a new one. This is the actual path a real player takes,
+   and the one most likely to break silently when init() changes. */
 section('closing the tab and opening it again');
 {
-  const written = LG.save.write();                 // as the autosave would have
+  const written = LG.save.write();                 // simulates what the autosave would have written
   const store2 = {
     'lg-save': JSON.stringify(written),
     'lg-settings': JSON.stringify(LG.game.settings)
@@ -789,8 +810,8 @@ section('closing the tab and opening it again');
     vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), s2, { filename: f });
   }
   s2.LG.game.init();
-  s2.LG.game.thoughts = false;                     // no narration in a test
-  s2.LG.game.settings.npcChatter = false;          // and nothing sent, key or no key
+  s2.LG.game.thoughts = false;                     // suppress console narration during tests
+  s2.LG.game.settings.npcChatter = false;          // and ensure no requests are sent regardless of key presence
 
   ok(s2.LG.save.resumed, 'a fresh browser came back into the saved village');
   ok(s2.LG.game.plan.seed === written.village.seed,
@@ -804,7 +825,7 @@ section('closing the tab and opening it again');
   ok(s2.LG.game.npcs.every(n => n.facts.join(',') === written.villagers[n.id].facts.join(',')),
      'and everyone still knows what they knew');
 
-  // and it keeps running: the village that came back is a village, not a photograph
+  // Confirms the restored village keeps running normally -- it's a live village, not a frozen snapshot.
   for (let i = 0; i < 600; i++) s2.LG.game._debugTick(1 / 30);
   ok(s2.LG.game.npcs.every(n => s2.LG.world.isWalkable(n.tx, n.ty)),
      'and it carries on from there without anyone walking into a wall');
@@ -829,9 +850,10 @@ ok(!/\bctx\.factsOf\b|\bctx\.aKnows\b|\bctx\.soughtBy\b/.test(all),
    'the conversation takes view snapshots, not callbacks');
 
 /* --------------------------------------------------- two villagers talking
-   The one path that cannot be reached without a key, so the model is replaced
-   by a stub that records what it was handed. What is being checked is the
-   plumbing: that a conversation is given two villagers who know who they are. */
+   This code path is normally only reached with an API key present, so
+   the model call is replaced by a stub that records what it was called
+   with. What's being verified is the plumbing: that a conversation is
+   correctly handed two villagers who each know who they are. */
 async function beliefsRevised() {
   section('a villager can rewrite what they held');
 
@@ -842,7 +864,7 @@ async function beliefsRevised() {
     const before = LG.view.of(n, 'player').knows.find(f => f.id === id);
     const real = LG.llm.revise;
 
-    // the reader says line 1 has been overtaken, and gives it back rewritten
+    // Stub: reports line 1 as superseded and returns a rewritten version.
     LG.llm.revise = async () => ({ n: 1, line: 'that was so, and has since been settled' });
     await LG.dialogue._reviseHeld(n, 'the traveller settled it just now');
     const after = LG.view.of(n, 'player').knows.find(f => f.id === id);
@@ -854,7 +876,7 @@ async function beliefsRevised() {
     ok(LG.dialogue._debugPrompt(n, null).indexOf('has since been settled') !== -1,
        'and it is what reaches the prompt');
 
-    // nothing overtaken is the ordinary answer, and must leave them alone
+    // "Nothing overtaken" is the ordinary case, and must leave existing beliefs unchanged.
     const held = LG.view.of(n, 'player').knows.find(f => f.id === id).text;
     LG.llm.revise = async () => null;
     await LG.dialogue._reviseHeld(n, 'the weather is grey');
@@ -880,8 +902,8 @@ async function villagersTalking() {
   LG.llm.recall = async (cfg, opts) => { recalled = opts; return null; };
   LG.llm.intent = async () => null;                 // nobody wanders off mid-test
 
-  // the cast is rebuilt by a restore, so read it now rather than trusting the
-  // copy taken at the top of the file
+  // A restore() rebuilds the npc array, so re-read it fresh here
+  // rather than trusting the reference captured at the top of the file.
   const cast = LG.game.npcs;
   const a = cast[0], b = cast[1];
   LG.game.settings.apiKey = 'not-a-real-key';       // both stubs above, so nothing is sent
@@ -894,7 +916,7 @@ async function villagersTalking() {
   b.px = a.px + 8; b.py = a.py;
   b.tx = a.tx; b.ty = a.ty;
   a.gossipCool = b.gossipCool = 0;
-  a.wentAfter = b.def.id;                            // a came looking for b
+  a.wentAfter = b.def.id;                            // simulates `a` having deliberately sought out `b`
 
   for (let i = 0; i < 400 && seen.length < 2; i++) {
     LG.game._debugTick(1 / 30);
@@ -937,12 +959,11 @@ async function villagersTalking() {
   process.exit(failures ? 1 : 0);
 }
 
-/* Everywhere the game speaks in its own voice about a villager — the
-   nametag, the dialogue header, the hint, the log — has to fall back to
-   their job until that particular villager has actually said their name to
-   the player. Nothing else should be able to set it: not a fact arriving
-   from someone else, not talking to them about something other than who
-   they are. */
+/* Every place the game refers to a villager by name (nametag, dialogue
+   header, hint, log) must fall back to their job title until that
+   specific villager has actually told the player their name. Nothing
+   else should be able to set nameKnown -- not a fact from another
+   source, not talking about unrelated topics. */
 async function namesUnknownUntilTold() {
   section('names are unknown until you are told them');
   const g = LG.game, npc = g.npcs.find(n => !n.nameKnown) || g.npcs[0];
@@ -951,7 +972,7 @@ async function namesUnknownUntilTold() {
   ok(g.displayName(npc) === npc.def.job, 'unmet, the game calls them by their job');
   ok(g.nameOrEmoji(npc) === npc.def.emoji, 'and a native-language line uses the emoji, not English');
 
-  // Being told about them by someone else does not count — only they can tell you.
+  // A name learned from a third party must not set nameKnown -- only the villager telling you themself counts.
   g.remember(npc, 'somebody else told the traveller this villager\'s name is ' + npc.def.name, 'a bystander');
   ok(!npc.nameKnown, 'hearsay about their name is not the same as being told it');
 

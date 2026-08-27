@@ -78,17 +78,15 @@
       </div>
 
       <label>Language the villagers speak
-        <!-- Each option ends in its own language's name for itself, and an
-             <option> cannot hold a tag to mark just that half, so the whole
-             row carries the language. It is the endonym that needs it: 中文
-             and 日本語 share characters and only the tag says which font
-             draws them. The English half is unharmed by riding along. -->
-        <!-- Arabic (MSA) isn't a country, so it has no Unicode flag and no
-             glyph in any emoji font — the Arab League one below is a custom
-             glyph instead, U+F0000 (a made-up private-use codepoint, not a
-             real emoji sequence) resolved by the @font-face in style.css to
-             a hand-rendered flag matching the local Noto Color Emoji style.
-             See tools/flags/README.md for how it was made. -->
+        <!-- lang="..." is set on the whole <option>, not just the endonym
+             half, because an <option> can't tag part of its text. Needed
+             because 中文 and 日本語 share characters, and only the lang tag
+             says which font renders them; the English half is unaffected. -->
+        <!-- The Arabic option uses U+F0000, a private-use codepoint with no
+             real emoji meaning, instead of a flag emoji — Arabic (MSA) has
+             no country/Unicode flag. The @font-face in style.css maps it to
+             a custom flag glyph styled to match Noto Color Emoji. See
+             tools/flags/README.md for how that font was built. -->
         <select id="setLang">
           <option value="ru" lang="ru">🇷🇺 Russian — Русский</option>
           <option value="en" lang="en">🇬🇧 English</option>

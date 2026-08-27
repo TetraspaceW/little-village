@@ -1,8 +1,8 @@
-/* sky.js — what the hour and the weather look like.
+/* sky.js — renders time-of-day lighting and weather particles.
 
-   Everything here is painted in screen space over the finished world: a colour
-   wash for the time of day, then particles for whatever is falling. Screen
-   space means the particle count does not grow with the size of the map. */
+   Everything here is drawn in screen space, on top of the finished world:
+   a color wash for the time of day, then particles for whatever is
+   falling. Screen space keeps the particle count independent of map size. */
 window.LG = window.LG || {};
 
 LG.sky = (function () {
@@ -10,7 +10,8 @@ LG.sky = (function () {
   let kind = null;
   let flash = 0, flashCool = 4;
 
-  /* The wash over the world: night is blue and deep, dawn and dusk are warm. */
+  /* Color wash for a given time-of-day fraction (0–1): deep blue at
+     night, warm at dawn/dusk. */
   function daylight(frac) {
     const stops = [
       [0.00, [16, 24, 54], 0.60],   // small hours
@@ -76,11 +77,12 @@ LG.sky = (function () {
     if (flash > 0) flash = Math.max(0, flash - dt * 2.2);
   }
 
-  /* Rain, snow and sand fall on roofs, not through them. The roofs arrive as
-     screen-space rectangles and are punched out of the particle layer with an
-     even-odd clip, which costs one path per frame. Fog and haze are exempt:
-     they sit around the buildings rather than falling on them, and cutting hard
-     rectangles out of a soft cloud looks worse than the thing it fixes. */
+  /* Clips rain/snow/sand so they don't render through roofs. Roofs arrive
+     as screen-space rectangles and are punched out of the particle layer
+     with an even-odd clip (one path per frame). Fog and haze skip this:
+     they drift around buildings rather than falling onto them, and a hard
+     rectangular cutout in a soft cloud looks worse than the overlap it
+     would fix. */
   function shelterClip(ctx, vw, vh, roofs) {
     if (!roofs || !roofs.length) return false;
     ctx.save();
@@ -95,22 +97,22 @@ LG.sky = (function () {
     const info = LG.time.info || {};
     const s = LG.time.season();
 
-    // The weather's gloom, and only for weather dark enough to earn it — see
-    // the note on `dim` in time.js. Nothing here is on by default.
+    // Darkening overlay for heavy weather only — see `dim` in time.js.
+    // Off (0) by default.
     if (info.dim) {
       ctx.globalAlpha = info.dim;
       ctx.fillStyle = info.whiteout ? '#dce8f4' : (s.tone || '#5d6472');
       ctx.fillRect(0, 0, vw, vh);
       ctx.globalAlpha = 1;
     }
-    // and finally the hour
+    // Time-of-day color wash
     const light = daylight(LG.time.frac);
     if (light.alpha > 0.005) {
       ctx.fillStyle = 'rgba(' + light.rgb.join(',') + ',' + light.alpha.toFixed(3) + ')';
       ctx.fillRect(0, 0, vw, vh);
     }
 
-    // whatever is falling
+    // draw active particles
     const clipped = (kind === 'rain' || kind === 'snow' || kind === 'sand')
       && shelterClip(ctx, vw, vh, roofs);
     if (kind === 'rain') {

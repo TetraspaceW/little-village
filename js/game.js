@@ -616,6 +616,22 @@ LG.game = (function () {
       n.shelter = refuge ? refuge.inside : n.def.home;
     });
 
+    /* Petra is nosy and nothing happens in the village without her knowing
+       about it, so a stranger stepping off the train is the most interesting
+       thing to happen all week. She meets every arrival at the platform, the
+       same way any villager who goes looking for the traveller does (see
+       placesFor and followPlayer) — she just starts out already having
+       decided to, rather than getting there by asking the model. */
+    const petra = npcs.find(n => n.def.id === 'petra');
+    if (petra) {
+      const spot = W.nearestOpen(p.x - 5, p.y + 1);
+      petra.tx = spot.x; petra.ty = spot.y;
+      petra.px = spot.x * TILE + TILE / 2; petra.py = spot.y * TILE + TILE / 2;
+      petra.followingPlayer = true;
+      petra.wentAfter = 'player';
+      petra.why = 'a traveller has just got off the train, and nobody has told them anything about the village yet';
+    }
+
     // the thing at the end of the chain, out in the world somewhere
     whereFact = Object.keys(plan.facts).find(id => plan.facts[id].type === 'where') || null;
     chainNeeds = chainItems();
@@ -952,8 +968,20 @@ LG.game = (function () {
     document.getElementById('setModelCustom').style.display = other ? '' : 'none';
   }
 
+  /* Someone who came looking for the traveller has something to say, and says
+     it first — the same courtesy `villagerTalk` already gives two villagers
+     who run into each other on purpose (see `sought` there). `wentAfter` is
+     read and discharged here, once, rather than left for the conversation to
+     ask about again later — see LG.view.arrived. */
+  function talkTo(n) {
+    const sought = n.wentAfter === 'player';
+    const why = sought ? (n.why || '') : null;
+    if (sought) { LG.view.arrived(n); n.bubble = null; n.bubbleT = 0; }
+    LG.dialogue.open(n, why);
+  }
+
   function interact() {
-    if (nearby) { LG.dialogue.open(nearby); return; }
+    if (nearby) { talkTo(nearby); return; }
     if (beast && !beast.caught && dist(player, beast) < TILE * 1.4) catchBeast();
     else if (worldItem && !worldItem.taken && dist(player, worldItem) < TILE * 1.4) pickUp();
     else if (nearBoard()) openBoard();
@@ -1145,6 +1173,16 @@ LG.game = (function () {
       out.push({ name: 'after ' + o.def.name, rect: besideThem(o),
                  note: LG.view.where(o), after: o.def.id });
     });
+    /* The traveller is a destination too, on the same terms as anyone else —
+       seen and named, not a fixture of the map. Without this a villager could
+       want to catch up with the traveller and have no way to say so, the same
+       gap Boris hit over Mira above. `after: 'player'` is picked up in
+       decideWhereToGo and turns into an actual chase, not a walk to wherever
+       they happened to be standing when asked — see `followingPlayer`. */
+    if (LG.view.near(n, player, LG.view.SIGHT)) {
+      out.push({ name: 'after you', rect: besideThem(player),
+                 note: 'the traveller, wherever they get to', after: 'player' });
+    }
     return out;
   }
 
@@ -1191,11 +1229,20 @@ LG.game = (function () {
         think(n, 'wanted to go somewhere that is not a place', String(res.go));
         return;
       }
-      n.wantsGo = want.rect;
       n.why = res.why || '';
-      // "after Mira" is a decision about a person, and the conversation that
-      // follows should know it was not a coincidence
-      n.wentAfter = want.after || null;
+      if (want.after === 'player') {
+        // Chasing the traveller is not a walk to wherever they stood when
+        // asked \u2014 see followPlayer. `wantsGo` is left unset so a decision
+        // made later, once the chase is over, does not find a stale rect
+        // here waiting to be acted on.
+        n.followingPlayer = true;
+        n.wentAfter = 'player';
+      } else {
+        n.wantsGo = want.rect;
+        // "after Mira" is a decision about a person, and the conversation
+        // that follows should know it was not a coincidence
+        n.wentAfter = want.after || null;
+      }
       think(n, '\u2192 ' + want.name, n.why);
     }).catch(() => { done(); think(n, 'could not decide', 'the call failed'); });
     return true;
@@ -1357,6 +1404,45 @@ LG.game = (function () {
     return true;
   }
 
+  /* Chasing the traveller, once a villager has decided to. A real route,
+     re-plotted every couple of seconds rather than once — the traveller
+     moves, so a path laid against where they stood a moment ago is already
+     stale, but re-running A* every frame is needless work for a target that
+     has not moved far. Routed rather than a straight line so that "after
+     you" respects the same walls and doors everything else does: a villager
+     is only ever placed on a tile A* actually returned, never wherever the
+     traveller happens to be standing pixel-for-pixel.
+
+     Nobody chases forever. A villager who cannot close the gap for a while —
+     the traveller kept walking, or ducked somewhere awkward to reach — gives
+     it up as something that can wait, the same way any other plan a villager
+     can no longer act on gets dropped rather than pursued to the letter. */
+  const CATCH_UP = TILE * 1.6;             // matches the "who is nearby" hint radius
+  const FOLLOW_RECALC = 1.2;               // seconds between replanning the route
+  const FOLLOW_GIVE_UP = 50;               // seconds of chasing before it can wait
+  function followPlayer(n, dt) {
+    if (dist(player, n) <= CATCH_UP) {
+      n.followingPlayer = false; n.followFor = 0; n.route = null;
+      const dx = player.px - n.px, dy = player.py - n.py;
+      n.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+      n.bubble = '…'; n.bubbleT = 40;      // waiting to be spoken to
+      return false;
+    }
+    n.followFor = (n.followFor || 0) + dt;
+    if (n.followFor > FOLLOW_GIVE_UP) {
+      n.followingPlayer = false; n.followFor = 0; n.wentAfter = null; n.route = null;
+      return false;
+    }
+    n.followCool = (n.followCool || 0) - dt;
+    if (n.followCool <= 0 && !(n.route && n.route.length)) {
+      const path = W.pathTo(n.tx, n.ty, player.tx, player.ty, 400);
+      n.followCool = FOLLOW_RECALC + Math.random() * 0.6;
+      if (path && path.length) n.route = path;
+    }
+    if (n.route && n.route.length) A.walk(n, dt, 140);   // hurrying, not their usual pace
+    return true;
+  }
+
   function update(dt) {
     if (saving()) LG.save.tick(dt);
     if (LG.time.tick(dt)) log('🗓 ' + LG.time.season().name + ', day ' + LG.time.dayOfSeason() + '.');
@@ -1366,14 +1452,19 @@ LG.game = (function () {
     movePlayer(dt);
 
     for (const n of npcs) {
-      const walking = !!(n.route && n.route.length);
-      A.routine(n, dt, LG.GREEN, settings.apiKey && settings.npcChatter ? decideWhereToGo : null);
+      const wasFollowing = n.followingPlayer;
+      const walking = wasFollowing ? followPlayer(n, dt) : !!(n.route && n.route.length);
+      if (!wasFollowing)
+        A.routine(n, dt, LG.GREEN, settings.apiKey && settings.npcChatter ? decideWhereToGo : null);
       if (n.wasWalking && !walking) {
         think(n, 'arrives', LG.view.where(n) + (n.why ? ' — ' + n.why : ''));
-        if (n.patch === LG.BOARD_SPOT) maybePostNotice(n);
+        // `patch` is stale while chasing the traveller — the last place they
+        // had actually decided to go, not where the chase just ended — so it
+        // is not read as "arrived at the noticeboard" here.
+        if (!wasFollowing && n.patch === LG.BOARD_SPOT) maybePostNotice(n);
       }
       n.wasWalking = walking;
-      A.walk(n, dt, 34);
+      if (!wasFollowing) A.walk(n, dt, 34);
       noticeItemGone(n);
       if (n.bubbleT > 0) n.bubbleT -= dt;
       if (n.boardCool > 0) n.boardCool -= dt;

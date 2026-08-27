@@ -99,7 +99,7 @@ LG.LANGUAGES = {
    This DOM patch runs inline here rather than waiting for DOMContentLoaded
    because data.js loads at the end of <body>, after #setLang already
    exists in the parsed document — see index.html's script order. */
-if (/Gecko/.test(navigator.userAgent) && /rv:/.test(navigator.userAgent)) {
+if (typeof navigator !== 'undefined' && /Gecko/.test(navigator.userAgent) && /rv:/.test(navigator.userAgent)) {
   LG.LANGUAGES.ar.flag = '\u{1F1F8}\u{1F1E6}';
   var arOption = document.querySelector('#setLang option[value="ar"]');
   if (arOption) {

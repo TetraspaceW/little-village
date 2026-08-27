@@ -492,7 +492,12 @@ LG.dialogue = (function () {
   }
 
   /* ---------------------------------------------------------------- UI */
-  function open(npc) {
+  /* `why`, if given, means the villager came looking for the traveller —
+     LG.game.talkTo passes it through from `n.why`, empty string and all —
+     and it is their turn to speak first, the way it would be in real life if
+     someone went out of their way to find you. `undefined` for the ordinary
+     case, where the player speaks first as always. */
+  function open(npc, why) {
     const L = LG.LANGUAGES[LG.game.settings.lang];
     current = npc;
     npc.frozen = true;
@@ -514,12 +519,17 @@ LG.dialogue = (function () {
     renderItems();
     if (npc.history.length) {
       npc.history.slice(-4).forEach(h => {
-        if (h.player) addLine('player', h.player);
+        if (h.player && !h.silent) addLine('player', h.player);
         addLine('npc', h.say, h.translation, h.roman,
                 rubyMatches(h.ruby, h.say) ? h.ruby : null, npc);
       });
-    } else {
+    } else if (typeof why !== 'string') {
       status('Say hello — or click a phrase below.');
+    }
+    if (typeof why === 'string') {
+      send('', null, '[You went looking for the traveller and have just found them.' +
+        (why ? ' What brought you: ' + why + '.' : '') +
+        ' Say your opening line.]');
     }
     setTimeout(() => el.dlgInput.focus(), 60);
   }
@@ -636,19 +646,24 @@ LG.dialogue = (function () {
   }
 
   /* -------------------------------------------------------- the exchange */
-  async function send(text, offered) {
+  /* `prompt` is a stage direction rather than something the player typed —
+     used when a villager who came looking for the traveller (see
+     LG.game.talkTo) speaks first. It stands in for `shown` as the turn's own
+     line, so the history and the model both see it happened, but it never
+     goes on screen as a line of the player's — see the `silent` flag below
+     and its one reader in `open`. */
+  async function send(text, offered, prompt) {
     if (!current || busy) return;
     text = (text || '').trim();
-    if (!text && !offered) return;
+    if (!text && !offered && !prompt) return;
     const npc = current;
     busy = true;
     el.dlgSend.disabled = true;
 
-    const shown = offered
+    const shown = prompt || (offered
       ? (text ? text + '  ' : '') + '[holds out the ' + LG.ITEMS[offered].en + ']'
-      : text;
-    addLine('player', shown);
-    el.dlgInput.value = '';
+      : text);
+    if (!prompt) { addLine('player', shown); el.dlgInput.value = ''; }
     status(LG.game.displayName(npc) + ' is thinking…', 'thinking');
 
     let reply;
@@ -665,7 +680,8 @@ LG.dialogue = (function () {
     }
 
     if (!reply || !reply.say) {
-      status('⚠ ' + LG.game.displayName(npc) + ' said something the game could not read. Try again.', 'error');
+      if (!prompt) status('⚠ ' + LG.game.displayName(npc) + ' said something the game could not read. Try again.', 'error');
+      else status('Say hello — or click a phrase below.');
       busy = false; el.dlgSend.disabled = false;
       return;
     }
@@ -681,7 +697,7 @@ LG.dialogue = (function () {
       else if (reply.ruby) ruby = usableRuby(reply.ruby, reply.say); // separate field, still honoured
     }
 
-    const turn = { player: shown, say: spoken, translation: reply.translation,
+    const turn = { player: shown, silent: !!prompt, say: spoken, translation: reply.translation,
                    roman: reply.roman, ruby: ruby };
     npc.turns = (npc.turns || 0) + 1;       // history is trimmed; this only ever goes up
     npc.history.push(turn);

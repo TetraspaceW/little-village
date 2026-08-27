@@ -574,6 +574,20 @@ section('an opinion is never spent');
   if (op) ok(LG.game.factSpent(op) === false, 'and no amount of trading settles one');
 }
 
+section('an opinion never reaches the notebook');
+{
+  const g = LG.game;
+  const op = Object.keys(plan.facts).find(id => plan.facts[id].type === 'opinion');
+  const holder = npcs.find(n => op && n.facts.indexOf(op) !== -1);
+  ok(!!holder, 'somebody in earshot actually holds the opinion');
+  if (op && holder) {
+    g.state.notes = [];
+    g.learn(op, holder, 'told about it');
+    ok(!g.hasNote(op), 'gossip does not get written down');
+    ok(g.state.notes.length === 0, 'the notebook stays a list of the errand, not the village talking');
+  }
+}
+
 /* ------------------------------------------------------------------- saving
    One format, both ways round. What is checked here is that a village survives
    being written down and read back — not that localStorage works, but that

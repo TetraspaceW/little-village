@@ -129,12 +129,20 @@ LG.game = (function () {
 
   /* ------------------------------------------------------------ notebook
      The player only knows what somebody has actually told them. Villagers
-     report which facts they revealed; those are what land here. */
+     report which facts they revealed; those are what land here.
+
+     Not everything a villager can tell you belongs there, though. `opinion`
+     facts — the gossip chain.js hands out so the village has something to
+     talk about — are real, checkable, learnable facts the same as any errand
+     fact, but they are not the errand: writing "Yuri thinks Mira is stingy"
+     into the notebook next to "Mira has the rope" makes the one page that is
+     supposed to say what to do next into a page you have to sift. */
   function hasNote(factId) {
     return state.notes.some(n => n.id === factId);
   }
   function learn(factId, fromNpc, note, ruby) {
     if (!plan || !plan.facts[factId]) return;
+    if (plan.facts[factId].type === 'opinion') return;   // gossip, not the errand
     if (hasNote(factId)) return;
     if (fromNpc && fromNpc.facts.indexOf(factId) === -1) return;   // they can't tell you what they don't know
     /* A note records that you were told something, and nothing else. Whether it

@@ -844,6 +844,39 @@ LG.placeName = function (label, lang) {
   return (p && (p[lang] || p.en)) || label;
 };
 
+/* The same thing for items, and the same two callers: what the player sees on
+   a button, and what a villager is told a thing is called. */
+LG.itemName = function (id, lang) {
+  const it = LG.ITEMS[id];
+  return (it && (it[lang] || it.en)) || id;
+};
+
+/* Naming a thing to a villager takes both names, not either one.
+
+   Every list of goods the game hands a villager — what they sell, what they
+   would buy, what they are holding, what the deal is — was in English, on the
+   reasoning that a villager can translate their own language. Mostly they
+   can, and for French or Spanish "a bowl of soup" is a bowl of soup. But the
+   names above are not a dictionary, they are this village's conventions: soup
+   is `telo moku` and beer is `telo nasa pan` because that is what the signs
+   and the traveller's own pockets say, and nothing about the English words
+   "soup" and "beer" says so. Told only the English, an innkeeper invents
+   something plausible and says that instead — or, having no word to invent
+   from, says "soup", in English, in the middle of a sentence. Both were
+   observed in one line of a toki pona village.
+
+   So both travel together wherever an item is named: the English the game
+   thinks in, and the name the player is already reading everywhere else. This
+   is not a toki pona patch — a villager saying 光る石 while the inventory says
+   光る石 is the consistency the place names have had all along, and the
+   languages where the villager would have got it right anyway lose nothing by
+   being told. English villages get one name, because they have one. */
+LG.itemSaid = function (id, lang, short) {
+  const it = LG.ITEMS[id];
+  const en = (it && (short ? it.en : (it.full || it.en))) || id;
+  return lang === 'en' ? en : en + ' (“' + LG.itemName(id, lang) + '”)';
+};
+
 /* --------------------------------------------------------- what the game says
    A handful of short lines the game narrates about a deal, in the language the
    village speaks rather than English — "you hand over the rope" is as much a

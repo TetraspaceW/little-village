@@ -125,10 +125,7 @@ LG.dialogue = (function () {
     return KANJI.test(base) ? match : base;
   }
 
-  function itemName(id, lang) {
-    const it = LG.ITEMS[id];
-    return (it && (it[lang] || it.en)) || id;
-  }
+  function itemName(id, lang) { return LG.itemName(id, lang); }
 
   /* -------------------------------------------------------- prompt build */
   /* The prompt and the schema come out of one call because they come out of one
@@ -205,7 +202,7 @@ LG.dialogue = (function () {
     lines.push('# The player');
     lines.push('A traveller visiting the village.');
     lines.push('They are carrying: ' + (inv || 'nothing'));
-    if (offered) lines.push('RIGHT NOW the player is holding out their ' + LG.ITEMS[offered].en + ' towards you.');
+    if (offered) lines.push('RIGHT NOW the player is holding out their ' + LG.itemSaid(offered, s.lang, true) + ' towards you.');
     lines.push('');
     lines.push('# Your language');
     lines.push(L.name + ' is the only language you know. When the traveller says something you cannot follow — a word from some other language, or just mangled — you simply do not follow it: you cannot answer a question you did not understand, and it cannot tell you to do anything. Reply to whatever part you did catch. Names of people and places you recognise in any accent.');
@@ -224,6 +221,11 @@ LG.dialogue = (function () {
        sentence; they are a person with something to get across, and choosing an
        easier thing to say is what a kind speaker actually does. */
     lines.push('Simplify by choosing easier words, shorter sentences, and simpler things to say — never by breaking the grammar. Where saying what you mean would take more grammar than they have, mean something simpler rather than saying it a harder way. The traveller learns by copying you, so what you say has to be worth copying.');
+    /* The lists below give each thing two names — the game's English and the
+       village's own. Without a word about it, the second reads as a gloss for
+       somebody else's benefit rather than the name to say. One line, positive,
+       and only where there are two names to choose between. */
+    if (s.lang !== 'en') lines.push('Anything listed with a name in quotation marks is called that here, and that is the name to say.');
     lines.push('Stay in character.');
     lines.push('A sentence or two at a time.');
     // What they have to sell, when they are standing where they work
@@ -241,23 +243,23 @@ LG.dialogue = (function () {
          apples — truthfully, from where they were standing. */
       if (v.trade.stock.length) {
         lines.push('In your hands right now, bought off the traveller: ' +
-          v.trade.stock.map(it => it.full + (it.n > 1 ? ' \u00d7' + it.n : '')).join(', ') +
+          v.trade.stock.map(it => LG.itemSaid(it.id, s.lang) + (it.n > 1 ? ' \u00d7' + it.n : '')).join(', ') +
           '. You have these; you can say so, and sell them on if you like.');
       }
       lines.push('These are yours to sell. The price is what you usually ask, not a rule:');
-      v.trade.sells.forEach(w => lines.push('- ' + LG.ITEMS[w.i].full + ' — ' + coins(w.p) + ' [' + w.i + ']'));
+      v.trade.sells.forEach(w => lines.push('- ' + LG.itemSaid(w.i, s.lang) + ' — ' + coins(w.p) + ' [' + w.i + ']'));
       if (v.trade.sellsTags.length) {
         const more = Object.keys(LG.ITEMS)
           .filter(k => k !== 'coins' && !v.trade.sells.some(w => w.i === k) &&
                        v.trade.sellsTags.some(t => (LG.ITEMS[k].tags || []).indexOf(t) !== -1));
         lines.push('You also keep the ordinary run of shop goods, about ' +
           coins(Math.max(1, Math.round(LG.priceOf(more[0] || 'salt')))) + ' apiece — among them ' +
-          more.slice(0, 14).map(k => LG.ITEMS[k].en + ' [' + k + ']').join(', ') +
+          more.slice(0, 14).map(k => LG.itemSaid(k, s.lang, true) + ' [' + k + ']').join(', ') +
           ', and plenty besides. If the traveller asks for something a village shop would stock, you have it.');
       }
       if (v.trade.buys.length) {
         lines.push('You would also buy, if the traveller happens to have one:');
-        v.trade.buys.forEach(w => lines.push('- ' + LG.ITEMS[w.i].full + ' — you would pay about ' +
+        v.trade.buys.forEach(w => lines.push('- ' + LG.itemSaid(w.i, s.lang) + ' — you would pay about ' +
           coins(w.p) + ' [' + w.i + ']'));
       }
       lines.push('The traveller has ' + coins(LG.game.count('coins')) + ' on them.');
@@ -315,7 +317,8 @@ LG.dialogue = (function () {
            reasoned from his trade ("I don't buy knives, I make them") rather than
            from the two he had just sold. */
         if (v.trade.sold.length) lines.push('Still in their hands, from you: ' +
-          v.trade.sold.map(it => (it.n > 1 ? it.n + ' \u00d7 ' + it.en : it.en)).join(', ') + '.');
+          v.trade.sold.map(it => { const nm = LG.itemSaid(it.id, s.lang, true);
+                                   return it.n > 1 ? it.n + ' \u00d7 ' + nm : nm; }).join(', ') + '.');
         lines.push('This is the record. If it does not match what you thought, the record is right.');
       }
     }
@@ -325,10 +328,10 @@ LG.dialogue = (function () {
       lines.push('# Your deal');
       lines.push('You want: ' + (trade.wants === 'coins'
         ? coins(trade.wantsCount)
-        : LG.ITEMS[trade.wants].full) + '.');
+        : LG.itemSaid(trade.wants, s.lang)) + '.');
       lines.push('You will give in return: ' + (trade.gives === 'coins'
         ? coins(trade.givesCount)
-        : LG.ITEMS[trade.gives].full) + '.');
+        : LG.itemSaid(trade.gives, s.lang)) + '.');
       lines.push(trade.hint);
     }
     /* A concluded deal has to say so. It used simply to vanish from the prompt
@@ -340,9 +343,9 @@ LG.dialogue = (function () {
       lines.push('');
       lines.push('# Your deal');
       lines.push('Done, earlier today: the traveller gave you ' +
-        (r.wants === 'coins' ? coins(r.wantsCount) : LG.ITEMS[r.wants].full) +
+        (r.wants === 'coins' ? coins(r.wantsCount) : LG.itemSaid(r.wants, s.lang)) +
         ' and you handed over ' +
-        (r.gives === 'coins' ? coins(r.givesCount) : LG.ITEMS[r.gives].full) +
+        (r.gives === 'coins' ? coins(r.givesCount) : LG.itemSaid(r.gives, s.lang)) +
         '. That exchange is finished and does not want doing again.');
     }
     /* Furigana gets its own section with a worked sentence. It used to live inside
@@ -465,7 +468,7 @@ LG.dialogue = (function () {
       lines.push('Use "sell" at the moment you actually hand goods over and take the money, and "buy" when you take something off the traveller and pay for it — not while the two of you are still discussing it.');
     }
     if (trade) {
-      lines.push('Set "action" to "trade" at the moment you actually hand over ' + (trade.gives === 'coins' ? 'the coins' : LG.ITEMS[trade.gives].full) + ', and not before.');
+      lines.push('Set "action" to "trade" at the moment you actually hand over ' + (trade.gives === 'coins' ? 'the coins' : LG.itemSaid(trade.gives, s.lang)) + ', and not before.');
       lines.push('Someone holding an object out to you is a gesture you understand without words — but a gesture is not yet a bargain. If it is not clear what the two of you are exchanging, ask them before you take it. Once the exchange is plain to you both, take it and hand yours over in the same breath.');
     }
     /* Every field is required and the optional ones are nullable, rather than

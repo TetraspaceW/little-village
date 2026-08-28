@@ -210,8 +210,11 @@ LG.world = (function () {
     for (let x = 36; x <= 44; x++) { set(x, 88, T.FENCE); set(x, 93, T.FENCE); }
     for (let y = 88; y <= 93; y++) { set(36, y, T.FENCE); set(44, y, T.FENCE); }
     set(36, 90, T.PATH);
-    for (let y = 89; y <= 92; y += 2) for (let x = 38; x <= 43; x += 2)
-      props.push({ type: 'grave', x: x, y: y });
+    for (let y = 89; y <= 92; y += 2) for (let x = 38; x <= 43; x += 2) {
+      const g = { type: 'grave', x: x, y: y };
+      if (x === 38 && y === 91) g.li = true;   // this one predates the survey
+      props.push(g);
+    }
 
     northWoods();
     station();
@@ -820,13 +823,24 @@ LG.world = (function () {
       const x = p.x * TILE, y = p.y * TILE;
       ctx.fillStyle = 'rgba(0,0,0,.18)';
       ctx.beginPath(); ctx.ellipse(x + 16, y + 25, 9, 4, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#a8a296';
+      ctx.fillStyle = p.li ? '#9b958a' : '#a8a296';
       ctx.beginPath();
       ctx.moveTo(x + 10, y + 24); ctx.lineTo(x + 10, y + 12);
       ctx.arc(x + 16, y + 12, 6, Math.PI, 0);
       ctx.lineTo(x + 22, y + 24);
       ctx.closePath(); ctx.fill();
-      ctx.fillStyle = '#8d8779'; ctx.fillRect(x + 12, y + 16, 8, 2);
+      if (p.li) {
+        ctx.save();
+        ctx.fillStyle = '#6f6a60';
+        ctx.font = '7px serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('老', x + 16, y + 13);
+        ctx.fillText('李', x + 16, y + 20);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = '#8d8779'; ctx.fillRect(x + 12, y + 16, 8, 2);
+      }
       capSnow(ctx, p, () => {
         ctx.beginPath(); ctx.arc(x + 16, y + 12, 6, Math.PI, 0); ctx.closePath(); ctx.fill();
       });

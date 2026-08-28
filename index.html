@@ -101,6 +101,13 @@
           <optgroup label="Other">
             <option value="ja" lang="ja">🇯🇵 Japanese — 日本語</option>
             <option value="pl" lang="pl">🇵🇱 Polish — Polski</option>
+            <!-- toki pona is in the same position as Arabic and takes the
+                 same answer: U+F0001, the next private-use codepoint along,
+                 resolved by a second one-glyph font to the community's own
+                 sun-on-blue banner. The name stays lowercase here for the
+                 same reason it does in data.js: that is how the language
+                 spells itself. -->
+            <option value="tok" lang="tok">󰀁 toki pona</option>
           </optgroup>
         </select>
       </label>

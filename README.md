@@ -165,10 +165,18 @@ connects; anything unrecognised falls back to prompt-based JSON with repair.
 
 ## Languages and difficulty
 
-The village speaks Russian, English, Chinese (Mandarin), Japanese, French, or
-Spanish, at three difficulty levels. Russian and Chinese lines carry a
-romanisation; Japanese gets furigana over kanji in dialogue (via `<ruby>`
-tags — not on item names, which stay plain kanji).
+The village speaks Russian, English, Chinese (Mandarin), Japanese, French,
+Spanish, Arabic (MSA) or toki pona, at three difficulty levels. Russian and
+Chinese lines carry a romanisation; Japanese gets furigana over kanji in
+dialogue (via `<ruby>` tags — not on item names, which stay plain kanji), and
+Arabic gets full tashkeel for the same reason, on the script it already has.
+
+toki pona is the odd one: 137 words, so nothing has a name of its own and
+every item in the village is a description assembled out of the same handful
+of pieces. A shiny rock is a *kiwen suno*, a shining stone; a lantern is an
+*ilo suno*, a shining tool. Difficulty does very little to it — there is no
+rarer word to escalate to — but reading a village whose every noun is a riddle
+is its own kind of advanced.
 
 Chain length is randomised (4–7 links) at every difficulty. What changes with
 difficulty is who knows what:

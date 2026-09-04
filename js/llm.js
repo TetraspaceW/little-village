@@ -15,7 +15,9 @@ LG.llm = (function () {
       { id: 'anthropic/claude-haiku-4.5', label: 'Claude Haiku 4.5' },
       { id: 'openai/gpt-4.1-mini',        label: 'GPT-4.1 mini' },
       { id: 'google/gemini-2.5-flash',    label: 'Gemini 2.5 Flash' },
-      { id: 'z-ai/glm-5.2',               label: 'GLM-5.2 (Z.ai)' }
+      { id: 'z-ai/glm-5.3',               label: 'GLM-5.3 (Z.ai)' },
+      { id: 'z-ai/glm-5.2',               label: 'GLM-5.2 (Z.ai)' },
+      { id: 'x-ai/grok-4.6',              label: 'Grok 4.6 (x.ai)' }
     ]
   };
 
@@ -28,13 +30,15 @@ LG.llm = (function () {
       { id: 'claude-sonnet-5',  label: 'Claude Sonnet 5 — more careful, pricier' }
     ],
     openrouter: [
+      { id: 'google/gemma-4-26b-a4b-it',  label: 'Gemma 4 26B A4B' },
       { id: 'google/gemma-4-31b-it',      label: 'Gemma 4 31B' },
       { id: 'anthropic/claude-haiku-4.5', label: 'Claude Haiku 4.5' },
       { id: 'xiaomi/mimo-v2.5',           label: 'MiMo-V2.5' },
       { id: 'xiaomi/mimo-v2.5-pro',       label: 'MiMo-V2.5 Pro' },
       { id: 'google/gemini-2.5-flash',    label: 'Gemini 2.5 Flash' },
       { id: 'openai/gpt-4.1-mini',        label: 'GPT-4.1 mini' },
-      { id: 'z-ai/glm-5.2',               label: 'GLM-5.2' }
+      { id: 'z-ai/glm-5.2',               label: 'GLM-5.2' },
+      { id: 'thinkingmachines/inkling-small', label: 'Inkling Small (Thinking Machines)' }
     ]
   };
   const VERIFIER = {

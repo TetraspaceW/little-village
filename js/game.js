@@ -76,12 +76,12 @@ LG.game = (function () {
   function inventoryList() {
     const ks = Object.keys(state.inv).filter(k => state.inv[k] > 0);
     if (!ks.length) return '';
-    return ks.map(k => LG.ITEMS[k].en + (state.inv[k] > 1 ? ' x' + state.inv[k] : '')).join(', ');
+    // read only by the villager's prompt, so it names things the way the rest
+    // of that prompt does — see LG.itemSaid
+    return ks.map(k => LG.itemSaid(k, settings.lang, true) +
+                       (state.inv[k] > 1 ? ' x' + state.inv[k] : '')).join(', ');
   }
-  function itemLabel(id) {
-    const it = LG.ITEMS[id];
-    return (it && (it[settings.lang] || it.en)) || id;
-  }
+  function itemLabel(id) { return LG.itemName(id, settings.lang); }
 
   /* Names are unknown until a villager actually tells you theirs — the same
      rule the notebook already runs on for everything else a villager knows,

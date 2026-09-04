@@ -494,6 +494,8 @@ section('a model nobody has looked up gets no schema');
      'unknown reads as no');
   ok(LG.llm.schemaOK({ provider: 'anthropic', model: 'claude-opus-5' }) === false,
      'and so does a real model that has not been probed in this session');
+  ok(LG.llm.schemaOK({ provider: 'logfare', model: 'logfare/auto' }) === false,
+     'Logfare has no catalogue to check, so it fails closed the same way');
 }
 
 /* ------------------------------------------------------- what they believe now

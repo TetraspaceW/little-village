@@ -7,8 +7,9 @@ way through a chain of favours and trades.
 Villagers are played by a language model: they remember what you tell them and
 pass it on to each other.
 
-**Requires an API key** from [Anthropic](https://console.anthropic.com) or
-[OpenRouter](https://openrouter.ai/keys).
+**Requires an API key** from [Anthropic](https://console.anthropic.com),
+[OpenRouter](https://openrouter.ai/keys), or [Logfare](https://logfare.ai)
+(free, instant).
 
 <!-- TODO: screenshot or GIF here -->
 
@@ -104,6 +105,7 @@ the settings screen rather than failing partway through a conversation.
 |---|---|
 | **Anthropic** | A key from [console.anthropic.com](https://console.anthropic.com). Calls `api.anthropic.com` directly from the browser. |
 | **OpenRouter** | A key from [openrouter.ai/keys](https://openrouter.ai/keys). |
+| **Logfare** | A free key from [logfare.ai/register](https://logfare.ai/register) — no email, instant. Always routes through `logfare/auto`, which picks the best available model itself and falls through to another on failure; there is no model to choose. |
 
 The key is validated with a small request at connect time, and stored in
 `localStorage` — sent only to the provider you picked, readable by anything
@@ -118,10 +120,11 @@ client-side either way.
 - **Helper model** — smaller/cheaper, runs everything else: confirming which
   facts a villager actually revealed, deciding what two villagers took away
   from a conversation, filling in missing furigana, confirming trades, and
-  choosing where each villager goes. Defaults to Haiku 4.5 on either
-  provider; also selectable on OpenRouter: MiMo-V2.5, MiMo-V2.5 Pro, Gemma 4
+  choosing where each villager goes. Defaults to Haiku 4.5 on Anthropic;
+  also selectable on OpenRouter: MiMo-V2.5, MiMo-V2.5 Pro, Gemma 4
   31B, Gemini 2.5 Flash, GPT-4.1 mini, GLM-5.2, or any other model
-  ID via the **Other** field.
+  ID via the **Other** field. Both models are `logfare/auto` on Logfare —
+  there is nothing to pick.
 
 Use a fast, non-reasoning model for the helper if you can — see below.
 

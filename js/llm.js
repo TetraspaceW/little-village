@@ -1,7 +1,13 @@
-/* llm.js — provider abstraction: OpenRouter and Anthropic (direct from the browser). */
+/* llm.js — provider abstraction: OpenRouter, Anthropic, and Logfare (direct from the browser). */
 window.LG = window.LG || {};
 
 LG.llm = (function () {
+  /* Logfare has exactly one model worth naming: "logfare/auto" routes to
+     whatever it currently rates best, falling through its chain on failures.
+     There is nothing else to pick, so it is the only entry in its lists and
+     the send path below pins it rather than trusting whatever cfg.model says. */
+  const LOGFARE_MODEL = 'logfare/auto';
+
   const MODELS = {
     anthropic: [
       { id: 'claude-opus-5',    label: 'Claude Opus 5 (best)' },
@@ -18,6 +24,9 @@ LG.llm = (function () {
       { id: 'z-ai/glm-5.3',               label: 'GLM-5.3 (Z.ai)' },
       { id: 'z-ai/glm-5.2',               label: 'GLM-5.2 (Z.ai)' },
       { id: 'x-ai/grok-4.6',              label: 'Grok 4.6 (x.ai)' }
+    ],
+    logfare: [
+      { id: LOGFARE_MODEL, label: 'Auto (Logfare picks the best available model)' }
     ]
   };
 
@@ -39,11 +48,15 @@ LG.llm = (function () {
       { id: 'openai/gpt-4.1-mini',        label: 'GPT-4.1 mini' },
       { id: 'z-ai/glm-5.2',               label: 'GLM-5.2' },
       { id: 'thinkingmachines/inkling-small', label: 'Inkling Small (Thinking Machines)' }
+    ],
+    logfare: [
+      { id: LOGFARE_MODEL, label: 'Auto (Logfare picks the best available model)' }
     ]
   };
   const VERIFIER = {
     anthropic: 'claude-haiku-4-5',
-    openrouter: 'anthropic/claude-haiku-4.5'
+    openrouter: 'anthropic/claude-haiku-4.5',
+    logfare: LOGFARE_MODEL
   };
 
   /* An explicit choice wins; otherwise the provider's default; otherwise fall
@@ -131,6 +144,13 @@ LG.llm = (function () {
     };
   }
 
+  function logfareHeaders(cfg) {
+    return {
+      'content-type': 'application/json',
+      'authorization': 'Bearer ' + cfg.apiKey
+    };
+  }
+
   /* ------------------------------------------------------- can it take a schema
 
      Asking a model for JSON and hoping is what this game did everywhere, and one
@@ -172,6 +192,9 @@ LG.llm = (function () {
     const key = schemaKey(cfg, model);
     if (key in SCHEMA_OK) return SCHEMA_OK[key];
     SCHEMA_OK[key] = false;                            // stands unless we learn otherwise
+    // Logfare picks the backing model itself, so there is no catalogue to ask —
+    // fails closed the same as anything else we have no way to look up.
+    if (cfg.provider !== 'anthropic' && cfg.provider !== 'openrouter') return false;
     try {
       if (cfg.provider === 'anthropic') {
         const m = await getJSON('https://api.anthropic.com/v1/models/' +
@@ -326,6 +349,21 @@ LG.llm = (function () {
     return audited(cfg, system, messages, () => openrouterSend(cfg, system, messages, s));
   }
 
+  async function logfareCall(cfg, system, messages, schema) {
+    const s = (schema && schemaOK(cfg, cfg.model)) ? schema : null;
+    return audited(cfg, system, messages, () => logfareSend(cfg, system, messages, s));
+  }
+
+  /* Every call site used to spell out its own three-way (well, two-way, before
+     Logfare) branch on cfg.provider. One dispatcher here means a new provider
+     is one line in each of these tables plus one branch, not one branch per
+     call site. */
+  function providerCall(cfg, system, messages, schema) {
+    if (cfg.provider === 'anthropic') return anthropicCall(cfg, system, messages, schema);
+    if (cfg.provider === 'logfare') return logfareCall(cfg, system, messages, schema);
+    return openrouterCall(cfg, system, messages, schema);
+  }
+
   function dump() {
     return transcript.map(e =>
       '=== #' + e.n + '  ' + e.kind + (e.who ? '  ' + e.who : '') + '  ' + e.model +
@@ -390,6 +428,27 @@ LG.llm = (function () {
              schema: !!schema };
   }
 
+  /* Logfare speaks the same OpenAI-shaped chat-completions dialect as
+     OpenRouter, at a different door and with one model always: "logfare/auto"
+     is pinned here rather than trusted from cfg.model, so picking Logfare as
+     the provider always means auto, whatever a stray custom model field says. */
+  async function logfareSend(cfg, system, messages, schema) {
+    const body = { model: LOGFARE_MODEL,
+                   messages: [{ role: 'system', content: system }].concat(messages) };
+    if (schema) {
+      body.response_format = { type: 'json_schema',
+                               json_schema: { name: 'reply', strict: true, schema: schema } };
+    }
+    const data = await post('https://logfare.ai/v1/chat/completions',
+      logfareHeaders(cfg), body);
+    if (data.error) throw new Error(data.error.message || 'Logfare error');
+    const choice = (data.choices || [])[0] || {};
+    const m = choice.message || {};
+    return { text: m.content || '', reasoning: m.reasoning || null,
+             usage: data.usage || null, stop: choice.finish_reason || null,
+             schema: !!schema };
+  }
+
   /* A minimal round trip, so a bad key or a blocked origin is caught at the
      door rather than halfway through a conversation. */
   async function validate(cfg) {
@@ -398,6 +457,11 @@ LG.llm = (function () {
     if (cfg.provider === 'anthropic') {
       await post('https://api.anthropic.com/v1/messages',
         anthropicHeaders(cfg), anthropicBody(cfg, 'Reply with one word.', msgs, 8));
+    } else if (cfg.provider === 'logfare') {
+      const data = await post('https://logfare.ai/v1/chat/completions',
+        logfareHeaders(cfg),
+        { model: LOGFARE_MODEL, max_tokens: 8, messages: [{ role: 'system', content: 'Reply with one word.' }].concat(msgs) });
+      if (data.error) throw new Error(data.error.message || 'Logfare error');
     } else {
       const data = await post('https://openrouter.ai/api/v1/chat/completions',
         openrouterHeaders(cfg),
@@ -449,11 +513,8 @@ LG.llm = (function () {
     const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg), fast: true };
     let raw;
     try {
-      raw = vcfg.provider === 'anthropic'
-        ? await anthropicCall(vcfg, 'You verify claims against a transcript. Answer with JSON only.',
-            [{ role: 'user', content: lines.join('\n') }])
-        : await openrouterCall(vcfg, 'You verify claims against a transcript. Answer with JSON only.',
-            [{ role: 'user', content: lines.join('\n') }]);
+      raw = await providerCall(vcfg, 'You verify claims against a transcript. Answer with JSON only.',
+        [{ role: 'user', content: lines.join('\n') }]);
     } catch (e) {
       return [];                                   // never guess on failure
     }
@@ -498,11 +559,8 @@ LG.llm = (function () {
     ].join('\n');
     const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg), fast: true };
     try {
-      const raw = vcfg.provider === 'anthropic'
-        ? await anthropicCall(vcfg, 'You answer yes or no about what a line of dialogue did.',
-            [{ role: 'user', content: ask }])
-        : await openrouterCall(vcfg, 'You answer yes or no about what a line of dialogue did.',
-            [{ role: 'user', content: ask }]);
+      const raw = await providerCall(vcfg, 'You answer yes or no about what a line of dialogue did.',
+        [{ role: 'user', content: ask }]);
       return /^\W*yes\b/i.test(String(raw).trim());
     } catch (e) { return false; }        // no deal on a failed check
   }
@@ -539,11 +597,8 @@ LG.llm = (function () {
     ].join('\n');
     const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg), fast: true };
     try {
-      const raw = vcfg.provider === 'anthropic'
-        ? await anthropicCall(vcfg, 'You keep one person\'s beliefs up to date. Answer with JSON only.',
-            [{ role: 'user', content: ask }])
-        : await openrouterCall(vcfg, 'You keep one person\'s beliefs up to date. Answer with JSON only.',
-            [{ role: 'user', content: ask }]);
+      const raw = await providerCall(vcfg, 'You keep one person\'s beliefs up to date. Answer with JSON only.',
+        [{ role: 'user', content: ask }]);
       const obj = parseJSON(raw);
       const n = obj && Number(obj.n);
       if (!obj || !n || !(n > 0) || n > o.held.length) return null;
@@ -573,11 +628,8 @@ LG.llm = (function () {
     ].join('\n');
     const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg), fast: true };
     try {
-      const raw = vcfg.provider === 'anthropic'
-        ? await anthropicCall(vcfg, 'You translate and romanise single lines. Answer with JSON only.',
-            [{ role: 'user', content: ask }])
-        : await openrouterCall(vcfg, 'You translate and romanise single lines. Answer with JSON only.',
-            [{ role: 'user', content: ask }]);
+      const raw = await providerCall(vcfg, 'You translate and romanise single lines. Answer with JSON only.',
+        [{ role: 'user', content: ask }]);
       const o2 = parseJSON(raw);
       return o2 || null;
     } catch (e) { return null; }
@@ -630,9 +682,7 @@ LG.llm = (function () {
     const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg), fast: true };
     const sys = 'You note what people took away from a conversation. Answer with JSON only.';
     try {
-      const raw = vcfg.provider === 'anthropic'
-        ? await anthropicCall(vcfg, sys, [{ role: 'user', content: lines }])
-        : await openrouterCall(vcfg, sys, [{ role: 'user', content: lines }]);
+      const raw = await providerCall(vcfg, sys, [{ role: 'user', content: lines }]);
       const obj = parseJSON(raw);
       if (!obj) return null;
       const pick = n => {
@@ -696,9 +746,7 @@ LG.llm = (function () {
     const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg), fast: true };
     const sys = 'You decide what a villager does next. Answer with JSON only.';
     try {
-      const raw = vcfg.provider === 'anthropic'
-        ? await anthropicCall(vcfg, sys, [{ role: 'user', content: lines }])
-        : await openrouterCall(vcfg, sys, [{ role: 'user', content: lines }]);
+      const raw = await providerCall(vcfg, sys, [{ role: 'user', content: lines }]);
       const obj = parseJSON(raw);
       if (!obj || !obj.go) return null;
       return obj;
@@ -747,9 +795,7 @@ LG.llm = (function () {
     const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg), fast: true };
     const sys = 'You decide whether a villager posts a notice, and write it if so. Answer with JSON only.';
     try {
-      const raw = vcfg.provider === 'anthropic'
-        ? await anthropicCall(vcfg, sys, [{ role: 'user', content: lines }])
-        : await openrouterCall(vcfg, sys, [{ role: 'user', content: lines }]);
+      const raw = await providerCall(vcfg, sys, [{ role: 'user', content: lines }]);
       const obj = parseJSON(raw);
       if (!obj) return null;
       return obj;
@@ -832,9 +878,7 @@ LG.llm = (function () {
     const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg), fast: true };
     const sys = 'You play one villager in a two-person conversation. Answer with JSON only.';
     try {
-      const raw = vcfg.provider === 'anthropic'
-        ? await anthropicCall(vcfg, sys, [{ role: 'user', content: lines }])
-        : await openrouterCall(vcfg, sys, [{ role: 'user', content: lines }]);
+      const raw = await providerCall(vcfg, sys, [{ role: 'user', content: lines }]);
       const obj = parseJSON(raw);
       if (!obj || !obj.say) return null;
       return obj;
@@ -864,11 +908,8 @@ LG.llm = (function () {
     ] : []).join('\n');
     const vcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: helperModel(cfg), fast: true };
     try {
-      const raw = vcfg.provider === 'anthropic'
-        ? await anthropicCall(vcfg, 'You add furigana to Japanese text. Output the sentence only.',
-            [{ role: 'user', content: ask }])
-        : await openrouterCall(vcfg, 'You add furigana to Japanese text. Output the sentence only.',
-            [{ role: 'user', content: ask }]);
+      const raw = await providerCall(vcfg, 'You add furigana to Japanese text. Output the sentence only.',
+        [{ role: 'user', content: ask }]);
       return String(raw).trim();
     } catch (e) { return null; }
   }
@@ -940,9 +981,7 @@ LG.llm = (function () {
 
   /* Returns the parsed JSON object the character replied with. */
   async function speak(cfg, system, messages, schema) {
-    const raw = cfg.provider === 'anthropic'
-      ? await anthropicCall(cfg, system, messages, schema)
-      : await openrouterCall(cfg, system, messages, schema);
+    const raw = await providerCall(cfg, system, messages, schema);
     const obj = parseJSON(raw);
     if (!obj || !obj.say) {
       // Never put a brace in a villager's mouth — let the caller report a failure.

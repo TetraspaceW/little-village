@@ -560,8 +560,10 @@ LG.game = (function () {
 
   function useEnv(env) {
     const was = { lang: settings.lang, level: settings.level };
-    if (env.provider === 'anthropic' || env.provider === 'openrouter') settings.provider = env.provider;
-    const key = settings.provider === 'openrouter' ? env.openrouterKey : env.anthropicKey;
+    if (LG.llm.MODELS[env.provider]) settings.provider = env.provider;
+    const key = settings.provider === 'openrouter' ? env.openrouterKey
+              : settings.provider === 'logfare' ? env.logfareKey
+              : env.anthropicKey;
     let got = [];
     if (key) { settings.apiKey = key; got.push('the model key'); }
     if (env.ttsKey) { settings.ttsKey = env.ttsKey; settings.voices = true; got.push('a voice key'); }
@@ -943,11 +945,15 @@ LG.game = (function () {
     const prov = document.getElementById('setProvider').value;
     const sel = document.getElementById('setHelper');
     const list = LG.llm.HELPERS[prov] || [];
+    // Logfare has exactly one model and always picks it — nothing to override.
+    const fixed = prov === 'logfare';
     sel.innerHTML = list.map(m => '<option value="' + m.id + '">' + m.label + '</option>').join('')
-      + '<option value="other">Other — type an id below</option>';
+      + (fixed ? '' : '<option value="other">Other — type an id below</option>');
+    sel.disabled = fixed;
     const known = list.some(m => m.id === settings.helper);
-    sel.value = settings.helper && !known ? 'other' : (settings.helper || (list[0] && list[0].id) || 'other');
-    document.getElementById('setHelperCustom').value = known ? '' : settings.helper;
+    sel.value = fixed ? list[0].id
+              : settings.helper && !known ? 'other' : (settings.helper || (list[0] && list[0].id) || 'other');
+    document.getElementById('setHelperCustom').value = fixed || known ? '' : settings.helper;
     syncHelperBox();
   }
 
@@ -960,14 +966,20 @@ LG.game = (function () {
     const prov = document.getElementById('setProvider').value;
     const sel = document.getElementById('setModel');
     const list = LG.llm.MODELS[prov] || [];
+    // Logfare has exactly one model and always picks it — nothing to override.
+    const fixed = prov === 'logfare';
     sel.innerHTML = list.map(m => '<option value="' + m.id + '">' + m.label + '</option>').join('')
-      + '<option value="other">Other — type an id below</option>';
+      + (fixed ? '' : '<option value="other">Other — type an id below</option>');
+    sel.disabled = fixed;
     const known = list.some(m => m.id === settings.model);
-    sel.value = settings.model && !known ? 'other' : (settings.model || (list[0] && list[0].id) || 'other');
-    document.getElementById('setModelCustom').value = known ? '' : settings.model;
+    sel.value = fixed ? list[0].id
+              : settings.model && !known ? 'other' : (settings.model || (list[0] && list[0].id) || 'other');
+    document.getElementById('setModelCustom').value = fixed || known ? '' : settings.model;
     syncModelBox();
     document.getElementById('keyHint').textContent = prov === 'anthropic'
       ? 'From console.anthropic.com. Sent straight from your browser to api.anthropic.com.'
+      : prov === 'logfare'
+      ? 'From logfare.ai/register — free and instant, no email needed.'
       : 'From openrouter.ai/keys.';
   }
 

@@ -74,6 +74,7 @@ function settingsFromEnv() {
     provider: pick('LG_PROVIDER', 'PROVIDER'),
     anthropicKey: pick('ANTHROPIC_API_KEY'),
     openrouterKey: pick('OPENROUTER_API_KEY'),
+    logfareKey: pick('LOGFARE_API_KEY'),
     ttsKey: pick('ELEVENLABS_API_KEY'),
     model: pick('LG_MODEL', 'MODEL'),
     helper: pick('LG_HELPER', 'HELPER'),
@@ -227,7 +228,7 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log('log       ' + path.relative(process.cwd(), LOGFILE));
   if (FAKE) console.log('fake      POST /fake is answering as a stand-in provider');
   const env = settingsFromEnv();
-  const have = ['anthropicKey', 'openrouterKey', 'ttsKey']
+  const have = ['anthropicKey', 'openrouterKey', 'logfareKey', 'ttsKey']
     .filter(k => env[k]).map(k => k.replace('Key', ''));
   console.log('env       ' + (ENV_LOADED ? ENV_LOADED + ' values from .env' : 'no .env'));
   console.log('keys      ' + (have.length ? have.join(', ')

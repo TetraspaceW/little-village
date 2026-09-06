@@ -808,7 +808,8 @@ LG.dialogue = (function () {
 
     busy = false;
     el.dlgSend.disabled = false;
-    el.dlgInput.focus();
+    // A reply should not take focus back after a touch user dismissed the input.
+    if (!LG.touch.on) el.dlgInput.focus();
   }
 
   /* The villager nominates facts it thinks it revealed; a second, cheaper model

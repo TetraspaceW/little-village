@@ -187,8 +187,7 @@ LG.touch = (function () {
      Two fingers are always let through, because that is a pinch, and making
      the text bigger is nobody's business but the reader's. */
   function lockPage() {
-    if (!document || !document.addEventListener) return;
-    let allowed = false;
+    if (!document || !document.querySelectorAll) return;
     const canScroll = el => {
       for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
         const tag = n.tagName;
@@ -201,12 +200,17 @@ LG.touch = (function () {
       }
       return false;
     };
-    document.addEventListener('touchstart', e => { allowed = canScroll(e.target); },
-                              { passive: true });
-    document.addEventListener('touchmove', e => {
-      if (e.touches && e.touches.length > 1) return;      // a pinch, not a drag
-      if (!allowed && e.cancelable) e.preventDefault();
-    }, { passive: false });
+    // Only the overlays need this guard. The canvas already uses touch-action:
+    // none; a non-passive document listener also intercepts every joystick drag.
+    document.querySelectorAll('#hud, #dlg, .panel').forEach(surface => {
+      let allowed = false;
+      surface.addEventListener('touchstart', e => { allowed = canScroll(e.target); },
+                               { passive: true });
+      surface.addEventListener('touchmove', e => {
+        if (e.touches && e.touches.length > 1) return;    // a pinch, not a drag
+        if (!allowed && e.cancelable) e.preventDefault();
+      }, { passive: false });
+    });
   }
 
   /* ------------------------------------------------------------- the picture */

@@ -110,18 +110,18 @@ LG.touch = (function () {
   }
 
   function aim(p) {
-    let dx = p.x - p.x0, dy = p.y - p.y0;
-    let len = Math.hypot(dx, dy);
-    /* A finger that runs past the rim drags the origin along behind it. Without
-       this the stick is pinned to where you first touched, so walking the
-       length of the high street and then turning means dragging all the way
-       back across the dead zone before anything happens. */
-    if (len > RANGE) {
-      const back = 1 - RANGE / len;
-      p.x0 += dx * back; p.y0 += dy * back;
-      dx = p.x - p.x0; dy = p.y - p.y0; len = RANGE;
-    }
-    ring = { x: p.x0, y: p.y0, kx: p.x, ky: p.y };
+    const dx = p.x - p.x0, dy = p.y - p.y0;
+    const len = Math.hypot(dx, dy);
+    /* The knob is clamped to the rim rather than dragging the origin along
+       behind an overshooting finger. That used to be the trick — it saves a
+       full throw of the thumb after a long walk — but it meant a stride
+       forward, a step back, and a stride forward again dragged the base
+       across the screen chasing its own trail, which reads as the stick
+       sliding around rather than as you steering it. Speed already saturates
+       at the rim (below), so nothing is lost by just pinning the knob there:
+       the origin now moves only when the finger lifts and lands again. */
+    const cap = len > RANGE ? RANGE / len : 1;
+    ring = { x: p.x0, y: p.y0, kx: p.x0 + dx * cap, ky: p.y0 + dy * cap };
     if (len <= DEAD) { vec = null; return; }
     const push = SLOW + (1 - SLOW) * Math.min(1, (len - DEAD) / (RANGE - DEAD));
     vec = { x: (dx / len) * push, y: (dy / len) * push };

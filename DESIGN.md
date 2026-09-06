@@ -991,6 +991,21 @@ than shrinking it the page itself never changes size. Both mechanisms are
 listened for, and the fallback to `innerHeight` covers a browser with no
 `visualViewport` at all.
 
+**The message box had never had the font it was written for.** `font: 16px/1.4
+inherit` is not a font shorthand — `inherit` is only legal there as the whole
+value — so the declaration was invalid, was dropped, and the box you type the
+village's language into had been the user agent's default all along: monospace
+at 13.3px. The same mistake sat on every select and text field in the settings
+panel, the API key included. Both are longhands now, at sixteen pixels, which
+is not a rounding: it is the size below which a phone zooms the page in when
+you focus a field, and it is what a twenty-column `textarea` measures its own
+intrinsic width against — in a Japanese font that is twenty *ems*, which is how
+the box came to be wider than the card it sits in with the **Say it** button
+clipped off behind `.dlg-card`'s `overflow`. The composer is a grid rather than
+a flex row for the same reason: `minmax(0,1fr)` promises the column may be as
+narrow as it must be, `min-width:0` promises the same of the box in it, and the
+button's own column is sized to the button, so it is never what gives.
+
 **The page does not move under a finger.** With a keyboard up the window onto
 the page is smaller than the page, and a browser will let you drag the whole
 thing about inside it — so touching beside the dialogue slides the village, the

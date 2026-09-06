@@ -31,7 +31,7 @@
    it first in the stack reaches it for that single character and falls
    through to the system's own flag-emoji font for everything else, same
    as if this rule weren't here at all. This has to win over .panel-card
-   select's own `font:` shorthand below on #setLang itself, not just its
+   select's own font-family below on #setLang itself, not just its
    <option>s — Chromium renders the select's closed/collapsed box from
    the <select>'s own computed font, ignoring the selected <option>'s.
    The font itself is a hybrid carrying two color-glyph tables for the
@@ -188,7 +188,9 @@ body:not(.touch) .touch-only{display:none}
   width:38px;height:38px;border-radius:10px;display:grid;place-items:center;
   font-size:20px;border:2px solid rgba(0,0,0,.15);
 }
-.who{display:flex;flex-direction:column;line-height:1.2;flex:1}
+/* min-width:0 for the same reason as the composer: without it a long enough
+   name or trade could push the ✕ off the edge of the card rather than wrap. */
+.who{display:flex;flex-direction:column;line-height:1.2;flex:1;min-width:0}
 .who strong{font-size:16px}
 .who span{font-size:12px;color:#8a7355}
 .dlg-card header button{
@@ -241,10 +243,32 @@ ruby rb{font-size:1em}
   border-radius:999px;padding:1px 7px;margin-left:6px;text-transform:uppercase;letter-spacing:.06em;
 }
 
-.composer{display:flex;gap:8px;padding:10px 12px;border-top:2px solid var(--line);background:var(--paper-2)}
+/* Grid rather than flex, for the one property flex would not promise: a
+   textarea's intrinsic width is its `cols` (20 by default) times the font's
+   average character advance, and in a Japanese font that advance is a whole em
+   — so the box wants about twenty ems whatever room there is. Engines disagree
+   about whether a form control may then be shrunk below it; Firefox will not,
+   and the textarea ran off the side of a phone with the Say it button clipped
+   away behind .dlg-card's overflow. `minmax(0,1fr)` says the column may be as
+   narrow as it has to be, and `min-width:0` says the same to the box in it;
+   both are needed, because a track and the thing in it each have their own
+   floor. The button's column is sized to the button, so it is never what goes. */
+.composer{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:stretch;
+  gap:8px;padding:10px 12px;border-top:2px solid var(--line);background:var(--paper-2);
+}
 .composer textarea{
-  flex:1;resize:none;border:1px solid var(--line);border-radius:10px;
-  padding:9px 11px;font:16px/1.4 inherit;background:#fff;color:var(--ink);
+  min-width:0;resize:none;border:1px solid var(--line);border-radius:10px;
+  padding:9px 11px;background:#fff;color:var(--ink);
+  /* Longhands, because `font: 16px/1.4 inherit` is not a font shorthand —
+     `inherit` is only legal there as the whole value, so the declaration was
+     invalid and dropped, and the box you type the village's language into had
+     been the user agent's default all along: monospace at 13.3px. Sixteen is
+     not a rounding either. It is the size below which a phone zooms the page in
+     when you focus a field, and it is what a twenty-column textarea measures
+     its own intrinsic width against — in a Japanese font that is twenty ems,
+     which is how it came to be wider than the card it sits in. */
+  font-family:inherit;font-size:16px;line-height:1.4;
 }
 .composer textarea:focus{outline:2px solid var(--accent-2);outline-offset:-1px}
 .composer button{
@@ -272,7 +296,11 @@ ruby rb{font-size:1em}
 .panel-card h2{margin:0 0 12px;font-size:21px}
 .panel-card label{display:block;margin:12px 0;font-size:13px;font-weight:600;color:#6d5b45}
 .panel-card select,.panel-card input[type=password],.panel-card input[type=text]{
-  display:block;width:100%;margin-top:5px;padding:8px 10px;font:15px inherit;
+  display:block;width:100%;margin-top:5px;padding:8px 10px;
+  /* Same invalid shorthand, same fallback to 13.3px monospace — and this one
+     holds the API key, which is exactly the field a phone would rather zoom
+     into than let you read. Sixteen for the two you type in. */
+  font-family:inherit;font-size:16px;
   border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);
 }
 .panel-card small{display:block;font-weight:400;color:#9c8b72;margin-top:4px}

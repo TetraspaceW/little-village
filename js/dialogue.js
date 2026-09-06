@@ -542,7 +542,6 @@ LG.dialogue = (function () {
 
   function close() {
     LG.tts.stop();
-    el.dlg.classList.remove('typing');     // blur is not owed to a hidden box
     if (current) current.frozen = false;
     current = null;
     el.dlg.classList.remove('open');
@@ -1099,11 +1098,6 @@ LG.dialogue = (function () {
     bind();
     el.dlgSend.onclick = () => send(el.dlgInput.value);
     el.dlgClose.onclick = close;
-    /* While the box has focus the card is short — the keyboard is over the rest
-       of the screen — and what you are typing has to win the room. The class is
-       set on any screen; only the narrow-screen rules in style.css read it. */
-    el.dlgInput.addEventListener('focus', () => el.dlg.classList.add('typing'));
-    el.dlgInput.addEventListener('blur', () => el.dlg.classList.remove('typing'));
     el.dlgInput.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(el.dlgInput.value); }
       if (e.key === 'Escape') close();

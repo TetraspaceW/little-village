@@ -959,14 +959,25 @@ header, conversation, two trays of chips, composer — and with a keyboard up
 those parts add up to more than the space left. Left to itself the browser
 keeps whatever it last scrolled to and clips the rest off one end or the other:
 the header on one phone, on another the box you are typing into. So the card
-says which gives. The conversation shrinks a long way and the composer never
-does, and while the input has focus the phrase trays drop their labels and come
-down to a single scrolling row — you have already chosen the box over the rack
-by tapping it, and one row is still enough to reach a phrase. They come back
-the moment the box loses focus. A phone turned sideways is too wide for the
-narrow-screen rules and shorter than any of them assume; there the rack goes
-entirely while you type, which is the only thing that fits in two hundred
-points of height.
+says which gives, in order. The chrome and the conversation hand over what they
+can spare and the phrase trays lose their labels and come down to a single
+scrolling row — enough to still reach a phrase, not enough to push the composer
+off the bottom. If there is still not room the rack goes entirely, which is all
+that fits on a phone turned sideways with the keyboard up. The composer never
+shrinks and is never the thing that goes.
+
+**How much room there is is a fact about the screen, not about what has focus.**
+The first version of this hung the card's layout off the input having focus,
+which is the obvious signal and the wrong one: tapping **Say it** takes focus
+off the box while the keyboard stays up, so the card sprang back to its roomy
+layout in a space that had not grown and pushed the composer it had just used
+off the bottom. Height is what actually decides what fits, so height is what is
+measured — `trackViewport` publishes `cramped` and `tight` on `<body>` from the
+visible height, and the stylesheet hangs off those. A media query cannot ask the
+question, because on the browsers that only slide a window over the page rather
+than shrinking it the page itself never changes size. Both mechanisms are
+listened for, and the fallback to `innerHeight` covers a browser with no
+`visualViewport` at all.
 
 **Nothing on the desktop moved.** The joystick is only ever drawn while a finger is
 pushing, the folding HUD boxes live inside the narrow-screen media query, and the

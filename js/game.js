@@ -696,18 +696,43 @@ LG.game = (function () {
      visual viewport is the part you can actually see. Only the two overlays
      read these; the canvas goes on filling the whole screen, because scrolling
      the village up every time the keyboard opens would be worse than the
-     problem. */
+     problem.
+
+     Two classes come out of the same measurement, because how much room there
+     is is a fact about the screen and not about what has focus. Keying the
+     dialogue's own layout off the input having focus was the obvious thing and
+     it is wrong: tapping "Say it" takes focus off the box while the keyboard
+     stays up, and the card sprang back to its roomy layout in a space that had
+     not grown, pushing the composer off the bottom again. Height is the thing
+     that actually decides what fits, so height is what is published.
+
+     Not every browser tells us the same way — some shrink the page under the
+     keyboard and some only slide a window over it — so the fallback and both
+     listeners are there to catch whichever one this is. */
+  const CRAMPED = 460;             // no room for the trays at their full size
+  const TIGHT = 320;               // no room for them at all
+  function measureViewport() {
+    const vv = window.visualViewport;
+    const h = vv ? vv.height : (window.innerHeight || 0);
+    const root = document.documentElement;
+    if (root && root.style) {
+      root.style.setProperty('--vv-h', h + 'px');
+      root.style.setProperty('--vv-top', (vv ? vv.offsetTop : 0) + 'px');
+    }
+    const b = document.body;
+    if (b && b.classList) {
+      b.classList.toggle('cramped', h > 0 && h < CRAMPED);
+      b.classList.toggle('tight', h > 0 && h < TIGHT);
+    }
+  }
   function trackViewport() {
     const vv = window.visualViewport;
-    if (!vv || !vv.addEventListener || !document.documentElement) return;
-    const put = () => {
-      const r = document.documentElement.style;
-      r.setProperty('--vv-h', vv.height + 'px');
-      r.setProperty('--vv-top', vv.offsetTop + 'px');
-    };
-    vv.addEventListener('resize', put);
-    vv.addEventListener('scroll', put);
-    put();
+    if (vv && vv.addEventListener) {
+      vv.addEventListener('resize', measureViewport);
+      vv.addEventListener('scroll', measureViewport);
+    }
+    window.addEventListener('resize', measureViewport);
+    measureViewport();
   }
 
   /* --------------------------------------------------------------- input */
@@ -1780,6 +1805,9 @@ LG.game = (function () {
            // one turn of the world by hand, for poking at it from the console
            // (and for tests, which cannot rely on requestAnimationFrame)
            _debugTick: dt => update(dt || 1 / 60),
+           // re-read how much screen there is, for a test that has no keyboard
+           // to raise and no browser to fire a resize
+           _debugViewport: measureViewport,
            inventoryList, doTrade, commerce, renderHUD, openSettings, uiBlocked, newVillage,
            get plan() { return plan; },
            get npcs() { return npcs; },

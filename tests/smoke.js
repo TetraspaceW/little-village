@@ -41,7 +41,14 @@ function elem(id) {
       _s: new Set(),
       add(c) { this._s.add(c); }, remove(c) { this._s.delete(c); },
       contains(c) { return this._s.has(c); },
-      toggle(c) { this._s.has(c) ? this._s.delete(c) : this._s.add(c); }
+      /* The real toggle takes a second argument that says which way, and the
+         game uses it — classList.toggle('cramped', tooShort). A stub that
+         always flips turns a settled "still cramped" into "not any more". */
+      toggle(c, on) {
+        const want = on === undefined ? !this._s.has(c) : !!on;
+        if (want) this._s.add(c); else this._s.delete(c);
+        return want;
+      }
     },
     appendChild(c) { this.children.push(c); return c; },
     querySelectorAll() { return []; },
@@ -65,6 +72,7 @@ const sandbox = {
   RegExp, Error, parseInt, parseFloat, isFinite, isNaN, Uint8Array, Proxy,
   setTimeout, clearTimeout, setInterval, clearInterval,
   devicePixelRatio: 1,
+  innerHeight: 900, innerWidth: 1440,   // a desktop window, until a test says otherwise
   performance: { now: () => Date.now() },
   location: { protocol: 'file:', origin: 'null' },
   localStorage: {
@@ -948,6 +956,7 @@ async function villagersTalking() {
 
   await namesUnknownUntilTold();
   await touchControls();
+  roomForTheComposer();
 
   console.log('\n' + (failures ? failures + ' of ' + checks + ' CHECKS FAILED'
                                : 'SMOKE TEST PASSED (' + checks + ' checks)'));
@@ -1100,6 +1109,46 @@ async function touchControls() {
        'and a gentler lean walks you slower, not just in a different direction (' +
        gentle.toFixed(1) + 'px)');
   }
+}
+
+/* How much screen there is decides what the dialogue card can afford, and it is
+   a fact about the screen rather than about what has focus. That distinction is
+   the whole point of this section: the first version of this keyed the card's
+   layout off the input having focus, and tapping "Say it" takes focus off the
+   box while the keyboard stays up — so the card sprang back to its roomy layout
+   in a space that had not grown, and pushed the composer it had just used off
+   the bottom of the screen.
+
+   The layout itself is CSS and there is no layout engine here to check it in.
+   What is checked here is the measurement the CSS hangs off: that the classes
+   go on and come off at the right heights, and that they never depend on focus,
+   which this file cannot give or take anyway. */
+function roomForTheComposer() {
+  section('how much room there is for the composer');
+  const g = LG.game, body = sandbox.document.body;
+  const at = h => { sandbox.innerHeight = h; g._debugViewport();
+                    return { cramped: body.classList.contains('cramped'),
+                             tight: body.classList.contains('tight') }; };
+
+  const roomy = at(900);
+  ok(!roomy.cramped && !roomy.tight, 'a desktop window is neither');
+  const phone = at(839);
+  ok(!phone.cramped && !phone.tight, 'nor is a phone with no keyboard up');
+
+  const kbd = at(380);
+  ok(kbd.cramped, 'a phone with the keyboard up is cramped');
+  ok(!kbd.tight, 'but not so cramped that the phrases have to go');
+
+  const sideways = at(212);
+  ok(sideways.cramped && sideways.tight, 'a phone on its side with the keyboard up is both');
+
+  /* Coming back is the half that broke: the keyboard goes down and the card has
+     to be allowed its full layout again. A classList.toggle that ignores the
+     second argument passes the way down and fails here. */
+  const back = at(839);
+  ok(!back.cramped && !back.tight, 'and the keyboard going away gives it all back');
+
+  at(900);                                    // leave it as it was found
 }
 
 beliefsRevised().then(villagersTalking);

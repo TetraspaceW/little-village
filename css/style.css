@@ -368,13 +368,6 @@ ruby rb{font-size:1em}
   .composer{flex:0 0 auto}
   .dlg-status:empty{min-height:0;padding:0}
 
-  /* Once the keyboard is up you have already chosen the box over the rack, so
-     the phrase trays drop their labels and come down to one scrolling row —
-     enough to still reach a phrase, not enough to push the composer off the
-     bottom. They come back the moment the box loses focus. */
-  #dlg.typing .tray{padding:4px 10px}
-  #dlg.typing .tray-label{display:none}
-  #dlg.typing .chips{max-height:44px}
   .tray{padding:5px 10px}
   .chips{max-height:88px;gap:6px}
   .chip{padding:8px 14px;font-size:14px}
@@ -390,19 +383,30 @@ ruby rb{font-size:1em}
   .panel-card label.check small{flex-basis:100%;margin-left:26px;margin-top:2px}
 }
 
-/* A phone turned sideways is too wide for the rules above and shorter than any
-   of them assume — with the keyboard up there are barely two hundred points of
-   height left, and no arrangement fits a conversation, a rack of phrases and a
-   composer into that. So the parts give way in order: first the room the
-   conversation and the chrome can spare, and then, once you are typing, the
-   rack altogether. Kept off a desktop window that merely happens to be short
-   by asking for a coarse pointer as well. */
-@media (max-height:520px) and (pointer:coarse){
-  .dlg-card{max-height:100%}
-  .dlg-card header{padding:6px 12px}
-  #dlgLog{min-height:48px;padding:8px 10px}
-  .dlg-status:empty{min-height:0;padding:0}
-  .composer{flex:0 0 auto;padding:6px 10px}
-  .chips{max-height:76px}
-  #dlg.typing .tray{display:none}
-}
+/* Not enough height left for the card's parts, whatever took it — a keyboard
+   over most of a phone, or a phone on its side. game.js measures what is
+   actually visible and puts the answer here (see trackViewport); a media query
+   cannot ask, because on the browsers that only slide a window over the page
+   the page itself never changes size.
+
+   The parts give way in order. First the chrome and the conversation hand over
+   what they can spare and the phrase trays lose their labels and come down to
+   a single scrolling row — enough to still reach a phrase, not enough to push
+   the composer off the bottom. Then, if there is still not room, the rack goes
+   entirely: a phone on its side with the keyboard up has about two hundred
+   points to play with, and nothing else fits in that. The composer never
+   shrinks and is never the thing that goes. */
+body.cramped .dlg-card{max-height:100%}
+body.cramped .dlg-card header{padding:6px 12px}
+body.cramped #dlgLog{min-height:48px;padding:8px 10px}
+body.cramped .dlg-status{padding:0 12px 4px}
+body.cramped .dlg-status:empty{min-height:0;padding:0}
+/* One line of it at most: "a child who runs everywhere is thinking…" wraps to
+   two, and the second line comes out of the conversation above it. */
+body.cramped .dlg-status{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.cramped .composer{flex:0 0 auto;padding:6px 10px}
+body.cramped .tray{padding:4px 10px}
+body.cramped .tray-label{display:none}
+body.cramped .chips{max-height:44px}
+body.tight #dlgLog{min-height:40px}
+body.tight .tray{display:none}

@@ -168,6 +168,13 @@ body:not(.touch) .touch-only{display:none}
 #dlg{
   position:absolute;left:0;right:0;
   top:var(--vv-top,0px);height:var(--vv-h,100%);
+  /* --vv-top/--vv-h jump the moment game.js reads a new visualViewport
+     measurement, but the keyboard sliding into place does not — so without
+     this the card would snap to its new size a beat before the keys finish
+     arriving, which reads as a jolt sandwiched between two smooth animations
+     rather than one continuous move. Matched to nothing in particular; it
+     only has to be short enough not to lag behind the real keyboard. */
+  transition:top .12s ease-out,height .12s ease-out;
   display:none;
   align-items:flex-end;justify-content:center;
   background:linear-gradient(to top,rgba(20,14,8,.55),rgba(20,14,8,.1));
@@ -303,6 +310,7 @@ ruby rb{font-size:1em}
 .panel{
   position:absolute;left:0;right:0;
   top:var(--vv-top,0px);height:var(--vv-h,100%);
+  transition:top .12s ease-out,height .12s ease-out;  /* see #dlg above */
   display:none;align-items:center;justify-content:center;
   background:rgba(20,14,8,.6);padding:16px;pointer-events:auto;z-index:20;
 }
@@ -473,5 +481,5 @@ body.touch.typing .tray{
 /* Somebody who has asked for less movement gets the same layouts without the
    travel between them. */
 @media (prefers-reduced-motion:reduce){
-  .tray,.chips{transition:none}
+  .tray,.chips,#dlg,.panel{transition:none}
 }

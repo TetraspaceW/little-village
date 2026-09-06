@@ -721,8 +721,22 @@ LG.game = (function () {
     }
     const b = document.body;
     if (b && b.classList) {
+      const wasCramped = b.classList.contains('cramped');
       b.classList.toggle('cramped', h > 0 && h < CRAMPED);
       b.classList.toggle('tight', h > 0 && h < TIGHT);
+      /* Android's back button, and some gesture-nav, put the keyboard away
+         without blurring whatever raised it — the box stays focused, so
+         anything keyed off focus (the dialogue's tray collapse) reads the
+         keyboard as still up long after it is gone. The height coming back
+         is what actually means the keyboard is down, which is the one signal
+         that does not depend on the box knowing it was let go — so when that
+         happens, let it go for real, the same as tapping the conversation
+         does. Limited to text boxes: the canvas is focused too, for keyboard
+         play, and has nothing to lose by staying that way. */
+      if (LG.touch.on && wasCramped && !b.classList.contains('cramped')) {
+        const a = document.activeElement;
+        if (a && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT')) a.blur();
+      }
     }
   }
   function trackViewport() {

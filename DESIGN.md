@@ -960,11 +960,16 @@ glass. Only the first finger down can become the stick; a second is free to tap 
 the first walks, and if the walking one lifts the other takes over from wherever it
 is rather than stopping you mid-stride.
 
-**The stick's middle gives way.** A finger that runs past the rim drags the origin
-along behind it, so turning round after walking the length of the high street is one
-throw of the thumb rather than dragging all the way back across the dead zone. Coming
-back to the middle stops you, but the ring stays drawn — a control that blinks out
-from under your thumb reads as a bug.
+**The origin stays put.** A finger that runs past the rim does not drag the origin
+along behind it — an earlier version did, to save a full throw of the thumb after
+walking the length of the high street, but the same trick meant a stride forward, a
+step back, and a stride forward again crept the base across the screen chasing its own
+trail, which reads as the stick sliding around under you rather than as you steering
+it. Speed already saturates at the rim, so nothing is lost by simply pinning the knob
+there instead: past the rim reads as full speed in whatever direction the finger is
+now in, and the base does not move again until the finger lifts and lands somewhere
+else. Coming back to the middle stops you, but the ring stays drawn — a control that
+blinks out from under your thumb reads as a bug.
 
 **Keys and the stick add into the same pair of numbers**, so a keyboard next to a
 touchscreen is not a mode you have to be in. The keys are digital and the stick is

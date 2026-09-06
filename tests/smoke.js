@@ -1080,15 +1080,17 @@ async function touchControls() {
      'past the rim is due east at full speed');
   ok(!!T._ring, 'and there is a stick on screen to explain why you are walking');
 
-  /* The origin was dragged out to meet a finger that overshot, so turning
-     round is one throw of the thumb rather than the whole overshoot again. */
-  const mid = 200 + 40;                        // the rim gave way by the overshoot
-  T._move(1, mid - T.RANGE, 200);
-  ok(T.axis && T.axis.x < -0.99, 'the middle follows a finger that runs off the rim');
-  T._move(1, mid, 200);
+  /* The origin does not creep out to meet an overshooting finger — dragging it
+     along used to mean a stride forward, a step back, and a stride forward
+     again walked the base across the screen chasing its own trail. */
+  ok(T._ring.x === 200 && T._ring.y === 200,
+     'the origin stays where the finger first landed even past the rim');
+  T._move(1, 200 - T.RANGE, 200);
+  ok(T.axis && T.axis.x < -0.99, 'the same fixed origin reads a finger on the far side as due west');
+  T._move(1, 200, 200);
   ok(T.axis === null, 'and coming back to the middle stops you');
   ok(!!T._ring, 'without the stick blinking out from under your thumb');
-  T._end(1, mid, 200, 900);
+  T._end(1, 200, 200, 900);
   ok(T.axis === null && T._ring === null, 'lifting puts both away');
 
   /* --------------------------------------------------------------- the tap */

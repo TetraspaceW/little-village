@@ -947,6 +947,7 @@ async function villagersTalking() {
   }
 
   await namesUnknownUntilTold();
+  await touchControls();
 
   console.log('\n' + (failures ? failures + ' of ' + checks + ' CHECKS FAILED'
                                : 'SMOKE TEST PASSED (' + checks + ' checks)'));
@@ -1004,6 +1005,101 @@ async function namesUnknownUntilTold() {
   ok(back.nameKnown === true, 'and a name once learned is not forgotten on reload');
 
   LG.llm.speak = real;
+}
+
+/* The phone half of the controls. Nothing here dispatches a PointerEvent —
+   there is no browser in this sandbox to build one — so the gesture is driven
+   through the same three calls the real handlers make, which is where all the
+   deciding happens anyway: whether a finger is walking or pointing, where the
+   stick's middle has got to, and what was under the fingertip. */
+async function touchControls() {
+  section('a thumb walks, and a tap talks');
+  const g = LG.game, T = LG.touch, W = LG.world, TILE = W.TILE;
+  g._debugOpenTheDoor();                       // the tap path is dead behind the gate
+
+  /* ------------------------------------------------------------- the stick */
+  ok(T.axis === null, 'nothing is pushing until a finger is');
+  T._begin(1, 200, 200, 0);
+  ok(T.axis === null, 'a finger that has only landed is still a maybe');
+  T._move(1, 200 + T.DEAD - 2, 200);
+  ok(T.axis === null, 'and a wobble inside the dead zone is not a walk');
+
+  T._move(1, 200 + T.RANGE + 40, 200);
+  ok(T.axis && T.axis.x > 0.99 && Math.abs(T.axis.y) < 1e-9,
+     'past the rim is due east at full speed');
+  ok(!!T._ring, 'and there is a stick on screen to explain why you are walking');
+
+  /* The origin was dragged out to meet a finger that overshot, so turning
+     round is one throw of the thumb rather than the whole overshoot again. */
+  const mid = 200 + 40;                        // the rim gave way by the overshoot
+  T._move(1, mid - T.RANGE, 200);
+  ok(T.axis && T.axis.x < -0.99, 'the middle follows a finger that runs off the rim');
+  T._move(1, mid, 200);
+  ok(T.axis === null, 'and coming back to the middle stops you');
+  ok(!!T._ring, 'without the stick blinking out from under your thumb');
+  T._end(1, mid, 200, 900);
+  ok(T.axis === null && T._ring === null, 'lifting puts both away');
+
+  /* --------------------------------------------------------------- the tap */
+  // Somebody standing outdoors: a villager behind their own wall is not drawn,
+  // and what is not drawn cannot be aimed at.
+  const npc = g.npcs.find(n => !W.buildingUnder(n)) || g.npcs[0];
+  const screen = a => ({ x: a.px - g.cam.x, y: a.py - g.cam.y });
+
+  g._debugPlayerAt(npc.px + 20, npc.py);
+  g._debugTick(1 / 60);                        // the camera catches up with them
+  let p = screen(npc);
+  T._begin(2, p.x, p.y, 0); T._end(2, p.x, p.y, 90);
+  ok(LG.dialogue.isOpen(), 'a tap on the villager beside you opens the conversation');
+  LG.dialogue.close();
+
+  T._begin(3, p.x, p.y, 0); T._move(3, p.x + 60, p.y); T._end(3, p.x + 60, p.y, 90);
+  ok(!LG.dialogue.isOpen(), 'but a drag that starts on them walks past them instead');
+  ok(T.axis === null, 'and lets go at the end of it');
+
+  T._begin(4, p.x, p.y, 0); T._end(4, p.x, p.y, T.TAP_MS + 200);
+  ok(!LG.dialogue.isOpen(), 'a finger left resting on someone is neither one nor the other');
+
+  // Out of arm's reach a tap is a question, not a conversation — and it says so,
+  // because a tap that does nothing at all reads as a broken button.
+  g._debugPlayerAt(npc.px + TILE * 6, npc.py);
+  g._debugTick(1 / 60);
+  p = screen(npc);
+  T._begin(5, p.x, p.y, 0); T._end(5, p.x, p.y, 90);
+  ok(!LG.dialogue.isOpen(), 'tapping someone across the green does not start a conversation');
+  g._debugTick(1 / 60);
+  ok(/Walk over to/.test(sandbox.document.getElementById('hint').textContent),
+     'it says to walk over rather than going quiet');
+
+  /* --------------------------------------------------- and it actually walks */
+  // A stretch of ground with room to walk four tiles east, found rather than
+  // assumed: the map is generated and no fixed spot is clear in every village.
+  let spot = null;
+  for (let ty = 1; ty < W.H - 2 && !spot; ty++) {
+    for (let tx = 1; tx < W.W - 5 && !spot; tx++) {
+      let clear = true;
+      for (let i = 0; i <= 4 && clear; i++)
+        if (W.isSolid(tx + i, ty) || W.isSolid(tx + i, ty + 1)) clear = false;
+      if (clear) spot = { x: tx * TILE + 16, y: ty * TILE + 16 };
+    }
+  }
+  ok(!!spot, 'the village has somewhere to walk');
+  if (spot) {
+    const run = lean => {
+      g._debugPlayerAt(spot.x, spot.y);
+      const from = g.player.px;
+      T._begin(8, 100, 100, 0);
+      T._move(8, 100 + T.DEAD + (T.RANGE - T.DEAD) * lean, 100);
+      for (let i = 0; i < 30; i++) g._debugTick(1 / 60);   // half a second of it
+      T._end(8, 100, 100, 9e5);
+      return g.player.px - from;
+    };
+    const hard = run(1), gentle = run(0.25);
+    ok(hard > 10, 'a thumb held out to the rim walks you east (' + hard.toFixed(1) + 'px)');
+    ok(gentle > 0 && gentle < hard,
+       'and a gentler lean walks you slower, not just in a different direction (' +
+       gentle.toFixed(1) + 'px)');
+  }
 }
 
 beliefsRevised().then(villagersTalking);

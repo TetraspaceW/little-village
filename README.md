@@ -43,6 +43,12 @@ the settings screen rather than failing partway through a conversation.
 
 - **WASD / arrow keys** — walk. **E** / **Space** — talk to whoever you're next to.
   Bindings are physical-key based, so they work under any keyboard layout.
+- **On a phone or tablet:** put a finger anywhere on the village and **drag** —
+  a joystick appears under it and follows your thumb. **Tap** a villager you're
+  standing beside to talk to them, and tap anything else worth picking up; a tap
+  out of reach tells you to walk over rather than going quiet. Signs are
+  tap-to-reveal, the same as click-to-reveal. On a narrow screen the two HUD
+  boxes fold away when you tap their headings.
 - Type in the villager's own language. The **Phrases** row suggests something
   to start from; **Offer an item** holds an item out of your pockets instead
   of typing.
@@ -288,6 +294,7 @@ js/tts.js            ElevenLabs voice casting and playback
 js/world.js          tile map, forest, station, collision, pathfinding, interiors, rendering
 js/sky.js            hour/season colour, precipitation
 js/view.js           per-villager prompt assembly (single source of truth)
+js/touch.js          the joystick and the tap: touch gestures, on a canvas
 js/npc.js            villager movement, meetings, rendering
 js/dialogue.js       prompt building, conversation UI, trades
 js/save.js           save format: snapshot/restore, both storage locations
@@ -308,7 +315,9 @@ node tests/smoke.js --prompts  # print every villager's system prompt for a fixe
 ```
 
 `smoke.js` loads the actual scripts in the order `index.html` does, so it's
-testing shipped code, not a copy. `--prompts` output is useful to diff across
+testing shipped code, not a copy. The touch controls are covered the same way:
+there is no browser in the sandbox to dispatch a `PointerEvent` in, so the
+gesture is driven through the same three calls the real handlers make. `--prompts` output is useful to diff across
 commits to confirm a refactor didn't change what the model sees. The errand
 generator is separately fuzz-tested: 900 random chains across all three
 difficulties, checked for solvability, no self-trades, no duplicate

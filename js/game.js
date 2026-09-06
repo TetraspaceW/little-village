@@ -41,7 +41,17 @@ LG.game = (function () {
   function isCancel(e) { return e.code === 'Escape' || e.key === 'Escape'; }
 
   const held = { up: false, down: false, left: false, right: false };
+  /* Arm's length. Three things were separately writing TILE * 1.6 and one of
+     them said in a comment that it matched the other two: who counts as
+     "nearby" for the hint and the E key, how close a villager chasing you has
+     to get before they stop, and now how close you have to be for a tap on
+     someone to be a conversation rather than a wave across the green. */
+  const REACH = TILE * 1.6;
   let last = 0, nearby = null;
+  /* A line the player asked for, which outlasts the frame it was asked in —
+     the hint is otherwise recomputed from scratch every tick and a reply to a
+     tap would be gone before it was read. */
+  let nudge = '', nudgeT = 0;
   const logLines = [];
 
   /* ------------------------------------------------------------ settings */
@@ -532,6 +542,7 @@ LG.game = (function () {
     wireUI();
     resize();
     window.addEventListener('resize', resize);
+    trackViewport();
 
     if (settings.apiKey) { gated = false; LG.llm.probe(llmConfig()); }
     else { openSettings(true); }
@@ -659,7 +670,9 @@ LG.game = (function () {
     document.getElementById('seed').textContent = plan.seed;
     renderHUD();
     logLines.length = 0;
-    log(quiet ? 'Use WASD or the arrow keys to walk. Press E next to someone to talk.'
+    log(quiet ? (LG.touch.on
+                  ? 'Drag anywhere to walk. Tap a villager you are beside to talk.'
+                  : 'Use WASD or the arrow keys to walk. Press E next to someone to talk.')
               : 'A new village, in ' + LG.time.season().name.toLowerCase() +
                 '. Nobody has told you anything yet.');
     /* Written down at once rather than at the next autosave, so that closing the
@@ -675,6 +688,26 @@ LG.game = (function () {
     canvas.style.width = vw + 'px'; canvas.style.height = vh + 'px';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.imageSmoothingEnabled = false;
+  }
+
+  /* A phone's on-screen keyboard does not make the page shorter — it slides a
+     smaller window over it — so a dialogue card sized to the page ends up half
+     underneath the keys, with the box you are typing into out of sight. The
+     visual viewport is the part you can actually see. Only the two overlays
+     read these; the canvas goes on filling the whole screen, because scrolling
+     the village up every time the keyboard opens would be worse than the
+     problem. */
+  function trackViewport() {
+    const vv = window.visualViewport;
+    if (!vv || !vv.addEventListener || !document.documentElement) return;
+    const put = () => {
+      const r = document.documentElement.style;
+      r.setProperty('--vv-h', vv.height + 'px');
+      r.setProperty('--vv-top', vv.offsetTop + 'px');
+    };
+    vv.addEventListener('resize', put);
+    vv.addEventListener('scroll', put);
+    put();
   }
 
   /* --------------------------------------------------------------- input */
@@ -701,14 +734,27 @@ LG.game = (function () {
       const r = canvas.getBoundingClientRect();
       return { x: (e.clientX - r.left) + cam.x, y: (e.clientY - r.top) + cam.y };
     };
+    /* A finger's version of this goes through LG.touch below, which suppresses
+       the synthetic click a tap would otherwise also produce — without that,
+       a tapped sign would be revealed by the tap and hidden again by the
+       click a moment later. The guard is belt and braces for anything that
+       fakes a click without a pointer to go with it. */
     canvas.addEventListener('click', e => {
-      if (uiBlocked()) return;
+      if (uiBlocked() || LG.touch.on) return;
       const p = toWorld(e);
       W.hitSign(p.x, p.y);
     });
     canvas.addEventListener('mousemove', e => {
       const p = toWorld(e);
       canvas.style.cursor = (!uiBlocked() && W.overSign(p.x, p.y)) ? 'pointer' : 'default';
+    });
+    LG.touch.init(canvas, { blocked: uiBlocked, tap: tapAt });
+
+    /* The two boxes in the corners are most of a phone's screen. Their
+       headings fold them away, so the village underneath can be walked
+       through and tapped without moving your thumb somewhere else first. */
+    document.querySelectorAll('.hud-box h3').forEach(h => {
+      h.onclick = () => h.parentElement.classList.toggle('folded');
     });
 
     document.getElementById('btnSettings').onclick = () => openSettings(false);
@@ -1005,6 +1051,72 @@ LG.game = (function () {
     if (beast && !beast.caught && dist(player, beast) < TILE * 1.4) catchBeast();
     else if (worldItem && !worldItem.taken && dist(player, worldItem) < TILE * 1.4) pickUp();
     else if (nearBoard()) openBoard();
+  }
+
+  /* ------------------------------------------------------------------ a tap */
+  /* E means "whatever is in front of me"; a tap means "that one", and the two
+     want different code because a finger names a thing the key only implies.
+     What they share is the reach: tapping someone across the green does not
+     start a conversation any more than pressing E at them would. Out of reach
+     it says so instead of doing nothing, because a tap that produces no
+     response at all reads as a broken button rather than as distance. */
+
+  /* A villager is sixteen pixels across and a fingertip is nearer forty, so
+     the box a tap has to land in is padded well past the drawing. Where two
+     of them overlap the nearest middle wins. */
+  const TAP_PAD = 14;
+  function tapPick(wx, wy) {
+    /* Only what is actually on screen can be tapped. A villager behind
+       someone else's wall is not drawn — see the roof rule in draw() — and
+       aiming a finger at a person you cannot see would be aiming at a ghost. */
+    const room = W.buildingUnder(player);
+    const seen = a => { const r = W.buildingUnder(a); return !r || r === room; };
+    const marks = [];
+    for (const n of npcs) if (seen(n)) marks.push({ kind: 'npc', a: n, reach: REACH });
+    if (beast && !beast.caught && seen(beast))
+      marks.push({ kind: 'beast', a: beast, reach: TILE * 1.4 });
+    if (worldItem && !worldItem.taken)
+      marks.push({ kind: 'item', a: worldItem, reach: TILE * 1.4 });
+
+    let best = null, near = Infinity;
+    for (const m of marks) {
+      const a = m.a;
+      if (Math.abs(wx - a.px) > 12 + TAP_PAD) continue;
+      if (wy < a.py - 26 - TAP_PAD || wy > a.py + 14 + TAP_PAD) continue;
+      const d = Math.hypot(wx - a.px, wy - (a.py - 6));
+      if (d < near) { near = d; best = m; }
+    }
+    return best;
+  }
+
+  function aside(line) { nudge = line; nudgeT = 2.4; }
+
+  /* `sx`/`sy` are where the finger landed on the canvas; the camera turns them
+     into a place in the village. */
+  function tapAt(sx, sy) {
+    if (uiBlocked()) return;
+    const wx = sx + cam.x, wy = sy + cam.y;
+    // A sign's English gloss is reveal-on-touch, the same as under a mouse.
+    if (W.hitSign(wx, wy)) return;
+
+    const m = tapPick(wx, wy);
+    if (m) {
+      if (dist(player, m.a) > m.reach) {
+        aside(m.kind === 'npc' ? 'Walk over to ' + displayName(m.a) + ' to talk.'
+                               : 'Walk over to it first.');
+      } else if (m.kind === 'npc') talkTo(m.a);
+      else if (m.kind === 'beast') catchBeast();
+      else pickUp();
+      return;
+    }
+
+    /* The noticeboard is a patch of ground rather than an actor, so it is hit
+       by the tile the finger landed on, not by a box around a drawing. */
+    const spot = { tx: (wx / TILE) | 0, ty: (wy / TILE) | 0 };
+    if (nearRect(spot, LG.BOARD_SPOT, 0)) {
+      if (nearBoard()) openBoard();
+      else aside('Walk over to the noticeboard to read it.');
+    }
   }
 
   /* Whether the thing at the end of the chain has been collected — once, ever.
@@ -1396,6 +1508,12 @@ LG.game = (function () {
   }
 
   /* ---------------------------------------------------------------- loop */
+  /* Keys and the joystick add into the same pair of numbers, so a bluetooth
+     keyboard next to a touchscreen is not a mode you have to be in. The keys
+     are digital — each one is a whole 1 — and the stick is not: its length is
+     already how hard you are leaning. Normalising only when the total runs
+     past 1 keeps diagonals on the keyboard exactly as fast as they were while
+     leaving a half-pushed stick at half speed. */
   function movePlayer(dt) {
     if (uiBlocked()) return;
     let dx = 0, dy = 0;
@@ -1403,11 +1521,14 @@ LG.game = (function () {
     if (held.right) dx += 1;
     if (held.up) dy -= 1;
     if (held.down) dy += 1;
-    if (!dx && !dy) return;
-    const len = Math.hypot(dx, dy) || 1;
+    const stick = LG.touch.axis;
+    if (stick) { dx += stick.x; dy += stick.y; }
+    const len = Math.hypot(dx, dy);
+    if (!len) return;
+    const scale = len > 1 ? 1 / len : 1;
     const speed = 132;
-    const nx = player.px + (dx / len) * speed * dt;
-    const ny = player.py + (dy / len) * speed * dt;
+    const nx = player.px + dx * scale * speed * dt;
+    const ny = player.py + dy * scale * speed * dt;
     if (canStand(nx, player.py)) player.px = nx;
     if (canStand(player.px, ny)) player.py = ny;
     player.tx = (player.px / TILE) | 0;
@@ -1437,7 +1558,7 @@ LG.game = (function () {
      the traveller kept walking, or ducked somewhere awkward to reach — gives
      it up as something that can wait, the same way any other plan a villager
      can no longer act on gets dropped rather than pursued to the letter. */
-  const CATCH_UP = TILE * 1.6;             // matches the "who is nearby" hint radius
+  const CATCH_UP = REACH;                  // close enough to be spoken to
   const FOLLOW_RECALC = 1.2;               // seconds between replanning the route
   const FOLLOW_GIVE_UP = 50;               // seconds of chasing before it can wait
   function followPlayer(n, dt) {
@@ -1508,26 +1629,36 @@ LG.game = (function () {
     if (worldItem && !worldItem.taken && !uiBlocked() && dist(player, worldItem) < TILE * 0.7) pickUp();
 
     nearby = null;
-    let best = TILE * 1.6;
+    let best = REACH;
     for (const n of npcs) {
       const d = dist(player, n);
       if (d < best) { best = d; nearby = n; }
     }
 
+    if (nudgeT > 0) nudgeT -= dt;
     const hint = document.getElementById('hint');
+    /* Under a finger the hint is not an instruction — the thing to do is tap
+       what you can see — so it names what you are standing next to and leaves
+       it at that. Under a keyboard it has to say which key. */
+    const tap = LG.touch.on;
     if (uiBlocked()) {
       hint.classList.remove('show');
+    } else if (nudgeT > 0) {
+      hint.textContent = nudge;
+      hint.classList.add('show');
     } else if (nearby) {
-      hint.textContent = 'Press E to talk to ' + displayName(nearby);
+      hint.textContent = tap ? 'Tap ' + displayName(nearby) + ' to talk'
+                             : 'Press E to talk to ' + displayName(nearby);
       hint.classList.add('show');
     } else if (beast && !beast.caught && dist(player, beast) < TILE * 1.8) {
-      hint.textContent = 'Press E to pick up ' + beast.name;
+      hint.textContent = (tap ? 'Tap to pick up ' : 'Press E to pick up ') + beast.name;
       hint.classList.add('show');
     } else if (worldItem && !worldItem.taken && dist(player, worldItem) < TILE * 1.8) {
-      hint.textContent = 'Press E to pick it up';
+      hint.textContent = tap ? 'Tap to pick it up' : 'Press E to pick it up';
       hint.classList.add('show');
     } else if (nearBoard()) {
-      hint.textContent = 'Press E to read the noticeboard';
+      hint.textContent = tap ? 'Tap the noticeboard to read it'
+                             : 'Press E to read the noticeboard';
       hint.classList.add('show');
     } else {
       hint.classList.remove('show');
@@ -1611,6 +1742,9 @@ LG.game = (function () {
     g.addColorStop(1, 'rgba(20,14,8,.30)');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, vw, vh);
+
+    // On top of the weather and the vignette: it is a control, not scenery.
+    LG.touch.draw(ctx);
   }
 
   function loop(t) {
@@ -1624,12 +1758,25 @@ LG.game = (function () {
 
   return { init, settings, state, llmConfig, ttsConfig, log, learn, hasNote, give, take, count,
            remember, noteFactSource, factSpent, displayName, nameOrEmoji,
-           _moveDir: moveDir, _isInteract: isInteract,
+           _moveDir: moveDir, _isInteract: isInteract, _tapAt: tapAt,
+           get cam() { return cam; },
            canOverhear, logSpeech, think,
            factText: id => (plan && plan.facts[id]) ? plan.facts[id].text : null,
            set thoughts(v) { thoughts = !!v; },
            get thoughts() { return thoughts; },
-           _debugPlayerAt: (x, y) => { player.px = x; player.py = y; },
+           _debugPlayerAt: (x, y) => {
+             player.px = x; player.py = y;
+             player.tx = (x / TILE) | 0; player.ty = (y / TILE) | 0;
+           },
+           // The front door, opened without a key — for a console poke, and for
+           // the tests, which have to get past it to reach anything behind it.
+           // The whole door, not just the latch: the HUD is hidden while the
+           // gate is up, so a village nobody could see would be a poor answer.
+           _debugOpenTheDoor: () => {
+             gated = false;
+             document.getElementById('settings').classList.remove('open');
+             showChrome();
+           },
            // one turn of the world by hand, for poking at it from the console
            // (and for tests, which cannot rely on requestAnimationFrame)
            _debugTick: dt => update(dt || 1 / 60),

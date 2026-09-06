@@ -899,6 +899,66 @@ roof is for — but not through somebody else's walls. Which room you are in is 
 your feet rather than your tile, because the two disagree for the topmost few pixels of
 every room and the roof used to slam shut while you were plainly standing indoors.
 
+## Two hands, or one thumb
+
+**The keyboard scheme is two hands and a phone has neither.** One hand walks, the
+other presses **E** at whoever is in front of you — and the second half is the part
+that does not survive the move. There is no key to press, and no room for a fixed
+D-pad that is always wherever the designer's thumb was rather than yours.
+
+What a phone has instead is a finger already touching the thing it means, so the two
+halves come apart along that line: **drag to walk, tap to name.** A finger put down
+anywhere on the village raises a joystick under it; a finger put down and lifted is
+aimed at whatever was underneath.
+
+**Which of the two a touch is cannot be decided when it lands**, because they start
+identically. Every finger is held as a maybe until it either travels twelve pixels
+(a walk) or lifts inside 320ms without having (a tap). A long press that never moves
+is neither and does nothing, which is the right answer for a thumb resting on the
+glass. Only the first finger down can become the stick; a second is free to tap while
+the first walks, and if the walking one lifts the other takes over from wherever it
+is rather than stopping you mid-stride.
+
+**The stick's middle gives way.** A finger that runs past the rim drags the origin
+along behind it, so turning round after walking the length of the high street is one
+throw of the thumb rather than dragging all the way back across the dead zone. Coming
+back to the middle stops you, but the ring stays drawn — a control that blinks out
+from under your thumb reads as a bug.
+
+**Keys and the stick add into the same pair of numbers**, so a keyboard next to a
+touchscreen is not a mode you have to be in. The keys are digital and the stick is
+not: its length is already how hard you are leaning, and the total is normalised only
+when it runs past 1. Diagonals on the keyboard are therefore exactly as fast as they
+were, while a half-pushed stick walks at half speed.
+
+**A tap obeys the same reach the E key does.** Tapping somebody across the green does
+not start a conversation any more than pressing E at them would, and a villager behind
+somebody else's wall is not drawn, so there is nothing there to aim at. What is
+different is what happens when you miss: a tap out of reach says *walk over to the
+baker* rather than going quiet, because a tap that produces nothing at all reads as a
+broken button rather than as distance.
+
+**The hints say the true thing rather than the keyboard thing.** Under a finger the
+prompt is "Tap the baker to talk"; under a keyboard it is "Press E to talk to the
+baker". Which is true is decided by what last touched the screen — assumed from
+`(pointer: coarse)` before anything has, so the first line a phone shows is already
+right — and published as a class on `<body>` so the help panel and the stylesheet can
+follow without asking.
+
+**The dialogue does not grab the keyboard on a phone.** Focusing the input throws the
+on-screen keyboard up over the card, so the conversation you just opened is behind it
+before you have read a word; and the first thing most players want is to tap a phrase,
+not to type. Tapping the box is one tap and gets the keyboard when it is actually
+wanted. When it does come up it does not make the page shorter — it slides a smaller
+window over it — so the dialogue and the settings panel are sized from
+`window.visualViewport` rather than the page. The canvas is left alone: scrolling the
+village up every time somebody types would be worse than the problem.
+
+**Nothing on the desktop moved.** The joystick is only ever drawn while a finger is
+pushing, the folding HUD boxes live inside the narrow-screen media query, and the
+gesture code binds only non-mouse pointers, so a mouse still goes through the same
+click path it always did. The layout at desktop widths is unchanged down to the pixel.
+
 ## Saving
 
 **One format, and only one.** It is a plain JSON object with a version on it, built by

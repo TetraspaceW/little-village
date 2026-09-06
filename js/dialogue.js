@@ -524,14 +524,20 @@ LG.dialogue = (function () {
                 rubyMatches(h.ruby, h.say) ? h.ruby : null, npc);
       });
     } else if (typeof why !== 'string') {
-      status('Say hello — or click a phrase below.');
+      status(LG.touch.on ? 'Say hello — or tap a phrase below.'
+                         : 'Say hello — or click a phrase below.');
     }
     if (typeof why === 'string') {
       send('', null, '[You went looking for the traveller and have just found them.' +
         (why ? ' What brought you: ' + why + '.' : '') +
         ' Say your opening line.]');
     }
-    setTimeout(() => el.dlgInput.focus(), 60);
+    /* Not under a finger. Focusing the box throws the keyboard up over the
+       card, so the conversation you just opened is behind it before you have
+       read a word of it — and the first thing most players want to do is tap
+       a phrase, not type. Tapping the box is one tap, and gets the keyboard
+       when it is actually wanted. */
+    if (!LG.touch.on) setTimeout(() => el.dlgInput.focus(), 60);
   }
 
   function close() {

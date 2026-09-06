@@ -2,7 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- viewport-fit=cover so the canvas reaches under a phone's rounded corners and
+     notch (the HUD is kept out of them with env(safe-area-inset-*) in style.css).
+     Pinch zoom is left alone — it is how anyone who needs the text bigger gets it —
+     and the canvas opts out on its own with touch-action, so dragging the joystick
+     never scrolls or double-tap-zooms the page.
+     interactive-widget=resizes-visual makes an on-screen keyboard slide a smaller
+     window over the page everywhere rather than shrinking the page on some
+     platforms and not others — one behaviour to handle, and the canvas is not
+     torn down and re-laid-out every time somebody types. What the keyboard covers
+     is worked out from window.visualViewport in game.js. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-visual">
 <title>Little Village — a language game</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -210,8 +220,14 @@
       <p>You have just got off the train. The platform is the far end of the high street —
       walk west and keep going.</p>
       <ul>
-        <li><b>WASD</b> or <b>arrow keys</b> to walk.</li>
-        <li><b>E</b> or <b>Space</b> to talk to whoever you are standing next to.</li>
+        <!-- Both control schemes are always in the page; style.css shows whichever
+             one matches how you last touched the screen (see LG.touch). -->
+        <li class="keys-only"><b>WASD</b> or <b>arrow keys</b> to walk.</li>
+        <li class="keys-only"><b>E</b> or <b>Space</b> to talk to whoever you are standing next to.</li>
+        <li class="touch-only">Put a finger anywhere on the village and <b>drag</b> — a
+            joystick appears under it. Lift to stop.</li>
+        <li class="touch-only"><b>Tap</b> a villager you are standing beside to talk to them,
+            and tap anything else worth picking up.</li>
         <li>In a conversation, type in <em>their</em> language. The <b>Phrases</b> row gives you
             something to start from, and <b>Offer an item</b> holds something out from your pockets.</li>
         <li>They remember what you tell them — and they repeat it to each other.</li>
@@ -219,9 +235,9 @@
             <em>"What is your name?"</em> — it's in the Phrases row.</li>
         <li>Your <b>notebook</b> only fills in with things a villager has actually told you.
             If it is empty, go and ask.</li>
-        <li>Shops and the hall have a <b>sign</b> out front — click it to check the English
+        <li>Shops and the hall have a <b>sign</b> out front — tap or click it to check the English
             underneath. The <b>noticeboard</b> near the hall is whatever the village felt like
-            pinning up; press <b>E</b> beside it to read.</li>
+            pinning up; stand beside it and press <b>E</b> (or tap it) to read.</li>
         <li>North of the village is <b>forest</b>, with tracks through it and clearings that
             have names. Things get lost up there.</li>
       </ul>
@@ -266,6 +282,7 @@
 <script src="js/world.js"></script>
 <script src="js/sky.js"></script>
 <script src="js/view.js"></script>
+<script src="js/touch.js"></script>
 <script src="js/npc.js"></script>
 <script src="js/dialogue.js"></script>
 <script src="js/save.js"></script>

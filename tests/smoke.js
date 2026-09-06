@@ -611,6 +611,19 @@ section('a village, written down and read back');
   }
   npcs[0].coins = 41;
   npcs[0].stock.apple = 2;
+  /* Petra meets the train, once, when the village is new — and this village is
+     not new any more: she has long since said hello and gone back to running
+     about. The other half of the same state is somebody who really is on their
+     way over right now, so both halves get written down and read back. */
+  const petra = npcs.find(n => n.def.id === 'petra');
+  if (petra) {
+    petra.followingPlayer = false; petra.wentAfter = null; petra.why = '';
+  }
+  const chaser = npcs.find(n => n.def.id !== 'petra');
+  if (chaser) {
+    chaser.followingPlayer = true; chaser.wentAfter = 'player';
+    chaser.why = 'wants to know what the traveller made of the bread';
+  }
   /* The one thing about a village that changes while you play it: the thing
      lying at the end of the chain gets collected. */
   if (g.beast) { g.beast.caught = true; g.beast.following = true; }
@@ -681,6 +694,19 @@ section('a village, written down and read back');
      'and the thing at the end of the chain is still collected, not lying there again');
   ok(back.every(n => !n.route && !n.frozen && !n.chatting),
      'nobody comes back mid-errand, mid-freeze or mid-conversation');
+  /* The village a restore lands on is a brand new one, and Petra sets off to
+     meet the train in every brand new village. Reopening a village you have
+     been living in for days is not an arrival, and she should not treat it as
+     one. */
+  const petraBack = back.find(n => n.def.id === 'petra');
+  ok(petraBack && !petraBack.followingPlayer && !petraBack.wentAfter && !petraBack.why,
+     'Petra does not come running to greet you off a train you got off days ago');
+  const chaserBack = chaser && back.find(n => n.id === chaser.id);
+  ok(!chaser || (chaserBack && chaserBack.followingPlayer &&
+                 chaserBack.wentAfter === 'player' && chaserBack.why === chaser.why),
+     'and somebody who really was on their way over is still coming, and still knows why');
+  ok(!chaserBack || !chaserBack.followFor,
+     'with the chase timed from now rather than from before the reload');
   ok(back.every(n => LG.world.isWalkable(n.tx, n.ty)),
      'and everybody comes back somewhere they can stand');
   ok(back.every(n => n.patch && typeof n.patch.x === 'number'),
@@ -692,6 +718,22 @@ section('a village, written down and read back');
                       r.w === back[0].patch.w && r.h === back[0].patch.h) ||
      known.indexOf(back[0].patch) !== -1,
      'a patch that is one of the real rectangles comes back as that rectangle');
+
+  /* A save written before any of this was recorded says nothing about who is
+     chasing whom, and the answer to that is nobody — not "whoever this new
+     village just sent to the platform". */
+  {
+    const older = JSON.parse(text);
+    Object.keys(older.villagers).forEach(id => {
+      delete older.villagers[id].chasing;
+      delete older.villagers[id].after;
+      delete older.villagers[id].why;
+    });
+    ok(LG.save.restore(older) === null, 'a save from before chases were written down loads');
+    ok(LG.game.npcs.every(n => !n.followingPlayer && !n.wentAfter),
+     'and nobody in it is chasing the traveller');
+    ok(LG.save.restore(JSON.parse(text)) === null, 'and the newer save loads again after it');
+  }
 
   section('a save this version cannot use is refused, out loud');
   ok(typeof LG.save.check({}) === 'string', 'something that is not a village');

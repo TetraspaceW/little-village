@@ -358,7 +358,23 @@ ruby rb{font-size:1em}
      there is no room to spare, and #dlg is already only as tall as the part
      of the page you can see. */
   .dlg-card{max-height:100%}
-  #dlgLog{min-height:110px;padding:10px}
+  /* The card is a flex column in a box an on-screen keyboard has made short,
+     and its parts add up to more than fits: the header, the conversation, two
+     trays of chips and the composer. Left to itself the browser keeps whatever
+     it last scrolled to and clips the rest off one end or the other — the
+     header on one phone, on another the box you are typing into. So say which
+     gives: the conversation shrinks a long way, and the composer never does. */
+  #dlgLog{min-height:56px;padding:10px}
+  .composer{flex:0 0 auto}
+  .dlg-status:empty{min-height:0;padding:0}
+
+  /* Once the keyboard is up you have already chosen the box over the rack, so
+     the phrase trays drop their labels and come down to one scrolling row —
+     enough to still reach a phrase, not enough to push the composer off the
+     bottom. They come back the moment the box loses focus. */
+  #dlg.typing .tray{padding:4px 10px}
+  #dlg.typing .tray-label{display:none}
+  #dlg.typing .chips{max-height:44px}
   .tray{padding:5px 10px}
   .chips{max-height:88px;gap:6px}
   .chip{padding:8px 14px;font-size:14px}
@@ -372,4 +388,21 @@ ruby rb{font-size:1em}
      them end up three words wide. Let it drop underneath the label instead. */
   .panel-card label.check{flex-wrap:wrap}
   .panel-card label.check small{flex-basis:100%;margin-left:26px;margin-top:2px}
+}
+
+/* A phone turned sideways is too wide for the rules above and shorter than any
+   of them assume — with the keyboard up there are barely two hundred points of
+   height left, and no arrangement fits a conversation, a rack of phrases and a
+   composer into that. So the parts give way in order: first the room the
+   conversation and the chrome can spare, and then, once you are typing, the
+   rack altogether. Kept off a desktop window that merely happens to be short
+   by asking for a coarse pointer as well. */
+@media (max-height:520px) and (pointer:coarse){
+  .dlg-card{max-height:100%}
+  .dlg-card header{padding:6px 12px}
+  #dlgLog{min-height:48px;padding:8px 10px}
+  .dlg-status:empty{min-height:0;padding:0}
+  .composer{flex:0 0 auto;padding:6px 10px}
+  .chips{max-height:76px}
+  #dlg.typing .tray{display:none}
 }

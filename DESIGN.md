@@ -954,6 +954,20 @@ window over it — so the dialogue and the settings panel are sized from
 `window.visualViewport` rather than the page. The canvas is left alone: scrolling the
 village up every time somebody types would be worse than the problem.
 
+**What you are typing wins the room.** The dialogue card is a flex column —
+header, conversation, two trays of chips, composer — and with a keyboard up
+those parts add up to more than the space left. Left to itself the browser
+keeps whatever it last scrolled to and clips the rest off one end or the other:
+the header on one phone, on another the box you are typing into. So the card
+says which gives. The conversation shrinks a long way and the composer never
+does, and while the input has focus the phrase trays drop their labels and come
+down to a single scrolling row — you have already chosen the box over the rack
+by tapping it, and one row is still enough to reach a phrase. They come back
+the moment the box loses focus. A phone turned sideways is too wide for the
+narrow-screen rules and shorter than any of them assume; there the rack goes
+entirely while you type, which is the only thing that fits in two hundred
+points of height.
+
 **Nothing on the desktop moved.** The joystick is only ever drawn while a finger is
 pushing, the folding HUD boxes live inside the narrow-screen media query, and the
 gesture code binds only non-mouse pointers, so a mouse still goes through the same

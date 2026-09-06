@@ -48,7 +48,9 @@ the settings screen rather than failing partway through a conversation.
   standing beside to talk to them, and tap anything else worth picking up; a tap
   out of reach tells you to walk over rather than going quiet. Signs are
   tap-to-reveal, the same as click-to-reveal. On a narrow screen the two HUD
-  boxes fold away when you tap their headings.
+  boxes fold away when you tap their headings, and once you tap into the
+  message box the phrase trays come down to one row so the composer and the
+  conversation stay in view above the keyboard.
 - Type in the villager's own language. The **Phrases** row suggests something
   to start from; **Offer an item** holds an item out of your pockets instead
   of typing.

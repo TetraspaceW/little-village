@@ -542,6 +542,7 @@ LG.dialogue = (function () {
 
   function close() {
     LG.tts.stop();
+    try { document.body.classList.remove('typing'); } catch (e) {}   // blur is not owed to a hidden box
     if (current) current.frozen = false;
     current = null;
     el.dlg.classList.remove('open');
@@ -1098,6 +1099,19 @@ LG.dialogue = (function () {
     bind();
     el.dlgSend.onclick = () => send(el.dlgInput.value);
     el.dlgClose.onclick = close;
+    /* Tapping into the box is a decision about what you want to look at: the
+       phrase rack gives its room to the line you are answering. Height already
+       decides what fits (see trackViewport in game.js) — this is the separate
+       question of what you would rather have, and it only ever collapses, so
+       the box losing focus can never widen the card in a space that has not
+       grown. Read only under a finger; a desktop has room for both. */
+    const mode = on => { try { document.body.classList.toggle('typing', on); } catch (e) {} };
+    el.dlgInput.addEventListener('focus', () => mode(true));
+    el.dlgInput.addEventListener('blur', () => mode(false));
+    /* Somewhere to put the keyboard down. With the rack collapsed there has to
+       be a way back to it that is not hunting for the system back button, and
+       the conversation is the obvious big target — you are reading it anyway. */
+    el.dlgLog.addEventListener('click', () => { if (LG.touch.on) el.dlgInput.blur(); });
     el.dlgInput.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(el.dlgInput.value); }
       if (e.key === 'Escape') close();

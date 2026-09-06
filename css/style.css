@@ -410,3 +410,11 @@ body.cramped .tray-label{display:none}
 body.cramped .chips{max-height:44px}
 body.tight #dlgLog{min-height:40px}
 body.tight .tray{display:none}
+
+/* Tapped into the box, on a screen you tap. Then the suggestions are the first
+   thing to give way whether or not the room is short — you have said what you
+   would rather be looking at, and what the rack was taking goes to the line you
+   are answering. Tap the conversation to put the keyboard down and get it back.
+   Never on a desktop: `touch` is only set once something coarse has touched the
+   screen, and there is room for both there anyway. */
+body.touch.typing .tray{display:none}

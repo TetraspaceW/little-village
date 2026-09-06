@@ -166,6 +166,47 @@ LG.touch = (function () {
     });
     canvas.addEventListener('pointercancel', e => cancel(e.pointerId));
     window.addEventListener('blur', release);
+    lockPage();
+  }
+
+  /* The page itself must not move under a finger.
+
+     With a keyboard up, the window onto the page is smaller than the page, and
+     a browser will let you drag the whole thing about inside it — so touching
+     beside the dialogue slides the village, the dialogue and all out from under
+     you. `touch-action` is the CSS way to say no to that, but it is refused by
+     intersection: a `none` anywhere above the finger kills scrolling in
+     everything below it, and every surface worth pinning here — the dialogue's
+     backdrop, a HUD box, a settings panel — is the ancestor of something that
+     genuinely does scroll.
+
+     So the question is answered once per gesture instead of once per element.
+     If the finger came down inside something that can really scroll — a
+     conversation with more of itself above, a rack of chips taller than its
+     row, any box you can type in — it may. Otherwise the drag is refused.
+     Two fingers are always let through, because that is a pinch, and making
+     the text bigger is nobody's business but the reader's. */
+  function lockPage() {
+    if (!document || !document.addEventListener) return;
+    let allowed = false;
+    const canScroll = el => {
+      for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+        const tag = n.tagName;
+        if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT') return true;
+        const st = window.getComputedStyle ? getComputedStyle(n) : null;
+        if (st && (st.overflowY === 'auto' || st.overflowY === 'scroll' ||
+                   st.overflowX === 'auto' || st.overflowX === 'scroll') &&
+            (n.scrollHeight > n.clientHeight + 1 || n.scrollWidth > n.clientWidth + 1))
+          return true;
+      }
+      return false;
+    };
+    document.addEventListener('touchstart', e => { allowed = canScroll(e.target); },
+                              { passive: true });
+    document.addEventListener('touchmove', e => {
+      if (e.touches && e.touches.length > 1) return;      // a pinch, not a drag
+      if (!allowed && e.cancelable) e.preventDefault();
+    }, { passive: false });
   }
 
   /* ------------------------------------------------------------- the picture */

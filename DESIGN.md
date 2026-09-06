@@ -966,6 +966,18 @@ off the bottom. If there is still not room the rack goes entirely, which is all
 that fits on a phone turned sideways with the keyboard up. The composer never
 shrinks and is never the thing that goes.
 
+**Tapping the box is a preference, not a measurement.** Height says what
+*fits*; tapping into the message box says what you would rather be *looking
+at*, and the answer is the line you are answering rather than a rack of
+suggestions you have just declined. So on a screen you tap, focus collapses the
+trays outright — worth about a hundred points with the keyboard up, which takes
+the conversation from a hundred and forty to two hundred and fifty. It only
+ever collapses, never expands: that is what keeps it safe to combine with the
+height rules, because a box losing focus can then never widen the card in a
+space that has not grown. Tapping the conversation puts the keyboard down and
+brings the rack back, so the collapse is reversible without hunting for a
+system button.
+
 **How much room there is is a fact about the screen, not about what has focus.**
 The first version of this hung the card's layout off the input having focus,
 which is the obvious signal and the wrong one: tapping **Say it** takes focus
@@ -978,6 +990,21 @@ question, because on the browsers that only slide a window over the page rather
 than shrinking it the page itself never changes size. Both mechanisms are
 listened for, and the fallback to `innerHeight` covers a browser with no
 `visualViewport` at all.
+
+**The page does not move under a finger.** With a keyboard up the window onto
+the page is smaller than the page, and a browser will let you drag the whole
+thing about inside it — so touching beside the dialogue slides the village, the
+dialogue and all, out from under you. `touch-action` is the CSS way to refuse
+that, but it is refused by intersection: a `none` anywhere above the finger
+kills scrolling in everything below it, and every surface worth pinning here —
+the dialogue's backdrop, a HUD box, a settings panel — is the ancestor of
+something that genuinely does scroll. So the question is answered once per
+gesture rather than once per element: on `touchstart`, walk up from what was
+touched looking for something that can really scroll — a conversation with more
+of itself above, a rack of chips taller than its row, any box you can type in —
+and refuse the move if there is nothing. Two fingers are always let through,
+because that is a pinch, and making the text bigger is nobody's business but
+the reader's.
 
 **Nothing on the desktop moved.** The joystick is only ever drawn while a finger is
 pushing, the folding HUD boxes live inside the narrow-screen media query, and the

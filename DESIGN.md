@@ -1016,6 +1016,18 @@ being walked, a speech bubble, a decision the model had not answered yet, a conv
 with someone who is now somewhere else. All of that is about a moment that is over. They
 come back thinking again, which they would have done within the minute anyway.
 
+*Who* they were on their way to see is the exception, and it is kept for the opposite
+reason: a restore rebuilds the village with `newVillage` and then lays the save over it,
+and a new village is an arrival — Petra sets off to meet the train in every single one of
+them. A save that said nothing about who was chasing the traveller left her flag standing
+where the rebuild had set it, so every reload of a village you had been living in for days
+opened with the village child sprinting across the map to greet you off a train you got off
+last week. So each villager's save says whether they are coming for you and what they will
+say they came for, and the restore sets that from the file for everybody rather than
+leaving what the rebuild happened to put there. A file from before this was written down
+says nobody is, which is the right answer for a village old enough to have one. The chase
+itself still starts over: a fresh route to where you are now, not the one it had.
+
 No API keys go in it either — the save is a file that gets written to disk and copied
 about, and the keys stay in `lg-settings` with the other settings, where they were. The
 language and the difficulty *are* in it, because the village is generated out of them.

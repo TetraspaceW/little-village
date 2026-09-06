@@ -184,7 +184,21 @@ LG.save = (function () {
         till: (n.till || []).slice(),
         history: (n.history || []).slice(),
         met: !!n.metPlayer, traded: !!n.tradeDone, named: !!n.nameKnown,
-        patch: rectOut(n.patch)
+        patch: rectOut(n.patch),
+        /* Who they set off to see, and what they will say they came for. Not
+           a route — a route is a moment, and moments are dropped on the way
+           back in (see `restore`) — but the errand behind it, which outlives
+           the walk: somebody standing beside you waiting to be spoken to has
+           already arrived and still has a reason for being there.
+
+           It has to be written down because `restore` rebuilds the village
+           with `newVillage` before laying the save over it, and a new
+           village is an arrival: Petra sets off for the platform in every
+           one of them (see game.js). Unless the file says, villager by
+           villager, who is actually chasing the traveller, reopening a
+           village you have been living in for a week would have her come
+           running to meet a train you got off days ago. */
+        chasing: !!n.followingPlayer, after: n.wentAfter || null, why: n.why || ''
       };
     });
 
@@ -327,6 +341,18 @@ LG.save = (function () {
          they get to think again, which they would have done anyway. */
       n.route = null; n.wantsGo = null; n.deciding = false; n.thought = null;
       n.chatting = false; n.frozen = false; n.bubble = null; n.bubbleT = 0;
+      /* Who they were on their way to is not one of those moments, and is set
+         from the save for every villager rather than left as `newVillage`
+         built it a few lines ago — so the one it sent to meet the train is
+         only still coming for you if she was still coming for you when this
+         was written. A save from before this was recorded says nobody is,
+         which is the right answer for a village old enough to have one: the
+         greeting it is thinking of happened long before the file was made.
+         The chase, where there is one, starts over from here — a fresh route
+         to where you are now, and a fresh fifty seconds to close the gap. */
+      n.followingPlayer = !!s.chasing; n.followFor = 0; n.followCool = 0;
+      n.wentAfter = s.after || null;
+      n.why = s.why || '';
     });
 
     const t = data.terminal;

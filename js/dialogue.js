@@ -1095,6 +1095,29 @@ LG.dialogue = (function () {
     });
   }
 
+  /* The conversation is read from the bottom: the newest line is the one you
+     are answering. Everything on a phone changes the height of the box it is
+     in — the keyboard arrives, the trays fold, the phone turns — and a scroll
+     position measured from the top survives all of that by sliding the newest
+     line off the bottom of the screen, which is the one place it must not go.
+     So: notice whether the reader is at the end, and if they are, keep them
+     there through every resize. Scrolling up says they are reading something
+     older and are left alone until they come back down. A ResizeObserver
+     rather than a list of causes, because it is the resize that matters and
+     not which of the four things did it — and it fires through the fold's
+     animation too, so the end stays put as the card grows rather than
+     arriving with a jump at the end. */
+  const ANCHOR = 24;                  // px from the bottom that still counts as the end
+  function keepTheEnd() {
+    const log = el.dlgLog;
+    if (!log || !log.addEventListener) return;
+    const atEnd = () => log.scrollHeight - log.scrollTop - log.clientHeight <= ANCHOR;
+    let stuck = true;
+    log.addEventListener('scroll', () => { stuck = atEnd(); }, { passive: true });
+    if (typeof ResizeObserver === 'function')
+      new ResizeObserver(() => { if (stuck) log.scrollTop = log.scrollHeight; }).observe(log);
+  }
+
   function init() {
     bind();
     el.dlgSend.onclick = () => send(el.dlgInput.value);
@@ -1112,6 +1135,7 @@ LG.dialogue = (function () {
        be a way back to it that is not hunting for the system back button, and
        the conversation is the obvious big target — you are reading it anyway. */
     el.dlgLog.addEventListener('click', () => { if (LG.touch.on) el.dlgInput.blur(); });
+    keepTheEnd();
     el.dlgInput.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(el.dlgInput.value); }
       if (e.key === 'Escape') close();

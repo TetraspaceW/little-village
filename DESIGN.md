@@ -978,6 +978,33 @@ space that has not grown. Tapping the conversation puts the keyboard down and
 brings the rack back, so the collapse is reversible without hunting for a
 system button.
 
+**A tray folds; it does not vanish.** Collapsing it with `display:none` is a
+jump-cut, and two of them either side of a tap is most of what makes the card
+feel like it is arguing with you. The fold is a grid row going `1fr` to `0fr`,
+which animates to exactly the height of what is in it — a `max-height` has to
+name a number big enough for the tallest tray and then spends most of the
+animation travelling through space the short one never occupied, which reads as
+a jerk rather than a fold. It needs one child to be the row, which is what
+`.tray-in` is for. The padding and the rule above the tray go with it, or a
+folded tray leaves a stripe behind. `overflow:hidden` is what makes it clip
+cleanly and also what tells flexbox the tray may be squashed to nothing, which
+it promptly did — so the tray does not shrink at all now: it is either its own
+size or folded, and there is no useful state in between.
+
+**The newest line stays in view.** A conversation is read from the bottom — the
+line you are answering is the last one — and every single thing on a phone
+changes the height of the box holding it: the keyboard arrives, the trays fold,
+the phone turns. A scroll position measured from the top survives all of that
+by sliding the newest line off the bottom, which is the one place it must not
+go. Before this, raising the keyboard left the reader three hundred and
+fifty-seven points above the line they were answering. So the card notices
+whether the reader is at the end and, if they are, keeps them there through
+every resize — a `ResizeObserver` rather than a list of causes, because it is
+the resize that matters and not which of the four things did it, and because it
+fires throughout the fold's animation, so the end stays put as the card grows
+instead of arriving with a jump at the end of it. Scrolling up says they are
+reading something older, and they are left alone until they come back down.
+
 **How much room there is is a fact about the screen, not about what has focus.**
 The first version of this hung the card's layout off the input having focus,
 which is the obvious signal and the wrong one: tapping **Say it** takes focus

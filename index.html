@@ -59,14 +59,19 @@
       <div id="dlgLog"></div>
       <div id="dlgStatus" class="dlg-status"></div>
 
-      <div class="tray">
+      <!-- The inner wrapper is what makes a tray able to fold smoothly: a grid
+           row can be animated from 1fr to 0fr and lands on exactly the height
+           of its contents, where a max-height has to guess and spends half the
+           animation travelling through space that was never there. It needs a
+           single child to be the row. -->
+      <div class="tray"><div class="tray-in">
         <div class="tray-label">Phrases</div>
         <div id="dlgPhrases" class="chips"></div>
-      </div>
-      <div class="tray">
+      </div></div>
+      <div class="tray"><div class="tray-in">
         <div class="tray-label">Offer an item</div>
         <div id="dlgItems" class="chips"></div>
-      </div>
+      </div></div>
 
       <div class="composer">
         <textarea id="dlgInput" rows="1" placeholder="Say something…"></textarea>

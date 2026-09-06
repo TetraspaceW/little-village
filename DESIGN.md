@@ -899,6 +899,47 @@ roof is for — but not through somebody else's walls. Which room you are in is 
 your feet rather than your tile, because the two disagree for the topmost few pixels of
 every room and the roof used to slam shut while you were plainly standing indoors.
 
+## The canopies came apart
+
+**Every tree turned into a horizontal band across the screen, a few times a
+second, on a phone.** The trunks stayed where they were; the round green tops
+became stripes running off to the right. A tree cannot draw wide — its canopy is
+an arc of a fixed thirteen-pixel radius at a fixed offset in its tile — so the
+picture was not of trees being drawn wrongly. It was of *all* of them being
+drawn as one shape: that is what a run of `arc` calls looks like when the
+`beginPath` between them has not taken effect, because then each `arc` joins the
+last with a straight line from one circle's rim to the next, and the whole
+accumulated thing is filled in one go. Trees on a row are at the same offset in
+their tiles, so those joining lines are horizontal, and they run to the edge of
+the view.
+
+The code did call `beginPath`. It called it a great many times: drawn tile by
+tile, the props pass was two or three `beginPath`/`arc`/`fill` for every tree,
+which standing in the woods came to a couple of hundred paths a frame and about
+thirteen thousand a second. Somewhere in that, Firefox for Android stopped
+honouring it.
+
+**So the drawing no longer asks to be believed hundreds of times a frame.** All
+the circles of a colour go into one path — one `beginPath`, one `fill` — with an
+explicit `moveTo` onto each circle's rim before its `arc`. Both halves of that
+are the point. The batching takes the ground pass from 166 path fills to 26 in
+the same view, so there is almost nothing left to go wrong; and the `moveTo`
+means that if it does go wrong anyway, the circles are already separate
+subpaths and still cannot join into bands.
+
+Reordering the pass is safe because nothing in a tile overlaps anything in
+another: a canopy is twenty-six across on a thirty-two tile and reaches from a
+pixel above its own tile to seven short of the next row's, with the trunk inside
+that. The old within-a-tile order — trunk, canopy, highlight, snow — survives as
+the order of the passes. Rendered side by side the two versions differ by at
+most five values out of 255 on a handful of antialiased edges, which is the
+rasteriser computing coverage once for a batched path instead of once per
+circle.
+
+The snow crowns are still drawn one at a time, because each carries its own
+depth and so cannot share a fill. They only exist in winter, and each is still a
+path of its own.
+
 ## Two hands, or one thumb
 
 **The keyboard scheme is two hands and a phone has neither.** One hand walks, the

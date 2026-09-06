@@ -742,33 +742,97 @@ LG.world = (function () {
     }
   }
 
-  function drawProps(ctx, x, y, px, py) {
-    const t = get(x, y), r = hash(x, y);
-    // Only the three prop types below ever look at the snow depth — most
-    // tiles are plain grass or path, and asking the noise field for a value
-    // nothing will use is pure waste on the majority of every frame.
-    const a = (lying > 0 && (t === T.TREE || t === T.FLOWER || t === T.FENCE)) ? snowAt(x, y) : 0;
-    if (t === T.TREE) {
-      ctx.fillStyle = '#6b4a2f';
-      ctx.fillRect(px + 13, py + 16, 6, 14);
-      const g = r < 0.5 ? '#3f7d3a' : '#4c8c40';
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(px + 16, py + 12, 13, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,.10)';
-      ctx.beginPath(); ctx.arc(px + 12, py + 8, 6, 0, Math.PI * 2); ctx.fill();
-      // It settles on top of the canopy and nowhere else: a green rim under a
-      // white crown is what makes a laden tree read as laden rather than dead.
-      if (a > 0.03) {
-        ctx.fillStyle = 'rgba(250,252,255,' + (a * 0.92).toFixed(3) + ')';
-        ctx.beginPath(); ctx.arc(px + 16, py + 11, 12, Math.PI, 0); ctx.closePath(); ctx.fill();
-        ctx.beginPath(); ctx.arc(px + 13, py + 4, 4 + a * 2, 0, Math.PI * 2); ctx.fill();
+  /* One pass over everything standing on the ground, rather than a call per
+     tile — and this is the shape it is for a reason.
+
+     Drawn tile by tile it was two or three beginPath/arc/fill for every tree,
+     and standing in the woods that came to a couple of hundred paths a frame,
+     thirteen thousand a second. On Firefox for Android that is not merely
+     slow: the canopies came apart. Every circle turned into a horizontal band
+     running off to the right of the screen while the trunks stayed put, a few
+     times a second — which is what a run of arcs looks like when `beginPath`
+     between them has not taken effect, because then each `arc` joins the last
+     with a straight line from one circle's rim to the next, and the whole
+     accumulated thing is filled as one shape.
+
+     So the drawing no longer depends on being told to start again hundreds of
+     times a frame. Circles of a colour go into a single path — one beginPath,
+     one fill — with an explicit `moveTo` onto each circle's rim before its
+     `arc`, which is what keeps them separate subpaths rather than a chain.
+     Both halves of that matter: the batching means there is almost nothing
+     left to go wrong, and the moveTo means that if it does, the shapes still
+     cannot join into bands.
+
+     Reordering is safe because nothing here overlaps anything in another tile:
+     a canopy is thirteen across on a thirty-two tile and reaches from a pixel
+     above its own tile to seven short of the next row's, and a trunk sits
+     inside that. Within a tile the old order — trunk, canopy, highlight, snow
+     — is kept, by keeping the passes in that order. */
+  const FLOWER_COLS = ['#f2c14e', '#e5798f', '#c8a2f2', '#f5f0e6'];
+  function discs(ctx, at, r) {
+    if (!at.length) return;
+    ctx.beginPath();
+    for (let i = 0; i < at.length; i += 2) {
+      ctx.moveTo(at[i] + r, at[i + 1]);          // its own subpath, not a chain
+      ctx.arc(at[i], at[i + 1], r, 0, Math.PI * 2);
+    }
+    ctx.fill();
+  }
+
+  function drawPropsPass(ctx, x0, y0, x1, y1) {
+    const trunks = [], canopy = [[], []], crowns = [], flowers = [[], [], [], []], fences = [];
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const t = get(x, y);
+        if (t !== T.TREE && t !== T.FLOWER && t !== T.FENCE) continue;
+        const px = x * TILE, py = y * TILE, r = hash(x, y);
+        // Only these three ever look at the snow depth, so the noise field is
+        // asked about nothing else — most of a view is grass and path.
+        const a = lying > 0 ? snowAt(x, y) : 0;
+        if (t === T.TREE) {
+          trunks.push(px, py);
+          canopy[r < 0.5 ? 0 : 1].push(px + 16, py + 12);
+          if (a > 0.03) crowns.push(px, py, a);
+        } else if (t === T.FLOWER) {
+          if (a > 0.55) continue;                // buried
+          flowers[(r * 4) | 0].push(px + 10 + (r * 12 | 0), py + 16 + (r * 10 | 0));
+        } else {
+          fences.push(px, py, a);
+        }
       }
-    } else if (t === T.FLOWER) {
-      if (a > 0.55) return;                     // buried
-      const cols = ['#f2c14e', '#e5798f', '#c8a2f2', '#f5f0e6'];
-      ctx.fillStyle = cols[(r * 4) | 0];
-      ctx.beginPath(); ctx.arc(px + 10 + (r * 12 | 0), py + 16 + (r * 10 | 0), 3.5, 0, Math.PI * 2); ctx.fill();
-    } else if (t === T.FENCE) {
+    }
+
+    ctx.fillStyle = '#6b4a2f';
+    for (let i = 0; i < trunks.length; i += 2) ctx.fillRect(trunks[i] + 13, trunks[i + 1] + 16, 6, 14);
+    ctx.fillStyle = '#3f7d3a'; discs(ctx, canopy[0], 13);
+    ctx.fillStyle = '#4c8c40'; discs(ctx, canopy[1], 13);
+    // The highlight is the same wash on every canopy, so it is one path too.
+    ctx.fillStyle = 'rgba(255,255,255,.10)';
+    const lit = [];
+    for (let i = 0; i < trunks.length; i += 2) lit.push(trunks[i] + 12, trunks[i + 1] + 8);
+    discs(ctx, lit, 6);
+
+    /* It settles on top of the canopy and nowhere else: a green rim under a
+       white crown is what makes a laden tree read as laden rather than dead.
+       Each one carries its own depth, so these cannot share a fill — but they
+       only exist in winter, and each is still one path of its own. */
+    for (let i = 0; i < crowns.length; i += 3) {
+      const px = crowns[i], py = crowns[i + 1], a = crowns[i + 2];
+      ctx.fillStyle = 'rgba(250,252,255,' + (a * 0.92).toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.moveTo(px + 4, py + 11);
+      ctx.arc(px + 16, py + 11, 12, Math.PI, 0); ctx.closePath(); ctx.fill();
+      discs(ctx, [px + 13, py + 4], 4 + a * 2);
+    }
+
+    for (let i = 0; i < flowers.length; i++) {
+      if (!flowers[i].length) continue;
+      ctx.fillStyle = FLOWER_COLS[i];
+      discs(ctx, flowers[i], 3.5);
+    }
+
+    for (let i = 0; i < fences.length; i += 3) {
+      const px = fences[i], py = fences[i + 1], a = fences[i + 2];
       ctx.fillStyle = '#9a7b52';
       ctx.fillRect(px + 4, py + 8, 4, 20);
       ctx.fillRect(px + 22, py + 8, 4, 20);
@@ -1179,7 +1243,7 @@ LG.world = (function () {
     // Snow after all the ground, never tile by tile with it: a drift that spills
     // over its own tile would be cut off again by the next tile's grass.
     if (lying > 0) drawSnowLayer(ctx, x0, y0, x1, y1);
-    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) drawProps(ctx, x, y, x * TILE, y * TILE);
+    drawPropsPass(ctx, x0, y0, x1, y1);
   }
 
   return { TILE, W, H, T, build, get, isSolid, isWalkable, nearestOpen, pathTo,

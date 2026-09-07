@@ -1150,11 +1150,25 @@ LG.world = (function () {
     return out.concat(signposts);
   }
 
-  function drawSigns(ctx, cam, vw, vh, lang, revealAll) {
+  function drawSigns(ctx, cam, vw, vh, lang, revealAll, dpr) {
     signBoxes = [];
     const L = LG.LANGUAGES && LG.LANGUAGES[lang];
     const nativeFont = '600 11px ' + ((L && L.fontStack) || 'system-ui');
     const glossFont = '10px system-ui';
+    /* A board is the only thing out here sized by measuring rather than by the
+       tile grid: measureText hands back a fractional width, and half of it
+       either side of the post puts both uprights between device pixels. Since
+       draw() snaps the camera, that offset is the same offset every frame for
+       as long as the village lasts — so the board does not shimmer, it just
+       sits there softly, its 1.5px border inked across four pixels when the
+       tile seam beside it is inked across one, and the ink shared unevenly
+       between the two sides. Snapping the board to the same grid draw() uses
+       is what puts its edges back on that seam. Whole *device* pixels rather
+       than whole CSS pixels, and off the dpr draw() actually translated by,
+       for the reason roofRects gives: at a fractional dpr those are not the
+       same grid, and only one of them is the one being drawn on. */
+    const d = dpr || 1;
+    const snap = v => Math.round(v * d) / d;
     ctx.textAlign = 'center';
     for (const s of signSpots()) {
       if (!inView(s.x - 40, s.y - 40, 80, 40, cam, vw, vh, TILE)) continue;
@@ -1163,12 +1177,12 @@ LG.world = (function () {
       ctx.font = nativeFont;
       let w = ctx.measureText(native).width;
       if (gloss) { ctx.font = glossFont; w = Math.max(w, ctx.measureText(gloss).width); }
-      w += 16;
-      const h = gloss ? 34 : 20;
-      const bx = s.x - w / 2, by = s.y - h;
+      w = snap(w + 16);
+      const h = snap(gloss ? 34 : 20);
+      const bx = snap(s.x - w / 2), by = snap(s.y - h);
 
       ctx.fillStyle = '#6b4a2f';                        // the post
-      ctx.fillRect(s.x - 2, s.y - 6, 4, 10);
+      ctx.fillRect(snap(s.x - 2), snap(s.y - 6), snap(4), snap(10));
       ctx.fillStyle = '#e9dcbb';                         // the board
       ctx.fillRect(bx, by, w, h);
       ctx.strokeStyle = '#8a6a45'; ctx.lineWidth = 1.5;
@@ -1250,5 +1264,6 @@ LG.world = (function () {
            buildingAt, buildingUnder, roofRects, buildingByLabel, inRect, nearRect,
            drawGround, drawBuildings, drawSigns, hitSign, overSign, buildings,
            // for the tests: what got placed, and where you can get to from here
-           _props: () => props, _signs: () => signSpots(), _flood: flood };
+           _props: () => props, _signs: () => signSpots(), _flood: flood,
+           _signBoxes: () => signBoxes };
 })();

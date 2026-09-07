@@ -1739,7 +1739,7 @@ LG.game = (function () {
 
     W.drawGround(ctx, cam, vw, vh);
     W.drawBuildings(ctx, room, cam, vw, vh);
-    W.drawSigns(ctx, cam, vw, vh, settings.lang, settings.showTranslation);
+    W.drawSigns(ctx, cam, vw, vh, settings.lang, settings.showTranslation, dpr);
     drawWorldItem();
 
     /* A villager under a roof is out of sight. You can see into the room you are

@@ -317,6 +317,25 @@ section('the whole map draws');
   const st = LG.world._signs().find(s => s.key === 'Station');
   ok(st && LG.world.overSign(st.x, st.y - 10), 'the station nameboard can be clicked');
   ok(!LG.world.overSign(0, 0), 'and the empty corner of the map cannot');
+
+  /* A board is sized by measureText and everything else out here is sized by
+     the tile grid, so a board is the one thing that can come to rest between
+     device pixels — where it stays, softening, because draw() snaps the camera
+     and so never walks it back onto the grid. Give it a deliberately awkward
+     width at the pixel ratios real screens actually report, and check all four
+     edges landed on whole device pixels anyway. */
+  const measured = ctx2d.measureText;
+  ctx2d.measureText = () => ({ width: 37.3183 });
+  for (const dpr of [1, 1.25, 1.5, 2, 2.625, 3]) {
+    LG.world.drawSigns(ctx2d, cam, fullW, fullH, 'ja', false, dpr);
+    const boxes = LG.world._signBoxes();
+    const adrift = boxes.filter(b => [b.x, b.y, b.x + b.w, b.y + b.h]
+      .some(v => Math.abs(v * dpr - Math.round(v * dpr)) > 1e-6));
+    ok(boxes.length > 0 && adrift.length === 0,
+       'at dpr ' + dpr + ', every nameboard edge is on a whole device pixel' +
+       (adrift.length ? ' (' + adrift.length + ' of ' + boxes.length + ' adrift)' : ''));
+  }
+  ctx2d.measureText = measured;
 }
 
 section('every building says what it is, in the language you are learning');

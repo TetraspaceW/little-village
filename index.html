@@ -14,6 +14,32 @@
      is worked out from window.visualViewport in game.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-visual">
 <title>Little Village — a language game</title>
+
+<!-- Two icons, because they are looked at from different distances. favicon.svg
+     is one villager cropped close, since a tab gives her sixteen pixels; the
+     manifest's icons are the whole scene with the speech bubble, which has room
+     to be read on a home screen. The 32px PNG is only there for a browser that
+     doesn't take an SVG favicon; every current one does. -->
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
+<!-- The manifest is what makes "add to home screen" produce an app rather than
+     a bookmark: it names the thing, hands over an icon, and asks for
+     display:standalone so the launched game has no address bar over it. Its
+     paths are relative to the manifest, so this works served from a subpath
+     (a project page on GitHub Pages, say) as readily as from a root.
+
+     Safari reads all of that too, since iOS 15.4 — what it does not read is
+     theme_color, so the status bar in standalone is set the old way. It is
+     black-translucent rather than a colour because the viewport is already
+     fit=cover and the HUD already keeps out of env(safe-area-inset-*): the
+     canvas may as well have the whole screen. -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#241c14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>

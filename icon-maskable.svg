@@ -1,5 +1,6 @@
-<!-- icon.svg — Petra, drawn the way the game draws her, saying 文A.
-     The source for the rasterised icons in icons/; regenerate those from here.
+<!-- icon-maskable.svg — Petra, drawn the way the game draws her, saying 文A.
+     The same drawing, pulled inside the centre circle a maskable icon
+     must survive being cropped to. See icon.svg for how it is put together.
 
      The villager is LG.actors.drawCharacter from js/npc.js at 7.4x: the same
      rounded body in her own #9d4edd, the same arms a shade darker sitting in
@@ -44,27 +45,29 @@
      448h32v32h-32zM384 448h32v32h-32zM416 448h32v32h-32zM480 448h32v32h-32zM32 480h32v32h-32zM96
      480h32v32h-32zM128 480h32v32h-32zM480 480h32v32h-32z"/>
 
-  <!-- Petra -->
-  <g transform="translate(150 356) scale(7.4)">
-    <ellipse cx="0" cy="12" rx="10" ry="4.5" fill="#000" opacity=".22"/>
-    <rect x="-8" y="-6" width="16" height="18" rx="5" fill="#9d4edd"/>
-    <rect x="-11" y="-3" width="3" height="10" fill="#8b3ccb"/>
-    <rect x="8" y="-3" width="3" height="10" fill="#8b3ccb"/>
-    <circle cx="0" cy="-13" r="8.5" fill="#f0c8a0"/>
-    <path d="M-8.5-15A8.5 8.5 0 0 1 8.5-15Z" fill="#3b2b20"/>
-    <circle cx="-3" cy="-12" r="1.4" fill="#2b2118"/>
-    <circle cx="3" cy="-12" r="1.4" fill="#2b2118"/>
+  <g transform="translate(256 256) scale(.7) translate(-266.5 -263)">
+    <!-- Petra -->
+    <g transform="translate(150 356) scale(7.4)">
+      <ellipse cx="0" cy="12" rx="10" ry="4.5" fill="#000" opacity=".22"/>
+      <rect x="-8" y="-6" width="16" height="18" rx="5" fill="#9d4edd"/>
+      <rect x="-11" y="-3" width="3" height="10" fill="#8b3ccb"/>
+      <rect x="8" y="-3" width="3" height="10" fill="#8b3ccb"/>
+      <circle cx="0" cy="-13" r="8.5" fill="#f0c8a0"/>
+      <path d="M-8.5-15A8.5 8.5 0 0 1 8.5-15Z" fill="#3b2b20"/>
+      <circle cx="-3" cy="-12" r="1.4" fill="#2b2118"/>
+      <circle cx="3" cy="-12" r="1.4" fill="#2b2118"/>
+    </g>
+  
+    <!-- what she is saying: the game's paper colour, a tail aimed at her head -->
+    <path fill="#fdf8ec" d="M272 48H438A26 26 0 0 1 464 74V152A26 26 0 0 1 438 178H308L232 216L276 178H272A26 26 0 0 1 246 152V74A26 26 0 0 1 272 48Z"/>
+    <path fill="#2b2118" d="M331.9 92 342.9 94.9Q337.6 111 329 122.6Q320.3 134.3 308.1 142.1Q295.9 150 279.7 154.7Q279.1
+       153.4 278 151.5Q276.9 149.7 275.6 147.8Q274.3 146 273.2 144.8Q288.9 140.9 300.4 134.1Q312 127.3
+       319.8 117Q327.5 106.6 331.9 92ZM297.9 92.6Q302.5 105.4 310.5 115.8Q318.5 126.2 330.1 133.5Q341.8
+       140.7 357.2 144.2Q356.1 145.4 354.7 147.2Q353.3 149 352.1 150.8Q350.9 152.7 350.1 154.1Q333.9
+       149.8 322 141.8Q310.2 133.8 301.9 122.2Q293.7 110.5 288.1 95.6ZM274.9 87H355.5V97.3H274.9ZM307.3
+       74.6 318.6 71.3Q320.4 74.4 322.1 78.2Q323.8 81.9 324.6 84.7L312.7 88.4Q312.1 85.7 310.5 81.8Q309
+       77.9 307.3 74.6Z"/>
+    <path fill="#2b2118" d="M371.2 147 395.1 72.1H412.8L436.8 147H421L410.4 108Q408.7 102.1 407.1 95.8Q405.5 89.5 403.8
+       83.5H403.4Q402 89.6 400.3 95.9Q398.7 102.1 397.1 108L386.4 147ZM386 127.8V116.2H421.6V127.8Z"/>
   </g>
-
-  <!-- what she is saying: the game's paper colour, a tail aimed at her head -->
-  <path fill="#fdf8ec" d="M272 48H438A26 26 0 0 1 464 74V152A26 26 0 0 1 438 178H308L232 216L276 178H272A26 26 0 0 1 246 152V74A26 26 0 0 1 272 48Z"/>
-  <path fill="#2b2118" d="M331.9 92 342.9 94.9Q337.6 111 329 122.6Q320.3 134.3 308.1 142.1Q295.9 150 279.7 154.7Q279.1
-     153.4 278 151.5Q276.9 149.7 275.6 147.8Q274.3 146 273.2 144.8Q288.9 140.9 300.4 134.1Q312 127.3
-     319.8 117Q327.5 106.6 331.9 92ZM297.9 92.6Q302.5 105.4 310.5 115.8Q318.5 126.2 330.1 133.5Q341.8
-     140.7 357.2 144.2Q356.1 145.4 354.7 147.2Q353.3 149 352.1 150.8Q350.9 152.7 350.1 154.1Q333.9
-     149.8 322 141.8Q310.2 133.8 301.9 122.2Q293.7 110.5 288.1 95.6ZM274.9 87H355.5V97.3H274.9ZM307.3
-     74.6 318.6 71.3Q320.4 74.4 322.1 78.2Q323.8 81.9 324.6 84.7L312.7 88.4Q312.1 85.7 310.5 81.8Q309
-     77.9 307.3 74.6Z"/>
-  <path fill="#2b2118" d="M371.2 147 395.1 72.1H412.8L436.8 147H421L410.4 108Q408.7 102.1 407.1 95.8Q405.5 89.5 403.8
-     83.5H403.4Q402 89.6 400.3 95.9Q398.7 102.1 397.1 108L386.4 147ZM386 127.8V116.2H421.6V127.8Z"/>
 </svg>

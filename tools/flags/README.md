@@ -1,12 +1,12 @@
 # Flag rendering: matching the local flag-emoji style
 
-`LG.LANGUAGES.ar` needs a flag for the Arab League, which — unlike every
-other language here — isn't a country, so it has no Unicode regional
-flag sequence and no glyph in any emoji font. This directory renders one
-by hand, in the same waving-cloth style the rest of the flags already
-get from the system's Noto Color Emoji font, and packages it as a tiny
-custom font glyph so it can drop into `#setLang`'s plain `<option>` text
-exactly like a real flag emoji does.
+Two of the languages here have no country behind them, so they have no
+Unicode regional flag sequence and no glyph in any emoji font: the Arab
+League (`LG.LANGUAGES.ar`) and toki pona (`LG.LANGUAGES.tok`). This
+directory renders their flags by hand, in the same waving-cloth style
+the rest of the flags already get from the system's Noto Color Emoji
+font, and packages each as a tiny custom font glyph so it can drop into
+`#setLang`'s plain `<option>` text exactly like a real flag emoji does.
 
 ## Why this isn't a guess
 
@@ -70,6 +70,15 @@ here.
   Tagged with an "insignia" note on Commons — a caveat some countries
   attach to official emblems regardless of copyright status, not a
   license restriction.
+- `sources/toki-pona.svg`: Wikimedia Commons, by **jan Pensa**
+  (Commons User:Spenĉjo), **CC BY-SA 4.0**
+  (https://commons.wikimedia.org/wiki/File:Toki_Pona_flag.svg).
+  Unlike the Arab League file this one carries an actual license, so the
+  attribution above is a condition of use, not a courtesy: keep the
+  author's name with it. Share-alike applies to the flag artwork and to
+  the waved render and font glyph derived from it — `fonts/TokiPonaFlag.ttf`
+  is a derivative work of a CC BY-SA 4.0 image and inherits that license,
+  which is worth knowing before it is copied anywhere else.
 - Note the *font/glyph data* Noto Color Emoji itself ships under is a
   **different** license (SIL OFL 1.1) from the Apache 2.0 code above —
   nothing here copies that font or its artwork, only the (separately,
@@ -91,9 +100,33 @@ Input must be a PNG (rasterize an SVG source first, e.g. with
 ```
 pip install nanoemoji resvg-cli   # resvg-cli must end up on $PATH
 python3 build_font.py output.png ../../fonts/ArabLeagueFlag.ttf
+python3 build_font.py waved.png ../../fonts/TokiPonaFlag.ttf \
+        --codepoint 0xF0001 --family "Toki Pona Flag"
 ```
 
-`../fonts/ArabLeagueFlag.ttf` was built this way. Non-obvious things
+`../../fonts/ArabLeagueFlag.ttf` and `../../fonts/TokiPonaFlag.ttf` were
+built this way — one font per flag, each defining a single glyph, rather
+than one font carrying both. nanoemoji will happily build a multi-glyph
+font and that would be the tidier artefact, but the packaging here is the
+part that took three passes to get right in two engines (below), and a
+merged rebuild would put the already-working Arab League glyph back
+through that. A second `@font-face` and a second name in `#setLang`'s
+font stack cost a comma. Give each new flag the next codepoint along
+regardless, so the numbering stays unambiguous if they are ever merged.
+
+The render step is the awkward one to set up on macOS: `pycairo` has no
+wheel there, so it compiles, and its meson build wants `pkg-config` plus
+a resolvable `.pc` chain for cairo. Homebrew's `cairo.pc` pulls in
+freetype2, fontconfig and X11, and on a machine where those are present
+as libraries but not as `.pc` files the build fails on the dependency
+lookup rather than on anything to do with cairo. What worked here:
+`brew install pkgconf`, `PKG_CONFIG_PATH` set to every
+`/opt/homebrew/opt/*/lib/pkgconfig` (Homebrew keeps each formula's `.pc`
+in its own keg, and the flat `lib/pkgconfig` symlink directory is not
+enough), and hand-written stub `.pc` files for `zlib`, `bzip2` and
+`expat`, which macOS ships as libraries with no pkg-config metadata at
+all. None of this is needed for the font step, or to *use* the fonts —
+only to re-render a flag. Non-obvious things
 `build_font.py` handles, all found by testing the actual result in
 both browser engines rather than assuming it was right:
 
@@ -116,10 +149,10 @@ both browser engines rather than assuming it was right:
   the stack (see the .panel-card select bug this caused, below), so
   the script strips that cmap entry from both builds before merging.
 
-The codepoint `U+F0000` (Supplementary Private Use Area-A) is not a
-real emoji sequence — it's a private-use codepoint this project made
-up so the glyph can sit in ordinary text via `@font-face` +
-`font-family` fallback. See `css/style.css` and `js/data.js` for how
+The codepoints `U+F0000` (Arab League) and `U+F0001` (toki pona), in
+Supplementary Private Use Area-A, are not real emoji sequences — they're
+private-use codepoints this project made up so the glyphs can sit in
+ordinary text via `@font-face` + `font-family` fallback. See `css/style.css` and `js/data.js` for how
 it's wired in — including two more gotchas found the same way:
 Chromium renders a `<select>`'s closed/collapsed box using the
 *select element's own* computed font, not its selected `<option>`'s,
@@ -155,3 +188,8 @@ confirmed working in both the closed box and the open list. Not
 accurate to the Arab League, but a real flag beats a broken one, and
 this only ever applies on the one engine where the custom glyph can't
 be made to work at all.
+
+`tok` takes the same fallback with a worse hand: there is no Unicode
+flag anywhere that means toki pona, so it falls back to U+1F31E, the
+sun — not the banner, but the half of it a speaker would recognise, and
+an ordinary emoji the popup can draw.

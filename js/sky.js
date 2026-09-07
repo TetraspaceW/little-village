@@ -91,7 +91,35 @@ LG.sky = (function () {
     return true;
   }
 
-  function draw(ctx, vw, vh, roofs) {
+  /* One wisp, at the biggest a wisp is ever drawn, kept until the pixel ratio
+     moves under it. Null when there is no canvas to cut it from, which is the
+     signal to go back to drawing the ellipses. */
+  const WISP = { fog: 260, haze: 260 };
+  let wisps = {}, wispDpr = 0;
+  function wisp(kind, dpr) {
+    const d = dpr || 0;
+    if (!d) return null;
+    if (d !== wispDpr) { wisps = {}; wispDpr = d; }
+    if (kind in wisps) return wisps[kind];
+    let made = null;
+    const rx = WISP[kind], ry = 52;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(rx * 2 * d);
+    canvas.height = Math.round(ry * 2 * d);
+    const g = canvas.getContext && canvas.getContext('2d');
+    if (g && typeof g.ellipse === 'function') {
+      g.setTransform(d, 0, 0, d, 0, 0);
+      g.fillStyle = kind === 'fog' ? '#e8eef3' : '#f0e6cf';
+      g.beginPath();
+      g.ellipse(rx, ry, rx, ry, 0, 0, Math.PI * 2);
+      g.fill();
+      made = canvas;
+    }
+    wisps[kind] = made;
+    return made;
+  }
+
+  function draw(ctx, vw, vh, roofs, dpr) {
     const info = LG.time.info || {};
     const s = LG.time.season();
 
@@ -127,12 +155,31 @@ LG.sky = (function () {
       for (const p of parts) { ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - 26 - p.v * 20, p.y + 2); }
       ctx.stroke();
     } else if (kind === 'fog' || kind === 'haze') {
-      for (const p of parts) {
-        ctx.globalAlpha = kind === 'fog' ? 0.10 : 0.05;
+      /* A wisp is a big filled ellipse, and there are twenty-six of them over
+         the whole screen every frame. Rain, snow and sand are strokes and cost
+         the path rasteriser almost nothing, which is why this is the weather
+         that shows up in the flashing alongside the trees — see the note on
+         disc sprites in world.js. Stamped from one sprite it costs it nothing
+         either. The sprite is cut at the largest a wisp gets and scaled down
+         per particle, never up, so nothing is softer than it was; smoothing is
+         asked for explicitly because the canvas turns it off for the tiles. */
+      const w = wisp(kind, dpr);
+      ctx.globalAlpha = kind === 'fog' ? 0.10 : 0.05;
+      if (w) {
+        const smooth = ctx.imageSmoothingEnabled;
+        ctx.imageSmoothingEnabled = true;
+        for (const p of parts) {
+          const rx = 120 + p.s * 140, ry = 26 + p.s * 26;
+          ctx.drawImage(w, p.x - rx, p.y - ry, rx * 2, ry * 2);
+        }
+        ctx.imageSmoothingEnabled = smooth;
+      } else {
         ctx.fillStyle = kind === 'fog' ? '#e8eef3' : '#f0e6cf';
-        ctx.beginPath();
-        ctx.ellipse(p.x, p.y, 120 + p.s * 140, 26 + p.s * 26, 0, 0, Math.PI * 2);
-        ctx.fill();
+        for (const p of parts) {
+          ctx.beginPath();
+          ctx.ellipse(p.x, p.y, 120 + p.s * 140, 26 + p.s * 26, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
       ctx.globalAlpha = 1;
     }

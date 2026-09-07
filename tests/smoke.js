@@ -317,6 +317,64 @@ section('the whole map draws');
   const st = LG.world._signs().find(s => s.key === 'Station');
   ok(st && LG.world.overSign(st.x, st.y - 10), 'the station nameboard can be clicked');
   ok(!LG.world.overSign(0, 0), 'and the empty corner of the map cannot');
+
+  /* A board is sized by measureText and everything else out here is sized by
+     the tile grid, so a board is the one thing that can come to rest between
+     device pixels — where it stays, softening, because draw() snaps the camera
+     and so never walks it back onto the grid. Give it a deliberately awkward
+     width at the pixel ratios real screens actually report, and check all four
+     edges landed on whole device pixels anyway. */
+  const measured = ctx2d.measureText;
+  ctx2d.measureText = () => ({ width: 37.3183 });
+  for (const dpr of [1, 1.25, 1.5, 2, 2.625, 3]) {
+    LG.world.drawSigns(ctx2d, cam, fullW, fullH, 'ja', false, dpr);
+    const boxes = LG.world._signBoxes();
+    const adrift = boxes.filter(b => [b.x, b.y, b.x + b.w, b.y + b.h]
+      .some(v => Math.abs(v * dpr - Math.round(v * dpr)) > 1e-6));
+    ok(boxes.length > 0 && adrift.length === 0,
+       'at dpr ' + dpr + ', every nameboard edge is on a whole device pixel' +
+       (adrift.length ? ' (' + adrift.length + ' of ' + boxes.length + ' adrift)' : ''));
+  }
+  ctx2d.measureText = measured;
+}
+
+/* The thing that flashes on a phone is filled *curves*, and the count that
+   matters is how many of them a frame asks the rasteriser for — not how many
+   fill() calls they are batched into, which is what an earlier attempt counted
+   and why it did not help. Trees and fog are stamped from a sprite instead, so
+   count the curves and notice if a well-meant tidy ever puts them back. */
+section('the woods and the fog are stamped, not drawn');
+{
+  const cam = { x: 0, y: 0 };
+  const fullW = LG.world.W * LG.world.TILE, fullH = LG.world.H * LG.world.TILE;
+  /* The sprites are cut on a canvas of their own, which in here is this same
+     stub — so their own curves are counted too, and the few they cost are the
+     point: it is once each, not once per tree. */
+  function curves(draw) {
+    let n = 0;
+    ctx2d.arc = () => { n++; };
+    ctx2d.ellipse = () => { n++; };
+    draw();
+    delete ctx2d.arc; delete ctx2d.ellipse;
+    return n;
+  }
+
+  const drawn = curves(() => LG.world.drawGround(ctx2d, cam, fullW, fullH));
+  const stamped = curves(() => LG.world.drawGround(ctx2d, cam, fullW, fullH, 2));
+  ok(drawn > 200, 'the map has round things enough for this to matter (' + drawn + ' curves)');
+  console.log('   ' + drawn + ' curves drawn by hand, ' + stamped + ' when stamped');
+  ok(stamped * 5 < drawn,
+     'given a pixel ratio the ground costs ' + stamped + ' curves, not ' + drawn);
+
+  const wasWeather = LG.time.weather;
+  LG.time.setWeather('fog', 999);
+  for (let i = 0; i < 60; i++) LG.sky.step(1 / 60, 900, 640);
+  const fogDrawn = curves(() => LG.sky.draw(ctx2d, 900, 640, null));
+  const fogStamped = curves(() => LG.sky.draw(ctx2d, 900, 640, null, 2));
+  ok(fogDrawn >= 20, 'fog is a screenful of big ellipses (' + fogDrawn + ')');
+  ok(fogStamped <= 1, 'and one sprite once it has a pixel ratio (' + fogStamped + ')');
+  console.log('   fog: ' + fogDrawn + ' ellipses a frame, ' + fogStamped + ' when stamped');
+  LG.time.setWeather(wasWeather || 'clear', 999);
 }
 
 section('every building says what it is, in the language you are learning');

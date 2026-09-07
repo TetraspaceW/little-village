@@ -8,6 +8,12 @@ LG.llm = (function () {
      the send path below pins it rather than trusting whatever cfg.model says. */
   const LOGFARE_MODEL = 'logfare/auto';
 
+  /* OpenRouter's own router picks the underlying model per-request rather than
+     naming one; how hard that underlying model thinks is a separate knob
+     (reasoning.effort) sent alongside it in openrouterSend, high for the main
+     model and medium for the helper — see AUTO_EFFORT below. */
+  const AUTO_MODEL = 'openrouter/auto';
+
   const MODELS = {
     anthropic: [
       { id: 'claude-opus-5',    label: 'Claude Opus 5 (best)' },
@@ -15,6 +21,7 @@ LG.llm = (function () {
       { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 (fastest/cheapest)' }
     ],
     openrouter: [
+      { id: AUTO_MODEL,                   label: 'Auto (OpenRouter picks the model, high effort)' },
       { id: 'google/gemini-3.7-flash',    label: 'Gemini 3.7 Flash' },
       { id: 'anthropic/claude-sonnet-5',  label: 'Claude Sonnet 5' },
       { id: 'anthropic/claude-opus-5',    label: 'Claude Opus 5' },
@@ -39,6 +46,7 @@ LG.llm = (function () {
       { id: 'claude-sonnet-5',  label: 'Claude Sonnet 5 — more careful, pricier' }
     ],
     openrouter: [
+      { id: AUTO_MODEL,                   label: 'Auto (OpenRouter picks the model, medium effort)' },
       { id: 'google/gemma-4-26b-a4b-it',  label: 'Gemma 4 26B A4B' },
       { id: 'google/gemma-4-31b-it',      label: 'Gemma 4 31B' },
       { id: 'anthropic/claude-haiku-4.5', label: 'Claude Haiku 4.5' },
@@ -405,7 +413,12 @@ LG.llm = (function () {
   async function openrouterSend(cfg, system, messages, schema) {
     const body = { model: cfg.model,
                    messages: [{ role: 'system', content: system }].concat(messages) };
-    if (cfg.fast) body.reasoning = { max_tokens: FAST_REASONING_TOKENS };
+    /* The auto router has no reasoning budget of its own to cap with max_tokens
+       — effort is the dial it understands — so it gets high for the villager-
+       facing main model and medium for the helper's bookkeeping calls (still
+       identified by cfg.fast) rather than the max_tokens throttle below. */
+    if (cfg.model === AUTO_MODEL) body.reasoning = { effort: cfg.fast ? 'medium' : 'high' };
+    else if (cfg.fast) body.reasoning = { max_tokens: FAST_REASONING_TOKENS };
     if (schema) {
       body.response_format = { type: 'json_schema',
                                json_schema: { name: 'reply', strict: true, schema: schema } };

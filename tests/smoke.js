@@ -1063,6 +1063,7 @@ async function villagersTalking() {
   await namesUnknownUntilTold();
   await touchControls();
   roomForTheComposer();
+  whatYouCanSee();
 
   console.log('\n' + (failures ? failures + ' of ' + checks + ' CHECKS FAILED'
                                : 'SMOKE TEST PASSED (' + checks + ' checks)'));
@@ -1298,6 +1299,74 @@ function roomForTheComposer() {
 
   LG.touch._setMode(false);
   at(900);                                    // leave it as it was found
+}
+
+/* The canvas is fixed to the page and fills it, and on a phone the page is not
+   the glass: a browser toolbar leaves the window onto the page scrolled some
+   way down it, and viewport-fit=cover paints the bottom of the canvas
+   underneath Android's navigation buttons. The camera used to centre the
+   player in the canvas, so the bottom row of the village was behind the
+   buttons and the top row behind the toolbar, with no way to walk them out.
+   What is checked here is the framing that replaced it: the player is centred
+   in the part of the canvas somebody can actually see, and the edges of the
+   world stop against that band rather than against the canvas. */
+function whatYouCanSee() {
+  section('framing the village in the part of the screen you can see');
+  const g = LG.game, W = LG.world, TILE = W.TILE;
+  const vw = 900, vh = 640;                     // what the fake canvas measures
+  const bottomEdge = W.H * TILE, rightEdge = W.W * TILE;
+  /* Far enough into the corner that the camera has stopped and the player is
+     walking the last stretch on their own — which is the case that broke. */
+  const atCorner = () => { g._debugPlayerAt(rightEdge - TILE, bottomEdge - TILE);
+                           g._debugTick(1 / 60); };
+
+  const plain = g._debugSeen();
+  ok(plain.top === 0 && plain.bottom === vh && plain.left === 0 && plain.right === vw,
+     'a desktop window can see the whole canvas');
+  atCorner();
+  ok(g.cam.y === bottomEdge - vh, 'and the camera stops at the edge of the world');
+
+  /* A phone with three navigation buttons along the bottom. env() is a CSS
+     value, so the game reads it off a box in the page whose padding is the
+     four insets — which is all the fake browser has to answer here. */
+  const NAV = 48;
+  sandbox.getComputedStyle = () => ({
+    paddingTop: '0px', paddingRight: '0px',
+    paddingBottom: NAV + 'px', paddingLeft: '0px'
+  });
+  g._debugViewport();
+  ok(g._debugSeen().bottom === vh - NAV, 'the buttons take the bottom of the canvas');
+  atCorner();
+  ok(g.cam.y === bottomEdge - (vh - NAV),
+     'so the camera stops that much earlier and the last row of the village clears them');
+  const y = (bottomEdge - TILE) - g.cam.y;
+  ok(y > 0 && y <= vh - NAV, 'the player standing there is above the buttons, not behind them');
+
+  /* And the other end: the window onto the page scrolled down, which is where
+     a conversation leaves it once the keyboard has been and gone. */
+  sandbox.visualViewport = { width: 412, height: 540, offsetTop: 100, scale: 1,
+                             addEventListener() {} };
+  g._debugViewport();
+  ok(g._debugSeen().top === 100, 'a window scrolled down the page hides the top of the canvas');
+  g._debugPlayerAt(TILE, TILE);
+  g._debugTick(1 / 60);
+  ok(g.cam.y === -100,
+     'and the camera stops that much earlier at the top, so the first row is on screen');
+
+  /* A keyboard coming up is not the village being reframed: the band stays
+     where it was, and the dialogue card is what deals with the keys. */
+  const settled = JSON.stringify(g._debugSeen());
+  sandbox.visualViewport.height = 240;
+  g._debugViewport();
+  ok(JSON.stringify(g._debugSeen()) === settled,
+     'a keyboard over the page leaves the framing alone');
+
+  delete sandbox.visualViewport;
+  sandbox.getComputedStyle = () => ({ paddingTop: '0px', paddingRight: '0px',
+                                      paddingBottom: '0px', paddingLeft: '0px' });
+  g._debugViewport();
+  const back = g._debugSeen();
+  ok(back.top === 0 && back.bottom === vh, 'and it all comes back');
 }
 
 beliefsRevised().then(villagersTalking);

@@ -47,6 +47,10 @@
 <div id="stage">
   <canvas id="game" tabindex="0"></canvas>
 
+  <!-- A box of nothing whose padding is the four safe-area insets, so that
+       game.js can read them: see #safe in style.css. -->
+  <div id="safe" aria-hidden="true"></div>
+
   <!-- ------------------------------------------------------------- HUD -->
   <div id="hud">
     <div class="hud-box" id="questBox">

@@ -1118,6 +1118,42 @@ and refuse the move if there is nothing. Two fingers are always let through,
 because that is a pinch, and making the text bigger is nobody's business but
 the reader's.
 
+**The screen is not the page, and the village had been framed in the wrong
+one.** The canvas is fixed to the page and fills it, and on a phone the page is
+the larger rectangle twice over. The window onto it is shorter than the page
+whenever the browser toolbar is showing, and it can be scrolled about inside
+it — raising the keyboard scrolls it down, and putting the keyboard away does
+not reliably scroll it back, so a conversation left the HUD's top strip, the
+notebook's heading and its first lines, above the top of the glass and nothing
+short of a reload brought it down. And `viewport-fit=cover` asks for the whole
+screen, which on Android's edge-to-edge Chrome means the navigation buttons
+too: the bottom inch of the canvas is painted underneath them.
+
+Painting under both is the point — the village runs to the edge of the glass,
+under the notch and behind the buttons, which is why the canvas is not the
+thing that gets inset. Framing under both was not. The camera centred the
+player in the *canvas*, so at the bottom of the map, where the camera stops and
+the player walks the last stretch alone, the player and the last row of the
+village ended up behind the buttons with no way to bring them out.
+
+So the same measurement the dialogue card has always been laid out to now says
+two more things. The HUD is laid out to the window rather than the page
+(`--vv-top`/`--vv-h`, exactly as the card is), so it comes back down on its own
+however the browser leaves things — no scrolling anybody's page back for them,
+which is a fight with the browser rather than a fix. And the camera centres the
+player in the part of the canvas somebody can actually see, and lines the edges
+of the world up with that band rather than with the canvas: `seen()` in
+`game.js` is the window minus the safe-area insets, and `env()` being a CSS
+value with no way to ask for it directly, the insets are read back off `#safe`,
+a box of nothing in the page whose padding is the four of them.
+
+The band is left where it was while a keyboard is up — the strip above the keys
+is not what the village should be framed in for as long as a dialogue is open
+over it — and while the page is pinch-zoomed, where the window is wherever the
+reader has panned it to and a camera dragging the village back under their
+thumb would be its own bug. On a desktop window the band is the whole canvas
+and every number comes out where it always did.
+
 **Nothing on the desktop moved.** The joystick is only ever drawn while a finger is
 pushing, the folding HUD boxes live inside the narrow-screen media query, and the
 gesture code binds only non-mouse pointers, so a mouse still goes through the same

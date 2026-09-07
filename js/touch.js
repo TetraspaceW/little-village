@@ -251,6 +251,6 @@ LG.touch = (function () {
            get axis() { return vec; },
            get on() { return mode; },
            DEAD, RANGE, TAP_MS,
-           _begin: begin, _move: move, _end: end, _cancel: cancel,
+           _begin: begin, _move: move, _end: end, _cancel: cancel, _setMode: setMode,
            get _ring() { return ring; } };
 })();

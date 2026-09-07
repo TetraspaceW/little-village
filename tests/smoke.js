@@ -35,7 +35,11 @@ const ctx2d = new Proxy({}, {
 function elem(id) {
   const e = {
     id, textContent: '', innerHTML: '', value: '', checked: false,
-    disabled: false, title: '', className: '', style: {}, dataset: {},
+    disabled: false, title: '', className: '', dataset: {},
+    /* Enough of a CSSStyleDeclaration for both halves: things the game sets by
+       name (style.display = …) and the custom properties it publishes the
+       visible height through. */
+    style: { setProperty(k, v) { this[k] = v; }, removeProperty(k) { delete this[k]; } },
     children: [],
     classList: {
       _s: new Set(),
@@ -90,6 +94,8 @@ const sandbox = {
     querySelectorAll: () => ({ forEach() {}, length: 0 }),
     createElement: tag => elem(tag),
     addEventListener() {},
+    documentElement: elem('html'),   // where --vv-h and --vv-top are published
+    activeElement: null,
     body: elem('body')
   }
 };
@@ -1250,6 +1256,47 @@ function roomForTheComposer() {
   const back = at(839);
   ok(!back.cramped && !back.tight, 'and the keyboard going away gives it all back');
 
+  /* The flick keyboard. Japanese input puts a strip of suggestions above the
+     keys the moment there is a word to choose and takes it away again the
+     moment you commit one, so the visible window gains and loses a row of it
+     every few characters — and a card pinned to the bottom of that window hops
+     up and down under the sentence you are reading back. What is checked here
+     is that the height the overlays are laid out to follows the window down
+     and not straight back up, and that a keyboard actually going away is still
+     believed at once. */
+  section('a keyboard that changes height as you type');
+  const doc = sandbox.document;
+  const vvh = () => parseFloat(doc.documentElement.style['--vv-h']);
+  let blurred = false;
+  const box = { tagName: 'TEXTAREA', blur() { blurred = true; } };
+
+  at(839);                                    // a phone, no keyboard, nothing focused
+  LG.touch._setMode(true);
+  doc.activeElement = box;
+
+  at(380);
+  ok(vvh() === 380, 'the keyboard comes up and the card takes the room that is left');
+  at(428);                                    // the suggestion strip goes away
+  ok(vvh() === 380, 'a suggestion strip going away does not move the card');
+  ok(!blurred, 'nor does it count as the keyboard going down');
+  at(380);                                    // and comes back for the next word
+  ok(vvh() === 380, 'and it comes back to a card that never left');
+  at(366);                                    // a taller keyboard: still followed down
+  ok(vvh() === 366, 'but a keyboard that grows is followed down at once');
+
+  at(839);
+  ok(vvh() === 839, 'and the keyboard going away gives the room straight back');
+  ok(blurred, 'which is also what finally lets the box go');
+
+  /* The hold is only ever allowed to say "still typing". With nothing focused
+     the real measurement is used, so letting go of the box while the keys are
+     still up can never lay the card out in a space it does not have. */
+  doc.activeElement = null;
+  at(380);
+  at(428);
+  ok(vvh() === 428, 'with nothing focused the card is laid out to what is really there');
+
+  LG.touch._setMode(false);
   at(900);                                    // leave it as it was found
 }
 

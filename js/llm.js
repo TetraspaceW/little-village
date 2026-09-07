@@ -21,7 +21,7 @@ LG.llm = (function () {
       { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
     ],
     openrouter: [
-      { id: AUTO_MODEL, label: "Auto (OpenRouter picks the model, high effort)" },
+      { id: AUTO_MODEL, label: "Auto (high)" },
       { id: "anthropic/claude-sonnet-5", label: "Claude Sonnet 5" }, // ant
       { id: "z-ai/glm-5.3-flash", label: "GLM-5.3 Flash" }, // z-ai
       { id: "google/gemini-3.8-flash", label: "Gemini 3.8 Flash" }, // google
@@ -39,7 +39,7 @@ LG.llm = (function () {
       { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
     ],
     openrouter: [
-      { id: AUTO_MODEL, label: "Auto (OpenRouter picks the model, medium effort)" },
+      { id: AUTO_MODEL, label: "Auto (medium)" },
       { id: "anthropic/claude-haiku-4.5", label: "Claude Haiku 4.5" }, // ant
       { id: "openai/gpt-5.6-luna", label: "GPT-5.6 Luna" }, // openai
       { id: "z-ai/glm-5.3-flash", label: "GLM-5.3 Flash" }, // z-ai

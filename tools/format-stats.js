@@ -210,6 +210,48 @@ function roleOf(e) {
   return null;                          // notebook / gloss / trade / recall / revise — out of scope here
 }
 
+/* Every logged call already carries a `kind` field (js/llm.js's own
+   `kindOf`), but that field is matched off the same fixed prefix list
+   `roleOf` above works around — it has no row for the noticeboard call, and
+   none either for belief-revision (`revise`) or the after-conversation
+   takeaway (`recall`), so all three land in its catch-all "call" bucket.
+   A cost breakdown wants every call to land somewhere legible, so this is a
+   fuller copy of the same idea, not a reuse of `roleOf` (which deliberately
+   ignores anything that isn't reply-shaped). Keep in step with js/llm.js by
+   eye, same as everything else ported up top. */
+const COST_KINDS = [
+  ['You decide what a villager does next', 'intent'],
+  ['You play one villager', 'chatter'],
+  ['You verify claims', 'notebook'],
+  ['You add furigana', 'furigana'],
+  ['You translate and romanise', 'gloss'],
+  ['You answer yes or no', 'trade'],
+  ['You decide whether a villager posts a notice', 'notice'],
+  ["You keep one person's beliefs up to date", 'revise'],
+  ['You note what people took away from a conversation', 'recall'],
+];
+function costKindOf(e) {
+  const t = String(e.system || '');
+  for (const [head, name] of COST_KINDS) if (t.indexOf(head) === 0) return name;
+  if (fullText(e).indexOf('# Your character') !== -1) return 'villager';
+  return 'other';
+}
+
+/* Token fields differ by provider's own dialect — Anthropic's `usage` says
+   input_tokens/output_tokens, the OpenAI-shaped ones (OpenRouter, Logfare)
+   say prompt_tokens/completion_tokens. `cost` is OpenRouter-only: it is the
+   one provider that prices every reply for you (see DESIGN.md's "the log is
+   where the cost shows up"), so a bucket with no OpenRouter calls in it has
+   no cost to report, not a cost of zero — the two are kept apart rather
+   than conflated. */
+function tokensOf(usage) {
+  if (!usage) return { in: 0, out: 0 };
+  const inTok = usage.input_tokens != null ? usage.input_tokens : usage.prompt_tokens;
+  const outTok = usage.output_tokens != null ? usage.output_tokens : usage.completion_tokens;
+  return { in: inTok || 0, out: outTok || 0 };
+}
+function money(n) { return '$' + n.toFixed(4); }
+
 /* -------------------------------------------------------------- checking
 
    One entry's worth of "did the game have to do anything about this". Every
@@ -341,7 +383,56 @@ function main() {
 
   console.log(files.length + ' log file(s), ' + calls.length + ' call(s) read.\n');
 
-  console.log('# Not perfectly happy-path formatted');
+  console.log('# Calls by kind, and cost');
+  console.log('every call in the log, whatever shape its reply — grouped by what it was');
+  console.log('asking (see COST_KINDS above) and which model answered. Sorted by cost where');
+  console.log('any is known, then by call count. "cost" is OpenRouter\'s own usage.cost;');
+  console.log('providers that don\'t report it show n/a, not $0 — that total is a floor,');
+  console.log('not the whole bill, whenever other providers are in the mix.\n');
+  const costBuckets = new Map();
+  function costBucket(kind, provider, model) {
+    const key = kind + ' ' + provider + ' ' + model;
+    if (!costBuckets.has(key)) costBuckets.set(key, {
+      kind, provider, model, n: 0, cost: 0, costSeen: false, tokIn: 0, tokOut: 0
+    });
+    return costBuckets.get(key);
+  }
+  let totalCost = 0, costedCalls = 0;
+  for (const e of calls) {
+    const b = costBucket(costKindOf(e), e.provider || '(unknown)', e.model || '(unknown)');
+    b.n++;
+    const { in: tokIn, out: tokOut } = tokensOf(e.usage);
+    b.tokIn += tokIn;
+    b.tokOut += tokOut;
+    const cost = e.usage && e.usage.cost;
+    if (typeof cost === 'number') {
+      b.cost += cost;
+      b.costSeen = true;
+      totalCost += cost;
+      costedCalls++;
+    }
+  }
+  const costRows = [...costBuckets.values()].sort((a, c) => {
+    if (a.costSeen !== c.costSeen) return a.costSeen ? -1 : 1;
+    return a.costSeen ? c.cost - a.cost : c.n - a.n;
+  });
+  table(costRows, [
+    { label: 'kind', get: r => r.kind },
+    { label: 'provider', get: r => r.provider },
+    { label: 'model', get: r => r.model },
+    { label: 'n', get: r => r.n },
+    { label: 'cost', get: r => r.costSeen ? money(r.cost) : 'n/a' },
+    { label: '$/call', get: r => r.costSeen ? money(r.cost / r.n) : '—' },
+    { label: 'tok in', get: r => r.tokIn },
+    { label: 'tok out', get: r => r.tokOut }
+  ]);
+  console.log(
+    '\n' + money(totalCost) + ' total over ' + costedCalls + ' costed call(s) of ' +
+    calls.length + (calls.length === costedCalls ? '' :
+      ' (' + (calls.length - costedCalls) + ' from a provider that reports no cost)') + '.'
+  );
+
+  console.log('\n# Not perfectly happy-path formatted');
   console.log('every reply-shaped call — villager (player-facing), chatter (villager-to-');
   console.log('villager), notice (noticeboard) — checked against what its own prompt asked');
   console.log('for. "any" is any flag below; the rest break out why.\n');

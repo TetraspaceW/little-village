@@ -8,6 +8,12 @@ LG.llm = (function () {
      the send path below pins it rather than trusting whatever cfg.model says. */
   const LOGFARE_MODEL = "logfare/auto";
 
+  /* OpenRouter's own router picks the underlying model per-request rather than
+     naming one; how hard that underlying model thinks is a separate knob
+     (reasoning.effort) sent alongside it in openrouterSend, high for the main
+     model and medium for the helper. */
+  const AUTO_MODEL = "openrouter/auto";
+
   const MODELS = {
     anthropic: [
       { id: "claude-opus-5", label: "Claude Opus 5" },
@@ -15,6 +21,7 @@ LG.llm = (function () {
       { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
     ],
     openrouter: [
+      { id: AUTO_MODEL, label: "Auto (high)" },
       { id: "anthropic/claude-sonnet-5", label: "Claude Sonnet 5" }, // ant
       { id: "z-ai/glm-5.3-flash", label: "GLM-5.3 Flash" }, // z-ai
       { id: "google/gemini-3.8-flash", label: "Gemini 3.8 Flash" }, // google
@@ -32,6 +39,7 @@ LG.llm = (function () {
       { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
     ],
     openrouter: [
+      { id: AUTO_MODEL, label: "Auto (medium)" },
       { id: "anthropic/claude-haiku-4.5", label: "Claude Haiku 4.5" }, // ant
       { id: "openai/gpt-5.6-luna", label: "GPT-5.6 Luna" }, // openai
       { id: "z-ai/glm-5.3-flash", label: "GLM-5.3 Flash" }, // z-ai
@@ -502,7 +510,12 @@ LG.llm = (function () {
       model: cfg.model,
       messages: [{ role: "system", content: system }].concat(messages),
     };
-    if (cfg.fast) body.reasoning = { max_tokens: FAST_REASONING_TOKENS };
+    /* The auto router has no reasoning budget of its own to cap with max_tokens
+       — effort is the dial it understands — so it gets high for the villager-
+       facing main model and medium for the helper's bookkeeping calls (still
+       identified by cfg.fast) rather than the max_tokens throttle below. */
+    if (cfg.model === AUTO_MODEL) body.reasoning = { effort: cfg.fast ? "medium" : "high" };
+    else if (cfg.fast) body.reasoning = { max_tokens: FAST_REASONING_TOKENS };
     if (schema) {
       body.response_format = {
         type: "json_schema",

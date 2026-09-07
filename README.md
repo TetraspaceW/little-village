@@ -131,6 +131,10 @@ client-side either way.
   ID via the **Other** field. Both models are `logfare/auto` on Logfare —
   there is nothing to pick.
 
+  Both OpenRouter lists also offer **Auto** (`openrouter/auto`), which lets
+  OpenRouter pick the underlying model per request; the main model sends it
+  at `reasoning.effort: "high"`, the helper at `"medium"`.
+
 Use a fast, non-reasoning model for the helper if you can — see below.
 
 ### Cost

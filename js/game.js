@@ -688,15 +688,71 @@ LG.game = (function () {
     canvas.style.width = vw + 'px'; canvas.style.height = vh + 'px';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.imageSmoothingEnabled = false;
+    readInsets();       // a phone that turned has swapped notch for home bar
+  }
+
+  /* ------------------------------------------------- what you can see of it
+     The canvas is fixed to the page and always fills it, and on a phone the
+     page is not the glass. Two things eat the picture at the edges:
+
+       — the window onto the page is shorter than the page whenever the browser
+         toolbar is showing, and it can be scrolled about inside it. Raising
+         the keyboard scrolls it down; putting the keyboard away does not
+         reliably scroll it back. Whatever is left over is a strip of village
+         off the top of the screen.
+       — viewport-fit=cover asks for the whole screen and on Android's
+         edge-to-edge Chrome that is what it gets, navigation buttons
+         included: the last inch of the canvas is painted underneath them.
+         env(safe-area-inset-*) is how wide that is, and #safe in the page is
+         how this reads it.
+
+     Painting under both is the point — the village runs to the edge of the
+     glass, under the notch and behind the buttons. *Framing* under both is
+     not: the camera centres the player in the canvas, so at the bottom of the
+     map, where the camera stops before the player does, the player and the
+     last row of the village were behind the buttons with no way to bring them
+     out. So the camera centres on what you can see instead, and the world's
+     own edges are lined up with that band rather than with the canvas. On a
+     desktop window the band is the whole canvas and none of this does
+     anything.
+
+     The band is left where it was while a keyboard is up — the strip above
+     the keys is not what the village should be framed in for the ten seconds
+     a dialogue is open over it — and while the page is pinch-zoomed, where
+     the window is wherever the reader has panned it to and the camera
+     dragging the village back under their thumb would be its own bug. */
+  let insets = { top: 0, right: 0, bottom: 0, left: 0 };
+  let seenTop = 0, seenBottom = Infinity;    // the window, in page pixels
+
+  function readInsets() {
+    const el = document.getElementById('safe');
+    const cs = el && window.getComputedStyle ? getComputedStyle(el) : null;
+    if (!cs) return;
+    const n = v => Math.max(0, parseFloat(v) || 0);
+    insets = { top: n(cs.paddingTop), right: n(cs.paddingRight),
+               bottom: n(cs.paddingBottom), left: n(cs.paddingLeft) };
+  }
+
+  /* The visible band in canvas pixels. Anything that does not make sense —
+     a measurement from before the first frame, a window taller than the page
+     it is a window onto — falls back to the whole canvas, which is what every
+     browser without a visual viewport gets anyway. */
+  function seen() {
+    let top = Math.max(0, seenTop, insets.top);
+    let bottom = Math.min(vh, seenBottom, vh - insets.bottom);
+    let left = Math.max(0, insets.left), right = Math.min(vw, vw - insets.right);
+    if (!(bottom - top > 1)) { top = 0; bottom = vh; }
+    if (!(right - left > 1)) { left = 0; right = vw; }
+    return { top: top, bottom: bottom, left: left, right: right };
   }
 
   /* A phone's on-screen keyboard does not make the page shorter — it slides a
      smaller window over it — so a dialogue card sized to the page ends up half
      underneath the keys, with the box you are typing into out of sight. The
-     visual viewport is the part you can actually see. Only the two overlays
-     read these; the canvas goes on filling the whole screen, because scrolling
-     the village up every time the keyboard opens would be worse than the
-     problem.
+     visual viewport is the part you can actually see. The overlays and the HUD
+     are laid out to it; the canvas goes on filling the whole screen, because
+     scrolling the village up every time the keyboard opens would be worse than
+     the problem — what the camera does with the same measurement is above.
 
      Two classes come out of the same measurement, because how much room there
      is is a fact about the screen and not about what has focus. Keying the
@@ -718,6 +774,7 @@ LG.game = (function () {
   const KB_ROW = 96;
   let fullH = 0, fullW = 0;   // the tallest this window has been at this width
   let heldH = 0;              // the height the overlays are being laid out to
+  let kbUp = false;           // is a keyboard over the page right now
 
   function typingBox() {
     const a = document.activeElement;
@@ -750,7 +807,7 @@ LG.game = (function () {
   function heightForOverlays(raw, w) {
     if (w !== fullW) { fullW = w; fullH = 0; heldH = 0; }   // the phone turned
     if (raw > fullH) fullH = raw;
-    const kbUp = fullH > 0 && fullH - raw > KB_ROW;
+    kbUp = fullH > 0 && fullH - raw > KB_ROW;
     if (!(kbUp && LG.touch.on && typingBox())) { heldH = 0; return raw; }
     if (!heldH || raw < heldH) heldH = raw;
     return heldH;
@@ -765,6 +822,13 @@ LG.game = (function () {
     if (root && root.style) {
       root.style.setProperty('--vv-h', h + 'px');
       root.style.setProperty('--vv-top', (vv ? vv.offsetTop : 0) + 'px');
+    }
+    /* Where that window sits, for the camera. The raw height, not the held
+       one: the hold is a promise to the dialogue card that it will not hop
+       about while somebody types, and the village behind it is not typing. */
+    if (!kbUp && !(vv && vv.scale > 1.01)) {
+      seenTop = vv ? vv.offsetTop : 0;
+      seenBottom = vv ? vv.offsetTop + raw : Infinity;
     }
     const b = document.body;
     if (b && b.classList) {
@@ -1751,10 +1815,18 @@ LG.game = (function () {
       hint.classList.remove('show');
     }
 
-    cam.x = clamp(player.px - vw / 2, 0, W.W * TILE - vw);
-    cam.y = clamp(player.py - vh / 2, 0, W.H * TILE - vh);
-    if (W.W * TILE < vw) cam.x = (W.W * TILE - vw) / 2;
-    if (W.H * TILE < vh) cam.y = (W.H * TILE - vh) / 2;
+    /* Centred on the middle of what you can see rather than the middle of the
+       canvas, and stopped where the edge of the world reaches the edge of what
+       you can see rather than the edge of the canvas — so the corners of the
+       map come out from under the browser's chrome and the phone's buttons.
+       With the whole canvas visible, which is every desktop window, this is
+       exactly what it always was. */
+    const band = seen();
+    const bw = band.right - band.left, bh = band.bottom - band.top;
+    cam.x = clamp(player.px - (band.left + band.right) / 2, -band.left, W.W * TILE - band.right);
+    cam.y = clamp(player.py - (band.top + band.bottom) / 2, -band.top, W.H * TILE - band.bottom);
+    if (W.W * TILE < bw) cam.x = (W.W * TILE - bw) / 2 - band.left;
+    if (W.H * TILE < bh) cam.y = (W.H * TILE - bh) / 2 - band.top;
   }
 
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
@@ -1869,7 +1941,9 @@ LG.game = (function () {
            _debugTick: dt => update(dt || 1 / 60),
            // re-read how much screen there is, for a test that has no keyboard
            // to raise and no browser to fire a resize
-           _debugViewport: measureViewport,
+           _debugViewport: () => { readInsets(); measureViewport(); },
+           // and what came of it: the strip of canvas the player can see
+           _debugSeen: seen,
            inventoryList, doTrade, commerce, renderHUD, openSettings, uiBlocked, newVillage,
            get plan() { return plan; },
            get npcs() { return npcs; },

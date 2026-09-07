@@ -769,8 +769,62 @@ LG.world = (function () {
      inside that. Within a tile the old order — trunk, canopy, highlight, snow
      — is kept, by keeping the passes in that order. */
   const FLOWER_COLS = ['#f2c14e', '#e5798f', '#c8a2f2', '#f5f0e6'];
-  function discs(ctx, at, r) {
+
+  /* ----------------------------------------------------------- disc sprites
+     The batching above cut the number of fills and did not stop the flashing,
+     and the reason is that fills were the wrong thing to count. Firefox's
+     accelerated canvas rasterises a filled path on the GPU and keeps the
+     triangles it makes in a buffer of its own; fillRect, fillText and
+     drawImage do not go through any of that. That is exactly the line the
+     artifact falls along — in a wood under fog, canopies and heads and
+     shadows drop out of a frame or smear away to the right, while trunks,
+     walls, paths and every piece of text stay where they were put. Batching a
+     hundred circles into one path leaves a hundred circles of vertices; it
+     only spares the call.
+
+     A blit has no vertices at all. So a disc the map draws by the hundred is
+     rasterised once, into a small canvas of its own at device resolution, and
+     stamped from there — the same picture, off the buffer that is misbehaving
+     and onto the one that is not. Sprites are kept per colour and radius and
+     thrown away if the pixel ratio changes under them.
+
+     Without a dpr to render at — the tests, mainly — it falls back to the path
+     it used to draw, so the drawing is still exercised where there is no real
+     canvas to stamp onto. */
+  const spriteFor = new Map();
+  let spriteDpr = 0;
+  function discSprite(colour, r, d) {
+    if (d !== spriteDpr) { spriteFor.clear(); spriteDpr = d; }
+    const key = colour + '@' + r;
+    if (spriteFor.has(key)) return spriteFor.get(key);
+    let made = null;
+    // A pixel of margin each side so the antialiased rim is not clipped.
+    const size = Math.ceil(r + 1) * 2;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(size * d);
+    canvas.height = Math.round(size * d);
+    const g = canvas.getContext && canvas.getContext('2d');
+    if (g && typeof g.arc === 'function') {
+      g.setTransform(d, 0, 0, d, 0, 0);
+      g.fillStyle = colour;
+      g.beginPath();
+      g.arc(size / 2, size / 2, r, 0, Math.PI * 2);
+      g.fill();
+      made = { canvas, size, half: size / 2 };
+    }
+    spriteFor.set(key, made);
+    return made;
+  }
+
+  function discs(ctx, at, r, colour, dpr) {
     if (!at.length) return;
+    const s = dpr ? discSprite(colour, r, dpr) : null;
+    if (s) {
+      for (let i = 0; i < at.length; i += 2)
+        ctx.drawImage(s.canvas, at[i] - s.half, at[i + 1] - s.half, s.size, s.size);
+      return;
+    }
+    ctx.fillStyle = colour;
     ctx.beginPath();
     for (let i = 0; i < at.length; i += 2) {
       ctx.moveTo(at[i] + r, at[i + 1]);          // its own subpath, not a chain
@@ -779,7 +833,7 @@ LG.world = (function () {
     ctx.fill();
   }
 
-  function drawPropsPass(ctx, x0, y0, x1, y1) {
+  function drawPropsPass(ctx, x0, y0, x1, y1, dpr) {
     const trunks = [], canopy = [[], []], crowns = [], flowers = [[], [], [], []], fences = [];
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
@@ -804,13 +858,12 @@ LG.world = (function () {
 
     ctx.fillStyle = '#6b4a2f';
     for (let i = 0; i < trunks.length; i += 2) ctx.fillRect(trunks[i] + 13, trunks[i + 1] + 16, 6, 14);
-    ctx.fillStyle = '#3f7d3a'; discs(ctx, canopy[0], 13);
-    ctx.fillStyle = '#4c8c40'; discs(ctx, canopy[1], 13);
-    // The highlight is the same wash on every canopy, so it is one path too.
-    ctx.fillStyle = 'rgba(255,255,255,.10)';
+    discs(ctx, canopy[0], 13, '#3f7d3a', dpr);
+    discs(ctx, canopy[1], 13, '#4c8c40', dpr);
+    // The highlight is the same wash on every canopy, so it is the same stamp.
     const lit = [];
     for (let i = 0; i < trunks.length; i += 2) lit.push(trunks[i] + 12, trunks[i + 1] + 8);
-    discs(ctx, lit, 6);
+    discs(ctx, lit, 6, 'rgba(255,255,255,.10)', dpr);
 
     /* It settles on top of the canopy and nowhere else: a green rim under a
        white crown is what makes a laden tree read as laden rather than dead.
@@ -822,13 +875,13 @@ LG.world = (function () {
       ctx.beginPath();
       ctx.moveTo(px + 4, py + 11);
       ctx.arc(px + 16, py + 11, 12, Math.PI, 0); ctx.closePath(); ctx.fill();
-      discs(ctx, [px + 13, py + 4], 4 + a * 2);
+      // Its size is the depth, so this one cannot be a stamp shared with anything.
+      discs(ctx, [px + 13, py + 4], 4 + a * 2, ctx.fillStyle);
     }
 
     for (let i = 0; i < flowers.length; i++) {
       if (!flowers[i].length) continue;
-      ctx.fillStyle = FLOWER_COLS[i];
-      discs(ctx, flowers[i], 3.5);
+      discs(ctx, flowers[i], 3.5, FLOWER_COLS[i], dpr);
     }
 
     for (let i = 0; i < fences.length; i += 3) {
@@ -1249,7 +1302,7 @@ LG.world = (function () {
     ctx.drawImage(snowLayer, x0 * TILE, y0 * TILE);
   }
 
-  function drawGround(ctx, cam, vw, vh) {
+  function drawGround(ctx, cam, vw, vh, dpr) {
     readSnow();
     const x0 = Math.max(0, (cam.x / TILE) | 0), y0 = Math.max(0, (cam.y / TILE) | 0);
     const x1 = Math.min(W - 1, ((cam.x + vw) / TILE) | 0), y1 = Math.min(H - 1, ((cam.y + vh) / TILE) | 0);
@@ -1257,7 +1310,7 @@ LG.world = (function () {
     // Snow after all the ground, never tile by tile with it: a drift that spills
     // over its own tile would be cut off again by the next tile's grass.
     if (lying > 0) drawSnowLayer(ctx, x0, y0, x1, y1);
-    drawPropsPass(ctx, x0, y0, x1, y1);
+    drawPropsPass(ctx, x0, y0, x1, y1, dpr);
   }
 
   return { TILE, W, H, T, build, get, isSolid, isWalkable, nearestOpen, pathTo,

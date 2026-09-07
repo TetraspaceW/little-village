@@ -1737,7 +1737,7 @@ LG.game = (function () {
 
     const room = W.buildingUnder(player);
 
-    W.drawGround(ctx, cam, vw, vh);
+    W.drawGround(ctx, cam, vw, vh, dpr);
     W.drawBuildings(ctx, room, cam, vw, vh);
     W.drawSigns(ctx, cam, vw, vh, settings.lang, settings.showTranslation, dpr);
     drawWorldItem();
@@ -1773,7 +1773,7 @@ LG.game = (function () {
     }
 
     ctx.restore();
-    LG.sky.draw(ctx, vw, vh, W.roofRects(cam, vw, vh, dpr));
+    LG.sky.draw(ctx, vw, vh, W.roofRects(cam, vw, vh, dpr), dpr);
 
     const g = ctx.createRadialGradient(vw / 2, vh / 2, Math.min(vw, vh) * 0.42,
                                        vw / 2, vh / 2, Math.max(vw, vh) * 0.75);

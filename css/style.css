@@ -82,13 +82,42 @@ body:not(.touch) .touch-only{display:none}
 
 /* ------------------------------------------------------------------ HUD */
 /* Inset by the notch and the home bar rather than the canvas, so the village
-   still runs to the edge of the glass while nothing you have to read does. */
+   still runs to the edge of the glass while nothing you have to read does.
+
+   Laid out to the window you can see rather than to the page, for the same
+   reason the dialogue card is (--vv-top/--vv-h, published by game.js): the
+   canvas is fixed to the page, and on a phone the page is the taller of the
+   two. Raising the keyboard scrolls the window down over it, and putting the
+   keyboard away does not always scroll it back — the browser toolbar has
+   slid in by then and there is somewhere for the window to stay — so a HUD
+   pinned to the page keeps whatever offset the last conversation left it
+   with, and the top of the notebook sits above the top of the glass until
+   the page is reloaded. Pinned to the window instead, it comes back down on
+   its own however the browser leaves things.
+
+   The transition matches the card's: the two move together, and for the same
+   reason it is there at all — the measurement jumps the moment game.js reads
+   it, the keyboard behind it does not. */
 #hud{
   position:absolute;pointer-events:none;
-  top:env(safe-area-inset-top,0px);
+  top:calc(var(--vv-top,0px) + env(safe-area-inset-top,0px));
+  height:calc(var(--vv-h,100%) - env(safe-area-inset-top,0px)
+                               - env(safe-area-inset-bottom,0px));
   right:env(safe-area-inset-right,0px);
-  bottom:env(safe-area-inset-bottom,0px);
   left:env(safe-area-inset-left,0px);
+  transition:top .12s ease-out,height .12s ease-out;
+}
+
+/* The four insets, in a form JavaScript can read: env() is a CSS value and
+   there is no way to ask for one directly, so this is a box of nothing whose
+   padding is exactly the four of them and getComputedStyle reads them back.
+   game.js needs the bottom one to know how much of the canvas is underneath
+   a phone's navigation buttons (see seen()). */
+#safe{
+  position:absolute;top:0;left:0;width:0;height:0;
+  visibility:hidden;pointer-events:none;
+  padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px)
+          env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px);
 }
 .hud-box{
   position:absolute;pointer-events:auto;
@@ -481,5 +510,5 @@ body.touch.typing .tray{
 /* Somebody who has asked for less movement gets the same layouts without the
    travel between them. */
 @media (prefers-reduced-motion:reduce){
-  .tray,.chips,#dlg,.panel{transition:none}
+  .tray,.chips,#dlg,#hud,.panel{transition:none}
 }

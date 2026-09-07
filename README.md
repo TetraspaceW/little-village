@@ -8,8 +8,7 @@ Villagers are played by a language model: they remember what you tell them and
 pass it on to each other.
 
 **Requires an API key** from [Anthropic](https://console.anthropic.com),
-[OpenRouter](https://openrouter.ai/keys), or [Logfare](https://logfare.ai)
-(free, instant).
+[OpenRouter](https://openrouter.ai/keys) (recommended), or [Logfare](https://logfare.ai) (free).
 
 <!-- TODO: screenshot or GIF here -->
 
@@ -34,10 +33,7 @@ There's no build step and no dependencies, so any static file server works:
 python3 -m http.server 8000  # open http://localhost:8000, paste a key in-game
 ```
 
-Opening `index.html` directly (`file://`) works for browsing, **but not with
-an API key** — browsers send `Origin: null` for local files, and the
-providers' CORS rules reject that. The game detects this and tells you at
-the settings screen rather than failing partway through a conversation.
+Opening `index.html` directly (`file://`) will also suffice to run the game locally though may be less reliable.
 
 ## Controls
 

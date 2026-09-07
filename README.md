@@ -8,8 +8,7 @@ Villagers are played by a language model: they remember what you tell them and
 pass it on to each other.
 
 **Requires an API key** from [Anthropic](https://console.anthropic.com),
-[OpenRouter](https://openrouter.ai/keys), or [Logfare](https://logfare.ai)
-(free, instant).
+[OpenRouter](https://openrouter.ai/keys) (recommended), or [Logfare](https://logfare.ai) (free).
 
 <!-- TODO: screenshot or GIF here -->
 

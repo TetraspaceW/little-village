@@ -1,0 +1,45 @@
+<!-- favicon.svg — the same villager as icon.svg, no bubble, closer in.
+
+     A favicon is looked at 16 pixels wide. Standing in the full field she is
+     four pixels of purple; cropped to the head, the arms and the top of the
+     body she still reads as a person, which is as much as a favicon can ask
+     for. Everything here is LG.actors.drawCharacter from js/npc.js at 14.43x,
+     the same as the app icon, only framed tighter. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="A villager">
+  <title>Little Village</title>
+  <rect width="512" height="512" fill="#79ad5b"/>
+  <path fill="#6fa452" opacity=".5" d="M0 0h32v32h-32zM32 0h32v32h-32zM224 0h32v32h-32zM256 0h32v32h-32zM288 0h32v32h-32zM320
+     0h32v32h-32zM384 0h32v32h-32zM416 0h32v32h-32zM32 32h32v32h-32zM384 32h32v32h-32zM448
+     32h32v32h-32zM0 64h32v32h-32zM32 64h32v32h-32zM320 64h32v32h-32zM384 64h32v32h-32zM448
+     64h32v32h-32zM480 64h32v32h-32zM32 96h32v32h-32zM128 96h32v32h-32zM160 96h32v32h-32zM224
+     96h32v32h-32zM256 96h32v32h-32zM320 96h32v32h-32zM352 96h32v32h-32zM448 96h32v32h-32zM0
+     128h32v32h-32zM32 128h32v32h-32zM64 128h32v32h-32zM96 128h32v32h-32zM128 128h32v32h-32zM224
+     128h32v32h-32zM320 128h32v32h-32zM416 128h32v32h-32zM32 160h32v32h-32zM128 160h32v32h-32zM160
+     160h32v32h-32zM192 160h32v32h-32zM224 160h32v32h-32zM288 160h32v32h-32zM320 160h32v32h-32zM352
+     160h32v32h-32zM384 160h32v32h-32zM64 192h32v32h-32zM96 192h32v32h-32zM192 192h32v32h-32zM288
+     192h32v32h-32zM320 192h32v32h-32zM384 192h32v32h-32zM0 224h32v32h-32zM96 224h32v32h-32zM224
+     224h32v32h-32zM352 224h32v32h-32zM384 224h32v32h-32zM416 224h32v32h-32zM448 224h32v32h-32zM480
+     224h32v32h-32zM0 256h32v32h-32zM224 256h32v32h-32zM288 256h32v32h-32zM320 256h32v32h-32zM416
+     256h32v32h-32zM448 256h32v32h-32zM0 288h32v32h-32zM32 288h32v32h-32zM96 288h32v32h-32zM192
+     288h32v32h-32zM256 288h32v32h-32zM320 288h32v32h-32zM384 288h32v32h-32zM448 288h32v32h-32zM0
+     320h32v32h-32zM32 320h32v32h-32zM160 320h32v32h-32zM192 320h32v32h-32zM224 320h32v32h-32zM256
+     320h32v32h-32zM288 320h32v32h-32zM384 320h32v32h-32zM416 320h32v32h-32zM480 320h32v32h-32zM0
+     352h32v32h-32zM32 352h32v32h-32zM64 352h32v32h-32zM128 352h32v32h-32zM192 352h32v32h-32zM320
+     352h32v32h-32zM352 352h32v32h-32zM416 352h32v32h-32zM448 352h32v32h-32zM0 384h32v32h-32zM32
+     384h32v32h-32zM192 384h32v32h-32zM224 384h32v32h-32zM256 384h32v32h-32zM352 384h32v32h-32zM448
+     384h32v32h-32zM0 416h32v32h-32zM64 416h32v32h-32zM96 416h32v32h-32zM128 416h32v32h-32zM288
+     416h32v32h-32zM320 416h32v32h-32zM352 416h32v32h-32zM384 416h32v32h-32zM416 416h32v32h-32zM480
+     416h32v32h-32zM32 448h32v32h-32zM160 448h32v32h-32zM256 448h32v32h-32zM288 448h32v32h-32zM320
+     448h32v32h-32zM384 448h32v32h-32zM416 448h32v32h-32zM480 448h32v32h-32zM32 480h32v32h-32zM96
+     480h32v32h-32zM128 480h32v32h-32zM480 480h32v32h-32z"/>
+  <g transform="translate(256 375.048) scale(14.43)">
+    <rect x="-8" y="-6" width="16" height="18" rx="5" fill="#9d4edd"/>
+    <rect x="-11" y="-3" width="3" height="10" fill="#8b3ccb"/>
+    <rect x="8" y="-3" width="3" height="10" fill="#8b3ccb"/>
+    <circle cx="0" cy="-13" r="8.5" fill="#f0c8a0"/>
+    <path d="M-8.5-15A8.5 8.5 0 0 1 8.5-15Z" fill="#3b2b20"/>
+    <circle cx="-3" cy="-12" r="1.4" fill="#2b2118"/>
+    <circle cx="3" cy="-12" r="1.4" fill="#2b2118"/>
+  </g>
+</svg>

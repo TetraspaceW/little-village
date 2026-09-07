@@ -877,19 +877,18 @@ LG.game = (function () {
     });
     window.addEventListener('blur', () => { for (const k in held) held[k] = false; });
 
-    /* A sign's English gloss is click-to-reveal, the same as a note in the
-       notebook — so a click on the canvas has to be tested against whatever
-       signs are actually on screen before it is allowed to mean anything
-       else. */
+    /* A click on the canvas has to be tested against whatever signs are
+       actually on screen, so that landing on a signboard is swallowed rather
+       than read as a click on the ground beneath it. */
     const toWorld = e => {
       const r = canvas.getBoundingClientRect();
       return { x: (e.clientX - r.left) + cam.x, y: (e.clientY - r.top) + cam.y };
     };
     /* A finger's version of this goes through LG.touch below, which suppresses
        the synthetic click a tap would otherwise also produce — without that,
-       a tapped sign would be revealed by the tap and hidden again by the
-       click a moment later. The guard is belt and braces for anything that
-       fakes a click without a pointer to go with it. */
+       a tapped sign would be hit twice, once by the tap and once by the click
+       a moment later. The guard is belt and braces for anything that fakes a
+       click without a pointer to go with it. */
     canvas.addEventListener('click', e => {
       if (uiBlocked() || LG.touch.on) return;
       const p = toWorld(e);
@@ -1247,7 +1246,7 @@ LG.game = (function () {
   function tapAt(sx, sy) {
     if (uiBlocked()) return;
     const wx = sx + cam.x, wy = sy + cam.y;
-    // A sign's English gloss is reveal-on-touch, the same as under a mouse.
+    // A tap landing on a signboard is swallowed, not read as ground beneath it.
     if (W.hitSign(wx, wy)) return;
 
     const m = tapPick(wx, wy);

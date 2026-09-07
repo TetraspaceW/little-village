@@ -1192,13 +1192,14 @@ LG.world = (function () {
 
   /* ------------------------------------------------------------------ signs
      A readable sign in front of every building's door, and one at the
-     noticeboard: the name in the language the village speaks, with an English
-     line underneath that stays blurred until clicked — the same convention
-     the notebook and overheard speech already use for a gloss. `signBoxes` is
-     rebuilt in world space every time this draws; a click is hit-tested
-     against it by whoever knows where the mouse actually was (game.js). */
+     noticeboard: the name in the language the village speaks. The English
+     line underneath is all-or-nothing, governed by the same "reveal
+     translation" setting as everything else — a sign carries no reveal state
+     of its own, unlike the notebook and overheard speech, so with the
+     setting off it is monolingual, full stop. `signBoxes` is rebuilt in
+     world space every time this draws; a click is hit-tested against it by
+     whoever knows where the mouse actually was (game.js). */
   let signBoxes = [];
-  let signRevealed = {};
 
   /* Anything that is not a building but still has its name up: the
      noticeboard, the station. Filled during build(); buildings get theirs
@@ -1240,7 +1241,7 @@ LG.world = (function () {
     for (const s of signSpots()) {
       if (!inView(s.x - 40, s.y - 40, 80, 40, cam, vw, vh, TILE)) continue;
       const native = LG.placeName(s.key, lang);
-      const gloss = lang === 'en' ? null : LG.placeName(s.key, 'en');
+      const gloss = (lang === 'en' || !revealAll) ? null : LG.placeName(s.key, 'en');
       ctx.font = nativeFont;
       let w = ctx.measureText(native).width;
       if (gloss) { ctx.font = glossFont; w = Math.max(w, ctx.measureText(gloss).width); }
@@ -1259,32 +1260,23 @@ LG.world = (function () {
       ctx.font = nativeFont;
       ctx.fillText(native, s.x, by + 15);
       if (gloss) {
-        const revealed = revealAll || signRevealed[s.key];
-        ctx.save();
-        if (!revealed) ctx.filter = 'blur(2.2px)';       // click-to-reveal, as elsewhere
-        ctx.fillStyle = revealed ? '#6d5b45' : 'rgba(109,91,69,.65)';
+        ctx.fillStyle = '#6d5b45';
         ctx.font = glossFont;
         ctx.fillText(gloss, s.x, by + 29);
-        ctx.restore();
       }
       signBoxes.push({ x: bx, y: by, w, h, key: s.key });
     }
   }
 
-  /* A click at this world-space point. Toggles whichever sign it landed on
-     and reports whether it hit one, so the caller does not also read it as a
-     click on the ground beneath. */
-  function hitSign(wx, wy) {
-    for (const b of signBoxes) {
-      if (wx >= b.x && wx <= b.x + b.w && wy >= b.y && wy <= b.y + b.h) {
-        signRevealed[b.key] = !signRevealed[b.key];
-        return true;
-      }
-    }
-    return false;
-  }
+  /* A sign has no reveal state of its own to toggle any more — the gloss is
+     all-or-nothing off the "reveal translation" setting — but a click or tap
+     landing on a signboard should still be swallowed rather than read as a
+     click on the ground beneath it. */
   function overSign(wx, wy) {
     return signBoxes.some(b => wx >= b.x && wx <= b.x + b.w && wy >= b.y && wy <= b.y + b.h);
+  }
+  function hitSign(wx, wy) {
+    return overSign(wx, wy);
   }
 
   /* The ground snow pass redrawn straight into the visible ctx every frame is

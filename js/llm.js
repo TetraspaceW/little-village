@@ -1155,25 +1155,6 @@ LG.llm = (function () {
       "Say it the way a real " +
         o.langName +
         " speaker would actually say it out loud.",
-      /* What a pair say to each other reaches the event log verbatim, and the
-         invariant for that channel is that there is no English anywhere in it:
-         eavesdropping is a comprehension test, and English narration prints the
-         answer. What actually leaked was not dialogue but stage business —
-         *shuffles feet*, *wipes flour off her hands*, in English, in a toki pona
-         line, on 18% of them. Suppressing the business was the other option and
-         it is the worse village; a miller who dusts off her apron mid-sentence
-         is worth keeping, so this says the gesture is spoken in the same
-         language as the rest, rather than saying not to make it.
-
-         Positively phrased on purpose, and this is the case DESIGN.md's rule is
-         about — naming the failure mode here would put English stage directions
-         in the model's context. Measured on toki pona chatter, 298 prompts,
-         haiku, two runs against two baselines: English words inside asterisks
-         349/313 -> 128/98, while the asterisks themselves went up by half. */
-      "Whatever you are doing while you speak — a glance, a shrug, flour wiped off your hands — belongs in " +
-        o.langName +
-        " like everything else you say.",
-      o.grammarNote ? "In " + o.langName + ", " + o.grammarNote : null,
       o.furigana ? 'Put the furigana in "say".\n' + LG.FURIGANA : null,
       o.diacritics
         ? 'Write "say" fully vocalised, tashkeel and all.\n' + LG.TASHKEEL

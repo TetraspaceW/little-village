@@ -711,9 +711,56 @@ LG.game = (function () {
      listeners are there to catch whichever one this is. */
   const CRAMPED = 460;             // no room for the trays at their full size
   const TIGHT = 320;               // no room for them at all
+
+  /* One row of keys, near enough. Anything the window gains or loses that is
+     smaller than this is furniture on top of the keyboard rather than the
+     keyboard itself. */
+  const KB_ROW = 96;
+  let fullH = 0, fullW = 0;   // the tallest this window has been at this width
+  let heldH = 0;              // the height the overlays are being laid out to
+
+  function typingBox() {
+    const a = document.activeElement;
+    return !!a && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT');
+  }
+
+  /* A Japanese flick keyboard is not one height. The suggestion strip appears
+     the moment there is something to suggest and goes again the moment you
+     commit a word, and each of those is a visualViewport resize a row tall —
+     so a card pinned to the bottom of the visible window hops up and down a
+     row per keystroke, under the very sentence you are reading back. Chinese
+     and Korean input do the same, and so does an English keyboard's
+     autocorrect bar.
+
+     So the height the overlays are given follows the window down but not
+     straight back up: while a keyboard is over the page and a text box has
+     focus, a gain smaller than a row of keys is the strip coming and going and
+     is ignored. The card stays where the tallest form of the keyboard put it,
+     which costs a strip's worth of paper at the bottom and buys a card that
+     holds still while you type into it.
+
+     Focus is only allowed to say "still typing" here — it never widens
+     anything. Letting go of the box (tapping "Say it", which some phones treat
+     as a blur while the keys stay up) drops back to the real measurement,
+     which is still the short one, so the composer cannot be pushed off the
+     bottom the way it was when the layout itself was keyed off focus.
+
+     Only under a finger: a desktop window that is resized while somebody is
+     typing into the settings panel should be believed straight away. */
+  function heightForOverlays(raw, w) {
+    if (w !== fullW) { fullW = w; fullH = 0; heldH = 0; }   // the phone turned
+    if (raw > fullH) fullH = raw;
+    const kbUp = fullH > 0 && fullH - raw > KB_ROW;
+    if (!(kbUp && LG.touch.on && typingBox())) { heldH = 0; return raw; }
+    if (!heldH || raw < heldH) heldH = raw;
+    return heldH;
+  }
+
   function measureViewport() {
     const vv = window.visualViewport;
-    const h = vv ? vv.height : (window.innerHeight || 0);
+    const raw = vv ? vv.height : (window.innerHeight || 0);
+    const w = vv ? vv.width : (window.innerWidth || 0);
+    const h = heightForOverlays(raw, w);
     const root = document.documentElement;
     if (root && root.style) {
       root.style.setProperty('--vv-h', h + 'px');
@@ -732,7 +779,8 @@ LG.game = (function () {
          that does not depend on the box knowing it was let go — so when that
          happens, let it go for real, the same as tapping the conversation
          does. Limited to text boxes: the canvas is focused too, for keyboard
-         play, and has nothing to lose by staying that way. */
+         play, and has nothing to lose by staying that way. A suggestion strip
+         going away cannot reach here: the hold above means h has not moved. */
       if (LG.touch.on && wasCramped && !b.classList.contains('cramped')) {
         const a = document.activeElement;
         if (a && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT')) a.blur();
@@ -1737,9 +1785,9 @@ LG.game = (function () {
 
     const room = W.buildingUnder(player);
 
-    W.drawGround(ctx, cam, vw, vh);
+    W.drawGround(ctx, cam, vw, vh, dpr);
     W.drawBuildings(ctx, room, cam, vw, vh);
-    W.drawSigns(ctx, cam, vw, vh, settings.lang, settings.showTranslation);
+    W.drawSigns(ctx, cam, vw, vh, settings.lang, settings.showTranslation, dpr);
     drawWorldItem();
 
     /* A villager under a roof is out of sight. You can see into the room you are
@@ -1773,7 +1821,7 @@ LG.game = (function () {
     }
 
     ctx.restore();
-    LG.sky.draw(ctx, vw, vh, W.roofRects(cam, vw, vh, dpr));
+    LG.sky.draw(ctx, vw, vh, W.roofRects(cam, vw, vh, dpr), dpr);
 
     const g = ctx.createRadialGradient(vw / 2, vh / 2, Math.min(vw, vh) * 0.42,
                                        vw / 2, vh / 2, Math.max(vw, vh) * 0.75);

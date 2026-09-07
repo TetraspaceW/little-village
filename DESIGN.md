@@ -1064,6 +1064,30 @@ than shrinking it the page itself never changes size. Both mechanisms are
 listened for, and the fallback to `innerHeight` covers a browser with no
 `visualViewport` at all.
 
+**A keyboard is not one height.** Japanese input puts a strip of suggestions
+above the keys the moment there is a word to choose from and takes it away again
+the moment you commit one; Chinese and Korean do the same, and so does an
+English keyboard's autocorrect bar. Every one of those is a `visualViewport`
+resize a row of keys tall, several times a word — so a card pinned to the bottom
+of the visible window hops up and down under the very sentence you are reading
+back. The height the overlays are laid out to therefore follows the window down
+but not straight back up: while a keyboard is over the page and a text box has
+focus, a gain smaller than a row of keys (`KB_ROW`, ninety-six points) is the
+strip coming and going and is ignored. The card ends up where the tallest form
+of the keyboard put it and stays there, which costs a strip's worth of paper
+along the bottom and buys a card that holds still while you type into it.
+"A keyboard is over the page" is not a height in points — a big phone with the
+keys up is still taller than a small one without — but the window being more
+than a row shorter than the tallest it has been at this width; turning the phone
+starts that measurement again. Focus is allowed to say *still typing* and
+nothing else: letting go of the box drops straight back to the real
+measurement, which is still the short one, so the trap in the paragraph above
+is not reopened. A gain bigger than a row is the keyboard actually going away
+and is believed at once — including by the blur that finally lets the box go,
+which a suggestion strip can no longer trip on its way past. Only under a
+finger; a desktop window resized while somebody is typing into the settings
+panel should be believed immediately.
+
 **The message box had never had the font it was written for.** `font: 16px/1.4
 inherit` is not a font shorthand — `inherit` is only legal there as the whole
 value — so the declaration was invalid, was dropped, and the box you type the

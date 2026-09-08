@@ -877,6 +877,28 @@ section('the word list, from holding a thing rather than being told about it');
   ok(html.indexOf('picked up') !== -1, 'and how it was learned');
 }
 
+section('the word list exports as plain, tab-separated text');
+{
+  const g = LG.game;
+  g.state.words = [];
+  ok(g._debugWordListText() === '', 'nothing to export when the list is empty');
+
+  g.give('shiny_rock', 1, 'picked up');
+  g.give('bread', 1, 'picked up');
+  const text = g._debugWordListText();
+  const lines = text.split('\n');
+  ok(lines.length === 2, 'one line per word');
+  ok(lines[0] === LG.itemName('shiny_rock', g.settings.lang) + '\t' + LG.ITEMS.shiny_rock.en,
+     'native word, a tab, then the English gloss — the plain format Anki and friends import directly');
+  ok(lines[1] === LG.itemName('bread', g.settings.lang) + '\t' + LG.ITEMS.bread.en,
+     'in the order they were learned, same as the panel itself');
+
+  // No Blob/URL in this sandbox — the same "not here" shape as no
+  // navigator.clipboard or no SpeechRecognition elsewhere in this file —
+  // so actually triggering the download must be a no-op, not a throw.
+  g.exportWordList();
+}
+
 section('spaced repetition on the word list: due, graded, and due again later — or not');
 {
   const g = LG.game;

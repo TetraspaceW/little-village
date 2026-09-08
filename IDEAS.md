@@ -272,3 +272,12 @@ The dice table is still there underneath for exactly that reason.
   first rather than replacing it — invisible until something asserted an
   exact row count. `elem()`'s `innerHTML` is a real getter/setter now,
   clearing `children` the way a browser actually does.
+- Export the word list (⬇ button) as tab-separated native-word/English-gloss
+  lines — the plain-text format Anki and most other flashcard tools import
+  directly — so the vocabulary a session builds up does not have to stay
+  stuck behind this specific game. Split into a pure text-building function
+  and a thin download-triggering wrapper around it, the same reason
+  `endingStats` was split from `tallyNow`: the download half needs
+  `Blob`/`URL`, which not every browser has and the smoke test's sandbox
+  never does, so the half worth unit-testing exactly is the half that
+  doesn't.

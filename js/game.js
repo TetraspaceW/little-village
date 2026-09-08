@@ -1136,6 +1136,7 @@ LG.game = (function () {
     document.getElementById('boardClose').onclick = () =>
       document.getElementById('board').classList.remove('open');
     document.getElementById('btnWords').onclick = openWords;
+    document.getElementById('wordsExport').onclick = exportWordList;
     document.getElementById('wordsClose').onclick = () =>
       document.getElementById('words').classList.remove('open');
     document.getElementById('btnPeople').onclick = openPeople;
@@ -2012,6 +2013,8 @@ LG.game = (function () {
     const L = LG.LANGUAGES[settings.lang];
     const btn = document.getElementById('wordsReview');
     const lede = document.getElementById('wordsLede');
+    const exportBtn = document.getElementById('wordsExport');
+    if (exportBtn) exportBtn.disabled = !state.words.length;
 
     if (reviewQueue) {
       const w = reviewQueue[0];
@@ -2060,6 +2063,35 @@ LG.game = (function () {
     }).filter(Boolean);
     box.innerHTML = rows.length ? rows.join('')
       : '<div class="word muted">Nothing yet — words turn up here as the village gives them to you.</div>';
+  }
+
+  /* Tab-separated, one word per line — the plain-text format Anki and most
+     other flashcard tools import directly, so a word list built for review
+     inside the game is not stuck inside it. Kept as its own pure function,
+     separate from the download it feeds, so what actually goes into the
+     file is exactly what a test can check without needing Blob/URL, which
+     this sandbox — like a browser with downloads disabled — does not have. */
+  function wordListText() {
+    return state.words
+      .filter(w => LG.ITEMS[w.item])
+      .map(w => itemLabel(w.item) + '\t' + LG.ITEMS[w.item].en)
+      .join('\n');
+  }
+  function exportWordList() {
+    const text = wordListText();
+    if (!text) return;
+    try {
+      if (typeof Blob === 'undefined' || typeof URL === 'undefined' || !URL.createObjectURL) return;
+      const blob = new Blob([text], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'little-village-words-' + settings.lang + '.txt';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) { /* no download support in this browser, or it refused */ }
   }
 
   /* ------------------------------------------------------------- the people
@@ -2402,6 +2434,7 @@ LG.game = (function () {
            _debugEndingStats: endingStats,
            inventoryList, doTrade, commerce, renderHUD, openSettings, uiBlocked, newVillage,
            openWords, renderWords, openPeople, renderPeople, learnWord, hasWord, crutchesOff,
+           _debugWordListText: wordListText, exportWordList,
            _debugTally: tallyNow, _debugHistory: loadHistory, _debugRenderHistory: renderHistory,
            _debugWin: win,
            dueWords, gradeWord, startReview, endReview, reviewGrade,

@@ -268,6 +268,10 @@ ruby rb{font-size:1em}
 }
 .bub .trans.hidden-tr{filter:blur(4px);cursor:pointer;user-select:none}
 .bub .trans.hidden-tr:hover{filter:blur(2.5px)}
+.bub .correction{
+  font-size:12.5px;color:var(--good);margin-top:6px;padding-top:6px;
+  border-top:1px dashed var(--line);font-style:italic;
+}
 
 .dlg-status{padding:0 14px 6px;font-size:12.5px;color:#8a7355;min-height:18px}
 .dlg-status.thinking{color:var(--accent-2)}

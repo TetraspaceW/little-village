@@ -147,9 +147,6 @@ The dice table is still there underneath for exactly that reason.
 - **Difficulty as scaffolding, not vocabulary.** Level already sets chain depth, how
   widely facts are spread, and how they speak. It could also take away the crutches:
   translations locked, phrasebook empty at advanced.
-- **A gentle correction pass.** A cheap second call returning "you said X, a native
-  would say Y" as a footnote under your own message. Keep it out of the villager's
-  mouth — they shouldn't turn into teachers.
 - **Prompt caching.** Each villager's identity block is stable across turns. A cache
   breakpoint there would cut per-turn cost once conversations get long.
 - **More languages.** One `LG.LANGUAGES` entry, item translations, twelve phrasebook
@@ -206,3 +203,8 @@ The dice table is still there underneath for exactly that reason.
   has always come back with the decision — legible from outside now, and only
   for the one arrival it was actually the reason for, never a stale one carried
   over from a decision the dice table has since walked past.
+- A gentle correction pass (⚙ → corrections, off by default): a cheap second
+  call footnotes what you typed with how a native speaker would actually say
+  it, when it would say it differently — never in the villager's own mouth,
+  who answers what they understood, in character, whether or not it was well
+  put.

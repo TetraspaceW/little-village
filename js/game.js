@@ -14,7 +14,11 @@ LG.game = (function () {
     // default because it needs nothing to line up; 'pinyin'/'zhuyin' put the
     // reading on each character instead, ruby-style, whenever it can — see
     // dialogue.js's zhRuby for what "whenever it can" means.
-    zhReading: 'line'
+    zhReading: 'line',
+    // Off by default — an extra small-model call on every line the player
+    // sends, for a footnote never shown to the villager. See dialogue.js's
+    // offerCorrection.
+    corrections: false
   };
 
   // No key, no village. `gated` freezes input until the front door is passed.
@@ -1065,6 +1069,7 @@ LG.game = (function () {
       helper: readHelper(),
       showTranslation: document.getElementById('setTrans').checked,
       npcChatter: document.getElementById('setChatter').checked,
+      corrections: document.getElementById('setCorrections').checked,
       voices: document.getElementById('setVoices').checked,
       ttsKey: document.getElementById('setTtsKey').value.trim(),
       voiceSpeed: document.getElementById('setSpeed').value,
@@ -1197,6 +1202,7 @@ LG.game = (function () {
     }
     document.getElementById('setTrans').checked = settings.showTranslation;
     document.getElementById('setChatter').checked = settings.npcChatter;
+    document.getElementById('setCorrections').checked = settings.corrections;
     document.getElementById('setVoices').checked = settings.voices;
     document.getElementById('setTtsKey').value = settings.ttsKey;
     document.getElementById('setSpeed').value = settings.voiceSpeed;

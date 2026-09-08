@@ -1334,6 +1334,7 @@ async function villagersTalking() {
   }
 
   await namesUnknownUntilTold();
+  await gentleCorrections();
   await touchControls();
   await roomForTheComposer();
   whatYouCanSee();
@@ -1394,6 +1395,71 @@ async function namesUnknownUntilTold() {
   ok(back.nameKnown === true, 'and a name once learned is not forgotten on reload');
 
   LG.llm.speak = real;
+}
+
+/* Off by default, and never in the villager's own mouth — see llm.js's
+   correct and dialogue.js's offerCorrection. */
+async function gentleCorrections() {
+  section('a gentle correction, footnoted under your own line');
+  const g = LG.game, npc = g.npcs[0];
+  const realSpeak = LG.llm.speak, realCorrect = LG.llm.correct;
+  LG.llm.speak = async () => ({ say: 'stand-in', translation: 'stand-in', understood: 'full' });
+  const dlgLog = sandbox.document.getElementById('dlgLog');
+  const wasOn = g.settings.corrections;
+
+  let calls = 0;
+  LG.llm.correct = async () => { calls++; return null; };
+
+  g.settings.corrections = false;
+  LG.dialogue.open(npc);
+  await LG.dialogue.send('a line, off by default');
+  await LG.dialogue.settled();
+  ok(calls === 0, 'off by default, nothing extra is asked at all');
+  LG.dialogue.close();
+
+  g.settings.corrections = true;
+  calls = 0;
+  LG.dialogue.open(npc);
+  await LG.dialogue.send('', 'coins');
+  await LG.dialogue.settled();
+  ok(calls === 0, 'a pure item offer, no words of its own, is not sent for checking');
+  LG.dialogue.close();
+
+  let seenSaid = null;
+  LG.llm.correct = async (cfg, said) => {
+    calls++; seenSaid = said;
+    return { correction: 'the tidied-up line', note: 'a small fix' };
+  };
+  calls = 0;
+  LG.dialogue.open(npc);
+  // the player's own row, not the villager's reply that lands right after it
+  const playerRowIdx = dlgLog.children.length;
+  await LG.dialogue.send('a line worth fixing');
+  await LG.dialogue.settled();
+  ok(calls === 1, 'with the setting on, a typed line is checked');
+  ok(seenSaid === 'a line worth fixing', 'the exact line typed, not the reply or anything else');
+  const row = dlgLog.children[playerRowIdx];
+  ok(!!(row && row._correction && row._correction.style.display === ''),
+     'the correction footnote is shown');
+  ok(!!(row && row._correction &&
+        row._correction.textContent.indexOf('the tidied-up line') !== -1 &&
+        row._correction.textContent.indexOf('a small fix') !== -1),
+     'carrying both the corrected line and why');
+  LG.dialogue.close();
+
+  LG.llm.correct = async () => null;
+  LG.dialogue.open(npc);
+  const playerRowIdx2 = dlgLog.children.length;
+  await LG.dialogue.send('a line that was already fine');
+  await LG.dialogue.settled();
+  const row2 = dlgLog.children[playerRowIdx2];
+  ok(!!(row2 && row2._correction && row2._correction.style.display === 'none'),
+     'and nothing shows at all when there was nothing to fix');
+  LG.dialogue.close();
+
+  g.settings.corrections = wasOn;
+  LG.llm.speak = realSpeak;
+  LG.llm.correct = realCorrect;
 }
 
 /* The phone half of the controls. Nothing here dispatches a PointerEvent —

@@ -1004,6 +1004,67 @@ LG.llm = (function () {
     }
   }
 
+  /* A gentle correction on the player's own line — never spoken by the
+     villager, who answers what they understood in character and has no
+     business grading homework mid-trade. Off by default (dialogue.js's
+     offerCorrection); when it runs, this is deliberately the only call in
+     the game that is allowed to say a line was fine as it was, rather than
+     nominating something to fix, because a "correction" invented for a
+     sentence that needed none is worse than no footnote at all. */
+  async function correct(cfg, said, opts) {
+    const o = opts || {};
+    const lang = o.langName || "the language";
+    const lines = [
+      "Here is one line an intermediate learner of " + lang +
+        " just wrote, talking to a villager:",
+      "",
+      JSON.stringify(said),
+      "",
+      "If a native speaker would naturally say this differently — a grammar " +
+        "slip, an unnatural word choice, a missing particle — write the " +
+        "corrected version. If it already reads the way a native speaker " +
+        "would actually say it, even if simple, there is nothing to fix.",
+      "Keep it to the corrected line itself and, only where it is not " +
+        "obvious why, a few words on what changed. This is a footnote for " +
+        "the record, not a lesson read out to them: never address them " +
+        "directly, never name a grammar term, never propose a change that " +
+        "only makes the line more formal or elaborate than what they wrote.",
+      "",
+      "Reply with only a JSON object:",
+      '{"correction": "<the corrected line, in ' + lang +
+        ', or null if there is nothing to fix>",',
+      ' "note": "<a few words on what changed, or empty string>"}',
+    ].join("\n");
+    const vcfg = {
+      provider: cfg.provider,
+      apiKey: cfg.apiKey,
+      model: helperModel(cfg),
+      fast: true,
+    };
+    const sys =
+      "You gently correct a language learner's line, only where it actually needs it. Answer with JSON only.";
+    try {
+      const raw = await providerCall(vcfg, sys, [
+        { role: "user", content: lines },
+      ]);
+      const obj = parseJSON(raw);
+      if (!obj) return null;
+      const correction =
+        typeof obj.correction === "string" && obj.correction.trim()
+          ? obj.correction.trim()
+          : null;
+      // Nothing to show — including the model's own "no change needed",
+      // and a "correction" that is just the original line handed back.
+      if (!correction || correction === String(said).trim()) return null;
+      return {
+        correction: correction,
+        note: typeof obj.note === "string" ? obj.note.trim() : "",
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
   /* Where a villager goes next, and why.
 
      This used to be a probability table — morning meant a 60% chance of work —
@@ -1484,6 +1545,7 @@ LG.llm = (function () {
     intent,
     notice,
     recall,
+    correct,
     get transcript() {
       return transcript;
     },

@@ -53,6 +53,9 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
   of typing.
 - Translations can show immediately or stay blurred until clicked (⚙ →
   settings).
+- Gentle corrections (⚙ → settings, off by default) footnote what you typed
+  with how a native speaker would actually say it, when it's worth saying
+  differently — under your own line, never out of the villager's mouth.
 
 ## Gameplay
 

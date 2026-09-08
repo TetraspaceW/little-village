@@ -762,7 +762,17 @@ LG.dialogue = (function () {
     tr.style.display = translation ? '' : 'none';
     bub.appendChild(tr);
 
-    row._main = main; row._roman = r; row._trans = tr;
+    /* Empty until a gentle-correction call (see offerCorrection) fills it in
+       — present on every row rather than only the player's own, the same
+       reason `r`/`tr` above start empty: a row's shape does not change once
+       it exists, only what is in it. */
+    const co = document.createElement('div');
+    co.className = 'correction';
+    co.lang = L.tag;
+    co.style.display = 'none';
+    bub.appendChild(co);
+
+    row._main = main; row._roman = r; row._trans = tr; row._correction = co;
     row.appendChild(bub);
     el.dlgLog.appendChild(row);
     el.dlgLog.scrollTop = el.dlgLog.scrollHeight;
@@ -824,7 +834,14 @@ LG.dialogue = (function () {
     const shown = prompt || (offered
       ? (text ? text + '  ' : '') + '[holds out the ' + LG.ITEMS[offered].en + ']'
       : text);
-    if (!prompt) { addLine('player', shown); el.dlgInput.value = ''; }
+    if (!prompt) {
+      const row = addLine('player', shown);
+      el.dlgInput.value = '';
+      // Deliberately not awaited — a footnote worth waiting for would be a
+      // footnote the player has to wait for, and this is neither the villager
+      // nor the trade, so nothing else in the turn depends on it landing.
+      if (text && LG.game.settings.corrections) pending.push(offerCorrection(text, row));
+    }
     status(LG.game.displayName(npc) + ' is thinking…', 'thinking');
 
     let reply;
@@ -970,6 +987,25 @@ LG.dialogue = (function () {
      confirms them against what was actually said before anything is written in
      the notebook. Runs after the reply is on screen, so nobody waits for it. */
   const pending = [];
+
+  /* A gentle correction, off by default (⚙ → corrections) since it is a
+     whole extra call on every line the player sends. Deliberately not asked
+     of the villager: they answer what they understood, in character, and
+     "actually, a native would put it this way" is a teacher's note, not
+     something a baker says mid-trade — see DESIGN.md's rule about not
+     turning a character into a mouthpiece for the game. This lands as a
+     footnote under the player's own line instead, the same way a missing
+     translation gets filled in by repairGloss below, and for the same
+     reason: nobody should have to wait on it to keep talking. */
+  async function offerCorrection(said, row) {
+    const L = LG.LANGUAGES[LG.game.settings.lang];
+    try {
+      const got = await LG.llm.correct(LG.game.llmConfig(), said, { langName: L.name });
+      if (!got || !got.correction || !row || !row._correction) return;
+      row._correction.textContent = '✎ ' + got.correction + (got.note ? ' — ' + got.note : '');
+      row._correction.style.display = '';
+    } catch (e) { /* a line worth correcting, uncorrected, is not an error */ }
+  }
 
   /* A villager sometimes answers with no translation, or no romanisation. Ask
      the small model for the missing half rather than leaving a learner with a
@@ -1360,5 +1396,6 @@ LG.dialogue = (function () {
            rubyHTML: rubyHTML, _usableRuby: usableRuby,
            zhRubyHTML: zhRubyHTML, _zhRuby: zhRuby, _pinyinToZhuyin: pinyinToZhuyin,
            _tokenizePinyin: tokenizePinyin,
-           _noteMet: noteMet, _metBeforeLine: metBeforeLine, _startChat: startChat };
+           _noteMet: noteMet, _metBeforeLine: metBeforeLine, _startChat: startChat,
+           _offerCorrection: offerCorrection };
 })();

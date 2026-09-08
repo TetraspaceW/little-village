@@ -25,7 +25,6 @@ LG.llm = (function () {
       { id: "anthropic/claude-sonnet-5", label: "Claude Sonnet 5" }, // ant
       { id: "z-ai/glm-5.3-flash", label: "GLM-5.3 Flash" }, // z-ai
       { id: "google/gemini-3.8-flash", label: "Gemini 3.8 Flash" }, // google
-      { id: "x-ai/grok-4.6", label: "Grok 4.6" }, // x-ai
     ],
     logfare: [{ id: LOGFARE_MODEL, label: "Auto" }],
   };

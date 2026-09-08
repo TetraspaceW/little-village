@@ -234,7 +234,7 @@ LG.game = (function () {
                escapeHTML(gloss) + '</span></div>';
       }));
     nb.innerHTML = rows.length ? rows.join('')
-      : '<div class="q muted">Nothing yet. Ask around — somebody here wants something.</div>';
+      : '<div class="q muted">Nothing yet. Try asking around!</div>';
     Array.prototype.forEach.call(nb.querySelectorAll('.gloss.hidden-tr'), el => {
       el.onclick = () => el.classList.remove('hidden-tr');
     });
@@ -667,7 +667,6 @@ LG.game = (function () {
       worldItem = { item: t.item, px: spot.x * TILE + TILE / 2, py: spot.y * TILE + TILE / 2, taken: false };
     }
 
-    document.getElementById('seed').textContent = plan.seed;
     renderHUD();
     logLines.length = 0;
     log(quiet ? (LG.touch.on

@@ -11,7 +11,7 @@ window.LG = window.LG || {};
 LG.time = (function () {
   const SEASON_DAYS = 30;
   const YEAR_DAYS = SEASON_DAYS * 4;
-  let dayMs = 6 * 60 * 1000;          // real milliseconds per village day
+  const DAY_MS = 12 * 60 * 1000;      // real milliseconds per village day
 
   /* Seasons do not tint the screen. A wash that is always on is a wash you stop
      seeing, and it costs you the actual colours of the village all day long —
@@ -122,7 +122,7 @@ LG.time = (function () {
   /* dt in seconds */
   function tick(dt) {
     const before = day;
-    const days = (dt * 1000) / dayMs;             // how much of a village day passed
+    const days = (dt * 1000) / DAY_MS;            // how much of a village day passed
     frac += days;
     while (frac >= 1) { frac -= 1; day++; }
     weatherLeft -= days;
@@ -180,8 +180,6 @@ LG.time = (function () {
     get snow() { return lying; },
     setSnow(v) { lying = Math.max(0, Math.min(1, Number(v) || 0)); },
     get info() { return WEATHER[weather]; },
-    WEATHER, CLIMATE,
-    set dayLength(ms) { if (ms > 1000) dayMs = ms; },
-    get dayLength() { return dayMs; }
+    WEATHER, CLIMATE
   };
 })();

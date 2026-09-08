@@ -8,8 +8,7 @@ LG.game = (function () {
     lang: 'ru', level: 'beginner',
     provider: 'anthropic', apiKey: '', model: 'claude-sonnet-5', helper: '',
     showTranslation: true, npcChatter: true,
-    voices: false, ttsKey: '', voiceSpeed: 'auto', voiceQuality: 'curated',
-    dayMinutes: 6
+    voices: false, ttsKey: '', voiceSpeed: 'auto', voiceQuality: 'curated'
   };
 
   // No key, no village. `gated` freezes input until the front door is passed.
@@ -531,7 +530,6 @@ LG.game = (function () {
     ctx = canvas.getContext('2d');
     W.build();
 
-    LG.time.dayLength = Math.max(1, Number(settings.dayMinutes) || 6) * 60 * 1000;
     /* A village you have already been to comes back as it was; only a first
        arrival is rolled. `resume` puts the local copy back at once and asks the
        log server for its own in the background, so a missing or slow server
@@ -1019,8 +1017,7 @@ LG.game = (function () {
       voices: document.getElementById('setVoices').checked,
       ttsKey: document.getElementById('setTtsKey').value.trim(),
       voiceSpeed: document.getElementById('setSpeed').value,
-      voiceQuality: document.getElementById('setQuality').value,
-      dayMinutes: Number(document.getElementById('setDayLength').value) || 6
+      voiceQuality: document.getElementById('setQuality').value
     };
     err.textContent = '';
 
@@ -1042,9 +1039,6 @@ LG.game = (function () {
     }
 
     const levelChanged = next.level !== settings.level;
-    if (next.dayMinutes !== settings.dayMinutes) {
-      LG.time.dayLength = Math.max(1, next.dayMinutes) * 60 * 1000;
-    }
     const voiceChanged = next.voices !== settings.voices || next.ttsKey !== settings.ttsKey
                       || next.voiceQuality !== settings.voiceQuality;
     Object.assign(settings, next);
@@ -1155,7 +1149,6 @@ LG.game = (function () {
     document.getElementById('setTtsKey').value = settings.ttsKey;
     document.getElementById('setSpeed').value = settings.voiceSpeed;
     document.getElementById('setQuality').value = settings.voiceQuality;
-    document.getElementById('setDayLength').value = String(settings.dayMinutes || 6);
     refreshModelList();
     refreshHelperList();
     showSaveNote();
@@ -1792,7 +1785,10 @@ LG.game = (function () {
 
   function update(dt) {
     if (saving()) LG.save.tick(dt);
-    if (LG.time.tick(dt)) log('🗓 ' + LG.time.season().name + ', day ' + LG.time.dayOfSeason() + '.');
+    // Time stands still mid-conversation — a chat that runs long shouldn't
+    // cost the village an hour of daylight, or roll the weather over underneath it.
+    if (!LG.dialogue.isOpen() && LG.time.tick(dt))
+      log('🗓 ' + LG.time.season().name + ', day ' + LG.time.dayOfSeason() + '.');
     const el = document.getElementById('clock');
     if (el) el.textContent = LG.time.label();
 

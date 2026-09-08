@@ -331,6 +331,15 @@ the same difficulty are the same village, right down to who has what and
 where the loose end of the errand is lying — worth keeping if one is
 particularly good, or sending to someone else to try the same one you did.
 
+Underneath that, **Finished errands** lists the last 25 you've actually
+completed — seed, language, difficulty, and the same days/villagers/words
+tally the ending screen showed at the time — each with its own **Use seed**
+button, so a good village from three sessions ago is a click away from being
+rolled again rather than a seed you had to have written down. This list
+outlives everything else here: it survives Forget the saved village and a
+new village both, since a village worth remembering might not be one you
+still want loaded right now.
+
 ## Logs and debugging
 
 With the log server running, every session writes to

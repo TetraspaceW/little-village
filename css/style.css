@@ -458,6 +458,15 @@ ruby rb{font-size:1em}
 .person.muted .pJob{font-weight:400;font-style:italic;color:#9c8b72}
 .pName{font-size:13px;color:#8a7355}
 
+/* Finished errands, in Settings alongside the seed that built each one. */
+#setHistoryList{max-height:220px;overflow-y:auto;margin:4px 0 2px}
+.histRow{display:flex;align-items:center;gap:8px;padding:6px 0;
+  border-bottom:1px solid var(--line);font-size:12.5px}
+.histRow:last-child{border-bottom:none}
+.histInfo{flex:1 1 auto;min-width:0;color:#8a7355}
+.histSeed{display:block;font-weight:600;color:#4a3b2a;font-size:13.5px}
+.histRow button{flex:0 0 auto;padding:4px 10px;font-size:12px}
+
 .lede{font-size:16px;color:#4a3b2a;margin:0 0 8px}
 #setLede p{font-size:13.5px;color:#6d5b45}
 #ttsResult:empty{display:none}

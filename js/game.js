@@ -602,6 +602,7 @@ LG.game = (function () {
       c.npcName + ' has ' + (LG.ITEMS[c.wants].full) + ' at last, and you have ' +
       LG.ITEMS[c.gives].full + ' to show for it — along with a fistful of a new language.';
     document.getElementById('endingStats').textContent = endingStats();
+    recordHistory();
     setTimeout(() => document.getElementById('ending').classList.add('open'), 900);
   }
 
@@ -611,12 +612,81 @@ LG.game = (function () {
      their name), and the calendar day the village began on. Nothing here
      is scored or judged; it is the same kind of thing a save file already
      is, read back as a sentence instead of state. */
+  function tallyNow() {
+    return {
+      met: npcs.filter(n => n.metPlayer).length,
+      total: npcs.length,
+      days: Math.max(1, LG.time.day - state.arrivedDay + 1),
+      words: state.words.length
+    };
+  }
   function endingStats() {
-    const met = npcs.filter(n => n.metPlayer).length;
-    const days = Math.max(1, LG.time.day - state.arrivedDay + 1);
-    return days + (days === 1 ? ' day' : ' days') + ', ' +
-      met + ' of ' + npcs.length + ' villagers spoken to, ' +
-      state.words.length + (state.words.length === 1 ? ' word' : ' words') + ' learned along the way.';
+    const t = tallyNow();
+    return t.days + (t.days === 1 ? ' day' : ' days') + ', ' +
+      t.met + ' of ' + t.total + ' villagers spoken to, ' +
+      t.words + (t.words === 1 ? ' word' : ' words') + ' learned along the way.';
+  }
+
+  /* -------------------------------------------------------------- history
+     A finished errand outlives the village it happened in — "Start a new
+     village" throws away plan/npcs/state, and this village's own place in
+     `lg-history` is the only record left that it happened at all. Kept
+     entirely separate from `lg-save` (one village, mutable, overwritten
+     every autosave) rather than folded into it: this is small, append-only,
+     and survives even "Forget the saved village", which is the whole point
+     of it — a village worth remembering the seed of might not be the one
+     you want to keep playing. */
+  const HISTORY_KEY = 'lg-history', HISTORY_MAX = 25;
+  function loadHistory() {
+    try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); }
+    catch (e) { return []; }
+  }
+  function recordHistory() {
+    const t = tallyNow();
+    const entry = { seed: plan.seed, level: settings.level, lang: settings.lang,
+                     days: t.days, met: t.met, total: t.total, words: t.words,
+                     at: new Date().toISOString() };
+    try {
+      const h = loadHistory();
+      h.unshift(entry);
+      h.length = Math.min(h.length, HISTORY_MAX);
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(h));
+    } catch (e) { /* private browsing, storage full, or no localStorage at all */ }
+  }
+  // Rows built with createElement/appendChild rather than one innerHTML
+  // string, the same as dialogue.js's renderItems — each row's "Use seed"
+  // button needs its own onclick closed over that row's own seed, and a
+  // string has nowhere to hang one.
+  function renderHistory() {
+    const box = document.getElementById('setHistoryList');
+    if (!box) return;
+    box.innerHTML = '';
+    const h = loadHistory();
+    if (!h.length) {
+      box.innerHTML = '<p class="note">Nothing finished yet — this fills in the first time ' +
+        'an errand is done.</p>';
+      return;
+    }
+    h.forEach(e => {
+      const L = LG.LANGUAGES[e.lang] || {};
+      const lvl = (LG.LEVELS[e.level] || {}).label || e.level;
+      const row = document.createElement('div');
+      row.className = 'histRow';
+      const info = document.createElement('span');
+      info.className = 'histInfo';
+      info.innerHTML = '<span class="histSeed">' + escapeHTML(e.seed) + '</span>' +
+        escapeHTML((L.flag ? L.flag + ' ' : '') + (L.name || e.lang)) + ' · ' +
+        escapeHTML(lvl) + ' · ' + e.days + (e.days === 1 ? ' day' : ' days') + ' · ' +
+        e.met + '/' + e.total + ' met · ' +
+        e.words + (e.words === 1 ? ' word' : ' words');
+      row.appendChild(info);
+      const use = document.createElement('button');
+      use.type = 'button'; use.className = 'secondary';
+      use.textContent = 'Use seed';
+      use.onclick = () => { document.getElementById('setSeedInput').value = e.seed; };
+      row.appendChild(use);
+      box.appendChild(row);
+    });
   }
 
   /* ------------------------------------------------------------- startup */
@@ -1263,6 +1333,7 @@ LG.game = (function () {
     document.getElementById('setSeedRow').style.display = gateMode ? 'none' : '';
     document.getElementById('setSeedShow').value = plan ? plan.seed : '';
     document.getElementById('setSeedCopied').hidden = true;
+    if (!gateMode) renderHistory();
     document.getElementById('setSave').textContent = gateMode ? 'Enter the village' : 'Save';
     document.getElementById('setError').textContent = '';
     document.getElementById('setLang').value = settings.lang;
@@ -2331,6 +2402,8 @@ LG.game = (function () {
            _debugEndingStats: endingStats,
            inventoryList, doTrade, commerce, renderHUD, openSettings, uiBlocked, newVillage,
            openWords, renderWords, openPeople, renderPeople, learnWord, hasWord, crutchesOff,
+           _debugTally: tallyNow, _debugHistory: loadHistory, _debugRenderHistory: renderHistory,
+           _debugWin: win,
            dueWords, gradeWord, startReview, endReview, reviewGrade,
            get reviewQueue() { return reviewQueue; },
            get plan() { return plan; },

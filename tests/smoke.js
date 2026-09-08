@@ -34,13 +34,25 @@ const ctx2d = new Proxy({}, {
 
 function elem(id) {
   const e = {
-    id, textContent: '', innerHTML: '', value: '', checked: false,
+    id, textContent: '', value: '', checked: false,
     disabled: false, title: '', className: '', dataset: {},
     /* Enough of a CSSStyleDeclaration for both halves: things the game sets by
        name (style.display = …) and the custom properties it publishes the
        visible height through. */
     style: { setProperty(k, v) { this[k] = v; }, removeProperty(k) { delete this[k]; } },
     children: [],
+    _html: '',
+    get innerHTML() { return this._html; },
+    /* A real assignment to innerHTML replaces whatever was there, DOM nodes
+       appendChild()-ed in included — so `box.innerHTML = ''; then
+       box.appendChild(...)` (dialogue.js's renderItems, game.js's
+       renderHistory) is meant to leave exactly the freshly appended
+       children behind, not add to whatever the last render left there.
+       Clearing `children` here, not only the string, is what makes that
+       safe to call more than once — without it, every element the fake
+       DOM ever hands out for one id is the same object forever, and
+       nothing would ever come back out of `children`. */
+    set innerHTML(v) { this._html = v; this.children = []; },
     classList: {
       _s: new Set(),
       add(c) { this._s.add(c); }, remove(c) { this._s.delete(c); },
@@ -2120,6 +2132,83 @@ section('the ending screen counts the errand, not just announces it');
   const why = LG.save.restore(shot);
   ok(why === null && LG.game.state.arrivedDay === shot.time.day,
      "a save with no arrival day of its own falls back to the day it was saved on, not 0");
+}
+
+section('a finished errand outlives the village it happened in');
+{
+  const g = LG.game;
+  try { sandbox.localStorage.removeItem('lg-history'); } catch (e) {}
+
+  // LG.chain.generate() can retry a seed that rolls a degenerate chain
+  // under seed+"~1", seed+"~2", … (see the village-seed section above) —
+  // so what a village is actually recorded under is g.plan.seed after the
+  // fact, not necessarily the literal string newVillage was asked for.
+  g.newVillage('history-test-village-one', true);
+  const seed1 = g.plan.seed;
+  g.state.words.length = 0;
+  g.learnWord('shiny_rock', 'test fixture');
+  g.npcs[0].metPlayer = true;
+  g.state.arrivedDay = LG.time.day - 2;   // "3 days"
+  g._debugWin();
+
+  let h = g._debugHistory();
+  ok(h.length === 1, 'the first finished errand is recorded');
+  ok(h[0].seed === seed1, 'under the seed that actually built it');
+  ok(h[0].level === g.settings.level && h[0].lang === g.settings.lang,
+     'with the difficulty and language it was played in');
+  ok(h[0].days === 3 && h[0].met === 1 && h[0].words === 1,
+     'and the same tally the ending screen itself showed');
+  ok(typeof h[0].at === 'string' && !isNaN(Date.parse(h[0].at)), 'stamped with when');
+
+  // A second finished errand, in a different village, goes to the front —
+  // most recent first — rather than replacing or appending after the last.
+  g.newVillage('history-test-village-two', true);
+  const seed2 = g.plan.seed;
+  g._debugWin();
+  h = g._debugHistory();
+  ok(h.length === 2 && h[0].seed === seed2 && h[1].seed === seed1,
+     'newest first, oldest still behind it');
+
+  // "Start a new village" without finishing it must not itself write a row.
+  g.newVillage('history-test-village-three', true);
+  ok(g._debugHistory().length === 2, 'an unfinished village leaves no mark');
+
+  // The list is capped rather than left to grow forever — see game.js's
+  // HISTORY_MAX. Twenty-nine already on the shelf plus one just won is
+  // one more than the cap, so the oldest of the thirty must be the one
+  // that does not survive.
+  const padded = [];
+  for (let i = 0; i < 29; i++) padded.push({ seed: 'padding-' + i, level: 'beginner',
+    lang: 'en', days: 1, met: 0, total: g.npcs.length, words: 0, at: new Date().toISOString() });
+  sandbox.localStorage.setItem('lg-history', JSON.stringify(padded));
+  g.newVillage('history-test-village-four', true);
+  const seed4 = g.plan.seed;
+  g._debugWin();
+  h = g._debugHistory();
+  ok(h.length === 25, 'the list stops growing once it is full, rather than tracking every village ever');
+  ok(h[0].seed === seed4, 'the one just finished is still first');
+  ok(h.every(e => e.seed !== 'padding-28'), 'and the oldest one is what falls off the end');
+
+  // Rendered into Settings, and readable back off the DOM the same way
+  // dialogue.js's chip rows are — built with createElement/appendChild,
+  // each row's own "Use seed" button closed over that row's own seed.
+  g._debugRenderHistory();
+  const box = sandbox.document.getElementById('setHistoryList');
+  ok(box.children.length === 25, 'one row per remembered errand');
+  const firstRow = box.children[0];
+  ok(firstRow.children[0].innerHTML.indexOf(seed4) !== -1,
+     'the newest row names the seed that built it');
+  sandbox.document.getElementById('setSeedInput').value = '';
+  firstRow.children[1].onclick();
+  ok(sandbox.document.getElementById('setSeedInput').value === seed4,
+     '"Use seed" drops that row\'s seed into the field next to Go, rather than rerolling on its own say-so');
+
+  // Opening Settings on a real village renders it too, not just a direct call.
+  try { sandbox.localStorage.removeItem('lg-history'); } catch (e) {}
+  g.openSettings(false);
+  ok(sandbox.document.getElementById('setHistoryList').innerHTML.indexOf('Nothing finished yet') !== -1,
+     'and says plainly that nothing has been finished yet, rather than showing an empty list');
+  sandbox.document.getElementById('settings').classList.remove('open');
 }
 
 beliefsRevised().then(villagersTalking);

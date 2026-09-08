@@ -257,3 +257,18 @@ The dice table is still there underneath for exactly that reason.
   isn't: the dialogue box's own `dlgName` already solves this by showing
   "?" rather than repeating the line right below it, and the roster follows
   the same rule for the same reason.
+- A history of finished errands, in `lg-history` alongside `lg-save` and
+  `lg-settings` rather than inside either: the current village's single
+  save is mutable and gets overwritten by the next autosave, and this is
+  the opposite of that on purpose — small, append-only, and outliving even
+  Forget the saved village, because a village worth remembering the seed of
+  is not necessarily one you still want loaded. Capped at the last 25
+  rather than kept forever, and each row's own seed is one click ("Use
+  seed") from being rolled again via the seed feature above it. Found and
+  fixed a real gap in the smoke test's own fake DOM on the way past: setting
+  `.innerHTML` there was never clearing `.children`, so a second render of
+  any element built with `innerHTML=''` then `appendChild()` (the pattern
+  dialogue.js's chip rows already used) silently piled up on top of the
+  first rather than replacing it — invisible until something asserted an
+  exact row count. `elem()`'s `innerHTML` is a real getter/setter now,
+  clearing `children` the way a browser actually does.

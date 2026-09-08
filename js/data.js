@@ -105,6 +105,15 @@ LG.LANGUAGES = {
     name: 'toki pona', native: 'toki pona', flag: '\u{F0001}',
     tag: 'tok', romanTag: 'tok',
     romanize: false, fontStack: "system-ui, sans-serif",
+    // Villagers chatting to each other kept putting their stage business —
+    // *shuffles feet*, *wipes flour off her hands* — in English inside an
+    // otherwise toki pona line, which prints the answer to the eavesdropping
+    // comprehension test. The prompt line that fixes it (see llm.js's
+    // `converse`) was measured here and only here, so it is a flag rather
+    // than a rule for everyone: a language whose leak nobody has counted
+    // gets no line about it.
+    stageInLang: true,
+
     // DESIGN.md says not to name a failure mode in a prompt, on the theory
     // that the salient word wins — and three positively-framed tries at this
     // (the rule alone, the rule plus a correct/wrong pair, a juxtaposition

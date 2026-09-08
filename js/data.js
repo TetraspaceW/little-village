@@ -32,8 +32,21 @@ LG.LANGUAGES = {
     name: 'Chinese (Mandarin)', native: '中文', flag: '🇨🇳',
     tag: 'zh-Hans', romanTag: 'zh-Latn',
     romanize: true, romanLabel: 'pinyin',
-    // asking for "pinyin" alone got tone marks on some syllables and not others
-    romanNote: 'with tone marks on every syllable \u2014 n\u01d0 h\u01ceo, not ni hao',
+    // asking for "pinyin" alone got tone marks on some syllables and not
+    // others; the space-between-every-syllable half is newer, and is not
+    // how pinyin is normally typed \u2014 idiomatic pinyin groups a multi-
+    // character word as one run (\u8c22\u8c22 as "xi\u00e8xie") \u2014 but it is what makes
+    // dialogue.js's zhRuby able to line a reading up with each character
+    // without asking the model for a second, ruby-shaped copy of the same
+    // sentence. See that comment for what happens when a line does not
+    // follow this: nothing breaks, the per-character view just does not
+    // apply to that line.
+    romanNote: 'with tone marks on every syllable, and a space between every ' +
+      'syllable \u2014 even inside one word: \u8c22\u8c22 is "xi\u00e8 xie", not "xi\u00e8xie"',
+    // Unlike `furigana` below, there is no ruby markup here for the model to
+    // write \u2014 the flag means the game may build one itself, in code, from
+    // `say` plus the romanised line above; see dialogue.js's zhRuby.
+    rubyAll: true,
     fontStack: "'Noto Sans SC', system-ui, sans-serif"
   },
   ja: {
@@ -83,6 +96,18 @@ LG.LANGUAGES = {
     // `fontStack` are; css/style.css keys off `lang="ar"` to set it, so
     // nothing that already tags a span with L.tag needs to change here
     fontStack: "'Noto Naskh Arabic', 'Noto Sans Arabic', system-ui, sans-serif"
+  },
+  ko: {
+    // Hangul is a true alphabet, not a logography — unlike zh's hanzi or
+    // ja's kanji, there is no character in a Korean sentence that reads
+    // any way other than how it is spelled, so there is nothing here for
+    // a furigana- or zhuyin-style per-character ruby to annotate. What a
+    // beginner still needs is romanisation, the same gap zh's `romanize`
+    // fills, so ko takes that flag and font stack and nothing else.
+    name: 'Korean', native: '한국어', flag: '🇰🇷',
+    tag: 'ko', romanTag: 'ko-Latn',
+    romanize: true, romanLabel: 'Revised Romanization',
+    fontStack: "'Noto Sans KR', system-ui, sans-serif"
   },
   tok: {
     // Lowercase in both fields on purpose: toki pona is written small
@@ -230,7 +255,14 @@ LG.LEVELS = {
   advanced: {
     label: 'Advanced (B2+)', spread: 0.5, taper: 1, gossip: 0, deliver: true, speed: 0.95,
     register: '',                        // two natives; they talk as they talk
-    prompt: 'Speak exactly as you would to another native — full range, including idiom, colloquialism and whatever regional flavour you have.'
+    prompt: 'Speak exactly as you would to another native — full range, including idiom, colloquialism and whatever regional flavour you have.',
+    /* The crutches everywhere else in the game — a translation a click away, a
+       phrase to start from — are themselves a difficulty knob nothing before
+       this used: `spread`/`taper`/`gossip` all make the *chain* harder to
+       trace, but the interface stays just as forgiving at every level. This
+       is the one flag that moves difficulty into the interface instead —
+       see game.js's crutchesOff, which is the one place that reads it. */
+    noCrutches: true
   }
 };
 
@@ -244,569 +276,569 @@ LG.LEVELS = {
 LG.ITEMS = {
   shiny_rock: {
     icon: '💎', tags: ['hold', 'ground', 'prize'], en: 'shiny rock', full: 'a shiny rock',
-    ru: 'блестящий камень', zh: '闪亮的石头', fr: 'pierre brillante', es: 'piedra brillante', ja: '光る石', ar: 'حجر لامع', pl: 'błyszczący kamień', tok: 'kiwen suno'
+    ru: 'блестящий камень', zh: '闪亮的石头', fr: 'pierre brillante', es: 'piedra brillante', ja: '光る石', ar: 'حجر لامع', pl: 'błyszczący kamień', tok: 'kiwen suno', ko: '반짝이는 돌'
   },
   beans: {
     icon: '🫘', tags: ['hold', 'shop'], en: 'jar of beans', full: 'a jar of beans',
-    ru: 'банка бобов', zh: '一罐豆子', fr: 'bocal de haricots', es: 'tarro de frijoles', ja: '豆のびん', ar: 'برطمان فول', pl: 'słoik fasoli', tok: 'poki pi kili lili'
+    ru: 'банка бобов', zh: '一罐豆子', fr: 'bocal de haricots', es: 'tarro de frijoles', ja: '豆のびん', ar: 'برطمان فول', pl: 'słoik fasoli', tok: 'poki pi kili lili', ko: '콩 단지'
   },
   coins: {
     icon: '🪙', tags: [], stackable: true, en: 'coins', full: 'coins',
-    ru: 'монеты', zh: '硬币', fr: 'pièces', es: 'monedas', ja: 'コイン', ar: 'عملات', pl: 'monety', tok: 'mani'
+    ru: 'монеты', zh: '硬币', fr: 'pièces', es: 'monedas', ja: 'コイン', ar: 'عملات', pl: 'monety', tok: 'mani', ko: '동전'
   },
   bread: {
     icon: '🍞', tags: ['hold', 'shop', 'prize'], en: 'loaf of bread', full: 'a loaf of bread',
-    ru: 'хлеб', zh: '面包', fr: 'pain', es: 'pan', ja: 'パン', ar: 'رغيف خبز', pl: 'bochenek chleba', tok: 'pan'
+    ru: 'хлеб', zh: '面包', fr: 'pain', es: 'pan', ja: 'パン', ar: 'رغيف خبز', pl: 'bochenek chleba', tok: 'pan', ko: '빵'
   },
   flower: {
     icon: '🌼', tags: ['hold', 'ground', 'prize'], en: 'flower', full: 'a flower',
-    ru: 'цветок', zh: '花', fr: 'fleur', es: 'flor', ja: '花', ar: 'زهرة', pl: 'kwiat', tok: 'kasi kule'
+    ru: 'цветок', zh: '花', fr: 'fleur', es: 'flor', ja: '花', ar: 'زهرة', pl: 'kwiat', tok: 'kasi kule', ko: '꽃'
   },
   fish: {
     icon: '🐟', tags: ['hold', 'prize'], en: 'fish', full: 'a fish',
-    ru: 'рыба', zh: '鱼', fr: 'poisson', es: 'pescado', ja: '魚', ar: 'سمكة', pl: 'ryba', tok: 'kala'
+    ru: 'рыба', zh: '鱼', fr: 'poisson', es: 'pescado', ja: '魚', ar: 'سمكة', pl: 'ryba', tok: 'kala', ko: '물고기'
   },
   honey: {
     icon: '🍯', tags: ['hold', 'shop', 'prize'], en: 'jar of honey', full: 'a jar of honey',
-    ru: 'банка мёда', zh: '一罐蜂蜜', fr: 'pot de miel', es: 'tarro de miel', ja: 'はちみつのびん', ar: 'برطمان عسل', pl: 'słoik miodu', tok: 'poki pi telo suwi'
+    ru: 'банка мёда', zh: '一罐蜂蜜', fr: 'pot de miel', es: 'tarro de miel', ja: 'はちみつのびん', ar: 'برطمان عسل', pl: 'słoik miodu', tok: 'poki pi telo suwi', ko: '꿀단지'
   },
   rope: {
     icon: '🪢', tags: ['hold', 'shop', 'ground'], en: 'rope', full: 'some rope',
-    ru: 'верёвка', zh: '绳子', fr: 'corde', es: 'cuerda', ja: 'ロープ', ar: 'حبل', pl: 'lina', tok: 'linja wawa'
+    ru: 'верёвка', zh: '绳子', fr: 'corde', es: 'cuerda', ja: 'ロープ', ar: 'حبل', pl: 'lina', tok: 'linja wawa', ko: '밧줄'
   },
   mushrooms: {
     icon: '🍄', tags: ['hold', 'ground'], en: 'mushrooms', full: 'some mushrooms',
-    ru: 'грибы', zh: '蘑菇', fr: 'champignons', es: 'setas', ja: 'きのこ', ar: 'فطر', pl: 'grzyby', tok: 'soko'
+    ru: 'грибы', zh: '蘑菇', fr: 'champignons', es: 'setas', ja: 'きのこ', ar: 'فطر', pl: 'grzyby', tok: 'soko', ko: '버섯'
   },
   egg: {
     icon: '🥚', tags: ['hold', 'shop'], en: 'egg', full: 'an egg',
-    ru: 'яйцо', zh: '鸡蛋', fr: 'œuf', es: 'huevo', ja: 'たまご', ar: 'بيضة', pl: 'jajko', tok: 'sike waso'
+    ru: 'яйцо', zh: '鸡蛋', fr: 'œuf', es: 'huevo', ja: 'たまご', ar: 'بيضة', pl: 'jajko', tok: 'sike waso', ko: '달걀'
   },
   milk: {
     icon: '🥛', tags: ['hold', 'shop'], en: 'jug of milk', full: 'a jug of milk',
-    ru: 'кувшин молока', zh: '一壶牛奶', fr: 'pot de lait', es: 'jarra de leche', ja: '牛乳のびん', ar: 'إبريق حليب', pl: 'dzbanek mleka', tok: 'poki pi telo mama'
+    ru: 'кувшин молока', zh: '一壶牛奶', fr: 'pot de lait', es: 'jarra de leche', ja: '牛乳のびん', ar: 'إبريق حليب', pl: 'dzbanek mleka', tok: 'poki pi telo mama', ko: '우유 단지'
   },
   apple: {
     icon: '🍎', tags: ['hold', 'shop', 'ground', 'prize'], en: 'apple', full: 'an apple',
-    ru: 'яблоко', zh: '苹果', fr: 'pomme', es: 'manzana', ja: 'りんご', ar: 'تفاحة', pl: 'jabłko', tok: 'kili loje'
+    ru: 'яблоко', zh: '苹果', fr: 'pomme', es: 'manzana', ja: 'りんご', ar: 'تفاحة', pl: 'jabłko', tok: 'kili loje', ko: '사과'
   },
   hat: {
     icon: '🎩', tags: ['hold', 'ground'], en: 'hat', full: 'a hat',
-    ru: 'шляпа', zh: '帽子', fr: 'chapeau', es: 'sombrero', ja: '帽子', ar: 'قبعة', pl: 'kapelusz', tok: 'len lawa'
+    ru: 'шляпа', zh: '帽子', fr: 'chapeau', es: 'sombrero', ja: '帽子', ar: 'قبعة', pl: 'kapelusz', tok: 'len lawa', ko: '모자'
   },
   candle: {
     icon: '🕯️', tags: ['hold', 'shop'], en: 'candle', full: 'a candle',
-    ru: 'свеча', zh: '蜡烛', fr: 'bougie', es: 'vela', ja: 'ろうそく', ar: 'شمعة', pl: 'świeca', tok: 'palisa suno'
+    ru: 'свеча', zh: '蜡烛', fr: 'bougie', es: 'vela', ja: 'ろうそく', ar: 'شمعة', pl: 'świeca', tok: 'palisa suno', ko: '양초'
   },
   key: {
     icon: '🔑', tags: ['hold', 'ground'], en: 'key', full: 'a key',
-    ru: 'ключ', zh: '钥匙', fr: 'clé', es: 'llave', ja: 'かぎ', ar: 'مفتاح', pl: 'klucz', tok: 'ilo open'
+    ru: 'ключ', zh: '钥匙', fr: 'clé', es: 'llave', ja: 'かぎ', ar: 'مفتاح', pl: 'klucz', tok: 'ilo open', ko: '열쇠'
   },
   wool: {
     icon: '🧶', tags: ['hold', 'shop'], en: 'ball of wool', full: 'a ball of wool',
-    ru: 'клубок шерсти', zh: '一团羊毛', fr: 'pelote de laine', es: 'ovillo de lana', ja: '毛糸玉', ar: 'كرة صوف', pl: 'kłębek wełny', tok: 'sike pi linja soweli'
+    ru: 'клубок шерсти', zh: '一团羊毛', fr: 'pelote de laine', es: 'ovillo de lana', ja: '毛糸玉', ar: 'كرة صوف', pl: 'kłębek wełny', tok: 'sike pi linja soweli', ko: '털실 뭉치'
   },
   boots: {
     icon: '🥾', tags: ['hold', 'ground'], en: 'boots', full: 'a pair of boots',
-    ru: 'сапоги', zh: '靴子', fr: 'bottes', es: 'botas', ja: 'ブーツ', ar: 'حذاء طويل', pl: 'botki', tok: 'len noka suli'
+    ru: 'сапоги', zh: '靴子', fr: 'bottes', es: 'botas', ja: 'ブーツ', ar: 'حذاء طويل', pl: 'botki', tok: 'len noka suli', ko: '장화'
   },
   lantern: {
     icon: '🏮', tags: ['hold', 'shop', 'ground'], en: 'lantern', full: 'a lantern',
-    ru: 'фонарь', zh: '灯笼', fr: 'lanterne', es: 'linterna', ja: '提灯', ar: 'فانوس', pl: 'latarnia', tok: 'ilo suno'
+    ru: 'фонарь', zh: '灯笼', fr: 'lanterne', es: 'linterna', ja: '提灯', ar: 'فانوس', pl: 'latarnia', tok: 'ilo suno', ko: '등롱'
   },
   cat: {
     icon: '🐈', tags: ['beast'], en: 'cat', full: 'a cat',
-    ru: 'кошка', zh: '猫', fr: 'chat', es: 'gato', ja: 'ねこ', ar: 'قطة', pl: 'kot', tok: 'soweli mu'
+    ru: 'кошка', zh: '猫', fr: 'chat', es: 'gato', ja: 'ねこ', ar: 'قطة', pl: 'kot', tok: 'soweli mu', ko: '고양이'
   },
   dog: {
     icon: '🐕', tags: ['beast'], en: 'dog', full: 'a dog',
-    ru: 'собака', zh: '狗', fr: 'chien', es: 'perro', ja: 'いぬ', ar: 'كلب', pl: 'pies', tok: 'soweli pona'
+    ru: 'собака', zh: '狗', fr: 'chien', es: 'perro', ja: 'いぬ', ar: 'كلب', pl: 'pies', tok: 'soweli pona', ko: '개'
   },
   goat: {
     icon: '🐐', tags: ['beast'], en: 'goat', full: 'a goat',
-    ru: 'коза', zh: '山羊', fr: 'chèvre', es: 'cabra', ja: 'やぎ', ar: 'عنزة', pl: 'koza', tok: 'soweli pi nena lawa'
+    ru: 'коза', zh: '山羊', fr: 'chèvre', es: 'cabra', ja: 'やぎ', ar: 'عنزة', pl: 'koza', tok: 'soweli pi nena lawa', ko: '염소'
   },
   chicken: {
     icon: '🐔', tags: ['beast'], en: 'chicken', full: 'a chicken',
-    ru: 'курица', zh: '鸡', fr: 'poule', es: 'gallina', ja: 'にわとり', ar: 'دجاجة', pl: 'kura', tok: 'waso moku'
+    ru: 'курица', zh: '鸡', fr: 'poule', es: 'gallina', ja: 'にわとり', ar: 'دجاجة', pl: 'kura', tok: 'waso moku', ko: '닭'
   },
   duck: {
     icon: '🦆', tags: ['beast'], en: 'duck', full: 'a duck',
-    ru: 'утка', zh: '鸭子', fr: 'canard', es: 'pato', ja: 'あひる', ar: 'بطة', pl: 'kaczka', tok: 'waso telo'
+    ru: 'утка', zh: '鸭子', fr: 'canard', es: 'pato', ja: 'あひる', ar: 'بطة', pl: 'kaczka', tok: 'waso telo', ko: '오리'
   },
 
   /* ---- the rest of the village's clutter ------------------------------- */
   onion: {
     icon: '🧅', tags: ['hold', 'shop'], en: 'onion', full: 'an onion',
-    ru: 'лук', zh: '洋葱', ja: '玉ねぎ', fr: 'oignon', es: 'cebolla', ar: 'بصلة', pl: 'cebula', tok: 'kili pi telo oko'
+    ru: 'лук', zh: '洋葱', ja: '玉ねぎ', fr: 'oignon', es: 'cebolla', ar: 'بصلة', pl: 'cebula', tok: 'kili pi telo oko', ko: '양파'
   },
   carrot: {
     icon: '🥕', tags: ['hold', 'shop', 'ground'], en: 'carrot', full: 'a carrot',
-    ru: 'морковь', zh: '胡萝卜', ja: 'にんじん', fr: 'carotte', es: 'zanahoria', ar: 'جزرة', pl: 'marchewka', tok: 'kili palisa loje'
+    ru: 'морковь', zh: '胡萝卜', ja: 'にんじん', fr: 'carotte', es: 'zanahoria', ar: 'جزرة', pl: 'marchewka', tok: 'kili palisa loje', ko: '당근'
   },
   potato: {
     icon: '🥔', tags: ['hold', 'shop', 'ground'], en: 'potato', full: 'a potato',
-    ru: 'картошка', zh: '土豆', ja: 'じゃがいも', fr: 'pomme de terre', es: 'patata', ar: 'بطاطا', pl: 'ziemniak', tok: 'kili ma'
+    ru: 'картошка', zh: '土豆', ja: 'じゃがいも', fr: 'pomme de terre', es: 'patata', ar: 'بطاطا', pl: 'ziemniak', tok: 'kili ma', ko: '감자'
   },
   cabbage: {
     icon: '🥬', tags: ['hold', 'shop', 'ground'], en: 'cabbage', full: 'a cabbage',
-    ru: 'капуста', zh: '白菜', ja: 'キャベツ', fr: 'chou', es: 'col', ar: 'ملفوف', pl: 'kapusta', tok: 'kili lipu'
+    ru: 'капуста', zh: '白菜', ja: 'キャベツ', fr: 'chou', es: 'col', ar: 'ملفوف', pl: 'kapusta', tok: 'kili lipu', ko: '양배추'
   },
   tomato: {
     icon: '🍅', tags: ['hold', 'shop'], en: 'tomato', full: 'a tomato',
-    ru: 'помидор', zh: '西红柿', ja: 'トマト', fr: 'tomate', es: 'tomate', ar: 'طماطم', pl: 'pomidor', tok: 'kili loje pi telo mute'
+    ru: 'помидор', zh: '西红柿', ja: 'トマト', fr: 'tomate', es: 'tomate', ar: 'طماطم', pl: 'pomidor', tok: 'kili loje pi telo mute', ko: '토마토'
   },
   pumpkin: {
     icon: '🎃', tags: ['hold', 'shop', 'ground'], en: 'pumpkin', full: 'a pumpkin',
-    ru: 'тыква', zh: '南瓜', ja: 'かぼちゃ', fr: 'citrouille', es: 'calabaza', ar: 'يقطينة', pl: 'dynia', tok: 'kili suli jelo'
+    ru: 'тыква', zh: '南瓜', ja: 'かぼちゃ', fr: 'citrouille', es: 'calabaza', ar: 'يقطينة', pl: 'dynia', tok: 'kili suli jelo', ko: '호박'
   },
   garlic: {
     icon: '🧄', tags: ['hold', 'shop'], en: 'garlic', full: 'a bulb of garlic',
-    ru: 'чеснок', zh: '大蒜', ja: 'にんにく', fr: 'ail', es: 'ajo', ar: 'رأس ثوم', pl: 'główka czosnku', tok: 'kili ma walo'
+    ru: 'чеснок', zh: '大蒜', ja: 'にんにく', fr: 'ail', es: 'ajo', ar: 'رأس ثوم', pl: 'główka czosnku', tok: 'kili ma walo', ko: '마늘'
   },
   corn: {
     icon: '🌽', tags: ['hold', 'shop', 'ground'], en: 'corn', full: 'an ear of corn',
-    ru: 'кукуруза', zh: '玉米', ja: 'とうもろこし', fr: 'maïs', es: 'maíz', ar: 'كوز ذرة', pl: 'kolba kukurydzy', tok: 'pan jelo'
+    ru: 'кукуруза', zh: '玉米', ja: 'とうもろこし', fr: 'maïs', es: 'maíz', ar: 'كوز ذرة', pl: 'kolba kukurydzy', tok: 'pan jelo', ko: '옥수수'
   },
   pear: {
     icon: '🍐', tags: ['hold', 'shop', 'ground', 'prize'], en: 'pear', full: 'a pear',
-    ru: 'груша', zh: '梨', ja: 'なし', fr: 'poire', es: 'pera', ar: 'كمثرى', pl: 'gruszka', tok: 'kili nena'
+    ru: 'груша', zh: '梨', ja: 'なし', fr: 'poire', es: 'pera', ar: 'كمثرى', pl: 'gruszka', tok: 'kili nena', ko: '배'
   },
   peach: {
     icon: '🍑', tags: ['hold', 'shop', 'prize'], en: 'peach', full: 'a peach',
-    ru: 'персик', zh: '桃子', ja: 'もも', fr: 'pêche', es: 'melocotón', ar: 'خوخة', pl: 'brzoskwinia', tok: 'kili loje jelo'
+    ru: 'персик', zh: '桃子', ja: 'もも', fr: 'pêche', es: 'melocotón', ar: 'خوخة', pl: 'brzoskwinia', tok: 'kili loje jelo', ko: '복숭아'
   },
   cherries: {
     icon: '🍒', tags: ['hold', 'shop', 'prize'], en: 'cherries', full: 'some cherries',
-    ru: 'вишня', zh: '樱桃', ja: 'さくらんぼ', fr: 'cerises', es: 'cerezas', ar: 'كرز', pl: 'wiśnie', tok: 'kili loje lili'
+    ru: 'вишня', zh: '樱桃', ja: 'さくらんぼ', fr: 'cerises', es: 'cerezas', ar: 'كرز', pl: 'wiśnie', tok: 'kili loje lili', ko: '체리'
   },
   grapes: {
     icon: '🍇', tags: ['hold', 'shop', 'prize'], en: 'grapes', full: 'some grapes',
-    ru: 'виноград', zh: '葡萄', ja: 'ぶどう', fr: 'raisin', es: 'uvas', ar: 'عنب', pl: 'winogrona', tok: 'kili laso lili'
+    ru: 'виноград', zh: '葡萄', ja: 'ぶどう', fr: 'raisin', es: 'uvas', ar: 'عنب', pl: 'winogrona', tok: 'kili laso lili', ko: '포도'
   },
   strawberry: {
     icon: '🍓', tags: ['hold', 'shop', 'prize'], en: 'strawberry', full: 'a strawberry',
-    ru: 'клубника', zh: '草莓', ja: 'いちご', fr: 'fraise', es: 'fresa', ar: 'فراولة', pl: 'truskawka', tok: 'kili suwi loje'
+    ru: 'клубника', zh: '草莓', ja: 'いちご', fr: 'fraise', es: 'fresa', ar: 'فراولة', pl: 'truskawka', tok: 'kili suwi loje', ko: '딸기'
   },
   lemon: {
     icon: '🍋', tags: ['hold', 'shop'], en: 'lemon', full: 'a lemon',
-    ru: 'лимон', zh: '柠檬', ja: 'レモン', fr: 'citron', es: 'limón', ar: 'ليمونة', pl: 'cytryna', tok: 'kili jelo'
+    ru: 'лимон', zh: '柠檬', ja: 'レモン', fr: 'citron', es: 'limón', ar: 'ليمونة', pl: 'cytryna', tok: 'kili jelo', ko: '레몬'
   },
   watermelon: {
     icon: '🍉', tags: ['hold', 'shop'], en: 'watermelon', full: 'a watermelon',
-    ru: 'арбуз', zh: '西瓜', ja: 'すいか', fr: 'pastèque', es: 'sandía', ar: 'بطيخة', pl: 'arbuz', tok: 'kili suli telo'
+    ru: 'арбуз', zh: '西瓜', ja: 'すいか', fr: 'pastèque', es: 'sandía', ar: 'بطيخة', pl: 'arbuz', tok: 'kili suli telo', ko: '수박'
   },
   chestnut: {
     icon: '🌰', tags: ['hold', 'ground'], en: 'chestnut', full: 'a chestnut',
-    ru: 'каштан', zh: '栗子', ja: 'くり', fr: 'châtaigne', es: 'castaña', ar: 'كستناء', pl: 'kasztan', tok: 'kili kiwen'
+    ru: 'каштан', zh: '栗子', ja: 'くり', fr: 'châtaigne', es: 'castaña', ar: 'كستناء', pl: 'kasztan', tok: 'kili kiwen', ko: '밤'
   },
   cheese: {
     icon: '🧀', tags: ['hold', 'shop', 'prize'], en: 'cheese', full: 'a wheel of cheese',
-    ru: 'сыр', zh: '奶酪', ja: 'チーズ', fr: 'fromage', es: 'queso', ar: 'قالب جبن', pl: 'krąg sera', tok: 'moku pi telo mama'
+    ru: 'сыр', zh: '奶酪', ja: 'チーズ', fr: 'fromage', es: 'queso', ar: 'قالب جبن', pl: 'krąg sera', tok: 'moku pi telo mama', ko: '치즈'
   },
   butter: {
     icon: '🧈', tags: ['hold', 'shop'], en: 'butter', full: 'a pat of butter',
-    ru: 'масло', zh: '黄油', ja: 'バター', fr: 'beurre', es: 'mantequilla', ar: 'قطعة زبدة', pl: 'kostka masła', tok: 'ko pi telo mama'
+    ru: 'масло', zh: '黄油', ja: 'バター', fr: 'beurre', es: 'mantequilla', ar: 'قطعة زبدة', pl: 'kostka masła', tok: 'ko pi telo mama', ko: '버터'
   },
   salt: {
     icon: '🧂', tags: ['hold', 'shop'], en: 'salt', full: 'a pinch of salt',
-    ru: 'соль', zh: '盐', ja: '塩', fr: 'sel', es: 'sal', ar: 'رشة ملح', pl: 'szczypta soli', tok: 'namako'
+    ru: 'соль', zh: '盐', ja: '塩', fr: 'sel', es: 'sal', ar: 'رشة ملح', pl: 'szczypta soli', tok: 'namako', ko: '소금'
   },
   sweets: {
     icon: '🍬', tags: ['hold', 'shop', 'prize'], en: 'sweets', full: 'some sweets',
-    ru: 'конфеты', zh: '糖果', ja: 'あめ', fr: 'bonbons', es: 'caramelos', ar: 'حلوى', pl: 'cukierki', tok: 'moku suwi'
+    ru: 'конфеты', zh: '糖果', ja: 'あめ', fr: 'bonbons', es: 'caramelos', ar: 'حلوى', pl: 'cukierki', tok: 'moku suwi', ko: '사탕'
   },
   cake: {
     icon: '🍰', tags: ['hold', 'shop', 'prize'], en: 'cake', full: 'a slice of cake',
-    ru: 'торт', zh: '蛋糕', ja: 'ケーキ', fr: 'gâteau', es: 'pastel', ar: 'قطعة كعك', pl: 'kawałek ciasta', tok: 'pan suwi'
+    ru: 'торт', zh: '蛋糕', ja: 'ケーキ', fr: 'gâteau', es: 'pastel', ar: 'قطعة كعك', pl: 'kawałek ciasta', tok: 'pan suwi', ko: '케이크'
   },
   pie: {
     icon: '🥧', tags: ['hold', 'shop', 'prize'], en: 'pie', full: 'a pie',
-    ru: 'пирог', zh: '派', ja: 'パイ', fr: 'tarte', es: 'tarta', ar: 'فطيرة', pl: 'placek', tok: 'pan pi kili suwi'
+    ru: 'пирог', zh: '派', ja: 'パイ', fr: 'tarte', es: 'tarta', ar: 'فطيرة', pl: 'placek', tok: 'pan pi kili suwi', ko: '파이'
   },
   jam: {
     icon: '🫙', tags: ['hold', 'shop', 'prize'], en: 'jam', full: 'a jar of jam',
-    ru: 'варенье', zh: '果酱', ja: 'ジャム', fr: 'confiture', es: 'mermelada', ar: 'برطمان مربى', pl: 'słoik dżemu', tok: 'ko kili'
+    ru: 'варенье', zh: '果酱', ja: 'ジャム', fr: 'confiture', es: 'mermelada', ar: 'برطمان مربى', pl: 'słoik dżemu', tok: 'ko kili', ko: '잼'
   },
   soup: {
     icon: '🍲', tags: ['hold', 'shop'], en: 'soup', full: 'a bowl of soup',
-    ru: 'суп', zh: '汤', ja: 'スープ', fr: 'soupe', es: 'sopa', ar: 'طبق حساء', pl: 'miska zupy', tok: 'telo moku'
+    ru: 'суп', zh: '汤', ja: 'スープ', fr: 'soupe', es: 'sopa', ar: 'طبق حساء', pl: 'miska zupy', tok: 'telo moku', ko: '수프'
   },
   meat: {
     icon: '🍖', tags: ['hold', 'shop'], en: 'meat', full: 'a joint of meat',
-    ru: 'мясо', zh: '肉', ja: '肉', fr: 'viande', es: 'carne', ar: 'قطعة لحم', pl: 'kawał mięsa', tok: 'moku soweli'
+    ru: 'мясо', zh: '肉', ja: '肉', fr: 'viande', es: 'carne', ar: 'قطعة لحم', pl: 'kawał mięsa', tok: 'moku soweli', ko: '고기'
   },
   bacon: {
     icon: '🥓', tags: ['hold', 'shop'], en: 'bacon', full: 'some bacon',
-    ru: 'бекон', zh: '培根', ja: 'ベーコン', fr: 'lard', es: 'tocino', ar: 'لحم مقدد', pl: 'boczek', tok: 'moku pi soweli ko'
+    ru: 'бекон', zh: '培根', ja: 'ベーコン', fr: 'lard', es: 'tocino', ar: 'لحم مقدد', pl: 'boczek', tok: 'moku pi soweli ko', ko: '베이컨'
   },
   rice: {
     icon: '🍚', tags: ['hold', 'shop'], en: 'rice', full: 'a bowl of rice',
-    ru: 'рис', zh: '米饭', ja: 'ごはん', fr: 'riz', es: 'arroz', ar: 'طبق أرز', pl: 'miska ryżu', tok: 'pan lili'
+    ru: 'рис', zh: '米饭', ja: 'ごはん', fr: 'riz', es: 'arroz', ar: 'طبق أرز', pl: 'miska ryżu', tok: 'pan lili', ko: '밥'
   },
   noodles: {
     icon: '🍜', tags: ['hold', 'shop'], en: 'noodles', full: 'a bowl of noodles',
-    ru: 'лапша', zh: '面条', ja: 'めん', fr: 'nouilles', es: 'fideos', ar: 'طبق نودلز', pl: 'miska makaronu', tok: 'linja moku'
+    ru: 'лапша', zh: '面条', ja: 'めん', fr: 'nouilles', es: 'fideos', ar: 'طبق نودلز', pl: 'miska makaronu', tok: 'linja moku', ko: '국수'
   },
   wheat: {
     icon: '🌾', tags: ['hold', 'ground'], en: 'wheat', full: 'a sheaf of wheat',
-    ru: 'пшеница', zh: '小麦', ja: '小麦', fr: 'blé', es: 'trigo', ar: 'حزمة قمح', pl: 'snop pszenicy', tok: 'kasi pan'
+    ru: 'пшеница', zh: '小麦', ja: '小麦', fr: 'blé', es: 'trigo', ar: 'حزمة قمح', pl: 'snop pszenicy', tok: 'kasi pan', ko: '밀단'
   },
   tea: {
     icon: '🍵', tags: ['hold', 'shop', 'prize'], en: 'tea', full: 'a cup of tea',
-    ru: 'чай', zh: '茶', ja: 'お茶', fr: 'thé', es: 'té', ar: 'كوب شاي', pl: 'filiżanka herbaty', tok: 'telo kasi'
+    ru: 'чай', zh: '茶', ja: 'お茶', fr: 'thé', es: 'té', ar: 'كوب شاي', pl: 'filiżanka herbaty', tok: 'telo kasi', ko: '차'
   },
   coffee: {
     icon: '☕', tags: ['hold', 'shop'], en: 'coffee', full: 'a cup of coffee',
-    ru: 'кофе', zh: '咖啡', ja: 'コーヒー', fr: 'café', es: 'café', ar: 'كوب قهوة', pl: 'filiżanka kawy', tok: 'telo pimeja'
+    ru: 'кофе', zh: '咖啡', ja: 'コーヒー', fr: 'café', es: 'café', ar: 'كوب قهوة', pl: 'filiżanka kawy', tok: 'telo pimeja', ko: '커피'
   },
   wine: {
     icon: '🍷', tags: ['hold', 'shop', 'prize'], en: 'wine', full: 'a bottle of wine',
-    ru: 'вино', zh: '葡萄酒', ja: 'ワイン', fr: 'vin', es: 'vino', ar: 'زجاجة نبيذ', pl: 'butelka wina', tok: 'telo nasa'
+    ru: 'вино', zh: '葡萄酒', ja: 'ワイン', fr: 'vin', es: 'vino', ar: 'زجاجة نبيذ', pl: 'butelka wina', tok: 'telo nasa', ko: '와인'
   },
   beer: {
     icon: '🍺', tags: ['hold', 'shop'], en: 'beer', full: 'a mug of beer',
-    ru: 'пиво', zh: '啤酒', ja: 'ビール', fr: 'bière', es: 'cerveza', ar: 'كوب بيرة', pl: 'kufel piwa', tok: 'telo nasa pan'
+    ru: 'пиво', zh: '啤酒', ja: 'ビール', fr: 'bière', es: 'cerveza', ar: 'كوب بيرة', pl: 'kufel piwa', tok: 'telo nasa pan', ko: '맥주'
   },
   hammer: {
     icon: '🔨', tags: ['hold', 'shop', 'ground'], en: 'hammer', full: 'a hammer',
-    ru: 'молоток', zh: '锤子', ja: 'かなづち', fr: 'marteau', es: 'martillo', ar: 'مطرقة', pl: 'młotek', tok: 'ilo pi utala kiwen'
+    ru: 'молоток', zh: '锤子', ja: 'かなづち', fr: 'marteau', es: 'martillo', ar: 'مطرقة', pl: 'młotek', tok: 'ilo pi utala kiwen', ko: '망치'
   },
   axe: {
     icon: '🪓', tags: ['hold', 'shop', 'ground'], en: 'axe', full: 'an axe',
-    ru: 'топор', zh: '斧头', ja: 'おの', fr: 'hache', es: 'hacha', ar: 'فأس', pl: 'siekiera', tok: 'ilo pi kipisi kasi'
+    ru: 'топор', zh: '斧头', ja: 'おの', fr: 'hache', es: 'hacha', ar: 'فأس', pl: 'siekiera', tok: 'ilo pi kipisi kasi', ko: '도끼'
   },
   saw: {
     icon: '🪚', tags: ['hold', 'shop', 'ground'], en: 'saw', full: 'a saw',
-    ru: 'пила', zh: '锯子', ja: 'のこぎり', fr: 'scie', es: 'sierra', ar: 'منشار', pl: 'piła', tok: 'ilo kipisi linja'
+    ru: 'пила', zh: '锯子', ja: 'のこぎり', fr: 'scie', es: 'sierra', ar: 'منشار', pl: 'piła', tok: 'ilo kipisi linja', ko: '톱'
   },
   screwdriver: {
     icon: '🪛', tags: ['hold', 'shop', 'ground'], en: 'screwdriver', full: 'a screwdriver',
-    ru: 'отвёртка', zh: '螺丝刀', ja: 'ドライバー', fr: 'tournevis', es: 'destornillador', ar: 'مفك', pl: 'śrubokręt', tok: 'ilo pi sike palisa'
+    ru: 'отвёртка', zh: '螺丝刀', ja: 'ドライバー', fr: 'tournevis', es: 'destornillador', ar: 'مفك', pl: 'śrubokręt', tok: 'ilo pi sike palisa', ko: '드라이버'
   },
   screw: {
     icon: '🔩', tags: ['hold', 'shop', 'ground'], en: 'screw', full: 'a screw',
-    ru: 'винт', zh: '螺丝', ja: 'ねじ', fr: 'vis', es: 'tornillo', ar: 'برغي', pl: 'śrubka', tok: 'palisa sike lili'
+    ru: 'винт', zh: '螺丝', ja: 'ねじ', fr: 'vis', es: 'tornillo', ar: 'برغي', pl: 'śrubka', tok: 'palisa sike lili', ko: '나사'
   },
   bucket: {
     icon: '🪣', tags: ['hold', 'shop', 'ground'], en: 'bucket', full: 'a bucket',
-    ru: 'ведро', zh: '桶', ja: 'バケツ', fr: 'seau', es: 'cubo', ar: 'دلو', pl: 'wiadro', tok: 'poki telo'
+    ru: 'ведро', zh: '桶', ja: 'バケツ', fr: 'seau', es: 'cubo', ar: 'دلو', pl: 'wiadro', tok: 'poki telo', ko: '양동이'
   },
   basket: {
     icon: '🧺', tags: ['hold', 'shop', 'ground'], en: 'basket', full: 'a basket',
-    ru: 'корзина', zh: '篮子', ja: 'かご', fr: 'panier', es: 'cesta', ar: 'سلة', pl: 'koszyk', tok: 'poki linja'
+    ru: 'корзина', zh: '篮子', ja: 'かご', fr: 'panier', es: 'cesta', ar: 'سلة', pl: 'koszyk', tok: 'poki linja', ko: '바구니'
   },
   ladder: {
     icon: '🪜', tags: ['hold', 'ground'], en: 'ladder', full: 'a ladder',
-    ru: 'лестница', zh: '梯子', ja: 'はしご', fr: 'échelle', es: 'escalera', ar: 'سلم', pl: 'drabina', tok: 'palisa pi tawa sewi'
+    ru: 'лестница', zh: '梯子', ja: 'はしご', fr: 'échelle', es: 'escalera', ar: 'سلم', pl: 'drabina', tok: 'palisa pi tawa sewi', ko: '사다리'
   },
   knife: {
     icon: '🔪', tags: ['hold', 'shop'], en: 'knife', full: 'a knife',
-    ru: 'нож', zh: '刀', ja: 'ナイフ', fr: 'couteau', es: 'cuchillo', ar: 'سكين', pl: 'nóż', tok: 'ilo kipisi'
+    ru: 'нож', zh: '刀', ja: 'ナイフ', fr: 'couteau', es: 'cuchillo', ar: 'سكين', pl: 'nóż', tok: 'ilo kipisi', ko: '칼'
   },
   scissors: {
     icon: '✂️', tags: ['hold', 'shop'], en: 'scissors', full: 'a pair of scissors',
-    ru: 'ножницы', zh: '剪刀', ja: 'はさみ', fr: 'ciseaux', es: 'tijeras', ar: 'مقص', pl: 'nożyczki', tok: 'ilo kipisi tu'
+    ru: 'ножницы', zh: '剪刀', ja: 'はさみ', fr: 'ciseaux', es: 'tijeras', ar: 'مقص', pl: 'nożyczki', tok: 'ilo kipisi tu', ko: '가위'
   },
   needle: {
     icon: '🪡', tags: ['hold', 'shop'], en: 'needle', full: 'a needle',
-    ru: 'иголка', zh: '针', ja: 'はり', fr: 'aiguille', es: 'aguja', ar: 'إبرة', pl: 'igła', tok: 'palisa lili'
+    ru: 'иголка', zh: '针', ja: 'はり', fr: 'aiguille', es: 'aguja', ar: 'إبرة', pl: 'igła', tok: 'palisa lili', ko: '바늘'
   },
   thread: {
     icon: '🧵', tags: ['hold', 'shop'], en: 'thread', full: 'a reel of thread',
-    ru: 'нитки', zh: '线', ja: '糸', fr: 'fil', es: 'hilo', ar: 'بكرة خيط', pl: 'szpulka nici', tok: 'linja lili'
+    ru: 'нитки', zh: '线', ja: '糸', fr: 'fil', es: 'hilo', ar: 'بكرة خيط', pl: 'szpulka nici', tok: 'linja lili', ko: '실타래'
   },
   fishing_rod: {
     icon: '🎣', tags: ['hold', 'ground'], en: 'fishing rod', full: 'a fishing rod',
-    ru: 'удочка', zh: '钓竿', ja: 'つりざお', fr: 'canne à pêche', es: 'caña de pescar', ar: 'صنارة صيد', pl: 'wędka', tok: 'ilo pi alasa kala'
+    ru: 'удочка', zh: '钓竿', ja: 'つりざお', fr: 'canne à pêche', es: 'caña de pescar', ar: 'صنارة صيد', pl: 'wędka', tok: 'ilo pi alasa kala', ko: '낚싯대'
   },
   magnet: {
     icon: '🧲', tags: ['hold', 'ground'], en: 'magnet', full: 'a magnet',
-    ru: 'магнит', zh: '磁铁', ja: '磁石', fr: 'aimant', es: 'imán', ar: 'مغناطيس', pl: 'magnes', tok: 'kiwen wawa'
+    ru: 'магнит', zh: '磁铁', ja: '磁石', fr: 'aimant', es: 'imán', ar: 'مغناطيس', pl: 'magnes', tok: 'kiwen wawa', ko: '자석'
   },
   chain: {
     icon: '⛓️', tags: ['hold', 'ground'], en: 'chain', full: 'a chain',
-    ru: 'цепь', zh: '链子', ja: 'くさり', fr: 'chaîne', es: 'cadena', ar: 'سلسلة', pl: 'łańcuch', tok: 'linja kiwen'
+    ru: 'цепь', zh: '链子', ja: 'くさり', fr: 'chaîne', es: 'cadena', ar: 'سلسلة', pl: 'łańcuch', tok: 'linja kiwen', ko: '사슬'
   },
   bell: {
     icon: '🔔', tags: ['hold', 'shop', 'prize'], en: 'bell', full: 'a bell',
-    ru: 'колокольчик', zh: '铃铛', ja: 'すず', fr: 'cloche', es: 'campana', ar: 'جرس', pl: 'dzwonek', tok: 'ilo kalama lili'
+    ru: 'колокольчик', zh: '铃铛', ja: 'すず', fr: 'cloche', es: 'campana', ar: 'جرس', pl: 'dzwonek', tok: 'ilo kalama lili', ko: '종'
   },
   broom: {
     icon: '🧹', tags: ['hold', 'shop'], en: 'broom', full: 'a broom',
-    ru: 'метла', zh: '扫帚', ja: 'ほうき', fr: 'balai', es: 'escoba', ar: 'مكنسة', pl: 'miotła', tok: 'ilo pi weka jaki'
+    ru: 'метла', zh: '扫帚', ja: 'ほうき', fr: 'balai', es: 'escoba', ar: 'مكنسة', pl: 'miotła', tok: 'ilo pi weka jaki', ko: '빗자루'
   },
   compass: {
     icon: '🧭', tags: ['hold', 'ground', 'prize'], en: 'compass', full: 'a compass',
-    ru: 'компас', zh: '指南针', ja: 'コンパス', fr: 'boussole', es: 'brújula', ar: 'بوصلة', pl: 'kompas', tok: 'ilo nasin'
+    ru: 'компас', zh: '指南针', ja: 'コンパス', fr: 'boussole', es: 'brújula', ar: 'بوصلة', pl: 'kompas', tok: 'ilo nasin', ko: '나침반'
   },
   telescope: {
     icon: '🔭', tags: ['hold', 'prize'], en: 'telescope', full: 'a telescope',
-    ru: 'телескоп', zh: '望远镜', ja: '望遠鏡', fr: 'télescope', es: 'telescopio', ar: 'تلسكوب', pl: 'teleskop', tok: 'ilo pi lukin weka'
+    ru: 'телескоп', zh: '望远镜', ja: '望遠鏡', fr: 'télescope', es: 'telescopio', ar: 'تلسكوب', pl: 'teleskop', tok: 'ilo pi lukin weka', ko: '망원경'
   },
   magnifier: {
     icon: '🔍', tags: ['hold', 'ground'], en: 'magnifying glass', full: 'a magnifying glass',
-    ru: 'лупа', zh: '放大镜', ja: '虫めがね', fr: 'loupe', es: 'lupa', ar: 'عدسة مكبرة', pl: 'szkło powiększające', tok: 'ilo pi lukin suli'
+    ru: 'лупа', zh: '放大镜', ja: '虫めがね', fr: 'loupe', es: 'lupa', ar: 'عدسة مكبرة', pl: 'szkło powiększające', tok: 'ilo pi lukin suli', ko: '돋보기'
   },
   umbrella: {
     icon: '☂️', tags: ['hold', 'shop', 'ground'], en: 'umbrella', full: 'an umbrella',
-    ru: 'зонт', zh: '雨伞', ja: 'かさ', fr: 'parapluie', es: 'paraguas', ar: 'مظلة', pl: 'parasol', tok: 'ilo pi awen telo'
+    ru: 'зонт', zh: '雨伞', ja: 'かさ', fr: 'parapluie', es: 'paraguas', ar: 'مظلة', pl: 'parasol', tok: 'ilo pi awen telo', ko: '우산'
   },
   mirror: {
     icon: '🪞', tags: ['hold', 'shop', 'prize'], en: 'mirror', full: 'a mirror',
-    ru: 'зеркало', zh: '镜子', ja: 'かがみ', fr: 'miroir', es: 'espejo', ar: 'مرآة', pl: 'lustro', tok: 'supa lukin'
+    ru: 'зеркало', zh: '镜子', ja: 'かがみ', fr: 'miroir', es: 'espejo', ar: 'مرآة', pl: 'lustro', tok: 'supa lukin', ko: '거울'
   },
   soap: {
     icon: '🧼', tags: ['hold', 'shop'], en: 'soap', full: 'a bar of soap',
-    ru: 'мыло', zh: '肥皂', ja: 'せっけん', fr: 'savon', es: 'jabón', ar: 'قالب صابون', pl: 'kostka mydła', tok: 'ko pi weka jaki'
+    ru: 'мыло', zh: '肥皂', ja: 'せっけん', fr: 'savon', es: 'jabón', ar: 'قالب صابون', pl: 'kostka mydła', tok: 'ko pi weka jaki', ko: '비누'
   },
   teapot: {
     icon: '🫖', tags: ['hold', 'shop', 'prize'], en: 'teapot', full: 'a teapot',
-    ru: 'чайник', zh: '茶壶', ja: 'きゅうす', fr: 'théière', es: 'tetera', ar: 'إبريق شاي', pl: 'czajniczek', tok: 'poki pi telo kasi'
+    ru: 'чайник', zh: '茶壶', ja: 'きゅうす', fr: 'théière', es: 'tetera', ar: 'إبريق شاي', pl: 'czajniczek', tok: 'poki pi telo kasi', ko: '찻주전자'
   },
   bottle: {
     icon: '🍾', tags: ['hold', 'shop', 'ground'], en: 'bottle', full: 'a bottle',
-    ru: 'бутылка', zh: '瓶子', ja: 'びん', fr: 'bouteille', es: 'botella', ar: 'زجاجة', pl: 'butelka', tok: 'poki palisa'
+    ru: 'бутылка', zh: '瓶子', ja: 'びん', fr: 'bouteille', es: 'botella', ar: 'زجاجة', pl: 'butelka', tok: 'poki palisa', ko: '병'
   },
   plate: {
     icon: '🍽️', tags: ['hold', 'shop'], en: 'plate', full: 'a plate',
-    ru: 'тарелка', zh: '盘子', ja: 'おさら', fr: 'assiette', es: 'plato', ar: 'طبق', pl: 'talerz', tok: 'supa moku'
+    ru: 'тарелка', zh: '盘子', ja: 'おさら', fr: 'assiette', es: 'plato', ar: 'طبق', pl: 'talerz', tok: 'supa moku', ko: '접시'
   },
   spoon: {
     icon: '🥄', tags: ['hold', 'shop'], en: 'spoon', full: 'a spoon',
-    ru: 'ложка', zh: '勺子', ja: 'スプーン', fr: 'cuillère', es: 'cuchara', ar: 'ملعقة', pl: 'łyżka', tok: 'ilo moku'
+    ru: 'ложка', zh: '勺子', ja: 'スプーン', fr: 'cuillère', es: 'cuchara', ar: 'ملعقة', pl: 'łyżka', tok: 'ilo moku', ko: '숟가락'
   },
   fork: {
     icon: '🍴', tags: ['hold', 'shop'], en: 'fork', full: 'a fork',
-    ru: 'вилка', zh: '叉子', ja: 'フォーク', fr: 'fourchette', es: 'tenedor', ar: 'شوكة', pl: 'widelec', tok: 'ilo moku palisa'
+    ru: 'вилка', zh: '叉子', ja: 'フォーク', fr: 'fourchette', es: 'tenedor', ar: 'شوكة', pl: 'widelec', tok: 'ilo moku palisa', ko: '포크'
   },
   clock: {
     icon: '🕰️', tags: ['hold', 'shop', 'prize'], en: 'clock', full: 'a clock',
-    ru: 'часы', zh: '钟', ja: 'とけい', fr: 'horloge', es: 'reloj', ar: 'ساعة', pl: 'zegar', tok: 'ilo tenpo'
+    ru: 'часы', zh: '钟', ja: 'とけい', fr: 'horloge', es: 'reloj', ar: 'ساعة', pl: 'zegar', tok: 'ilo tenpo', ko: '시계'
   },
   oil_lamp: {
     icon: '🪔', tags: ['hold', 'shop', 'ground'], en: 'oil lamp', full: 'an oil lamp',
-    ru: 'лампа', zh: '油灯', ja: 'ランプ', fr: 'lampe', es: 'lámpara', ar: 'مصباح زيت', pl: 'lampa naftowa', tok: 'ilo suno pi telo seli'
+    ru: 'лампа', zh: '油灯', ja: 'ランプ', fr: 'lampe', es: 'lámpara', ar: 'مصباح زيت', pl: 'lampa naftowa', tok: 'ilo suno pi telo seli', ko: '등잔'
   },
   chair: {
     icon: '🪑', tags: ['hold', 'shop'], en: 'chair', full: 'a chair',
-    ru: 'стул', zh: '椅子', ja: 'いす', fr: 'chaise', es: 'silla', ar: 'كرسي', pl: 'krzesło', tok: 'supa monsi'
+    ru: 'стул', zh: '椅子', ja: 'いす', fr: 'chaise', es: 'silla', ar: 'كرسي', pl: 'krzesło', tok: 'supa monsi', ko: '의자'
   },
   box: {
     icon: '📦', tags: ['hold', 'ground'], en: 'box', full: 'a box',
-    ru: 'коробка', zh: '箱子', ja: 'はこ', fr: 'boîte', es: 'caja', ar: 'صندوق', pl: 'pudełko', tok: 'poki kiwen'
+    ru: 'коробка', zh: '箱子', ja: 'はこ', fr: 'boîte', es: 'caja', ar: 'صندوق', pl: 'pudełko', tok: 'poki kiwen', ko: '상자'
   },
   book: {
     icon: '📖', tags: ['hold', 'shop', 'ground', 'prize'], en: 'book', full: 'a book',
-    ru: 'книга', zh: '书', ja: 'ほん', fr: 'livre', es: 'libro', ar: 'كتاب', pl: 'książka', tok: 'lipu suli'
+    ru: 'книга', zh: '书', ja: 'ほん', fr: 'livre', es: 'libro', ar: 'كتاب', pl: 'książka', tok: 'lipu suli', ko: '책'
   },
   letter: {
     icon: '✉️', tags: ['hold', 'ground'], en: 'letter', full: 'a letter',
-    ru: 'письмо', zh: '信', ja: 'てがみ', fr: 'lettre', es: 'carta', ar: 'رسالة', pl: 'list', tok: 'lipu toki'
+    ru: 'письмо', zh: '信', ja: 'てがみ', fr: 'lettre', es: 'carta', ar: 'رسالة', pl: 'list', tok: 'lipu toki', ko: '편지'
   },
   pen: {
     icon: '🖊️', tags: ['hold', 'shop', 'ground'], en: 'pen', full: 'a pen',
-    ru: 'ручка', zh: '钢笔', ja: 'ペン', fr: 'stylo', es: 'bolígrafo', ar: 'قلم حبر', pl: 'długopis', tok: 'ilo pi sitelen telo'
+    ru: 'ручка', zh: '钢笔', ja: 'ペン', fr: 'stylo', es: 'bolígrafo', ar: 'قلم حبر', pl: 'długopis', tok: 'ilo pi sitelen telo', ko: '펜'
   },
   pencil: {
     icon: '✏️', tags: ['hold', 'shop', 'ground'], en: 'pencil', full: 'a pencil',
-    ru: 'карандаш', zh: '铅笔', ja: 'えんぴつ', fr: 'crayon', es: 'lápiz', ar: 'قلم رصاص', pl: 'ołówek', tok: 'ilo sitelen'
+    ru: 'карандаш', zh: '铅笔', ja: 'えんぴつ', fr: 'crayon', es: 'lápiz', ar: 'قلم رصاص', pl: 'ołówek', tok: 'ilo sitelen', ko: '연필'
   },
   paper: {
     icon: '📄', tags: ['hold', 'shop'], en: 'paper', full: 'a sheet of paper',
-    ru: 'бумага', zh: '纸', ja: 'かみ', fr: 'papier', es: 'papel', ar: 'ورقة', pl: 'kartka papieru', tok: 'lipu'
+    ru: 'бумага', zh: '纸', ja: 'かみ', fr: 'papier', es: 'papel', ar: 'ورقة', pl: 'kartka papieru', tok: 'lipu', ko: '종이'
   },
   map: {
     icon: '🗺️', tags: ['hold', 'ground', 'prize'], en: 'map', full: 'a map',
-    ru: 'карта', zh: '地图', ja: 'ちず', fr: 'carte', es: 'mapa', ar: 'خريطة', pl: 'mapa', tok: 'lipu ma'
+    ru: 'карта', zh: '地图', ja: 'ちず', fr: 'carte', es: 'mapa', ar: 'خريطة', pl: 'mapa', tok: 'lipu ma', ko: '지도'
   },
   purse: {
     icon: '👛', tags: ['hold', 'shop', 'ground'], en: 'purse', full: 'a purse',
-    ru: 'кошелёк', zh: '钱包', ja: 'さいふ', fr: 'porte-monnaie', es: 'monedero', ar: 'محفظة', pl: 'sakiewka', tok: 'poki mani'
+    ru: 'кошелёк', zh: '钱包', ja: 'さいふ', fr: 'porte-monnaie', es: 'monedero', ar: 'محفظة', pl: 'sakiewka', tok: 'poki mani', ko: '지갑'
   },
   backpack: {
     icon: '🎒', tags: ['hold', 'shop'], en: 'backpack', full: 'a backpack',
-    ru: 'рюкзак', zh: '背包', ja: 'リュック', fr: 'sac à dos', es: 'mochila', ar: 'حقيبة ظهر', pl: 'plecak', tok: 'poki monsi'
+    ru: 'рюкзак', zh: '背包', ja: 'リュック', fr: 'sac à dos', es: 'mochila', ar: 'حقيبة ظهر', pl: 'plecak', tok: 'poki monsi', ko: '배낭'
   },
   ring: {
     icon: '💍', tags: ['hold', 'ground', 'prize'], en: 'ring', full: 'a ring',
-    ru: 'кольцо', zh: '戒指', ja: 'ゆびわ', fr: 'bague', es: 'anillo', ar: 'خاتم', pl: 'pierścionek', tok: 'sike luka'
+    ru: 'кольцо', zh: '戒指', ja: 'ゆびわ', fr: 'bague', es: 'anillo', ar: 'خاتم', pl: 'pierścionek', tok: 'sike luka', ko: '반지'
   },
   crown: {
     icon: '👑', tags: ['hold', 'prize'], en: 'crown', full: 'a crown',
-    ru: 'корона', zh: '王冠', ja: 'おうかん', fr: 'couronne', es: 'corona', ar: 'تاج', pl: 'korona', tok: 'sike lawa'
+    ru: 'корона', zh: '王冠', ja: 'おうかん', fr: 'couronne', es: 'corona', ar: 'تاج', pl: 'korona', tok: 'sike lawa', ko: '왕관'
   },
   crystal_ball: {
     icon: '🔮', tags: ['hold', 'prize'], en: 'crystal ball', full: 'a crystal ball',
-    ru: 'хрустальный шар', zh: '水晶球', ja: '水晶玉', fr: 'boule de cristal', es: 'bola de cristal', ar: 'كرة بلورية', pl: 'kryształowa kula', tok: 'sike pi kiwen lukin'
+    ru: 'хрустальный шар', zh: '水晶球', ja: '水晶玉', fr: 'boule de cristal', es: 'bola de cristal', ar: 'كرة بلورية', pl: 'kryształowa kula', tok: 'sike pi kiwen lukin', ko: '수정 구슬'
   },
   coat: {
     icon: '🧥', tags: ['hold', 'shop'], en: 'coat', full: 'a coat',
-    ru: 'пальто', zh: '外套', ja: 'コート', fr: 'manteau', es: 'abrigo', ar: 'معطف', pl: 'płaszcz', tok: 'len lete'
+    ru: 'пальто', zh: '外套', ja: 'コート', fr: 'manteau', es: 'abrigo', ar: 'معطف', pl: 'płaszcz', tok: 'len lete', ko: '외투'
   },
   scarf: {
     icon: '🧣', tags: ['hold', 'shop', 'prize'], en: 'scarf', full: 'a scarf',
-    ru: 'шарф', zh: '围巾', ja: 'マフラー', fr: 'écharpe', es: 'bufanda', ar: 'وشاح', pl: 'szalik', tok: 'len pi anpa lawa'
+    ru: 'шарф', zh: '围巾', ja: 'マフラー', fr: 'écharpe', es: 'bufanda', ar: 'وشاح', pl: 'szalik', tok: 'len pi anpa lawa', ko: '목도리'
   },
   gloves: {
     icon: '🧤', tags: ['hold', 'shop', 'ground'], en: 'gloves', full: 'a pair of gloves',
-    ru: 'перчатки', zh: '手套', ja: 'てぶくろ', fr: 'gants', es: 'guantes', ar: 'قفازات', pl: 'rękawiczki', tok: 'len luka'
+    ru: 'перчатки', zh: '手套', ja: 'てぶくろ', fr: 'gants', es: 'guantes', ar: 'قفازات', pl: 'rękawiczki', tok: 'len luka', ko: '장갑'
   },
   socks: {
     icon: '🧦', tags: ['hold', 'shop'], en: 'socks', full: 'a pair of socks',
-    ru: 'носки', zh: '袜子', ja: 'くつした', fr: 'chaussettes', es: 'calcetines', ar: 'جوارب', pl: 'skarpetki', tok: 'len noka lili'
+    ru: 'носки', zh: '袜子', ja: 'くつした', fr: 'chaussettes', es: 'calcetines', ar: 'جوارب', pl: 'skarpetki', tok: 'len noka lili', ko: '양말'
   },
   shirt: {
     icon: '👕', tags: ['hold', 'shop'], en: 'shirt', full: 'a shirt',
-    ru: 'рубашка', zh: '衬衫', ja: 'シャツ', fr: 'chemise', es: 'camisa', ar: 'قميص', pl: 'koszula', tok: 'len sijelo'
+    ru: 'рубашка', zh: '衬衫', ja: 'シャツ', fr: 'chemise', es: 'camisa', ar: 'قميص', pl: 'koszula', tok: 'len sijelo', ko: '셔츠'
   },
   trousers: {
     icon: '👖', tags: ['hold', 'shop'], en: 'trousers', full: 'a pair of trousers',
-    ru: 'штаны', zh: '裤子', ja: 'ズボン', fr: 'pantalon', es: 'pantalones', ar: 'بنطال', pl: 'spodnie', tok: 'len pi noka tu'
+    ru: 'штаны', zh: '裤子', ja: 'ズボン', fr: 'pantalon', es: 'pantalones', ar: 'بنطال', pl: 'spodnie', tok: 'len pi noka tu', ko: '바지'
   },
   dress: {
     icon: '👗', tags: ['hold', 'shop', 'prize'], en: 'dress', full: 'a dress',
-    ru: 'платье', zh: '连衣裙', ja: 'ワンピース', fr: 'robe', es: 'vestido', ar: 'فستان', pl: 'sukienka', tok: 'len suli'
+    ru: 'платье', zh: '连衣裙', ja: 'ワンピース', fr: 'robe', es: 'vestido', ar: 'فستان', pl: 'sukienka', tok: 'len suli', ko: '원피스'
   },
   shoes: {
     icon: '👞', tags: ['hold', 'shop', 'ground'], en: 'shoes', full: 'a pair of shoes',
-    ru: 'туфли', zh: '鞋', ja: 'くつ', fr: 'chaussures', es: 'zapatos', ar: 'حذاء', pl: 'buty', tok: 'len noka'
+    ru: 'туфли', zh: '鞋', ja: 'くつ', fr: 'chaussures', es: 'zapatos', ar: 'حذاء', pl: 'buty', tok: 'len noka', ko: '신발'
   },
   glasses: {
     icon: '👓', tags: ['hold', 'shop', 'ground'], en: 'glasses', full: 'a pair of glasses',
-    ru: 'очки', zh: '眼镜', ja: 'めがね', fr: 'lunettes', es: 'gafas', ar: 'نظارة', pl: 'okulary', tok: 'ilo lukin'
+    ru: 'очки', zh: '眼镜', ja: 'めがね', fr: 'lunettes', es: 'gafas', ar: 'نظارة', pl: 'okulary', tok: 'ilo lukin', ko: '안경'
   },
   ribbon: {
     icon: '🎀', tags: ['hold', 'shop', 'prize'], en: 'ribbon', full: 'a ribbon',
-    ru: 'бант', zh: '蝴蝶结', ja: 'リボン', fr: 'ruban', es: 'lazo', ar: 'شريط', pl: 'wstążka', tok: 'linja kule'
+    ru: 'бант', zh: '蝴蝶结', ja: 'リボン', fr: 'ruban', es: 'lazo', ar: 'شريط', pl: 'wstążka', tok: 'linja kule', ko: '리본'
   },
   feather: {
     icon: '🪶', tags: ['hold', 'ground'], en: 'feather', full: 'a feather',
-    ru: 'перо', zh: '羽毛', ja: 'はね', fr: 'plume', es: 'pluma', ar: 'ريشة', pl: 'pióro', tok: 'linja waso'
+    ru: 'перо', zh: '羽毛', ja: 'はね', fr: 'plume', es: 'pluma', ar: 'ريشة', pl: 'pióro', tok: 'linja waso', ko: '깃털'
   },
   shell: {
     icon: '🐚', tags: ['hold', 'ground', 'prize'], en: 'shell', full: 'a shell',
-    ru: 'ракушка', zh: '贝壳', ja: 'かい', fr: 'coquillage', es: 'concha', ar: 'صدفة', pl: 'muszla', tok: 'selo kala'
+    ru: 'ракушка', zh: '贝壳', ja: 'かい', fr: 'coquillage', es: 'concha', ar: 'صدفة', pl: 'muszla', tok: 'selo kala', ko: '조개껍데기'
   },
   leaf: {
     icon: '🍃', tags: ['hold', 'ground'], en: 'leaf', full: 'a leaf',
-    ru: 'лист', zh: '叶子', ja: 'は', fr: 'feuille', es: 'hoja', ar: 'ورقة شجر', pl: 'liść', tok: 'lipu kasi'
+    ru: 'лист', zh: '叶子', ja: 'は', fr: 'feuille', es: 'hoja', ar: 'ورقة شجر', pl: 'liść', tok: 'lipu kasi', ko: '나뭇잎'
   },
   log: {
     icon: '🪵', tags: ['hold', 'ground'], en: 'log', full: 'a log',
-    ru: 'бревно', zh: '木头', ja: 'まるた', fr: 'bûche', es: 'tronco', ar: 'جذع خشب', pl: 'kłoda', tok: 'palisa kasi'
+    ru: 'бревно', zh: '木头', ja: 'まるた', fr: 'bûche', es: 'tronco', ar: 'جذع خشب', pl: 'kłoda', tok: 'palisa kasi', ko: '통나무'
   },
   stone: {
     icon: '🪨', tags: ['hold', 'ground'], en: 'stone', full: 'a stone',
-    ru: 'камень', zh: '石头', ja: 'いし', fr: 'pierre', es: 'piedra', ar: 'حجر', pl: 'kamień', tok: 'kiwen'
+    ru: 'камень', zh: '石头', ja: 'いし', fr: 'pierre', es: 'piedra', ar: 'حجر', pl: 'kamień', tok: 'kiwen', ko: '돌'
   },
   ice: {
     icon: '🧊', tags: ['hold', 'ground'], en: 'block of ice', full: 'a block of ice',
-    ru: 'лёд', zh: '冰', ja: 'こおり', fr: 'glace', es: 'hielo', ar: 'قالب ثلج', pl: 'bryła lodu', tok: 'telo lete kiwen'
+    ru: 'лёд', zh: '冰', ja: 'こおり', fr: 'glace', es: 'hielo', ar: 'قالب ثلج', pl: 'bryła lodu', tok: 'telo lete kiwen', ko: '얼음'
   },
   seedling: {
     icon: '🌱', tags: ['hold', 'shop', 'ground'], en: 'seedling', full: 'a seedling',
-    ru: 'росток', zh: '幼苗', ja: 'なえ', fr: 'pousse', es: 'brote', ar: 'شتلة', pl: 'sadzonka', tok: 'kasi lili'
+    ru: 'росток', zh: '幼苗', ja: 'なえ', fr: 'pousse', es: 'brote', ar: 'شتلة', pl: 'sadzonka', tok: 'kasi lili', ko: '모종'
   },
   herbs: {
     icon: '🌿', tags: ['hold', 'shop', 'ground'], en: 'herbs', full: 'a bunch of herbs',
-    ru: 'травы', zh: '草药', ja: 'ハーブ', fr: 'herbes', es: 'hierbas', ar: 'حزمة أعشاب', pl: 'pęczek ziół', tok: 'kasi pi kon pona'
+    ru: 'травы', zh: '草药', ja: 'ハーブ', fr: 'herbes', es: 'hierbas', ar: 'حزمة أعشاب', pl: 'pęczek ziół', tok: 'kasi pi kon pona', ko: '허브'
   },
   drum: {
     icon: '🥁', tags: ['hold', 'prize'], en: 'drum', full: 'a drum',
-    ru: 'барабан', zh: '鼓', ja: 'たいこ', fr: 'tambour', es: 'tambor', ar: 'طبل', pl: 'bęben', tok: 'ilo kalama supa'
+    ru: 'барабан', zh: '鼓', ja: 'たいこ', fr: 'tambour', es: 'tambor', ar: 'طبل', pl: 'bęben', tok: 'ilo kalama supa', ko: '북'
   },
   violin: {
     icon: '🎻', tags: ['hold', 'prize'], en: 'violin', full: 'a violin',
-    ru: 'скрипка', zh: '小提琴', ja: 'バイオリン', fr: 'violon', es: 'violín', ar: 'كمان', pl: 'skrzypce', tok: 'ilo kalama linja'
+    ru: 'скрипка', zh: '小提琴', ja: 'バイオリン', fr: 'violon', es: 'violín', ar: 'كمان', pl: 'skrzypce', tok: 'ilo kalama linja', ko: '바이올린'
   },
   guitar: {
     icon: '🎸', tags: ['hold', 'prize'], en: 'guitar', full: 'a guitar',
-    ru: 'гитара', zh: '吉他', ja: 'ギター', fr: 'guitare', es: 'guitarra', ar: 'جيتار', pl: 'gitara', tok: 'ilo kalama pi linja luka'
+    ru: 'гитара', zh: '吉他', ja: 'ギター', fr: 'guitare', es: 'guitarra', ar: 'جيتار', pl: 'gitara', tok: 'ilo kalama pi linja luka', ko: '기타'
   },
   kite: {
     icon: '🪁', tags: ['hold', 'ground', 'prize'], en: 'kite', full: 'a kite',
-    ru: 'воздушный змей', zh: '风筝', ja: 'たこ', fr: 'cerf-volant', es: 'cometa', ar: 'طائرة ورقية', pl: 'latawiec', tok: 'len pi tawa sewi'
+    ru: 'воздушный змей', zh: '风筝', ja: 'たこ', fr: 'cerf-volant', es: 'cometa', ar: 'طائرة ورقية', pl: 'latawiec', tok: 'len pi tawa sewi', ko: '연'
   },
   ball: {
     icon: '⚽', tags: ['hold', 'shop', 'ground', 'prize'], en: 'ball', full: 'a ball',
-    ru: 'мяч', zh: '球', ja: 'ボール', fr: 'ballon', es: 'pelota', ar: 'كرة', pl: 'piłka', tok: 'sike musi'
+    ru: 'мяч', zh: '球', ja: 'ボール', fr: 'ballon', es: 'pelota', ar: 'كرة', pl: 'piłka', tok: 'sike musi', ko: '공'
   },
   teddy: {
     icon: '🧸', tags: ['hold', 'shop', 'prize'], en: 'teddy bear', full: 'a teddy bear',
-    ru: 'плюшевый мишка', zh: '泰迪熊', ja: 'テディベア', fr: 'ours en peluche', es: 'osito de peluche', ar: 'دب محشو', pl: 'miś pluszowy', tok: 'soweli len'
+    ru: 'плюшевый мишка', zh: '泰迪熊', ja: 'テディベア', fr: 'ours en peluche', es: 'osito de peluche', ar: 'دب محشو', pl: 'miś pluszowy', tok: 'soweli len', ko: '곰인형'
   },
   dice: {
     icon: '🎲', tags: ['hold', 'ground'], en: 'dice', full: 'a pair of dice',
-    ru: 'кубики', zh: '骰子', ja: 'サイコロ', fr: 'dés', es: 'dados', ar: 'زهر النرد', pl: 'kości do gry', tok: 'kiwen musi'
+    ru: 'кубики', zh: '骰子', ja: 'サイコロ', fr: 'dés', es: 'dados', ar: 'زهر النرد', pl: 'kości do gry', tok: 'kiwen musi', ko: '주사위'
   },
   cards: {
     icon: '🃏', tags: ['hold', 'shop'], en: 'cards', full: 'a pack of cards',
-    ru: 'карты', zh: '扑克牌', ja: 'トランプ', fr: 'cartes', es: 'cartas', ar: 'أوراق لعب', pl: 'talia kart', tok: 'lipu musi'
+    ru: 'карты', zh: '扑克牌', ja: 'トランプ', fr: 'cartes', es: 'cartas', ar: 'أوراق لعب', pl: 'talia kart', tok: 'lipu musi', ko: '카드'
   },
   puzzle: {
     icon: '🧩', tags: ['hold', 'shop', 'prize'], en: 'puzzle', full: 'a puzzle',
-    ru: 'пазл', zh: '拼图', ja: 'パズル', fr: 'puzzle', es: 'puzle', ar: 'أحجية', pl: 'puzzle', tok: 'musi sona'
+    ru: 'пазл', zh: '拼图', ja: 'パズル', fr: 'puzzle', es: 'puzle', ar: 'أحجية', pl: 'puzzle', tok: 'musi sona', ko: '퍼즐'
   },
   sheep: {
     icon: '🐑', tags: ['beast'], en: 'sheep', full: 'a sheep',
-    ru: 'овца', zh: '绵羊', ja: 'ひつじ', fr: 'mouton', es: 'oveja', ar: 'خروف', pl: 'owca', tok: 'soweli pi linja mute'
+    ru: 'овца', zh: '绵羊', ja: 'ひつじ', fr: 'mouton', es: 'oveja', ar: 'خروف', pl: 'owca', tok: 'soweli pi linja mute', ko: '양'
   },
   pig: {
     icon: '🐖', tags: ['beast'], en: 'pig', full: 'a pig',
-    ru: 'свинья', zh: '猪', ja: 'ぶた', fr: 'cochon', es: 'cerdo', ar: 'خنزير', pl: 'świnia', tok: 'soweli ko'
+    ru: 'свинья', zh: '猪', ja: 'ぶた', fr: 'cochon', es: 'cerdo', ar: 'خنزير', pl: 'świnia', tok: 'soweli ko', ko: '돼지'
   },
   cow: {
     icon: '🐄', tags: ['beast'], en: 'cow', full: 'a cow',
-    ru: 'корова', zh: '牛', ja: 'うし', fr: 'vache', es: 'vaca', ar: 'بقرة', pl: 'krowa', tok: 'soweli mani'
+    ru: 'корова', zh: '牛', ja: 'うし', fr: 'vache', es: 'vaca', ar: 'بقرة', pl: 'krowa', tok: 'soweli mani', ko: '소'
   },
   horse: {
     icon: '🐎', tags: ['beast'], en: 'horse', full: 'a horse',
-    ru: 'лошадь', zh: '马', ja: 'うま', fr: 'cheval', es: 'caballo', ar: 'حصان', pl: 'koń', tok: 'soweli tawa'
+    ru: 'лошадь', zh: '马', ja: 'うま', fr: 'cheval', es: 'caballo', ar: 'حصان', pl: 'koń', tok: 'soweli tawa', ko: '말'
   },
   donkey: {
     icon: '🫏', tags: ['beast'], en: 'donkey', full: 'a donkey',
-    ru: 'осёл', zh: '驴', ja: 'ロバ', fr: 'âne', es: 'burro', ar: 'حمار', pl: 'osioł', tok: 'soweli pali'
+    ru: 'осёл', zh: '驴', ja: 'ロバ', fr: 'âne', es: 'burro', ar: 'حمار', pl: 'osioł', tok: 'soweli pali', ko: '당나귀'
   },
   rabbit: {
     icon: '🐇', tags: ['beast'], en: 'rabbit', full: 'a rabbit',
-    ru: 'кролик', zh: '兔子', ja: 'うさぎ', fr: 'lapin', es: 'conejo', ar: 'أرنب', pl: 'królik', tok: 'soweli pi kute suli'
+    ru: 'кролик', zh: '兔子', ja: 'うさぎ', fr: 'lapin', es: 'conejo', ar: 'أرنب', pl: 'królik', tok: 'soweli pi kute suli', ko: '토끼'
   },
   goose: {
     icon: '🪿', tags: ['beast'], en: 'goose', full: 'a goose',
-    ru: 'гусь', zh: '鹅', ja: 'ガチョウ', fr: 'oie', es: 'ganso', ar: 'إوزة', pl: 'gęś', tok: 'waso telo suli'
+    ru: 'гусь', zh: '鹅', ja: 'ガチョウ', fr: 'oie', es: 'ganso', ar: 'إوزة', pl: 'gęś', tok: 'waso telo suli', ko: '거위'
   },
   mouse: {
     icon: '🐁', tags: ['beast'], en: 'mouse', full: 'a mouse',
-    ru: 'мышь', zh: '老鼠', ja: 'ねずみ', fr: 'souris', es: 'ratón', ar: 'فأر', pl: 'mysz', tok: 'soweli lili'
+    ru: 'мышь', zh: '老鼠', ja: 'ねずみ', fr: 'souris', es: 'ratón', ar: 'فأر', pl: 'mysz', tok: 'soweli lili', ko: '쥐'
   },
   frog: {
     icon: '🐸', tags: ['beast'], en: 'frog', full: 'a frog',
-    ru: 'лягушка', zh: '青蛙', ja: 'かえる', fr: 'grenouille', es: 'rana', ar: 'ضفدع', pl: 'żaba', tok: 'akesi'
+    ru: 'лягушка', zh: '青蛙', ja: 'かえる', fr: 'grenouille', es: 'rana', ar: 'ضفدع', pl: 'żaba', tok: 'akesi', ko: '개구리'
   },
   hedgehog: {
     icon: '🦔', tags: ['beast'], en: 'hedgehog', full: 'a hedgehog',
-    ru: 'ёж', zh: '刺猬', ja: 'ハリネズミ', fr: 'hérisson', es: 'erizo', ar: 'قنفذ', pl: 'jeż', tok: 'soweli pi palisa mute'
+    ru: 'ёж', zh: '刺猬', ja: 'ハリネズミ', fr: 'hérisson', es: 'erizo', ar: 'قنفذ', pl: 'jeż', tok: 'soweli pi palisa mute', ko: '고슴도치'
   },
   owl: {
     icon: '🦉', tags: ['beast'], en: 'owl', full: 'an owl',
-    ru: 'сова', zh: '猫头鹰', ja: 'ふくろう', fr: 'hibou', es: 'búho', ar: 'بومة', pl: 'sowa', tok: 'waso pi tenpo pimeja'
+    ru: 'сова', zh: '猫头鹰', ja: 'ふくろう', fr: 'hibou', es: 'búho', ar: 'بومة', pl: 'sowa', tok: 'waso pi tenpo pimeja', ko: '부엉이'
   },
   turtle: {
     icon: '🐢', tags: ['beast'], en: 'turtle', full: 'a turtle',
-    ru: 'черепаха', zh: '乌龟', ja: 'かめ', fr: 'tortue', es: 'tortuga', ar: 'سلحفاة', pl: 'żółw', tok: 'akesi pi poki kiwen'
+    ru: 'черепаха', zh: '乌龟', ja: 'かめ', fr: 'tortue', es: 'tortuga', ar: 'سلحفاة', pl: 'żółw', tok: 'akesi pi poki kiwen', ko: '거북이'
   },
   snail: {
     icon: '🐌', tags: ['beast'], en: 'snail', full: 'a snail',
-    ru: 'улитка', zh: '蜗牛', ja: 'かたつむり', fr: 'escargot', es: 'caracol', ar: 'حلزون', pl: 'ślimak', tok: 'pipi pi tomo kiwen'
+    ru: 'улитка', zh: '蜗牛', ja: 'かたつむり', fr: 'escargot', es: 'caracol', ar: 'حلزون', pl: 'ślimak', tok: 'pipi pi tomo kiwen', ko: '달팽이'
   },
   parrot: {
     icon: '🦜', tags: ['beast'], en: 'parrot', full: 'a parrot',
-    ru: 'попугай', zh: '鹦鹉', ja: 'オウム', fr: 'perroquet', es: 'loro', ar: 'ببغاء', pl: 'papuga', tok: 'waso kule'
+    ru: 'попугай', zh: '鹦鹉', ja: 'オウム', fr: 'perroquet', es: 'loro', ar: 'ببغاء', pl: 'papuga', tok: 'waso kule', ko: '앵무새'
   },
   pony: {
     icon: '🐴', tags: ['beast'], en: 'pony', full: 'a pony',
-    ru: 'пони', zh: '小马', ja: 'ポニー', fr: 'poney', es: 'poni', ar: 'مهر', pl: 'kucyk', tok: 'soweli tawa lili'
+    ru: 'пони', zh: '小马', ja: 'ポニー', fr: 'poney', es: 'poni', ar: 'مهر', pl: 'kucyk', tok: 'soweli tawa lili', ko: '조랑말'
   }
 };
 
@@ -859,33 +891,33 @@ LG.BOARD_SPOT = { x: 43, y: 65, w: 3, h: 2 };
    actually painted on it is in the language the village speaks, with English
    the fallback and the gloss underneath. */
 LG.PLACENAMES = {
-  'Village Hall': { en: 'Village Hall', ru: 'Сельская управа', zh: '村公所', ja: '村役場', fr: 'Mairie', es: 'Ayuntamiento', ar: 'قاعة القرية', pl: 'Ratusz', tok: 'tomo pi kulupu ma' },
-  Bakery:         { en: 'Bakery', ru: 'Пекарня', zh: '面包店', ja: 'パン屋', fr: 'Boulangerie', es: 'Panadería', ar: 'مخبز', pl: 'Piekarnia', tok: 'tomo pan' },
-  Shop:           { en: 'Shop', ru: 'Лавка', zh: '杂货店', ja: '雑貨屋', fr: 'Épicerie', es: 'Tienda', ar: 'متجر', pl: 'Sklep', tok: 'tomo esun' },
-  Inn:            { en: 'Inn', ru: 'Трактир', zh: '客栈', ja: '宿屋', fr: 'Auberge', es: 'Posada', ar: 'نزل', pl: 'Gospoda', tok: 'tomo pi telo nasa' },
-  Farmhouse:      { en: 'Farmhouse', ru: 'Дом фермера', zh: '农舍', ja: '農家', fr: 'Ferme', es: 'Granja', ar: 'بيت المزرعة', pl: 'Zagroda', tok: 'tomo pi pali ma' },
-  Mill:           { en: 'Mill', ru: 'Мельница', zh: '磨坊', ja: '水車小屋', fr: 'Moulin', es: 'Molino', ar: 'طاحونة', pl: 'Młyn', tok: 'tomo pi pan ko' },
-  School:         { en: 'School', ru: 'Школа', zh: '学堂', ja: '学校', fr: 'École', es: 'Escuela', ar: 'مدرسة', pl: 'Szkoła', tok: 'tomo sona' },
-  Chapel:         { en: 'Chapel', ru: 'Часовня', zh: '小教堂', ja: '礼拝堂', fr: 'Chapelle', es: 'Capilla', ar: 'كنيسة صغيرة', pl: 'Kaplica', tok: 'tomo sewi' },
-  Smithy:         { en: 'Smithy', ru: 'Кузница', zh: '铁匠铺', ja: '鍛冶屋', fr: 'Forge', es: 'Herrería', ar: 'حدادة', pl: 'Kuźnia', tok: 'tomo pi kiwen seli' },
-  Hut:            { en: 'Hut', ru: 'Хижина', zh: '小屋', ja: '小屋', fr: 'Cabane', es: 'Choza', ar: 'كوخ', pl: 'Chata', tok: 'tomo lili' },
-  'The Green':    { en: 'The Green', ru: 'Площадь', zh: '村中广场', ja: '広場', fr: 'La Place', es: 'La Plaza', ar: 'الساحة الخضراء', pl: 'Błonie', tok: 'ma kasi lili' },
-  Mine:           { en: 'Mine', ru: 'Шахта', zh: '矿场', ja: '鉱山', fr: 'Mine', es: 'Mina', ar: 'منجم', pl: 'Kopalnia', tok: 'lupa ma' },
-  Pond:           { en: 'Pond', ru: 'Пруд', zh: '池塘', ja: '池', fr: 'Étang', es: 'Estanque', ar: 'بركة', pl: 'Staw', tok: 'telo lili' },
-  Fields:         { en: 'Fields', ru: 'Поля', zh: '田地', ja: '畑', fr: 'Champs', es: 'Campos', ar: 'حقول', pl: 'Pola', tok: 'ma pali' },
-  Orchard:        { en: 'Orchard', ru: 'Сад', zh: '果园', ja: '果樹園', fr: 'Verger', es: 'Huerto', ar: 'بستان', pl: 'Sad', tok: 'ma kili' },
-  Beeyard:        { en: 'Beeyard', ru: 'Пасека', zh: '养蜂场', ja: '養蜂場', fr: 'Rucher', es: 'Colmenar', ar: 'منحل', pl: 'Pasieka', tok: 'tomo pi pipi suwi' },
-  Woodpile:       { en: 'Woodpile', ru: 'Дровяной склад', zh: '木材堆场', ja: '薪置き場', fr: 'Tas de bois', es: 'Leñera', ar: 'كومة حطب', pl: 'Stos drewna', tok: 'kulupu palisa' },
-  Graveyard:      { en: 'Graveyard', ru: 'Кладбище', zh: '墓地', ja: '墓地', fr: 'Cimetière', es: 'Cementerio', ar: 'مقبرة', pl: 'Cmentarz', tok: 'ma pi jan moli' },
-  Noticeboard:    { en: 'Noticeboard', ru: 'Доска объявлений', zh: '布告栏', ja: '掲示板', fr: "Panneau d'affichage", es: 'Tablón de anuncios', ar: 'لوحة إعلانات', pl: 'Tablica ogłoszeń', tok: 'supa lipu' },
-  Station:        { en: 'Station', ru: 'Станция', zh: '火车站', ja: '駅', fr: 'Gare', es: 'Estación', ar: 'محطة', pl: 'Stacja', tok: 'tomo pi tomo tawa' },
-  'The Woods':    { en: 'The Woods', ru: 'Лес', zh: '树林', ja: '森', fr: 'La Forêt', es: 'El Bosque', ar: 'الغابة', pl: 'Las', tok: 'ma kasi suli' },
-  'Big Clearing': { en: 'Big Clearing', ru: 'Поляна', zh: '大空地', ja: '大きな空き地', fr: 'La Clairière', es: 'El Claro', ar: 'الفسحة الكبيرة', pl: 'Duża Polana', tok: 'ma suli pi kasi ala' },
-  'Old Oak':      { en: 'Old Oak', ru: 'Старый дуб', zh: '老橡树', ja: '古い樫の木', fr: 'Le Vieux Chêne', es: 'El Roble Viejo', ar: 'البلوطة العجوز', pl: 'Stary Dąb', tok: 'kasi suli pi tenpo mute' },
-  'The Hollow':   { en: 'The Hollow', ru: 'Лощина', zh: '洼地', ja: 'くぼ地', fr: 'Le Vallon', es: 'La Hondonada', ar: 'المنخفض', pl: 'Kotlina', tok: 'ma anpa' },
-  'Charcoal Pit': { en: 'Charcoal Pit', ru: 'Угольная яма', zh: '烧炭坑', ja: '炭焼き窯', fr: 'La Charbonnière', es: 'La Carbonera', ar: 'حفرة الفحم', pl: 'Mielerz', tok: 'lupa pi palisa seli' },
-  'Forest Spring':{ en: 'Forest Spring', ru: 'Лесной родник', zh: '林中泉', ja: '森の泉', fr: 'La Source', es: 'El Manantial', ar: 'نبع الغابة', pl: 'Leśne Źródło', tok: 'telo pi ma kasi' },
-  'Deep Woods':   { en: 'Deep Woods', ru: 'Чаща', zh: '密林深处', ja: '森の奥', fr: 'Le Bois Profond', es: 'La Espesura', ar: 'الغابة العميقة', pl: 'Głęboki Las', tok: 'insa pi ma kasi' }
+  'Village Hall': { en: 'Village Hall', ru: 'Сельская управа', zh: '村公所', ja: '村役場', fr: 'Mairie', es: 'Ayuntamiento', ar: 'قاعة القرية', pl: 'Ratusz', tok: 'tomo pi kulupu ma', ko: '마을회관' },
+  Bakery:         { en: 'Bakery', ru: 'Пекарня', zh: '面包店', ja: 'パン屋', fr: 'Boulangerie', es: 'Panadería', ar: 'مخبز', pl: 'Piekarnia', tok: 'tomo pan', ko: '빵집' },
+  Shop:           { en: 'Shop', ru: 'Лавка', zh: '杂货店', ja: '雑貨屋', fr: 'Épicerie', es: 'Tienda', ar: 'متجر', pl: 'Sklep', tok: 'tomo esun', ko: '가게' },
+  Inn:            { en: 'Inn', ru: 'Трактир', zh: '客栈', ja: '宿屋', fr: 'Auberge', es: 'Posada', ar: 'نزل', pl: 'Gospoda', tok: 'tomo pi telo nasa', ko: '여관' },
+  Farmhouse:      { en: 'Farmhouse', ru: 'Дом фермера', zh: '农舍', ja: '農家', fr: 'Ferme', es: 'Granja', ar: 'بيت المزرعة', pl: 'Zagroda', tok: 'tomo pi pali ma', ko: '농가' },
+  Mill:           { en: 'Mill', ru: 'Мельница', zh: '磨坊', ja: '水車小屋', fr: 'Moulin', es: 'Molino', ar: 'طاحونة', pl: 'Młyn', tok: 'tomo pi pan ko', ko: '물레방앗간' },
+  School:         { en: 'School', ru: 'Школа', zh: '学堂', ja: '学校', fr: 'École', es: 'Escuela', ar: 'مدرسة', pl: 'Szkoła', tok: 'tomo sona', ko: '학교' },
+  Chapel:         { en: 'Chapel', ru: 'Часовня', zh: '小教堂', ja: '礼拝堂', fr: 'Chapelle', es: 'Capilla', ar: 'كنيسة صغيرة', pl: 'Kaplica', tok: 'tomo sewi', ko: '예배당' },
+  Smithy:         { en: 'Smithy', ru: 'Кузница', zh: '铁匠铺', ja: '鍛冶屋', fr: 'Forge', es: 'Herrería', ar: 'حدادة', pl: 'Kuźnia', tok: 'tomo pi kiwen seli', ko: '대장간' },
+  Hut:            { en: 'Hut', ru: 'Хижина', zh: '小屋', ja: '小屋', fr: 'Cabane', es: 'Choza', ar: 'كوخ', pl: 'Chata', tok: 'tomo lili', ko: '오두막' },
+  'The Green':    { en: 'The Green', ru: 'Площадь', zh: '村中广场', ja: '広場', fr: 'La Place', es: 'La Plaza', ar: 'الساحة الخضراء', pl: 'Błonie', tok: 'ma kasi lili', ko: '마을 광장' },
+  Mine:           { en: 'Mine', ru: 'Шахта', zh: '矿场', ja: '鉱山', fr: 'Mine', es: 'Mina', ar: 'منجم', pl: 'Kopalnia', tok: 'lupa ma', ko: '광산' },
+  Pond:           { en: 'Pond', ru: 'Пруд', zh: '池塘', ja: '池', fr: 'Étang', es: 'Estanque', ar: 'بركة', pl: 'Staw', tok: 'telo lili', ko: '연못' },
+  Fields:         { en: 'Fields', ru: 'Поля', zh: '田地', ja: '畑', fr: 'Champs', es: 'Campos', ar: 'حقول', pl: 'Pola', tok: 'ma pali', ko: '들판' },
+  Orchard:        { en: 'Orchard', ru: 'Сад', zh: '果园', ja: '果樹園', fr: 'Verger', es: 'Huerto', ar: 'بستان', pl: 'Sad', tok: 'ma kili', ko: '과수원' },
+  Beeyard:        { en: 'Beeyard', ru: 'Пасека', zh: '养蜂场', ja: '養蜂場', fr: 'Rucher', es: 'Colmenar', ar: 'منحل', pl: 'Pasieka', tok: 'tomo pi pipi suwi', ko: '양봉장' },
+  Woodpile:       { en: 'Woodpile', ru: 'Дровяной склад', zh: '木材堆场', ja: '薪置き場', fr: 'Tas de bois', es: 'Leñera', ar: 'كومة حطب', pl: 'Stos drewna', tok: 'kulupu palisa', ko: '장작더미' },
+  Graveyard:      { en: 'Graveyard', ru: 'Кладбище', zh: '墓地', ja: '墓地', fr: 'Cimetière', es: 'Cementerio', ar: 'مقبرة', pl: 'Cmentarz', tok: 'ma pi jan moli', ko: '묘지' },
+  Noticeboard:    { en: 'Noticeboard', ru: 'Доска объявлений', zh: '布告栏', ja: '掲示板', fr: "Panneau d'affichage", es: 'Tablón de anuncios', ar: 'لوحة إعلانات', pl: 'Tablica ogłoszeń', tok: 'supa lipu', ko: '게시판' },
+  Station:        { en: 'Station', ru: 'Станция', zh: '火车站', ja: '駅', fr: 'Gare', es: 'Estación', ar: 'محطة', pl: 'Stacja', tok: 'tomo pi tomo tawa', ko: '역' },
+  'The Woods':    { en: 'The Woods', ru: 'Лес', zh: '树林', ja: '森', fr: 'La Forêt', es: 'El Bosque', ar: 'الغابة', pl: 'Las', tok: 'ma kasi suli', ko: '숲' },
+  'Big Clearing': { en: 'Big Clearing', ru: 'Поляна', zh: '大空地', ja: '大きな空き地', fr: 'La Clairière', es: 'El Claro', ar: 'الفسحة الكبيرة', pl: 'Duża Polana', tok: 'ma suli pi kasi ala', ko: '큰 공터' },
+  'Old Oak':      { en: 'Old Oak', ru: 'Старый дуб', zh: '老橡树', ja: '古い樫の木', fr: 'Le Vieux Chêne', es: 'El Roble Viejo', ar: 'البلوطة العجوز', pl: 'Stary Dąb', tok: 'kasi suli pi tenpo mute', ko: '늙은 참나무' },
+  'The Hollow':   { en: 'The Hollow', ru: 'Лощина', zh: '洼地', ja: 'くぼ地', fr: 'Le Vallon', es: 'La Hondonada', ar: 'المنخفض', pl: 'Kotlina', tok: 'ma anpa', ko: '움푹한 곳' },
+  'Charcoal Pit': { en: 'Charcoal Pit', ru: 'Угольная яма', zh: '烧炭坑', ja: '炭焼き窯', fr: 'La Charbonnière', es: 'La Carbonera', ar: 'حفرة الفحم', pl: 'Mielerz', tok: 'lupa pi palisa seli', ko: '숯가마' },
+  'Forest Spring':{ en: 'Forest Spring', ru: 'Лесной родник', zh: '林中泉', ja: '森の泉', fr: 'La Source', es: 'El Manantial', ar: 'نبع الغابة', pl: 'Leśne Źródło', tok: 'telo pi ma kasi', ko: '숲속 샘' },
+  'Deep Woods':   { en: 'Deep Woods', ru: 'Чаща', zh: '密林深处', ja: '森の奥', fr: 'Le Bois Profond', es: 'La Espesura', ar: 'الغابة العميقة', pl: 'Głęboki Las', tok: 'insa pi ma kasi', ko: '깊은 숲' }
 };
 /* `label` is the internal id (a building's `label`, or one of the bare strings
    above); everything else always addresses a place by that id and only ever
@@ -935,7 +967,7 @@ LG.itemSaid = function (id, lang, short) {
    are substituted in; {cost} is left as a bare number so it reads the same
    everywhere. English doubles as the gloss shown underneath, click-to-reveal,
    the same convention the notebook and overheard speech already use. */
-LG.CONJ = { ru: 'и', en: 'and', zh: '和', ja: 'と', fr: 'et', es: 'y', ar: 'و', pl: 'i', tok: 'en' };
+LG.CONJ = { ru: 'и', en: 'and', zh: '和', ja: 'と', fr: 'et', es: 'y', ar: 'و', pl: 'i', tok: 'en', ko: '그리고' };
 
 LG.TXN = {
   buy: {
@@ -947,7 +979,8 @@ LG.TXN = {
     es: 'Le compras {items} a {name} por ¤{cost}.',
     ar: 'اشتريت {items} من {name} مقابل ¤{cost}.',
     pl: 'Kupujesz {items} od {name} za ¤{cost}.',
-    tok: 'sina esun e {items} tan {name} kepeken mani ¤{cost}.'
+    tok: 'sina esun e {items} tan {name} kepeken mani ¤{cost}.',
+    ko: '{name}에게서 ¤{cost}에 {items} 구입.'
   },
   handOver: {
     en: 'You hand over {items} to {name} for ¤{cost}.',
@@ -958,7 +991,8 @@ LG.TXN = {
     es: 'Le entregas {items} a {name} por ¤{cost}.',
     ar: 'تم تسليم {items} إلى {name} مقابل ¤{cost}.',
     pl: 'Wręczasz {items} {name} za ¤{cost}.',
-    tok: 'sina pana e {items} tawa {name} tan mani ¤{cost}.'
+    tok: 'sina pana e {items} tawa {name} tan mani ¤{cost}.',
+    ko: '{name}에게 ¤{cost}에 {items} 전달.'
   },
   refund: {
     en: 'You return {items} to {name} and get ¤{cost} back.',
@@ -969,7 +1003,8 @@ LG.TXN = {
     es: 'Le devuelves {items} a {name} y recuperas ¤{cost}.',
     ar: 'تم إرجاع {items} إلى {name} واسترجاع ¤{cost}.',
     pl: 'Zwracasz {items} {name} i odzyskujesz ¤{cost}.',
-    tok: 'sina pana sin e {items} tawa {name}. sina kama jo sin e mani ¤{cost}.'
+    tok: 'sina pana sin e {items} tawa {name}. sina kama jo sin e mani ¤{cost}.',
+    ko: '{name}에게 {items} 반납, ¤{cost} 환불.'
   },
   tradeReceive: {
     en: '{name} hands over {item}.',
@@ -980,7 +1015,8 @@ LG.TXN = {
     es: '{name} te entrega {item}.',
     ar: 'تم تسليم {item} من {name}.',
     pl: '{name} wręcza ci {item}.',
-    tok: '{name} li pana e {item}.'
+    tok: '{name} li pana e {item}.',
+    ko: '{name}에게서 {item} 전달받음.'
   }
 };
 /* Every other language's four lines put the traveller in the grammatical
@@ -992,7 +1028,21 @@ LG.TXN = {
    returning of X took place"), the same impersonal construction that keeps
    a road sign from having to guess who is reading it. So the Arabic lines
    are impersonal throughout, not translations of "you" with a gender
-   picked for it. */
+   picked for it.
+
+   Korean has its own version of this problem, on a different axis. Its
+   object and subject particles (을/를, 이/가) are not fixed words but pick
+   one of two forms depending on whether the syllable in front of them
+   ends in a consonant or a vowel — fine for a hand-written sentence, but
+   {items}, {item} and {name} here are filled in at runtime from whichever
+   item or villager the game is narrating, so there is no single form to
+   pick that would always be right. Korean headlines and notices dodge the
+   same kind of gap by dropping the particle and ending on the bare noun
+   — "물건 구입" ("goods purchase") rather than "물건을 구입했다" ("[I]
+   purchased the goods") — which is also, conveniently, the exact register
+   these four lines are already in. So the ko lines are noun-final
+   throughout, and only ever use 에게/에게서 ("to"/"from" a person) and 에
+   ("at" a price), the two particles here whose form never changes. */
 
 /* --------------------------------------------------------------- places
    Where a dropped thing can turn up, and where an animal likes to loiter.
@@ -1220,7 +1270,8 @@ LG.CHATTER = {
   es: ['¿Te has enterado?', '¡No me digas!', 'Sí, eso es.', '¡No puede ser!'],
   ar: ['سمعت؟', 'مستحيل!', 'نعم، هذا صحيح.', 'لا يمكن!'],
   pl: ['Słyszałeś?', 'Co ty powiesz!', 'No, zgadza się.', 'Nigdy!'],
-  tok: ['sina kute ala kute e ni?', 'a! lon ala!', 'lon. ni li lon.', 'ken ala!']
+  tok: ['sina kute ala kute e ni?', 'a! lon ala!', 'lon. ni li lon.', 'ken ala!'],
+  ko: ['들었어?', '설마!', '응, 맞아.', '말도 안 돼!']
 };
 
 /* ------------------------------------------------------------ phrasebook
@@ -1233,42 +1284,42 @@ LG.CHATTER = {
    form and leave it there, the ordinary convention for a phrasebook rather
    than a notice. So these do too. */
 LG.PHRASES = [
-  { en: 'Hello!', ru: 'Привет!', zh: '你好！', fr: 'Bonjour !', es: '¡Hola!', ja: 'こんにちは！', ar: 'مرحباً!', pl: 'Cześć!', tok: 'toki!' },
-  { en: 'Who are you?', ru: 'Кто ты?', zh: '你是谁？', fr: 'Qui es-tu ?', es: '¿Quién eres?', ja: 'あなたはだれですか？', ar: 'من أنت؟', pl: 'Kim jesteś?', tok: 'sina jan seme?' },
+  { en: 'Hello!', ru: 'Привет!', zh: '你好！', fr: 'Bonjour !', es: '¡Hola!', ja: 'こんにちは！', ar: 'مرحباً!', pl: 'Cześć!', tok: 'toki!', ko: '안녕하세요!' },
+  { en: 'Who are you?', ru: 'Кто ты?', zh: '你是谁？', fr: 'Qui es-tu ?', es: '¿Quién eres?', ja: 'あなたはだれですか？', ar: 'من أنت؟', pl: 'Kim jesteś?', tok: 'sina jan seme?', ko: '누구세요?' },
   {
     en: 'What is your name?', ru: 'Как тебя зовут?', zh: '你叫什么名字？',
     fr: "Comment tu t'appelles ?", es: '¿Cómo te llamas?', ja: 'お名前は何ですか？',
     jaRuby: 'お<ruby>名前<rt>なまえ</rt></ruby>は<ruby>何<rt>なん</rt></ruby>ですか？',
-    ar: 'ما اسمك؟', pl: 'Jak masz na imię?', tok: 'nimi sina li seme?'
+    ar: 'ما اسمك؟', pl: 'Jak masz na imię?', tok: 'nimi sina li seme?', ko: '이름이 뭐예요?'
   },
   {
     en: 'What do you need?', ru: 'Что тебе нужно?', zh: '你需要什么？', fr: 'De quoi as-tu besoin ?', es: '¿Qué necesitas?', ja: '何がいりますか？',
     jaRuby: '<ruby>何<rt>なに</rt></ruby>がいりますか？',
-    ar: 'ماذا تحتاج؟', pl: 'Czego potrzebujesz?', tok: 'sina wile e seme?'
+    ar: 'ماذا تحتاج؟', pl: 'Czego potrzebujesz?', tok: 'sina wile e seme?', ko: '뭐가 필요하세요?'
   },
   {
     en: 'Can you help me?', ru: 'Ты можешь мне помочь?', zh: '你能帮我吗？', fr: 'Peux-tu m’aider ?', es: '¿Puedes ayudarme?', ja: '手伝ってくれますか？',
     jaRuby: '<ruby>手伝<rt>てつだ</rt></ruby>ってくれますか？',
-    ar: 'هل يمكنك مساعدتي؟', pl: 'Możesz mi pomóc?', tok: 'sina ken ala ken pana e pona tawa mi?'
+    ar: 'هل يمكنك مساعدتي؟', pl: 'Możesz mi pomóc?', tok: 'sina ken ala ken pana e pona tawa mi?', ko: '저를 도와주실 수 있어요?'
   },
   {
     en: 'Who has it?', ru: 'У кого это есть?', zh: '谁有？', fr: 'Qui l’a ?', es: '¿Quién lo tiene?', ja: 'だれが持っていますか？',
     jaRuby: 'だれが<ruby>持<rt>も</rt></ruby>っていますか？',
-    ar: 'من لديه؟', pl: 'Kto to ma?', tok: 'jan seme li jo e ona?'
+    ar: 'من لديه؟', pl: 'Kto to ma?', tok: 'jan seme li jo e ona?', ko: '누가 가지고 있어요?'
   },
-  { en: 'Where is it?', ru: 'Где это?', zh: '在哪里？', fr: 'Où est-ce ?', es: '¿Dónde está?', ja: 'どこにありますか？', ar: 'أين هو؟', pl: 'Gdzie to jest?', tok: 'ona li lon seme?' },
+  { en: 'Where is it?', ru: 'Где это?', zh: '在哪里？', fr: 'Où est-ce ?', es: '¿Dónde está?', ja: 'どこにありますか？', ar: 'أين هو؟', pl: 'Gdzie to jest?', tok: 'ona li lon seme?', ko: '어디에 있어요?' },
   {
     en: 'I have it!', ru: 'У меня есть!', zh: '我有！', fr: 'Je l’ai !', es: '¡Lo tengo!', ja: '持っています！',
     jaRuby: '<ruby>持<rt>も</rt></ruby>っています！',
-    ar: 'عندي!', pl: 'Mam to!', tok: 'mi jo e ona!'
+    ar: 'عندي!', pl: 'Mam to!', tok: 'mi jo e ona!', ko: '제가 가지고 있어요!'
   },
-  { en: 'Here you go.', ru: 'Вот, держи.', zh: '给你。', fr: 'Tiens.', es: 'Toma.', ja: 'はい、どうぞ。', ar: 'تفضل.', pl: 'Proszę.', tok: 'ni li tawa sina.' },
-  { en: 'How much does it cost?', ru: 'Сколько это стоит?', zh: '这个多少钱？', fr: 'Ça coûte combien ?', es: '¿Cuánto cuesta?', ja: 'いくらですか？', ar: 'كم يكلف؟', pl: 'Ile to kosztuje?', tok: 'ni li mani seme?' },
-  { en: 'Thank you!', ru: 'Спасибо!', zh: '谢谢！', fr: 'Merci !', es: '¡Gracias!', ja: 'ありがとう！', ar: 'شكراً!', pl: 'Dziękuję!', tok: 'pona!' },
-  { en: "I don't understand.", ru: 'Я не понимаю.', zh: '我不明白。', fr: 'Je ne comprends pas.', es: 'No entiendo.', ja: 'わかりません。', ar: 'لا أفهم.', pl: 'Nie rozumiem.', tok: 'mi sona ala.' },
+  { en: 'Here you go.', ru: 'Вот, держи.', zh: '给你。', fr: 'Tiens.', es: 'Toma.', ja: 'はい、どうぞ。', ar: 'تفضل.', pl: 'Proszę.', tok: 'ni li tawa sina.', ko: '여기 있어요.' },
+  { en: 'How much does it cost?', ru: 'Сколько это стоит?', zh: '这个多少钱？', fr: 'Ça coûte combien ?', es: '¿Cuánto cuesta?', ja: 'いくらですか？', ar: 'كم يكلف؟', pl: 'Ile to kosztuje?', tok: 'ni li mani seme?', ko: '얼마예요?' },
+  { en: 'Thank you!', ru: 'Спасибо!', zh: '谢谢！', fr: 'Merci !', es: '¡Gracias!', ja: 'ありがとう！', ar: 'شكراً!', pl: 'Dziękuję!', tok: 'pona!', ko: '감사합니다!' },
+  { en: "I don't understand.", ru: 'Я не понимаю.', zh: '我不明白。', fr: 'Je ne comprends pas.', es: 'No entiendo.', ja: 'わかりません。', ar: 'لا أفهم.', pl: 'Nie rozumiem.', tok: 'mi sona ala.', ko: '이해가 안 돼요.' },
   {
     en: 'Say that again, slowly.', ru: 'Повтори, медленно.', zh: '请再说一遍，慢一点。', fr: 'Répète, lentement.', es: 'Repite, despacio.', ja: 'もう一度、ゆっくり言ってください。',
     jaRuby: 'もう<ruby>一度<rt>いちど</rt></ruby>、ゆっくり<ruby>言<rt>い</rt></ruby>ってください。',
-    ar: 'قل ذلك مرة أخرى، ببطء.', pl: 'Powtórz to, powoli.', tok: 'o toki sin kepeken tenpo suli.'
+    ar: 'قل ذلك مرة أخرى، ببطء.', pl: 'Powtórz to, powoli.', tok: 'o toki sin kepeken tenpo suli.', ko: '다시 천천히 말해 주세요.'
   }
 ];

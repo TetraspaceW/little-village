@@ -8,14 +8,24 @@ LG.game = (function () {
     lang: 'ru', level: 'beginner',
     provider: 'anthropic', apiKey: '', model: 'claude-sonnet-5', helper: '',
     showTranslation: true, npcChatter: true,
-    voices: false, ttsKey: '', voiceSpeed: 'auto', voiceQuality: 'curated'
+    voices: false, ttsKey: '', voiceSpeed: 'auto', voiceQuality: 'curated',
+    // How Chinese pronunciation is shown — only read where LANGUAGES[lang].rubyAll
+    // is set. 'line' is the long-standing whole-sentence pinyin span, kept as the
+    // default because it needs nothing to line up; 'pinyin'/'zhuyin' put the
+    // reading on each character instead, ruby-style, whenever it can — see
+    // dialogue.js's zhRuby for what "whenever it can" means.
+    zhReading: 'line',
+    // Off by default — an extra small-model call on every line the player
+    // sends, for a footnote never shown to the villager. See dialogue.js's
+    // offerCorrection.
+    corrections: false
   };
 
   // No key, no village. `gated` freezes input until the front door is passed.
   let gated = true, gateMode = false, lastValidated = '';
   let fromEnv = false;             // the keys were handed to us, not typed
 
-  const state = { inv: {}, notes: [], deeds: [], won: false, board: [] };
+  const state = { inv: {}, notes: [], deeds: [], won: false, board: [], words: [], arrivedDay: 0 };
 
   let plan = null;                 // the generated errand chain (chain.js)
   let canvas, ctx, cam = { x: 0, y: 0 }, vw = 0, vh = 0, dpr = 1;
@@ -76,7 +86,11 @@ LG.game = (function () {
 
   /* ---------------------------------------------------------- inventory */
   function count(id) { return state.inv[id] || 0; }
-  function give(id, n) { state.inv[id] = (state.inv[id] || 0) + (n || 1); renderHUD(); }
+  function give(id, n, how) {
+    state.inv[id] = (state.inv[id] || 0) + (n || 1);
+    learnWord(id, how);
+    renderHUD();
+  }
   function take(id, n) {
     state.inv[id] = Math.max(0, (state.inv[id] || 0) - (n || 1));
     if (!state.inv[id]) delete state.inv[id];
@@ -91,6 +105,52 @@ LG.game = (function () {
                        (state.inv[k] > 1 ? ' x' + state.inv[k] : '')).join(', ');
   }
   function itemLabel(id) { return LG.itemName(id, settings.lang); }
+
+  /* `spread`/`taper`/`gossip` — the rest of LG.LEVELS — make the chain harder
+     to trace; this is the one difficulty knob that changes the interface
+     instead, at advanced only: no phrase to fall back on, no translation to
+     click through to. One reader for LG.LEVELS[level].noCrutches so it is a
+     decision made once rather than a level name compared against in every
+     place a translation or a phrase gets shown. */
+  function crutchesOff() { return !!(LG.LEVELS[settings.level] || {}).noCrutches; }
+
+  /* What `spread`/`taper`/`gossip` actually add up to, in words rather than
+     the numbers chain.js reads them as — hand-written from the same figures
+     README.md's own difficulty table gives (averaged over villages, not
+     derived live from LG.LEVELS here), so this says only what has already
+     been measured and published rather than a fresh paraphrase of raw
+     tuning constants that could read into them something not actually
+     true of the generator. */
+  const LEVEL_INFO = {
+    beginner: 'Each fact is told to about 4 villagers besides its owner, and the ' +
+      'village gossip knows the whole errand — there is usually more than one way in.',
+    intermediate: 'Each fact reaches about 2 villagers besides its owner, and the ' +
+      'gossip knows roughly half of it.',
+    advanced: 'Facts barely spread — usually just the owner — and the gossip knows ' +
+      'only opinions, no part of the errand itself. Translations lock and the ' +
+      'phrasebook empties too.'
+  };
+  function updateLevelInfo() {
+    const el = document.getElementById('setLevelInfo');
+    if (el) el.textContent = LEVEL_INFO[document.getElementById('setLevel').value] || '';
+  }
+  // Whether an English gloss should start out hidden — always at advanced,
+  // otherwise whatever ⚙ → "show translations" says.
+  function glossHidden() { return crutchesOff() || !settings.showTranslation; }
+  function glossClass() { return glossHidden() ? ' hidden-tr' : ''; }
+  function glossTitle() {
+    return crutchesOff() ? 'no translations at this difficulty'
+         : glossHidden() ? 'click to reveal' : '';
+  }
+  // A gloss drawn `.hidden-tr` gets its click-to-reveal bound here, once,
+  // rather than three near-identical copies of the same loop at every place
+  // one gets drawn — and it is the one place "at advanced, it never reveals"
+  // has to be remembered at all.
+  function bindGlossReveal(box) {
+    Array.prototype.forEach.call(box.querySelectorAll('.gloss.hidden-tr'), el => {
+      el.onclick = crutchesOff() ? null : () => el.classList.remove('hidden-tr');
+    });
+  }
 
   /* Names are unknown until a villager actually tells you theirs — the same
      rule the notebook already runs on for everything else a villager knows,
@@ -131,9 +191,41 @@ LG.game = (function () {
     const L = LG.LANGUAGES[settings.lang];
     const line = fillTemplate(set[settings.lang] || set.en, native);
     const gloss = fillTemplate(set.en, english);
-    const hide = settings.showTranslation ? '' : ' hidden-tr';
     pushLog(icon + ' <span class="heard" lang="' + L.tag + '">' + escapeHTML(line) + '</span>' +
-            '<span class="gloss' + hide + '" lang="en" title="click to read">' + escapeHTML(gloss) + '</span>');
+            '<span class="gloss' + glossClass() + '" lang="en" title="' + glossTitle() + '">' +
+            escapeHTML(gloss) + '</span>');
+  }
+
+  /* ---------------------------------------------------------- word list
+     Every item in the game already has a name in the village's language
+     (LG.ITEMS) — the word list is nothing but a record of which of those
+     names have actually reached the player, once each, with when and how.
+     No parsing of what a villager said: an item is on the list the moment
+     it enters your pockets (bought, traded, picked up, handed over) or the
+     moment a notebook fact is learned that is *about* it, whichever comes
+     first — never both, and never guessed at from free text. */
+  function hasWord(id) { return state.words.some(w => w.item === id); }
+  /* Which item, if any, a fact concerns — read off the chain link it came
+     from rather than out of its English text, so this never has to parse a
+     sentence to know what it was about. Mirrors the wording chain.js itself
+     builds each fact type from (see addFact in chain.js): 'deal' and 'has'
+     name what the villager is holding, 'want' names what they are after,
+     'where' is the terminal item wherever it ended up lying, and 'opinion'
+     is gossip about a person, never a thing. */
+  function itemForFact(f) {
+    if (!f || f.type === 'opinion') return null;
+    if (f.type === 'where') return plan.terminal && plan.terminal.item;
+    const lk = plan.links[f.link];
+    if (!lk) return null;
+    const id = f.type === 'want' ? lk.wants : lk.gives;
+    // coins are shown as ¤ from the first minute of the game, in every
+    // village — not a word anyone is discovering, so not one worth logging.
+    return id === 'coins' ? null : id;
+  }
+  function learnWord(id, how) {
+    if (!id || id === 'coins' || !LG.ITEMS[id] || hasWord(id)) return;
+    // due now, level 0 — a fresh word is due for its first review immediately
+    state.words.push({ item: id, how: how || '', at: LG.time.label(), level: 0, due: Date.now() });
   }
 
   /* ------------------------------------------------------------ notebook
@@ -149,7 +241,7 @@ LG.game = (function () {
   function hasNote(factId) {
     return state.notes.some(n => n.id === factId);
   }
-  function learn(factId, fromNpc, note, ruby) {
+  function learn(factId, fromNpc, note, ruby, roman) {
     if (!plan || !plan.facts[factId]) return;
     if (plan.facts[factId].type === 'opinion') return;   // gossip, not the errand
     if (hasNote(factId)) return;
@@ -162,7 +254,8 @@ LG.game = (function () {
        render time instead, so there is no way to write a note that claims to be
        live when it is not. */
     state.notes.push({ id: factId, text: note || plan.facts[factId].text,
-                       ruby: ruby || null });
+                       ruby: ruby || null, roman: roman || null });
+    learnWord(itemForFact(plan.facts[factId]), 'told about it');
     log('📓 ' + (note || plan.facts[factId].text));
     renderHUD();
   }
@@ -173,9 +266,7 @@ LG.game = (function () {
     if (logLines.length > 5) logLines.shift();
     const box = document.getElementById('log');
     box.innerHTML = logLines.map(l => '<div>' + l + '</div>').join('');
-    Array.prototype.forEach.call(box.querySelectorAll('.gloss.hidden-tr'), el => {
-      el.onclick = () => el.classList.remove('hidden-tr');
-    });
+    bindGlossReveal(box);
   }
 
   function log(msg) { pushLog(escapeHTML(msg)); }
@@ -191,15 +282,22 @@ LG.game = (function () {
      handing over the answer makes overhearing a way to skip the language. */
   function logSpeech(name, said, ruby, roman, gloss) {
     const L = LG.LANGUAGES[settings.lang];
-    const heard = (ruby && L.furigana) ? LG.dialogue.rubyHTML(ruby) : escapeHTML(said);
+    const zh = (!ruby || !L.furigana) && L.rubyAll && roman && settings.zhReading !== 'line'
+      ? LG.dialogue.zhRubyHTML(said, roman, settings.zhReading) : null;
+    const withRuby = (ruby && L.furigana) || zh;
+    const heard = (ruby && L.furigana) ? LG.dialogue.rubyHTML(ruby) : zh || escapeHTML(said);
     let html = '<span class="who">\uD83D\uDC42 ' + escapeHTML(name) + ':</span> ' +
                '<span class="heard" lang="' + L.tag + '"' +
-               (ruby && L.furigana ? ' style="line-height:2"' : '') +
+               (withRuby ? ' style="line-height:2"' : '') +
                '>' + heard + '</span>';
-    if (roman && L.romanize) html += '<span class="roman" lang="' + L.romanTag + '">' +
+    if (roman && L.romanize && !zh) html += '<span class="roman" lang="' + L.romanTag + '">' +
                                      escapeHTML(roman) + '</span>';
-    if (gloss) html += '<span class="gloss hidden-tr" lang="en" title="click to read">' +
-                       escapeHTML(gloss) + '</span>';
+    // Always blurred, even with translations switched on — see the comment
+    // above this function — so this reads crutchesOff() directly rather than
+    // through glossTitle(), which would call it revealable off-advanced.
+    if (gloss) html += '<span class="gloss hidden-tr" lang="en" title="' +
+                       (crutchesOff() ? 'no translations at this difficulty' : 'click to read') +
+                       '">' + escapeHTML(gloss) + '</span>';
     pushLog(html);
   }
   function escapeHTML(s) {
@@ -222,21 +320,25 @@ LG.game = (function () {
     const nb = document.getElementById('notebook');
     const rows = state.deeds.map(d => '<div class="q done">✔ ' + escapeHTML(d) + '</div>')
       .concat(state.notes.map(n => {
-        const heard = (n.ruby && L.furigana) ? LG.dialogue.rubyHTML(n.ruby) : escapeHTML(n.text);
+        const zh = (!n.ruby || !L.furigana) && L.rubyAll && n.roman && settings.zhReading !== 'line'
+          ? LG.dialogue.zhRubyHTML(n.text, n.roman, settings.zhReading) : null;
+        const withRuby = (n.ruby && L.furigana) || zh;
+        const heard = (n.ruby && L.furigana) ? LG.dialogue.rubyHTML(n.ruby) : zh || escapeHTML(n.text);
         const gloss = plan.facts[n.id].text;
-        const hide = settings.showTranslation ? '' : ' hidden-tr';
         const done = factSpent(n.id);          // read off the world, never stored
+        // The title used to be the gloss text itself \u2014 fine as a hover aid
+        // while blur is only ever a click away, a hole in it once a click
+        // can no longer get past the blur at all.
+        const glossHint = crutchesOff() ? 'no translations at this difficulty' : escapeHTML(gloss);
         return '<div class="q' + (done ? ' done' : '') + '"><span class="heard" lang="' +
-               L.tag + '"' + (L.furigana && n.ruby ? ' style="line-height:2"' : '') +
+               L.tag + '"' + (withRuby ? ' style="line-height:2"' : '') +
                '>' + (done ? '\u2714 ' : '\u2022 ') + heard + '</span>' +
-               '<span class="gloss' + hide + '" lang="en" title="' + escapeHTML(gloss) + '">' +
+               '<span class="gloss' + glossClass() + '" lang="en" title="' + glossHint + '">' +
                escapeHTML(gloss) + '</span></div>';
       }));
     nb.innerHTML = rows.length ? rows.join('')
       : '<div class="q muted">Nothing yet. Try asking around!</div>';
-    Array.prototype.forEach.call(nb.querySelectorAll('.gloss.hidden-tr'), el => {
-      el.onclick = () => el.classList.remove('hidden-tr');
-    });
+    bindGlossReveal(nb);
   }
 
   /* --------------------------------------------------------------- shops */
@@ -417,7 +519,7 @@ LG.game = (function () {
       take('coins', cost);
       priced.forEach(w => {
         if (npc.stock[w.id] > 0) npc.stock[w.id]--;      // off their own shelf
-        give(w.id, 1);
+        give(w.id, 1, 'bought from ' + d.name);
         const share = Math.max(1, Math.round(cost * w.base / base));
         npc.sold[w.id] = { price: share, n: (npc.sold[w.id] ? npc.sold[w.id].n : 0) + 1 };
       });
@@ -453,7 +555,7 @@ LG.game = (function () {
   function doTrade(npc, trade) {
     const needN = trade.wantsCount || 1, giveN = trade.givesCount || 1;
     take(trade.wants, needN);
-    give(trade.gives, giveN);
+    give(trade.gives, giveN, 'traded with ' + displayName(npc));
     npc.tradeDone = true;
 
     const got = trade.gives === 'coins' ? giveN + ' coins' : LG.ITEMS[trade.gives].full;
@@ -520,7 +622,121 @@ LG.game = (function () {
     document.getElementById('endingText').textContent =
       c.npcName + ' has ' + (LG.ITEMS[c.wants].full) + ' at last, and you have ' +
       LG.ITEMS[c.gives].full + ' to show for it — along with a fistful of a new language.';
+    document.getElementById('endingStats').textContent = endingStats();
+    document.getElementById('endingCopied').hidden = true;
+    recordHistory();
     setTimeout(() => document.getElementById('ending').classList.add('open'), 900);
+  }
+
+  /* A closing tally, pulled from state the game was already keeping for its
+     own reasons — the word list, who has spoken to you at all (`metPlayer`,
+     not `nameKnown`: you can talk to somebody all errand and never catch
+     their name), and the calendar day the village began on. Nothing here
+     is scored or judged; it is the same kind of thing a save file already
+     is, read back as a sentence instead of state. */
+  function tallyNow() {
+    return {
+      met: npcs.filter(n => n.metPlayer).length,
+      total: npcs.length,
+      days: Math.max(1, LG.time.day - state.arrivedDay + 1),
+      words: state.words.length
+    };
+  }
+  function endingStats() {
+    const t = tallyNow();
+    return t.days + (t.days === 1 ? ' day' : ' days') + ', ' +
+      t.met + ' of ' + t.total + ' villagers spoken to, ' +
+      t.words + (t.words === 1 ? ' word' : ' words') + ' learned along the way.';
+  }
+  // One line worth sending someone, seed included — so "Copy a summary" on
+  // the ending screen hands over the same thing "Use seed" in Settings
+  // reads back in, and the village a friend gets is the one actually
+  // being bragged about rather than a fresh roll under the same name.
+  function endingSummaryText() {
+    if (!plan) return '';
+    const c = plan.links[0];
+    const t = tallyNow();
+    const L = LG.LANGUAGES[settings.lang] || {};
+    const lvl = (LG.LEVELS[settings.level] || {}).label || settings.level;
+    return c.npcName + ' finally has ' + LG.ITEMS[c.wants].full + ' — ' +
+      t.days + (t.days === 1 ? ' day' : ' days') + ', ' +
+      t.met + ' of ' + t.total + ' villagers spoken to, ' +
+      t.words + (t.words === 1 ? ' word' : ' words') + ' learned. ' +
+      'Little Village, ' + (L.name || settings.lang) + ', ' + lvl + ' — seed: ' + plan.seed;
+  }
+  function copyEndingSummary() {
+    let copied = false;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(endingSummaryText());
+        copied = true;
+      }
+    } catch (e) { /* clipboard permission denied, or none to ask */ }
+    const note = document.getElementById('endingCopied');
+    note.hidden = !copied;
+    if (copied) setTimeout(() => { note.hidden = true; }, 3000);
+  }
+
+  /* -------------------------------------------------------------- history
+     A finished errand outlives the village it happened in — "Start a new
+     village" throws away plan/npcs/state, and this village's own place in
+     `lg-history` is the only record left that it happened at all. Kept
+     entirely separate from `lg-save` (one village, mutable, overwritten
+     every autosave) rather than folded into it: this is small, append-only,
+     and survives even "Forget the saved village", which is the whole point
+     of it — a village worth remembering the seed of might not be the one
+     you want to keep playing. */
+  const HISTORY_KEY = 'lg-history', HISTORY_MAX = 25;
+  function loadHistory() {
+    try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); }
+    catch (e) { return []; }
+  }
+  function recordHistory() {
+    const t = tallyNow();
+    const entry = { seed: plan.seed, level: settings.level, lang: settings.lang,
+                     days: t.days, met: t.met, total: t.total, words: t.words,
+                     at: new Date().toISOString() };
+    try {
+      const h = loadHistory();
+      h.unshift(entry);
+      h.length = Math.min(h.length, HISTORY_MAX);
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(h));
+    } catch (e) { /* private browsing, storage full, or no localStorage at all */ }
+  }
+  // Rows built with createElement/appendChild rather than one innerHTML
+  // string, the same as dialogue.js's renderItems — each row's "Use seed"
+  // button needs its own onclick closed over that row's own seed, and a
+  // string has nowhere to hang one.
+  function renderHistory() {
+    const box = document.getElementById('setHistoryList');
+    if (!box) return;
+    box.innerHTML = '';
+    const h = loadHistory();
+    if (!h.length) {
+      box.innerHTML = '<p class="note">Nothing finished yet — this fills in the first time ' +
+        'an errand is done.</p>';
+      return;
+    }
+    h.forEach(e => {
+      const L = LG.LANGUAGES[e.lang] || {};
+      const lvl = (LG.LEVELS[e.level] || {}).label || e.level;
+      const row = document.createElement('div');
+      row.className = 'histRow';
+      const info = document.createElement('span');
+      info.className = 'histInfo';
+      info.innerHTML = '<span class="histSeed">' + escapeHTML(e.seed) + '</span>' +
+        escapeHTML((L.flag ? L.flag + ' ' : '') + (L.name || e.lang)) + ' · ' +
+        escapeHTML(lvl) + ' · ' + e.days + (e.days === 1 ? ' day' : ' days') + ' · ' +
+        e.met + '/' + e.total + ' met · ' +
+        e.words + (e.words === 1 ? ' word' : ' words');
+      row.appendChild(info);
+      const use = document.createElement('button');
+      use.type = 'button'; use.className = 'secondary';
+      use.textContent = 'Use seed';
+      use.onclick = () => { document.getElementById('setSeedInput').value = e.seed; };
+      row.appendChild(use);
+      box.appendChild(row);
+    });
   }
 
   /* ------------------------------------------------------------- startup */
@@ -616,6 +832,7 @@ LG.game = (function () {
 
     state.inv = { coins: 10 };          // a little money to be going on with
     state.notes = []; state.deeds = []; state.won = false; state.board = [];
+    state.arrivedDay = LG.time.day;     // for the ending screen's "N days" — see win()
 
     /* You arrive by train. The platform is the far east end of the high
        street, so the first thing you do is walk the length of it into a
@@ -968,8 +1185,17 @@ LG.game = (function () {
       document.getElementById('help').classList.remove('open');
     document.getElementById('boardClose').onclick = () =>
       document.getElementById('board').classList.remove('open');
+    document.getElementById('btnWords').onclick = openWords;
+    document.getElementById('wordsExport').onclick = exportWordList;
+    document.getElementById('setExportNotebook').onclick = exportNotebook;
+    document.getElementById('wordsClose').onclick = () =>
+      document.getElementById('words').classList.remove('open');
+    document.getElementById('btnPeople').onclick = openPeople;
+    document.getElementById('peopleClose').onclick = () =>
+      document.getElementById('people').classList.remove('open');
     document.getElementById('endingClose').onclick = () =>
       document.getElementById('ending').classList.remove('open');
+    document.getElementById('endingCopy').onclick = copyEndingSummary;
     document.getElementById('endingAgain').onclick = () => {
       document.getElementById('ending').classList.remove('open');
       newVillage();
@@ -978,6 +1204,28 @@ LG.game = (function () {
       document.getElementById('settings').classList.remove('open');
       newVillage();
     };
+    document.getElementById('setSeedCopy').onclick = () => {
+      let copied = false;
+      // Same `typeof navigator !== 'undefined'` guard data.js uses for the
+      // Gecko flag patch: no navigator at all in the smoke test's sandbox,
+      // and Clipboard access itself is asked for, never assumed, everywhere
+      // else a browser API might not be there (see speech.js's `available`).
+      try {
+        if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(document.getElementById('setSeedShow').value);
+          copied = true;
+        }
+      } catch (e) { /* clipboard permission denied, or none to ask */ }
+      const note = document.getElementById('setSeedCopied');
+      note.hidden = !copied;
+      if (copied) setTimeout(() => { note.hidden = true; }, 2000);
+    };
+    document.getElementById('setSeedGo').onclick = () => {
+      const seed = document.getElementById('setSeedInput').value.trim();
+      if (!seed) return;
+      document.getElementById('settings').classList.remove('open');
+      newVillage(seed);
+    };
     document.getElementById('setTtsTest').onclick = testVoices;
     document.getElementById('setForget').onclick = () => {
       LG.save.forget();
@@ -985,6 +1233,7 @@ LG.game = (function () {
       showSaveNote();
     };
     document.getElementById('setSave').onclick = submitSettings;
+    document.getElementById('setLevel').onchange = updateLevelInfo;
     document.getElementById('setProvider').onchange = () => { refreshModelList(); refreshHelperList(); };
     document.getElementById('setModel').onchange = syncModelBox;
     document.getElementById('setHelper').onchange = syncHelperBox;
@@ -1014,10 +1263,12 @@ LG.game = (function () {
       helper: readHelper(),
       showTranslation: document.getElementById('setTrans').checked,
       npcChatter: document.getElementById('setChatter').checked,
+      corrections: document.getElementById('setCorrections').checked,
       voices: document.getElementById('setVoices').checked,
       ttsKey: document.getElementById('setTtsKey').value.trim(),
       voiceSpeed: document.getElementById('setSpeed').value,
-      voiceQuality: document.getElementById('setQuality').value
+      voiceQuality: document.getElementById('setQuality').value,
+      zhReading: document.getElementById('setZhReading').value
     };
     err.textContent = '';
 
@@ -1131,10 +1382,18 @@ LG.game = (function () {
     document.getElementById('setTitle').textContent = gateMode ? 'Little Village' : 'Settings';
     document.getElementById('setLede').style.display = gateMode ? '' : 'none';
     document.getElementById('setNew').style.display = gateMode ? 'none' : '';
+    // No village exists yet behind the front door, so there is nothing to
+    // read a seed off, and nowhere sensible to send a typed one either.
+    document.getElementById('setSeedRow').style.display = gateMode ? 'none' : '';
+    document.getElementById('setNotebookRow').style.display = gateMode ? 'none' : '';
+    document.getElementById('setSeedShow').value = plan ? plan.seed : '';
+    document.getElementById('setSeedCopied').hidden = true;
+    if (!gateMode) renderHistory();
     document.getElementById('setSave').textContent = gateMode ? 'Enter the village' : 'Save';
     document.getElementById('setError').textContent = '';
     document.getElementById('setLang').value = settings.lang;
     document.getElementById('setLevel').value = settings.level;
+    updateLevelInfo();
     document.getElementById('setProvider').value = settings.provider;
     document.getElementById('setKey').value = settings.apiKey;
     // where the key came from, so a field you did not fill in is not a mystery
@@ -1145,14 +1404,44 @@ LG.game = (function () {
     }
     document.getElementById('setTrans').checked = settings.showTranslation;
     document.getElementById('setChatter').checked = settings.npcChatter;
+    document.getElementById('setCorrections').checked = settings.corrections;
     document.getElementById('setVoices').checked = settings.voices;
     document.getElementById('setTtsKey').value = settings.ttsKey;
     document.getElementById('setSpeed').value = settings.voiceSpeed;
     document.getElementById('setQuality').value = settings.voiceQuality;
+    document.getElementById('setZhReading').value = settings.zhReading;
     refreshModelList();
     refreshHelperList();
     showSaveNote();
+    showUsageNote();
     s.classList.add('open');
+  }
+
+  /* Tokens and estimated spend, so the model picker above is not a choice made
+     blind. Read straight off LG.llm.totals each time the panel opens rather
+     than kept here — the panel is the only place this is shown, so there is
+     nothing to keep in sync between. See llm.js's meter comment for where the
+     numbers come from and why some of them are a guess. */
+  function fmtTok(n) {
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k';
+    return String(n);
+  }
+  function showUsageNote() {
+    const note = document.getElementById('setUsage');
+    if (!note) return;
+    const t = LG.llm.totals;
+    if (!t.calls) { note.textContent = 'No calls made yet this session.'; return; }
+    const calls = t.calls + (t.calls === 1 ? ' call' : ' calls');
+    const tok = fmtTok(t.inputTokens) + '→' + fmtTok(t.outputTokens) + ' tokens';
+    let cost = '';
+    if (t.cost > 0 || t.unpriced) {
+      const dollars = (t.estimated ? '~$' : '$') + t.cost.toFixed(2);
+      cost = ', ' + dollars +
+        (t.unpriced ? ' (' + t.unpriced + ' call' + (t.unpriced === 1 ? '' : 's') +
+          ' on an unpriced model not counted)' : ' this session');
+    }
+    note.textContent = calls + ', ' + tok + cost + '.';
   }
 
   /* What the saved village is, in one line. The autosave is silent by design —
@@ -1352,13 +1641,13 @@ LG.game = (function () {
 
   function catchBeast() {
     beast.caught = true; beast.following = true;
-    give(beast.item);
+    give(beast.item, 1, 'caught ' + beast.name);
     renderHUD();
     log(beast.emoji + ' ' + beast.name + ' lets you pick ' + (Math.random() < 0.5 ? 'her' : 'him') + ' up.');
   }
   function pickUp() {
     worldItem.taken = true;
-    give(worldItem.item);
+    give(worldItem.item, 1, 'picked up');
     renderHUD();
     log(LG.ITEMS[worldItem.item].icon + ' You pick up ' + LG.ITEMS[worldItem.item].full + '.');
   }
@@ -1565,14 +1854,25 @@ LG.game = (function () {
         // Chasing the traveller is not a walk to wherever they stood when
         // asked \u2014 see followPlayer. `wantsGo` is left unset so a decision
         // made later, once the chase is over, does not find a stale rect
-        // here waiting to be acted on.
+        // here waiting to be acted on. A chase's own "why" reaches the
+        // player a different way \u2014 see talkTo's `sought` \u2014 so there is no
+        // `patch` for this one to be matched against below, on purpose.
         n.followingPlayer = true;
         n.wentAfter = 'player';
+        n.whyPatch = null;
       } else {
         n.wantsGo = want.rect;
         // "after Mira" is a decision about a person, and the conversation
         // that follows should know it was not a coincidence
         n.wentAfter = want.after || null;
+        /* Which arrival this reason is actually for, by reference rather than
+           by name or rect contents \u2014 see the "arrives" handler in update().
+           Without it, a villager put back on cooldown mid-route (see
+           routine's byDice fallback) keeps walking on the old dice table but
+           still carries the last reason a model actually gave, and every
+           arrival after that one would be captioned with it whether or not
+           it had anything to do with getting there. */
+        n.whyPatch = want.rect;
       }
       think(n, '\u2192 ' + want.name, n.why);
     }).catch(() => { done(); think(n, 'could not decide', 'the call failed'); });
@@ -1675,7 +1975,7 @@ LG.game = (function () {
      writer would still say it. */
   function openBoard() {
     (state.board || []).forEach(entry => {
-      entry.factIds.forEach(id => learn(id, null, entry.text, null));
+      entry.factIds.forEach(id => learn(id, null, entry.text, null, entry.roman));
     });
     renderBoard();
     document.getElementById('board').classList.add('open');
@@ -1685,25 +1985,217 @@ LG.game = (function () {
     const L = LG.LANGUAGES[settings.lang];
     const box = document.getElementById('boardList');
     const rows = (state.board || []).slice().reverse().map(entry => {
-      const hide = settings.showTranslation ? '' : ' hidden-tr';
       // A notice is signed with the poster's real name outright, unlike a
       // nametag or a line of spoken dialogue — a pinned note is a public,
       // written thing, and a village that could not name its own notices
       // would not be much of a noticeboard.
       const who = entry.name;
+      const zh = L.rubyAll && entry.roman && settings.zhReading !== 'line'
+        ? LG.dialogue.zhRubyHTML(entry.text, entry.roman, settings.zhReading) : null;
       return '<div class="notice"><span class="who">' + escapeHTML(who) + '</span>' +
-             '<span class="heard" lang="' + L.tag + '">' + escapeHTML(entry.text) + '</span>' +
-             (entry.roman && L.romanize ? '<span class="roman" lang="' + L.romanTag + '">' +
+             '<span class="heard" lang="' + L.tag + '"' + (zh ? ' style="line-height:2"' : '') + '>' +
+             (zh || escapeHTML(entry.text)) + '</span>' +
+             (entry.roman && L.romanize && !zh ? '<span class="roman" lang="' + L.romanTag + '">' +
                escapeHTML(entry.roman) + '</span>' : '') +
-             (entry.translation ? '<span class="gloss' + hide + '" lang="en" title="click to read">' +
-               escapeHTML(entry.translation) + '</span>' : '') +
+             (entry.translation ? '<span class="gloss' + glossClass() + '" lang="en" title="' +
+               glossTitle() + '">' + escapeHTML(entry.translation) + '</span>' : '') +
              '</div>';
     });
     box.innerHTML = rows.length ? rows.join('')
       : '<div class="notice muted">Nothing pinned up yet.</div>';
-    Array.prototype.forEach.call(box.querySelectorAll('.gloss.hidden-tr'), el => {
-      el.onclick = () => el.classList.remove('hidden-tr');
+    bindGlossReveal(box);
+  }
+
+  /* -------------------------------------------------------- the word list
+     A study aid, not a comprehension test the way the notebook is — so
+     unlike the notebook's gloss, the English here is never blurred: the
+     whole point of coming back to this panel is to check yourself against it.
+
+     Review runs on real, wall-clock time (Date.now()) rather than the
+     village's own clock, deliberately: LG.time can run a whole in-game week
+     in one sitting, and "due tomorrow" only means something if tomorrow is
+     an actual day away. A word's `due`/`level` are read at review time and
+     nowhere else, so this needing wall-clock time is not a village-clock
+     wrinkle to keep straight anywhere but here. */
+  const REVIEW_INTERVALS = [0, 1, 3, 7, 16, 35];   // days, index = level
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  function wordDue(w) { return !w.due || w.due <= Date.now(); }
+  function dueWords() { return state.words.filter(wordDue); }
+  function gradeWord(w, good) {
+    if (!w) return;
+    w.level = good ? Math.min((w.level || 0) + 1, REVIEW_INTERVALS.length - 1) : 0;
+    w.due = Date.now() + REVIEW_INTERVALS[w.level] * DAY_MS;
+  }
+
+  // null when not reviewing; otherwise the words still to get through this
+  // session, in order — a session-only ordering, not stored anywhere, so
+  // reopening the panel never resumes a review left half finished.
+  let reviewQueue = null, reviewShown = false;
+
+  function openWords() {
+    reviewQueue = null;
+    renderWords();
+    document.getElementById('words').classList.add('open');
+  }
+  function startReview() {
+    const due = dueWords();
+    if (!due.length) return;
+    reviewQueue = due.slice();
+    reviewShown = false;
+    renderWords();
+  }
+  function endReview() {
+    reviewQueue = null;
+    renderWords();
+  }
+  // Graded from the review card itself; failing one (`good` false) sends it
+  // to the back of *this session's* queue rather than clearing it — the
+  // point of a wrong answer is seeing the card again before you stop, not
+  // just marking it down for next time and moving on.
+  function reviewGrade(good) {
+    if (!reviewQueue || !reviewQueue.length) return;
+    const w = reviewQueue.shift();
+    gradeWord(w, good);
+    if (!good) reviewQueue.push(w);
+    reviewShown = false;
+    if (!reviewQueue.length) reviewQueue = null;
+    renderWords();
+  }
+
+  function renderWords() {
+    const box = document.getElementById('wordsList');
+    if (!box) return;
+    const L = LG.LANGUAGES[settings.lang];
+    const btn = document.getElementById('wordsReview');
+    const lede = document.getElementById('wordsLede');
+    const exportBtn = document.getElementById('wordsExport');
+    if (exportBtn) exportBtn.disabled = !state.words.length;
+
+    if (reviewQueue) {
+      const w = reviewQueue[0];
+      const item = w && LG.ITEMS[w.item];
+      if (btn) { btn.textContent = 'End review'; btn.disabled = false; btn.onclick = endReview; }
+      if (lede) lede.textContent = (reviewQueue.length) +
+        ' word' + (reviewQueue.length === 1 ? '' : 's') + ' left to go through.';
+      box.innerHTML = !item ? '' : (
+        '<div class="wReview"><span class="wIcon">' + item.icon + '</span>' +
+        '<span class="wSaid" lang="' + L.tag + '">' + escapeHTML(itemLabel(w.item)) + '</span>' +
+        '<div id="wordsAnswer" class="wGloss"' + (reviewShown ? '' : ' style="display:none"') + '>' +
+        escapeHTML(item.en) + '</div>' +
+        (reviewShown
+          ? '<div class="wGrade"><button id="wordsAgain" class="secondary" type="button">Again</button>' +
+            '<button id="wordsGood" class="primary" type="button">Good</button></div>'
+          : '<button id="wordsShow" class="secondary" type="button">Show answer</button>') +
+        '</div>'
+      );
+      const show = document.getElementById('wordsShow');
+      if (show) show.onclick = () => { reviewShown = true; renderWords(); };
+      const again = document.getElementById('wordsAgain');
+      if (again) again.onclick = () => reviewGrade(false);
+      const good = document.getElementById('wordsGood');
+      if (good) good.onclick = () => reviewGrade(true);
+      return;
+    }
+
+    if (lede) lede.textContent = 'Every word this village has actually given you — bought, ' +
+      'traded, picked up, or just told about — in the order you met it.';
+    const due = dueWords().length;
+    if (btn) {
+      btn.textContent = due ? 'Review ' + due + ' due' : 'Nothing due right now';
+      btn.disabled = !due;
+      btn.onclick = startReview;
+    }
+    const rows = state.words.map(w => {
+      const item = LG.ITEMS[w.item];
+      if (!item) return '';   // a save from a version with a different item pool
+      return '<div class="word"><span class="wIcon">' + item.icon + '</span>' +
+             '<span class="wText"><span class="wSaid" lang="' + L.tag + '">' +
+             escapeHTML(itemLabel(w.item)) + '</span>' +
+             '<span class="wGloss">' + escapeHTML(item.en) + '</span>' +
+             (w.how ? '<span class="wHow">' + escapeHTML(w.how) +
+               (w.at ? ' — ' + escapeHTML(w.at) : '') + '</span>' : '') +
+             '</span></div>';
+    }).filter(Boolean);
+    box.innerHTML = rows.length ? rows.join('')
+      : '<div class="word muted">Nothing yet — words turn up here as the village gives them to you.</div>';
+  }
+
+  /* Tab-separated, one word per line — the plain-text format Anki and most
+     other flashcard tools import directly, so a word list built for review
+     inside the game is not stuck inside it. Kept as its own pure function,
+     separate from the download it feeds, so what actually goes into the
+     file is exactly what a test can check without needing Blob/URL, which
+     this sandbox — like a browser with downloads disabled — does not have. */
+  function wordListText() {
+    return state.words
+      .filter(w => LG.ITEMS[w.item])
+      .map(w => itemLabel(w.item) + '\t' + LG.ITEMS[w.item].en)
+      .join('\n');
+  }
+  /* Same idea, one native sentence per line rather than one word — sentence
+     mining, the other half of what a flashcard tool is normally fed, built
+     from exactly what a villager actually said (see `learn`'s only caller,
+     dialogue.js's verifyRevealed: `note` there always falls back to the
+     line as spoken, specifically so a note is never in the wrong language)
+     rather than the English the notebook shows underneath it. */
+  function notebookText() {
+    return state.notes
+      .filter(n => plan && plan.facts[n.id])
+      .map(n => n.text + '\t' + plan.facts[n.id].text)
+      .join('\n');
+  }
+  // The download half both share: feature-detected the same way the seed
+  // feature's clipboard copy already is, and a no-op rather than a throw
+  // wherever Blob/URL/anchor-click downloads are not there to ask for.
+  function downloadText(text, filename) {
+    if (!text) return;
+    try {
+      if (typeof Blob === 'undefined' || typeof URL === 'undefined' || !URL.createObjectURL) return;
+      const blob = new Blob([text], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) { /* no download support in this browser, or it refused */ }
+  }
+  function exportWordList() { downloadText(wordListText(), 'little-village-words-' + settings.lang + '.txt'); }
+  function exportNotebook() { downloadText(notebookText(), 'little-village-notebook-' + settings.lang + '.txt'); }
+
+  /* ------------------------------------------------------------- the people
+     A roster, the same shape as the word list but for who lives here rather
+     than what they have named — read entirely off npc.metPlayer/nameKnown,
+     which the game already keeps for the dialogue box and the nametag (see
+     dialogue.js's `open` and displayName above). Fixed roster order (LG.NPCS
+     order), not met-first, so the list does not reshuffle under a returning
+     player and does not itself say how many are left unmet by leaving gaps. */
+  function openPeople() {
+    renderPeople();
+    document.getElementById('people').classList.add('open');
+  }
+  function renderPeople() {
+    const box = document.getElementById('peopleList');
+    if (!box) return;
+    const rows = npcs.map(n => {
+      const met = !!n.metPlayer;
+      // Job is the headline either way — it is the one thing the dialogue box
+      // has always shown regardless of nameKnown. Name goes underneath, once
+      // there is one, rather than repeating the job there too: the dialogue
+      // box's own dlgName shows "?" sooner than that, for exactly this reason
+      // — see its comment on why a name placeholder must not read like a
+      // glitch by echoing the line right below it.
+      return '<div class="person' + (met ? '' : ' muted') + '">' +
+             '<span class="pEmoji">' + n.def.emoji + '</span>' +
+             '<span class="pText"><span class="pJob">' +
+             escapeHTML(met ? n.def.job : 'someone in the village') + '</span>' +
+             (met ? '<span class="pName">' + escapeHTML(n.nameKnown ? n.def.name : '?') +
+               '</span>' : '') +
+             '</span></div>';
     });
+    box.innerHTML = rows.join('');
   }
 
   /* ---------------------------------------------------------------- loop */
@@ -1800,7 +2292,20 @@ LG.game = (function () {
       if (!wasFollowing)
         A.routine(n, dt, LG.GREEN, settings.apiKey && settings.npcChatter ? decideWhereToGo : null);
       if (n.wasWalking && !walking) {
-        think(n, 'arrives', LG.view.where(n) + (n.why ? ' — ' + n.why : ''));
+        /* Whether `n.why` is actually the reason for *this* arrival, or a
+           reason still sitting there from an earlier decision — see the
+           comment over `whyPatch` in decideWhereToGo. A villager put back on
+           the dice table between one model decision and the next keeps
+           walking, and keeps the old reason, without either one having
+           anything to do with the other. */
+        const freshWhy = !!(n.why && n.whyPatch && n.patch === n.whyPatch);
+        think(n, 'arrives', LG.view.where(n) + (freshWhy ? ' — ' + n.why : ''));
+        // Legible from outside, not just from the console — a villager who
+        // is asked to reason about where to be and never shows it is a
+        // villager who might as well be rolling dice, from where you stand.
+        if (freshWhy && dist(player, n) < TILE * 11)
+          log('👣 ' + displayName(n) + ' arrives ' + LG.view.where(n) + ' — ' + n.why + '.');
+        if (freshWhy) { n.why = ''; n.whyPatch = null; }
         // `patch` is stale while chasing the traveller — the last place they
         // had actually decided to go, not where the chase just ended — so it
         // is not read as "arrived at the noticeboard" here.
@@ -1910,7 +2415,7 @@ LG.game = (function () {
 
     W.drawGround(ctx, cam, vw, vh, dpr);
     W.drawBuildings(ctx, room, cam, vw, vh);
-    W.drawSigns(ctx, cam, vw, vh, settings.lang, settings.showTranslation, dpr);
+    W.drawSigns(ctx, cam, vw, vh, settings.lang, !glossHidden(), dpr);
     drawWorldItem();
 
     /* A villager under a roof is out of sight. You can see into the room you are
@@ -1995,7 +2500,18 @@ LG.game = (function () {
            _debugViewport: () => { readInsets(); measureViewport(); },
            // and what came of it: the strip of canvas the player can see
            _debugSeen: seen,
+           // the ending screen's closing tally, without driving a whole chain
+           // to its last link just to read a sentence off it
+           _debugEndingStats: endingStats,
            inventoryList, doTrade, commerce, renderHUD, openSettings, uiBlocked, newVillage,
+           openWords, renderWords, openPeople, renderPeople, learnWord, hasWord, crutchesOff,
+           _debugWordListText: wordListText, exportWordList,
+           _debugNotebookText: notebookText, exportNotebook,
+           _debugTally: tallyNow, _debugHistory: loadHistory, _debugRenderHistory: renderHistory,
+           _debugEndingSummaryText: endingSummaryText,
+           _debugWin: win,
+           dueWords, gradeWord, startReview, endReview, reviewGrade,
+           get reviewQueue() { return reviewQueue; },
            get plan() { return plan; },
            get npcs() { return npcs; },
            // what save.js reads and writes back; the rest of the world it can

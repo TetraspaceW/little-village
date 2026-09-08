@@ -176,6 +176,10 @@ LG.save = (function () {
         x: round(n.px), y: round(n.py), tx: n.tx, ty: n.ty, dir: n.dir,
         facts: n.facts.slice(),
         memory: (n.memory || []).slice(),
+        // who they have talked with before, and when — see dialogue.js's
+        // noteMet/priorMeeting, which is what keeps two villagers from
+        // having the same conversation over and over with neither noticing
+        metWith: Object.assign({}, n.metWith),
         factAt: Object.assign({}, n.factAt),
         factNote: Object.assign({}, n.factNote),
         coins: n.coins,
@@ -224,12 +228,25 @@ LG.save = (function () {
       /* The weather is part of the calendar, not scenery: villagers decide where
          to stand by it, and the snow that is lying took several village days to
          get there. Reloading into a random sky would undo all of that. */
+      // `arrived` is the calendar day this village began on — see game.js's
+      // newVillage — carried separately from the current day rather than
+      // reconstructed from it, because restoring calls newVillage too (to
+      // rebuild the village from its seed) and that would otherwise reset
+      // it to whatever throwaway day the restore happened to roll before
+      // `time.day` below puts the clock back where the save left it.
       time: { day: LG.time.day, frac: LG.time.frac, weather: LG.time.weather,
-              hold: LG.time.weatherLeft, snow: LG.time.snow },
+              hold: LG.time.weatherLeft, snow: LG.time.snow, arrived: st.arrivedDay },
       player: { x: round(p.px), y: round(p.py), dir: p.dir },
       inventory: Object.assign({}, st.inv),
       // no `done`: whether a lead is spent is read off the world, not stored
-      notes: st.notes.map(n => ({ id: n.id, text: n.text, ruby: n.ruby || null })),
+      notes: st.notes.map(n => ({ id: n.id, text: n.text, ruby: n.ruby || null, roman: n.roman || null })),
+      // the word list — see game.js's learnWord. `item` is a key into LG.ITEMS,
+      // never text of its own, so there is nothing here for a stale generator
+      // to disagree with the way a fact id could. `level`/`due` are the
+      // spaced-repetition review state (real wall-clock ms, not the village
+      // clock — see game.js's dueWords), carried over unchanged by a save.
+      words: (st.words || []).map(w => ({ item: w.item, how: w.how || '', at: w.at || '',
+                                          level: w.level || 0, due: w.due || 0 })),
       deeds: st.deeds.slice(),
       board: (st.board || []).map(b => ({ npcId: b.npcId, name: b.name, text: b.text,
                                           translation: b.translation || '', roman: b.roman || '',
@@ -299,6 +316,11 @@ LG.save = (function () {
     LG.time.start(tm.day, tm.frac);
     LG.time.setWeather(tm.weather, tm.hold);
     LG.time.setSnow(tm.snow);
+    // A save from before this existed has no `arrived` to read — falling
+    // back to the current day rather than 0 means an old save's own ending
+    // screen undercounts to "1 day" instead of overcounting into the
+    // hundreds, the harmless direction to be wrong in.
+    g.state.arrivedDay = typeof tm.arrived === 'number' ? tm.arrived : tm.day;
 
     const p = g.player;
     p.px = data.player.x; p.py = data.player.y; p.dir = data.player.dir || 'down';
@@ -317,7 +339,17 @@ LG.save = (function () {
     const noted = new Set();
     st.notes = (data.notes || [])
       .filter(n => g.plan.facts[n.id] && !noted.has(n.id) && noted.add(n.id))
-      .map(n => ({ id: n.id, text: n.text, ruby: n.ruby || null }));
+      .map(n => ({ id: n.id, text: n.text, ruby: n.ruby || null, roman: n.roman || null }));
+    // same guarantee, same reason — a word is in the list once, whatever a
+    // hand-edited or future-generator file might claim, and a game version
+    // that has since dropped the item is one fewer stale row rather than
+    // a word list entry LG.ITEMS can no longer say anything about.
+    const worded = new Set();
+    st.words = (data.words || [])
+      .filter(w => LG.ITEMS[w.item] && !worded.has(w.item) && worded.add(w.item))
+      .map(w => ({ item: w.item, how: w.how || '', at: w.at || '',
+                  level: typeof w.level === 'number' ? w.level : 0,
+                  due: typeof w.due === 'number' ? w.due : 0 }));
     st.deeds = (data.deeds || []).slice();
     st.board = (data.board || []).map(b => ({
       npcId: b.npcId, name: b.name, text: b.text,
@@ -336,6 +368,16 @@ LG.save = (function () {
          while, which is true of anything written down before this existed. */
       n.memory = (s.memory || []).map(m =>
         typeof m === 'string' ? { at: null, text: m, from: null } : m).filter(m => m && m.text);
+      // Same defensiveness as `facts` just above: only another id this
+      // village's roster actually has, so a hand-edited or future-generator
+      // file cannot claim a conversation with somebody who was never here.
+      n.metWith = {};
+      Object.keys(s.metWith || {}).forEach(id => {
+        const m = s.metWith[id];
+        if (g.npcs.some(o => o.id === id) && m && typeof m.day === 'number') {
+          n.metWith[id] = { day: m.day, at: String(m.at || '') };
+        }
+      });
       n.factAt = Object.assign({}, s.factAt);
       n.factNote = Object.assign({}, s.factNote);
       n.coins = typeof s.coins === 'number' ? s.coins : n.coins;

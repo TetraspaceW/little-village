@@ -10,7 +10,7 @@ pass it on to each other.
 **Requires an API key** from [Anthropic](https://console.anthropic.com),
 [OpenRouter](https://openrouter.ai/keys) (recommended), or [Logfare](https://logfare.ai) (free).
 
-<!-- TODO: screenshot or GIF here -->
+![The village on a clear winter morning — bakery, shop and hall in Russian, three villagers about their day](docs/screenshot.png)
 
 ## Quick start
 
@@ -50,9 +50,15 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
   page itself never scrolls under your finger.
 - Type in the villager's own language. The **Phrases** row suggests something
   to start from; **Offer an item** holds an item out of your pockets instead
-  of typing.
+  of typing. A 🎤 sits next to Say it in any browser with speech recognition
+  (Chrome/Chromium, as of writing — the button only appears where it works):
+  say the line aloud and the transcript drops into the box for you to check
+  and send yourself, same as a phrase chip would.
 - Translations can show immediately or stay blurred until clicked (⚙ →
   settings).
+- Gentle corrections (⚙ → settings, off by default) footnote what you typed
+  with how a native speaker would actually say it, when it's worth saying
+  differently — under your own line, never out of the villager's mouth.
 
 ## Gameplay
 
@@ -64,6 +70,13 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
   has it wants something else, and so on back to something just lying in the
   world. The village is generated from a seed, so the same seed regenerates
   the same errand.
+- **The ending.** Handing over the last link closes the chain and opens a
+  screen with a one-line tally — how many days it took, how many of the
+  village's thirteen you actually spoke to, how many words the word list
+  picked up along the way — then lets you keep wandering the same village or
+  start a new one. **📋 Copy a summary** copies that tally as one line of
+  text, seed included, so the village being bragged about is the exact one
+  whoever reads it can roll for themselves.
 - **The woods.** A large forest fills the northern two-fifths of the map,
   with tracks running through it and six named clearings: the big
   clearing, the old oak, the hollow, the charcoal burner's pit, the forest
@@ -77,11 +90,30 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
 - **Notebook.** Starts empty. A fact only appears once a villager actually
   tells you it, in the language they told it to you in, with an English
   gloss underneath. Leads you've already followed show struck through.
+  ⚙ → **Export notebook as text** downloads it as tab-separated sentence/
+  gloss lines — sentence mining, the notebook's counterpart to the word
+  list's own export below.
+- **Word list** (🔤 button). Every item the game has actually given you a
+  name for — bought, traded, picked up, or told about before you ever held
+  it — in the order you met it, with its English gloss shown straight away
+  rather than blurred: this one is a study aid, not a comprehension test the
+  way the notebook is. A **Review** button runs through whatever is due —
+  word first, tap to see the gloss, then say whether you knew it — on a
+  spaced schedule that gets longer each time you do, in real days rather
+  than village ones, so it is still there to come back to after you close
+  the tab. **⬇ Export as text** downloads it as tab-separated word/gloss
+  lines, the plain-text format Anki and most other flashcard tools import
+  directly, so the vocabulary does not have to stay stuck inside the game.
 - **Names.** Nobody's name shows up on screen — the nametag, the dialogue
   panel, the log — until that villager has actually told it to you. Ask
   *"What is your name?"* (in the Phrases row) and they will. Being told
   about someone by a third party doesn't count; you have to hear it from
   them.
+- **Villagers** (👥 button). A roster of everyone who lives here. Someone
+  you haven't actually spoken to yet is only a face; speaking to them
+  reveals their job, the same as opening a conversation with them does, and
+  their name once they've given it — meeting one villager never gives away
+  anything about the rest.
 - **Money.** You start with ¤10. A villager at their own counter, in daytime,
   will buy and sell — the baker sells bread, the smith sells tools, and so
   on. Prices are fixed per item with a haggling band either side. Villagers
@@ -102,7 +134,11 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
 - **Autonomy.** Villagers move and talk to each other on their own schedule —
   busiest around midday, home by dark — whether or not you're nearby. If
   you're close enough to overhear, the exchange (in their language, with a
-  blurred gloss) shows up in your event log.
+  blurred gloss) shows up in your event log. They keep track of who they've
+  already talked to, too, and say so at the start of a repeat conversation
+  rather than starting fresh every time. Arriving somewhere near you, they'll
+  say why in the log if they had a reason — an errand of their own, not
+  yours — the same way they already do for the console.
 
 ## Connecting a model (⚙ button)
 
@@ -168,6 +204,15 @@ jq -s 'map(.usage.cost // 0) | add' logs/session-*.jsonl
 gives you the real figure for a real session. Anthropic's API returns token
 counts only, not a cost figure.
 
+The settings panel keeps a running total for the session that is open right
+now — calls, tokens in and out, and a dollar figure — without needing the log
+server or a `jq` invocation. OpenRouter's `usage.cost` (and Logfare's) is
+taken exactly; an Anthropic call is priced off the reference figures above
+instead, so the total is marked with a `~` the moment any part of it is a
+guess rather than a receipt, and a model this game doesn't have a reference
+price for is counted in tokens but left out of the dollar figure, called out
+by name rather than folded in as free.
+
 ### Structured output
 
 Where a provider supports it, replies are constrained with a JSON Schema
@@ -177,11 +222,23 @@ connects; anything unrecognised falls back to prompt-based JSON with repair.
 
 ## Languages and difficulty
 
-The village speaks Russian, English, Chinese (Mandarin), Japanese, French,
-Spanish, Arabic (MSA) or toki pona, at three difficulty levels. Russian and
-Chinese lines carry a romanisation; Japanese gets furigana over kanji in
-dialogue (via `<ruby>` tags — not on item names, which stay plain kanji), and
-Arabic gets full tashkeel for the same reason, on the script it already has.
+The village speaks Russian, English, Chinese (Mandarin), Japanese, Korean,
+French, Spanish, Polish, Arabic (MSA) or toki pona, at three difficulty
+levels. Russian and Korean carry a romanisation; Japanese gets furigana over
+kanji in dialogue (via `<ruby>` tags — not on item names, which stay plain
+kanji), and Arabic gets full tashkeel for the same reason, on the script it
+already has. Korean needs no ruby of its own — Hangul is an alphabet, not a
+logography, so there is nothing in a Korean sentence that reads any way
+other than how it is spelled.
+
+Chinese carries a romanisation too, and (⚙ → Chinese pronunciation) can show
+it two other ways: pinyin or zhuyin (注音), one reading per character, ruby-
+style like furigana. Unlike furigana this isn't the model's own doing — it is
+rebuilt in the browser from the sentence and the whole-line pinyin the model
+already sends, syllable for character, so it needs nothing extra from the
+model and nothing extra to go wrong: a line that doesn't line up (rare, and
+mostly punctuation) just falls back to the plain sentence with pinyin
+underneath, exactly as it always looked.
 
 toki pona is the odd one: 137 words, so nothing has a name of its own and
 every item in the village is a description assembled out of the same handful
@@ -202,6 +259,16 @@ difficulty is who knows what:
 Fact-holders also thin out further down the chain the harder the difficulty,
 so a longer chain buries its tail instead of exposing it. At advanced you
 generally have to walk the chain in order.
+
+Advanced also changes what the interface will do for you, not just how the
+errand is built: translations are locked — the notebook, the event log,
+signs, a villager's own reply, all of it, and a tooltip no longer hands you
+the answer on hover either — and the Phrases tray goes empty, so there is
+nothing to click on to get started. Beginner and Intermediate are unaffected.
+
+This same table, in short, is what ⚙ shows under the difficulty dropdown —
+a line that updates the moment you change it, before you've even pressed
+Save.
 
 ## Voices (optional)
 
@@ -267,6 +334,23 @@ save comes back saying so.
 ⚙ → **Forget the saved village** clears both copies. **Start a new village**
 overwrites them immediately.
 
+Since a save is really just a seed, ⚙ shows the current one — **This
+village's seed**, with a **Copy** button — and takes one back: type a seed
+into **Start a village from a seed** and press **Go** to roll that exact
+village again, difficulty and all. Two villages built from the same seed at
+the same difficulty are the same village, right down to who has what and
+where the loose end of the errand is lying — worth keeping if one is
+particularly good, or sending to someone else to try the same one you did.
+
+Underneath that, **Finished errands** lists the last 25 you've actually
+completed — seed, language, difficulty, and the same days/villagers/words
+tally the ending screen showed at the time — each with its own **Use seed**
+button, so a good village from three sessions ago is a click away from being
+rolled again rather than a seed you had to have written down. This list
+outlives everything else here: it survives Forget the saved village and a
+new village both, since a village worth remembering might not be one you
+still want loaded right now.
+
 ## Logs and debugging
 
 With the log server running, every session writes to
@@ -302,6 +386,7 @@ js/data.js           languages, phrasebook, place names, ~140 items, 24 places, 
 js/chain.js          errand chain generator + associated facts
 js/llm.js            provider abstraction, key validation, reply parsing
 js/tts.js            ElevenLabs voice casting and playback
+js/speech.js          speech input (SpeechRecognition), tts.js's pair
 js/world.js          tile map, forest, station, collision, pathfinding, interiors, rendering
 js/sky.js            hour/season colour, precipitation
 js/view.js           per-villager prompt assembly (single source of truth)
@@ -309,7 +394,7 @@ js/touch.js          the joystick and the tap: touch gestures, on a canvas
 js/npc.js            villager movement, meetings, rendering
 js/dialogue.js       prompt building, conversation UI, trades
 js/save.js           save format: snapshot/restore, both storage locations
-js/game.js           game state, main loop, input, notebook, settings
+js/game.js           game state, main loop, input, notebook, word list, roster, settings
 tools/logserver.js   serves the game, exposes .env, collects logs, keeps the save
 tests/smoke.js       headless test of the full game
 ```

@@ -69,6 +69,8 @@
 
     <div id="topbar">
       <button id="btnHelp" class="tool" title="How to play">?</button>
+      <button id="btnWords" class="tool" title="Word list">🔤</button>
+      <button id="btnPeople" class="tool" title="Villagers">👥</button>
       <button id="btnSettings" class="tool" title="Settings">⚙</button>
     </div>
   </div>
@@ -104,6 +106,9 @@
 
       <div class="composer">
         <textarea id="dlgInput" rows="1" placeholder="Say something…"></textarea>
+        <!-- Hidden by default; js/speech.js unhides it only once it has
+             confirmed SpeechRecognition actually exists in this browser. -->
+        <button id="dlgMic" type="button" title="Say it aloud instead" hidden>🎤</button>
         <button id="dlgSend">Say it</button>
       </div>
     </div>
@@ -144,6 +149,7 @@
           </optgroup>
           <optgroup label="Other">
             <option value="ja" lang="ja">🇯🇵 Japanese — 日本語</option>
+            <option value="ko" lang="ko">🇰🇷 Korean — 한국어</option>
             <option value="pl" lang="pl">🇵🇱 Polish — Polski</option>
             <!-- toki pona is in the same position as Arabic and takes the
                  same answer: U+F0001, the next private-use codepoint along,
@@ -162,11 +168,26 @@
           <option value="intermediate">Intermediate (A2–B1)</option>
           <option value="advanced">Advanced (B2+) — natural speech</option>
         </select>
+        <small id="setLevelInfo"></small>
+      </label>
+
+      <label>Chinese pronunciation <span class="opt">only used when the language above is Chinese</span>
+        <select id="setZhReading">
+          <option value="line">Pinyin under the line</option>
+          <option value="pinyin">Pinyin above each character, like furigana</option>
+          <option value="zhuyin">Zhuyin (注音) above each character</option>
+        </select>
+        <small>The per-character views are built from the sentence and its pinyin, character
+        for syllable — a line that will not line up (rare) just shows the pinyin underneath,
+        the same as it always has.</small>
       </label>
 
       <label class="check"><input type="checkbox" id="setTrans"> Show English translations straight away
         <small>(off = translations are blurred until you click them)</small></label>
       <label class="check"><input type="checkbox" id="setChatter"> Let the villagers gossip with each other</label>
+      <label class="check"><input type="checkbox" id="setCorrections"> Gently correct what you write
+        <small>(an extra small-model call per line — a footnote under your own message, never
+        said by the villager)</small></label>
       <label class="check"><input type="checkbox" id="setVoices"> Let the villagers speak aloud
         <small>(needs a separate ElevenLabs key, below)</small></label>
 
@@ -225,11 +246,41 @@
         confirming a trade was agreed. Cheap and literal-minded beats clever here.</small>
       </label>
 
+      <p class="note" id="setUsage"></p>
+
       <div id="setError"></div>
 
       <button id="setSave" class="primary">Save</button>
       <button id="setNew" class="secondary">Start a new village</button>
       <button id="setForget" class="secondary" type="button">Forget the saved village</button>
+
+      <div id="setSeedRow">
+        <hr>
+        <label>This village's seed
+          <input id="setSeedShow" type="text" readonly>
+          <button id="setSeedCopy" class="secondary" type="button">Copy</button>
+        </label>
+        <small id="setSeedCopied" hidden>Copied.</small>
+
+        <label>Start a village from a seed <span class="opt">optional</span>
+          <input id="setSeedInput" type="text" placeholder="e.g. elder-birch-quiet" autocomplete="off">
+          <button id="setSeedGo" class="secondary" type="button">Go</button>
+        </label>
+        <small>Two villages rolled from the same seed, at the same difficulty, are the
+        same village — same errand, same villagers' facts, same starting weather.
+        Worth keeping if one turns out interesting, or sending to someone else to try.</small>
+
+        <p class="lede" style="margin-top:14px">Finished errands</p>
+        <div id="setHistoryList"></div>
+      </div>
+
+      <div id="setNotebookRow">
+        <hr>
+        <button id="setExportNotebook" class="secondary" type="button">⬇ Export notebook as text</button>
+        <small>Tab-separated lines — what a villager actually said, then its English
+        gloss — full sentences for sentence mining, the same way the Word List
+        exports single words.</small>
+      </div>
 
       <p class="note" id="setSaveNote"></p>
 
@@ -290,14 +341,42 @@
     </div>
   </div>
 
+  <!-- ---------------------------------------------------------- word list -->
+  <div id="words" class="panel">
+    <div class="panel-card">
+      <h2>🔤 Word List</h2>
+      <p class="lede" id="wordsLede">Every word this village has actually given you — bought,
+      traded, picked up, or just told about — in the order you met it.</p>
+      <button id="wordsReview" class="secondary" type="button"></button>
+      <div id="wordsList"></div>
+      <button id="wordsExport" class="secondary" type="button">⬇ Export as text</button>
+      <button id="wordsClose" class="primary">Close</button>
+    </div>
+  </div>
+
+  <!-- ------------------------------------------------------------ people -->
+  <div id="people" class="panel">
+    <div class="panel-card">
+      <h2>👥 Villagers</h2>
+      <p class="lede">Everyone who lives here. Until you've actually spoken with
+      someone this is only a face — their job, then their name, both come from
+      meeting them, not from watching them go about the village.</p>
+      <div id="peopleList"></div>
+      <button id="peopleClose" class="primary">Close</button>
+    </div>
+  </div>
+
   <!-- ---------------------------------------------------------- ending -->
   <div id="ending" class="panel">
     <div class="panel-card">
       <h2>🎉 The errand is done</h2>
       <p id="endingText"></p>
+      <p class="note" id="endingStats"></p>
       <p class="note">Wander back out and keep chatting: the villagers still remember everything
       you told them, and they are still gossiping about you.</p>
       <button id="endingClose" class="primary">Keep wandering</button>
+      <button id="endingCopy" class="secondary" type="button">📋 Copy a summary</button>
+      <small id="endingCopied" hidden>Copied — seed and all, so whoever you send it to can play the same village.</small>
       <button id="endingAgain" class="secondary">Start a new village</button>
     </div>
   </div>
@@ -309,6 +388,7 @@
 <script src="js/chain.js"></script>
 <script src="js/llm.js"></script>
 <script src="js/tts.js"></script>
+<script src="js/speech.js"></script>
 <script src="js/world.js"></script>
 <script src="js/sky.js"></script>
 <script src="js/view.js"></script>

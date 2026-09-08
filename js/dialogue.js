@@ -9,7 +9,7 @@ LG.dialogue = (function () {
   const el = {};
   function bind() {
     ['dlg','dlgName','dlgRole','dlgLog','dlgInput','dlgSend','dlgClose','dlgPhrases',
-     'dlgItems','dlgStatus','dlgAvatar'].forEach(id => el[id] = document.getElementById(id));
+     'dlgItems','dlgStatus','dlgAvatar','dlgMic'].forEach(id => el[id] = document.getElementById(id));
   }
 
   function chatterLine() {
@@ -126,6 +126,145 @@ LG.dialogue = (function () {
   }
 
   function itemName(id, lang) { return LG.itemName(id, lang); }
+
+  /* -------------------------------------------------- Chinese, per character
+
+     Japanese furigana is the model's own doing — it writes the ruby tags
+     inline as it speaks (see LG.FURIGANA). Chinese pinyin is not: the model
+     already sends a whole-sentence pinyin line (LANGUAGES.zh's `roman`
+     field), one tone-marked syllable per character and nothing else between
+     them — see zh's romanNote — because Mandarin transliterates one syllable
+     per hanzi almost without exception. So rather than asking the model for
+     a second, ruby-shaped rendering of the same sentence, this rebuilds one
+     in code from what it already sent: split `say` into characters, split
+     `roman` into syllables, and zip them in order.
+
+     That is also why it can degrade instead of needing a repair call the way
+     furigana does. When the counts do not match — a villager who dropped the
+     requested spacing, an erhua word, a stray bit of punctuation the
+     tokenizer could not place — `zhRuby` returns null and the caller shows
+     exactly what a Chinese village has always shown: the plain sentence with
+     the whole pinyin line underneath it. The per-character view is a bonus
+     when the alignment holds, never a chance of showing something wrong. */
+
+  // Trims anything that is not a pinyin letter off both ends of a token.
+  // Chinese punctuation never reaches this string, but the ASCII kind — a
+  // comma, a question mark — glued onto the last syllable of a line does.
+  const PINYIN_LETTER = "a-zA-Zāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜü";
+  const PINYIN_TRIM = new RegExp('^[^' + PINYIN_LETTER + ']+|[^' + PINYIN_LETTER + ']+$', 'g');
+  function tokenizePinyin(roman) {
+    return String(roman).trim().split(/\s+/).map(t => t.replace(PINYIN_TRIM, '')).filter(Boolean);
+  }
+
+  // Tone diacritics, stripped back to a plain vowel (ü kept distinct from u
+  // — they land on different zhuyin symbols) plus the tone number they
+  // carried. No diacritic at all reads as the neutral tone: zh's romanNote
+  // asks for a mark on every other syllable, so an unmarked one is the one
+  // tone that is genuinely markless in standard pinyin, not a villager who
+  // forgot.
+  const PINYIN_TONE = {
+    ā: ['a', 1], á: ['a', 2], ǎ: ['a', 3], à: ['a', 4],
+    ē: ['e', 1], é: ['e', 2], ě: ['e', 3], è: ['e', 4],
+    ī: ['i', 1], í: ['i', 2], ǐ: ['i', 3], ì: ['i', 4],
+    ō: ['o', 1], ó: ['o', 2], ǒ: ['o', 3], ò: ['o', 4],
+    ū: ['u', 1], ú: ['u', 2], ǔ: ['u', 3], ù: ['u', 4],
+    ǖ: ['ü', 1], ǘ: ['ü', 2], ǚ: ['ü', 3], ǜ: ['ü', 4]
+  };
+  function splitTone(token) {
+    let base = '', tone = 0;
+    for (const ch of String(token).toLowerCase()) {
+      const t = PINYIN_TONE[ch];
+      if (t) { base += t[0]; tone = t[1]; } else base += ch;
+    }
+    return { base: base, tone: tone || 5 };
+  }
+
+  /* Standard pinyin → zhuyin (注音符號), by decomposition rather than a
+     syllable table: an initial (checked longest-first, so "zh"/"ch"/"sh"
+     beat "z"/"c"/"s"), the final left over once the initial is off, and the
+     tone. Three special cases carry the whole irregularity of the spelling
+     system:
+       - y/w/vowel-only spellings (yi, wu, yan, ang, …) are not an initial
+         plus a final at all — SYLLABLE_ALIAS maps the whole written form to
+         the final it stands for, and the initial is empty.
+       - j/q/x write "ü" as "u" (ju, que, xuan — there is no genuine ju/que/
+         xuan with a plain u, so nothing is lost); this is the one place the
+         final actually depends on which initial it followed. n/l keep the
+         umlaut (nü, lüe), because there both readings are real and would
+         otherwise collide.
+       - zh/ch/sh/r/z/c/s before a bare "i" (zhi, chi, shi, ri, zi, ci, si)
+         carry no vowel sound of their own — shi is ㄕ alone, not ㄕ plus
+         ㄧ — so that final is written with nothing at all. */
+  const ZHUYIN_INITIAL = {
+    zh: 'ㄓ', ch: 'ㄔ', sh: 'ㄕ', b: 'ㄅ', p: 'ㄆ', m: 'ㄇ', f: 'ㄈ',
+    d: 'ㄉ', t: 'ㄊ', n: 'ㄋ', l: 'ㄌ', g: 'ㄍ', k: 'ㄎ', h: 'ㄏ',
+    j: 'ㄐ', q: 'ㄑ', x: 'ㄒ', r: 'ㄖ', z: 'ㄗ', c: 'ㄘ', s: 'ㄙ'
+  };
+  // longest match first, or "sh" would read as "s" plus a final of "h"
+  const PINYIN_INITIALS = ['zh', 'ch', 'sh', 'b', 'p', 'm', 'f', 'd', 't', 'n',
+    'l', 'g', 'k', 'h', 'j', 'q', 'x', 'r', 'z', 'c', 's'];
+  const ZHUYIN_FINAL = {
+    a: 'ㄚ', o: 'ㄛ', e: 'ㄜ', ai: 'ㄞ', ei: 'ㄟ', ao: 'ㄠ', ou: 'ㄡ',
+    an: 'ㄢ', en: 'ㄣ', ang: 'ㄤ', eng: 'ㄥ', ong: 'ㄨㄥ', er: 'ㄦ',
+    i: 'ㄧ', ia: 'ㄧㄚ', ie: 'ㄧㄝ', iao: 'ㄧㄠ', iu: 'ㄧㄡ', ian: 'ㄧㄢ',
+    in: 'ㄧㄣ', iang: 'ㄧㄤ', ing: 'ㄧㄥ', iong: 'ㄩㄥ',
+    u: 'ㄨ', ua: 'ㄨㄚ', uo: 'ㄨㄛ', uai: 'ㄨㄞ', ui: 'ㄨㄟ', uan: 'ㄨㄢ',
+    un: 'ㄨㄣ', uang: 'ㄨㄤ', ueng: 'ㄨㄥ',
+    ü: 'ㄩ', üe: 'ㄩㄝ', üan: 'ㄩㄢ', ün: 'ㄩㄣ'
+  };
+  const SYLLABLE_ALIAS = {
+    yi: 'i', ya: 'ia', ye: 'ie', yao: 'iao', you: 'iu', yan: 'ian', yin: 'in',
+    yang: 'iang', ying: 'ing', yong: 'iong', yu: 'ü', yue: 'üe', yuan: 'üan', yun: 'ün',
+    wu: 'u', wa: 'ua', wo: 'uo', wai: 'uai', wei: 'ui', wan: 'uan', wen: 'un',
+    wang: 'uang', weng: 'ueng'
+  };
+  const BUZZED_INITIALS = ['zh', 'ch', 'sh', 'r', 'z', 'c', 's'];
+  const TONE_MARK = { 1: '', 2: 'ˊ', 3: 'ˇ', 4: 'ˋ', 5: '˙' };
+
+  function pinyinToZhuyin(token) {
+    const parsed = splitTone(token), base = parsed.base, tone = parsed.tone;
+    if (!/^[a-zü]+$/.test(base)) return null;   // punctuation etc. got this far
+    let initial = '', finalKey;
+    if (SYLLABLE_ALIAS[base]) finalKey = SYLLABLE_ALIAS[base];
+    else {
+      initial = PINYIN_INITIALS.find(p => base.indexOf(p) === 0) || '';
+      finalKey = base.slice(initial.length);
+      if ((initial === 'j' || initial === 'q' || initial === 'x') && finalKey[0] === 'u')
+        finalKey = 'ü' + finalKey.slice(1);
+    }
+    const buzzed = BUZZED_INITIALS.indexOf(initial) !== -1 && finalKey === 'i';
+    const finalSym = buzzed ? '' : ZHUYIN_FINAL[finalKey];
+    if (finalSym === undefined) return null;
+    const initSym = ZHUYIN_INITIAL[initial] || '';
+    const toneMark = TONE_MARK[tone];
+    return tone === 5 ? toneMark + initSym + finalSym : initSym + finalSym + toneMark;
+  }
+
+  /* `say` and `roman` in, one <ruby>-tagged string out — or null the moment
+     the alignment this all depends on does not hold. `script` is 'pinyin'
+     (the syllable exactly as the model wrote it) or 'zhuyin'. */
+  function zhRuby(say, roman, script) {
+    if (!say || !roman) return null;
+    const chars = Array.from(String(say));
+    const hanziCount = chars.reduce((n, c) => n + (KANJI.test(c) ? 1 : 0), 0);
+    if (!hanziCount) return null;
+    const tokens = tokenizePinyin(roman);
+    if (tokens.length !== hanziCount) return null;
+    const readings = tokens.map(t => script === 'zhuyin' ? pinyinToZhuyin(t) : t);
+    if (readings.some(r => !r)) return null;
+    let out = '', ti = 0;
+    for (const c of chars) out += KANJI.test(c) ? ('<ruby>' + c + '<rt>' + readings[ti++] + '</rt></ruby>') : c;
+    return out;
+  }
+
+  // The one entry point every render site actually calls: sanitised HTML, or
+  // null to fall back to whatever that site already shows when there is no
+  // ruby — which for Chinese is the sentence plus its whole-line roman span,
+  // exactly as before this existed. See LANGUAGES.zh's `rubyAll` comment.
+  function zhRubyHTML(say, roman, script) {
+    const r = zhRuby(say, roman, script);
+    return r ? rubyHTML(r) : null;
+  }
 
   /* -------------------------------------------------------- prompt build */
   /* The prompt and the schema come out of one call because they come out of one
@@ -548,6 +687,7 @@ LG.dialogue = (function () {
 
   function close() {
     LG.tts.stop();
+    if (LG.speech) { LG.speech.stop(); setMicState(false); }
     try { document.body.classList.remove('typing'); } catch (e) {}   // blur is not owed to a hidden box
     if (current) current.frozen = false;
     current = null;
@@ -574,8 +714,15 @@ LG.dialogue = (function () {
     bub.className = 'bub';
     const main = document.createElement('div');
     main.className = 'main';
+    // Chinese has no ruby of the model's own writing — see zhRuby's comment
+    // — so it is only tried once furigana has had its turn and said no.
+    const zh = (!ruby || !L.furigana) && L.rubyAll && roman && s.zhReading !== 'line'
+      ? zhRubyHTML(text, roman, s.zhReading) : null;
     if (ruby && L.furigana) {
       main.innerHTML = rubyHTML(ruby);
+      main.classList.add('has-ruby');
+    } else if (zh) {
+      main.innerHTML = zh;
       main.classList.add('has-ruby');
     } else {
       main.textContent = text;
@@ -602,19 +749,33 @@ LG.dialogue = (function () {
     r.className = 'roman';
     r.lang = L.romanTag;
     r.textContent = roman || '';
-    r.style.display = roman ? '' : 'none';
+    // Not shown twice: a per-character reading above the line already says
+    // this, and repeating it as a whole-line span below is just clutter.
+    r.style.display = roman && !zh ? '' : 'none';
     bub.appendChild(r);
 
+    const locked = LG.game.crutchesOff();
+    const hideTrans = locked || !s.showTranslation;
     const tr = document.createElement('div');
-    tr.className = 'trans' + (s.showTranslation ? '' : ' hidden-tr');
+    tr.className = 'trans' + (hideTrans ? ' hidden-tr' : '');
     tr.lang = 'en';
     tr.textContent = translation || '';
-    tr.title = s.showTranslation ? '' : 'click to reveal';
-    tr.onclick = () => tr.classList.remove('hidden-tr');
+    tr.title = locked ? 'no translations at this difficulty' : (hideTrans ? 'click to reveal' : '');
+    tr.onclick = locked ? null : () => tr.classList.remove('hidden-tr');
     tr.style.display = translation ? '' : 'none';
     bub.appendChild(tr);
 
-    row._main = main; row._roman = r; row._trans = tr;
+    /* Empty until a gentle-correction call (see offerCorrection) fills it in
+       — present on every row rather than only the player's own, the same
+       reason `r`/`tr` above start empty: a row's shape does not change once
+       it exists, only what is in it. */
+    const co = document.createElement('div');
+    co.className = 'correction';
+    co.lang = L.tag;
+    co.style.display = 'none';
+    bub.appendChild(co);
+
+    row._main = main; row._roman = r; row._trans = tr; row._correction = co;
     row.appendChild(bub);
     el.dlgLog.appendChild(row);
     el.dlgLog.scrollTop = el.dlgLog.scrollHeight;
@@ -624,6 +785,12 @@ LG.dialogue = (function () {
   function renderPhrases() {
     const s = LG.game.settings;
     el.dlgPhrases.innerHTML = '';
+    // The other crutch this difficulty takes away — see LG.game.crutchesOff.
+    // No chip to start from; whatever gets said has to come from the player.
+    if (LG.game.crutchesOff()) {
+      el.dlgPhrases.innerHTML = '<span class="muted">Nothing to start from at this difficulty.</span>';
+      return;
+    }
     LG.PHRASES.forEach(p => {
       const b = document.createElement('button');
       b.className = 'chip';
@@ -676,7 +843,14 @@ LG.dialogue = (function () {
     const shown = prompt || (offered
       ? (text ? text + '  ' : '') + '[holds out the ' + LG.ITEMS[offered].en + ']'
       : text);
-    if (!prompt) { addLine('player', shown); el.dlgInput.value = ''; }
+    if (!prompt) {
+      const row = addLine('player', shown);
+      el.dlgInput.value = '';
+      // Deliberately not awaited — a footnote worth waiting for would be a
+      // footnote the player has to wait for, and this is neither the villager
+      // nor the trade, so nothing else in the turn depends on it landing.
+      if (text && LG.game.settings.corrections) pending.push(offerCorrection(text, row));
+    }
     status(LG.game.displayName(npc) + ' is thinking…', 'thinking');
 
     let reply;
@@ -823,6 +997,25 @@ LG.dialogue = (function () {
      the notebook. Runs after the reply is on screen, so nobody waits for it. */
   const pending = [];
 
+  /* A gentle correction, off by default (⚙ → corrections) since it is a
+     whole extra call on every line the player sends. Deliberately not asked
+     of the villager: they answer what they understood, in character, and
+     "actually, a native would put it this way" is a teacher's note, not
+     something a baker says mid-trade — see DESIGN.md's rule about not
+     turning a character into a mouthpiece for the game. This lands as a
+     footnote under the player's own line instead, the same way a missing
+     translation gets filled in by repairGloss below, and for the same
+     reason: nobody should have to wait on it to keep talking. */
+  async function offerCorrection(said, row) {
+    const L = LG.LANGUAGES[LG.game.settings.lang];
+    try {
+      const got = await LG.llm.correct(LG.game.llmConfig(), said, { langName: L.name });
+      if (!got || !got.correction || !row || !row._correction) return;
+      row._correction.textContent = '✎ ' + got.correction + (got.note ? ' — ' + got.note : '');
+      row._correction.style.display = '';
+    } catch (e) { /* a line worth correcting, uncorrected, is not an error */ }
+  }
+
   /* A villager sometimes answers with no translation, or no romanisation. Ask
      the small model for the missing half rather than leaving a learner with a
      bare sentence. */
@@ -948,7 +1141,11 @@ LG.dialogue = (function () {
         // fall back to the line as spoken, so a note is never in the wrong language
         const note = c.note || spoken;
         const nRuby = usableRuby(c.ruby, c.note) || (c.note ? null : ruby);
-        LG.game.learn(c.id, npc, note, nRuby);
+        // Only carried over when the note IS the line as spoken — a rewritten
+        // note has no pinyin of its own, and reply.roman is the reading of a
+        // sentence that is not, character for character, the one on screen.
+        const nRoman = c.note ? null : reply.roman;
+        LG.game.learn(c.id, npc, note, nRuby, nRoman);
       });
     } catch (e) { /* an unwritten note is always better than a wrong one */ }
   }
@@ -1002,6 +1199,16 @@ LG.dialogue = (function () {
     const view = {};
     if (ctx.a) view[ctx.a.id] = ctx.a;
     if (ctx.b) view[ctx.b.id] = ctx.b;
+    /* Fixed for the whole conversation, from what each of them already had
+       going in — not recomputed turn by turn, or a six-line conversation
+       would have each of them "recall" meeting the other partway through it.
+       Each one's own map, keyed by the other's id: what *this* villager
+       remembers of meeting that particular person, not what the other one
+       remembers of them. */
+    const priorMeeting = {
+      [a.def.id]: (a.metWith || {})[b.def.id] || null,
+      [b.def.id]: (b.metWith || {})[a.def.id] || null
+    };
 
     try {
       for (let t = 0; t < turns; t++) {
@@ -1023,6 +1230,10 @@ LG.dialogue = (function () {
           transcript: transcript,
           closing: t === turns - 1,
           when: t === 0 ? LG.time.describe() : '',
+          // Each of them gets this once, on their own first line of the
+          // conversation — t < 2 covers both (a speaks at t=0, b at t=1) —
+          // rather than every turn, the same reasoning `when` already applies.
+          metBefore: t < 2 ? metBeforeLine(priorMeeting[me.def.id], them.def.name) : null,
           langName: L.name,
           furigana: !!L.furigana,
           diacritics: !!L.diacritics,
@@ -1058,7 +1269,33 @@ LG.dialogue = (function () {
 
     /* What either of them keeps is read off the conversation that happened,
        rather than decided before it started. */
-    if (transcript.length >= 2 && ctx.a && ctx.b) remember(a, b, transcript, ctx);
+    if (transcript.length >= 2 && ctx.a && ctx.b) {
+      remember(a, b, transcript, ctx);
+      noteMet(a, b); noteMet(b, a);
+    }
+  }
+
+  /* `me` now knows it has talked with `them` — see priorMeeting above, which
+     is what reads this back. A flat id-keyed map rather than a list: there is
+     nothing to keep about a pair beyond the most recent time, so a second
+     conversation the same day simply overwrites the first rather than the map
+     growing forever. */
+  function noteMet(me, them) {
+    me.metWith = me.metWith || {};
+    me.metWith[them.def.id] = { day: LG.time.day, at: LG.time.clock() };
+  }
+
+  /* A ready-made sentence rather than the raw {day, at} record — llm.js's
+     converse just drops this in or leaves it out, the same as `when` and
+     `register`, with nothing there needing to know what a "day" is. Content
+     they actually took from a past conversation already reaches them through
+     the ordinary memory list (see llm.js's `recall`/dialogue.js's `keep`);
+     this is only the plain fact that there was one, which that list is not
+     guaranteed to still be carrying by the time it matters. */
+  function metBeforeLine(entry, name) {
+    if (!entry) return null;
+    return 'You have talked with ' + name + ' before' +
+      (entry.day === LG.time.day ? ', earlier today at ' + entry.at : '') + '.';
   }
 
   function remember(a, b, transcript, ctx) {
@@ -1127,10 +1364,38 @@ LG.dialogue = (function () {
       new ResizeObserver(() => { if (stuck) log.scrollTop = log.scrollHeight; }).observe(log);
   }
 
+  /* Speech input, the pair speakLine (above) never had. Progressive
+     enhancement start to finish: the button is `hidden` in the markup and
+     only ever shown here, once, if this browser actually has
+     SpeechRecognition — see speech.js. Everywhere else in this file can go
+     on assuming el.dlgMic might simply not exist. */
+  function toggleMic() {
+    if (!LG.speech || !LG.speech.available() || busy) return;
+    if (LG.speech.listening) { LG.speech.stop(); setMicState(false); return; }
+    setMicState(true);
+    const started = LG.speech.listen(LG.LANGUAGES[LG.game.settings.lang].tag, said => {
+      // Lands in the box the same way a phrase chip does — read over and
+      // sent (or not) by the player, never sent on their own say-so. Hearing
+      // yourself mistranscribed is exactly the feedback this exists to give.
+      el.dlgInput.value = said;
+      el.dlgInput.focus();
+    }, () => setMicState(false));
+    if (!started) setMicState(false);
+  }
+  function setMicState(on) {
+    if (!el.dlgMic) return;
+    el.dlgMic.classList.toggle('listening', on);
+    el.dlgMic.title = on ? 'Listening… tap to stop' : 'Say it aloud instead';
+  }
+
   function init() {
     bind();
     el.dlgSend.onclick = () => send(el.dlgInput.value);
     el.dlgClose.onclick = close;
+    if (el.dlgMic) {
+      if (LG.speech && LG.speech.available()) el.dlgMic.hidden = false;
+      el.dlgMic.onclick = toggleMic;
+    }
     /* Tapping into the box is a decision about what you want to look at: the
        phrase rack gives its room to the line you are answering. Height already
        decides what fits (see trackViewport in game.js) — this is the separate
@@ -1165,5 +1430,9 @@ LG.dialogue = (function () {
            _rubyHTML: rubyHTML,
            _stripRuby: stripRuby, _rubyMatches: rubyMatches, _needsFurigana: needsFurigana,
            _looksEnglish: looksEnglish,
-           rubyHTML: rubyHTML, _usableRuby: usableRuby };
+           rubyHTML: rubyHTML, _usableRuby: usableRuby,
+           zhRubyHTML: zhRubyHTML, _zhRuby: zhRuby, _pinyinToZhuyin: pinyinToZhuyin,
+           _tokenizePinyin: tokenizePinyin,
+           _noteMet: noteMet, _metBeforeLine: metBeforeLine, _startChat: startChat,
+           _offerCorrection: offerCorrection, _toggleMic: toggleMic };
 })();

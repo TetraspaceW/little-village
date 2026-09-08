@@ -264,6 +264,7 @@ LG.llm = (function () {
 
        LG.llm.audit = false     stop printing (still recorded)
        LG.llm.transcript        the records, newest last
+       LG.llm.totals            running tokens/cost for the whole session
        LG.llm.dump()            the lot as plain text, for copying out */
   /* Helper calls are known by the opening of their system prompt. A villager's
      own prompt opens with their name, which is not something to match on, so it
@@ -280,6 +281,52 @@ LG.llm = (function () {
   const transcript = [];
   let audit = true,
     seq = 0;
+
+  /* ------------------------------------------------------------- the meter
+
+     OpenRouter (and, per its own docs, Logfare) hand back what a call
+     actually cost in `usage.cost` — exact, no guessing needed. Anthropic's
+     direct API does not (see the README's Cost section), so a call to it is
+     priced from this table instead: reference $/million-token figures for
+     the three models this game actually offers on that provider, in the
+     same spirit as the README's own "reference pricing" — a number worth
+     having, not a promise it is still current. A model that isn't in the
+     table (a future one typed into the "Other" box, say) is simply left
+     unpriced rather than guessed at.
+
+     Only Anthropic's own model ids are worth listing here: every OpenRouter
+     entry in MODELS/HELPERS gets its cost from usage.cost directly, and
+     pricing someone else's models third-hand is a good way to be
+     confidently wrong. */
+  const REFERENCE_PRICING = {
+    // [input, output], $ per million tokens
+    "claude-opus-5": [15, 75],
+    "claude-sonnet-5": [3, 15],
+    "claude-haiku-4-5": [1, 5],
+  };
+
+  function priceFor(model, usage) {
+    if (usage && typeof usage.cost === "number")
+      return { dollars: usage.cost, exact: true };
+    const p = REFERENCE_PRICING[model];
+    if (!p || !usage) return null;
+    const inTok = usage.input_tokens || usage.prompt_tokens || 0;
+    const outTok = usage.output_tokens || usage.completion_tokens || 0;
+    if (!inTok && !outTok) return null;
+    return { dollars: (inTok / 1e6) * p[0] + (outTok / 1e6) * p[1], exact: false };
+  }
+
+  // Kept separately from `transcript`, which drops its oldest entries once it
+  // has 200 — a session that runs longer than that should still know what it
+  // has spent.
+  const totals = {
+    calls: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    costExact: 0, // summed from a provider's own usage.cost
+    costEst: 0, // summed from REFERENCE_PRICING, for calls with no cost of their own
+    unpriced: 0, // calls that spent tokens under a model this can't price at all
+  };
   const KEEP = 200;
 
   function kindOf(system) {
@@ -328,6 +375,21 @@ LG.llm = (function () {
     };
     transcript.push(entry);
     if (transcript.length > KEEP) transcript.shift();
+
+    {
+      const u = entry.usage || {};
+      const inTok = u.input_tokens || u.prompt_tokens || 0;
+      const outTok = u.output_tokens || u.completion_tokens || 0;
+      totals.calls++;
+      totals.inputTokens += inTok;
+      totals.outputTokens += outTok;
+      const priced = priceFor(entry.model, entry.usage);
+      if (priced) {
+        if (priced.exact) totals.costExact += priced.dollars;
+        else totals.costEst += priced.dollars;
+      } else if (inTok || outTok) totals.unpriced++;
+    }
+
     if (LG.logbook) LG.logbook.call(entry); // and onto the disk, if a log is running
     if (audit && typeof console !== "undefined" && console.log) {
       const u = entry.usage || {};
@@ -942,6 +1004,67 @@ LG.llm = (function () {
     }
   }
 
+  /* A gentle correction on the player's own line — never spoken by the
+     villager, who answers what they understood in character and has no
+     business grading homework mid-trade. Off by default (dialogue.js's
+     offerCorrection); when it runs, this is deliberately the only call in
+     the game that is allowed to say a line was fine as it was, rather than
+     nominating something to fix, because a "correction" invented for a
+     sentence that needed none is worse than no footnote at all. */
+  async function correct(cfg, said, opts) {
+    const o = opts || {};
+    const lang = o.langName || "the language";
+    const lines = [
+      "Here is one line an intermediate learner of " + lang +
+        " just wrote, talking to a villager:",
+      "",
+      JSON.stringify(said),
+      "",
+      "If a native speaker would naturally say this differently — a grammar " +
+        "slip, an unnatural word choice, a missing particle — write the " +
+        "corrected version. If it already reads the way a native speaker " +
+        "would actually say it, even if simple, there is nothing to fix.",
+      "Keep it to the corrected line itself and, only where it is not " +
+        "obvious why, a few words on what changed. This is a footnote for " +
+        "the record, not a lesson read out to them: never address them " +
+        "directly, never name a grammar term, never propose a change that " +
+        "only makes the line more formal or elaborate than what they wrote.",
+      "",
+      "Reply with only a JSON object:",
+      '{"correction": "<the corrected line, in ' + lang +
+        ', or null if there is nothing to fix>",',
+      ' "note": "<a few words on what changed, or empty string>"}',
+    ].join("\n");
+    const vcfg = {
+      provider: cfg.provider,
+      apiKey: cfg.apiKey,
+      model: helperModel(cfg),
+      fast: true,
+    };
+    const sys =
+      "You gently correct a language learner's line, only where it actually needs it. Answer with JSON only.";
+    try {
+      const raw = await providerCall(vcfg, sys, [
+        { role: "user", content: lines },
+      ]);
+      const obj = parseJSON(raw);
+      if (!obj) return null;
+      const correction =
+        typeof obj.correction === "string" && obj.correction.trim()
+          ? obj.correction.trim()
+          : null;
+      // Nothing to show — including the model's own "no change needed",
+      // and a "correction" that is just the original line handed back.
+      if (!correction || correction === String(said).trim()) return null;
+      return {
+        correction: correction,
+        note: typeof obj.note === "string" ? obj.note.trim() : "",
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
   /* Where a villager goes next, and why.
 
      This used to be a probability table — morning meant a 60% chance of work —
@@ -1129,6 +1252,10 @@ LG.llm = (function () {
         ? null
         : o.them.name + ", " + o.them.job + ", is here too." +
           (o.them.persona ? " " + o.them.persona : ""),
+      // A plain fact, not a summons to recap it — what either of you actually
+      // took from that conversation is already in `held` below, when it is
+      // still there to be.
+      o.metBefore || null,
       o.when || null,
       "",
       /* Everyone else in the village is somebody both of you already know by
@@ -1418,8 +1545,24 @@ LG.llm = (function () {
     intent,
     notice,
     recall,
+    correct,
     get transcript() {
       return transcript;
+    },
+    // Running total for the whole session (not just the 200 kept above) — see
+    // the meter comment near REFERENCE_PRICING. `cost` folds together whatever
+    // is exact and whatever is estimated; `estimated` and `unpriced` say
+    // whether that number, or part of it, is a guess or missing entirely, so a
+    // display can flag it rather than presenting a guess as a receipt.
+    get totals() {
+      return {
+        calls: totals.calls,
+        inputTokens: totals.inputTokens,
+        outputTokens: totals.outputTokens,
+        cost: totals.costExact + totals.costEst,
+        estimated: totals.costEst > 0,
+        unpriced: totals.unpriced,
+      };
     },
     dump,
     get audit() {
@@ -1436,5 +1579,14 @@ LG.llm = (function () {
     parseJSON,
     repairJSON,
     salvage,
+    // Feeds a fabricated usage straight through `record`'s totals bookkeeping,
+    // without a network call — for testing the meter against known token
+    // counts. Everything else `record` does (the transcript entry, the
+    // console group) happens too; that is the point of reusing it rather than
+    // duplicating the arithmetic.
+    _debugRecord: (model, usage) =>
+      record({ model: model, provider: "test" }, "", [], "", null, 1, {
+        usage: usage,
+      }),
   };
 })();

@@ -3,17 +3,6 @@
 Where Little Village could go next. Things that have since been built are at the
 bottom, for the record.
 
-## Speech input
-
-Text-to-speech is in (see the README). The natural pair is speech *input* —
-`SpeechRecognition`, Chrome only: say the line aloud, the recogniser transcribes, and
-what it heard becomes your message. Being misheard is itself useful feedback, and it
-closes the loop on pronunciation, which the game currently does nothing about.
-
-Worth knowing when tuning voices: readings are the weak point, not the audio. A wrong
-furigana reading feeds straight into a wrong pronunciation, so the two systems fail
-together.
-
 ## Relationships, and the shape of the problem
 
 The bit of the current design that people react to is the pure-flavour gossip —
@@ -97,10 +86,14 @@ What's left to try, roughly in order of how much they'd add:
 They hold real conversations now, but the conversation is a closed loop: it is generated,
 displayed, and thrown away. Two things fall out of keeping it.
 
-- **Villagers should remember talking.** Right now the fact ids transfer but the
-  conversation itself evaporates, so Boris can tell Mira the same thing three times an
-  hour and neither of them notices. A few lines of transcript kept per pair, fed back in
-  next time, would fix the amnesia and cost nothing.
+- **Villagers should remember talking, further.** They now know *that* they talked —
+  see Built, below — which is the plain fact a repeat conversation was missing, but
+  the conversation's own transcript still evaporates the moment it ends. Keeping a
+  line or two of what was actually said, verbatim, and handing it back next time
+  ("last time you asked me about the rope, and I said I hadn't seen it") is the
+  fuller version of this and was judged the bigger, riskier change for one sitting —
+  a second player-facing prompt field, wired to a second per-pair store, and content
+  worth getting right rather than a fact worth just having.
 - **The player should be interruptible into one.** You can overhear two villagers but not
   join them. Walking up mid-conversation and being addressed by both — with the transcript
   as context — is the most natural three-way practice the game could offer, and the
@@ -121,9 +114,6 @@ remaining rule that a person with the same information would not need:
 - **What they do when they get there.** A villager who walks to the Inn to find Sanna
   currently just stands in the Inn. Arriving with an intention, and acting on it when the
   person is there, is the other half of the movement change.
-- **Show the reason.** Every decision comes back with a few words of why, and nothing
-  displays them. A hover, or a line in the log when you are close, would make the village
-  legible and would make it obvious when the reasoning is bad.
 - **The trade rules.** `action: "trade"` still has a hint spelling out when to fire it.
   With the till visible, that may be derivable too.
 
@@ -140,33 +130,8 @@ The dice table is still there underneath for exactly that reason.
 - **Rooms worth being in.** Interiors exist but are only scenery. A villager who is
   *at* their anvil could be interruptible in a way they aren't on the street, and a
   bed you can sleep in would let you skip to morning rather than waiting out the night.
-- **注音版 Chinese.** Chinese children's books annotate *every* character, because
-  there is no phonetic base script to fall back on — pinyin above the characters on the
-  mainland, zhuyin down the right-hand side in Taiwan, the latter sitting in exactly the
-  typographic slot `<ruby>` was designed for. The game currently gives Chinese one pinyin
-  line under the whole sentence, which is the less authentic arrangement and harder to
-  map word to sound. The ruby machinery already exists for Japanese; pointing it at
-  Chinese would mean per-character readings and an option for zhuyin. Note the rule is
-  genuinely different between the two languages: furigana goes only on kanji and only
-  where the reading is not obvious, while an annotated Chinese edition annotates
-  everything, without exception.
-- **A word list.** Every noun a villager uses, logged with its translation and where
-  you first heard it. Turns a session into something reviewable; spaced repetition on
-  top if you want to go further.
-- **Difficulty as scaffolding, not vocabulary.** Level already sets chain depth, how
-  widely facts are spread, and how they speak. It could also take away the crutches:
-  translations locked, phrasebook empty at advanced.
-- **A gentle correction pass.** A cheap second call returning "you said X, a native
-  would say Y" as a footnote under your own message. Keep it out of the villager's
-  mouth — they shouldn't turn into teachers.
 - **Prompt caching.** Each villager's identity block is stable across turns. A cache
   breakpoint there would cut per-turn cost once conversations get long.
-- **Cost meter.** Tokens and estimated spend in the corner. Makes the model choice
-  concrete for anyone paying per call.
-- **More languages.** One `LG.LANGUAGES` entry, item translations, twelve phrasebook
-  strings, four gossip mutterings — all of it in `data.js`, and the smoke test fails if
-  any of the four is incomplete. Korean would follow Japanese exactly (romanisation
-  field plus a script-appropriate font stack).
 
 ## Built
 
@@ -175,8 +140,10 @@ The dice table is still there underneath for exactly that reason.
 - Monolingual villagers — English words genuinely don't land.
 - A key gate that validates before the game starts.
 - Free gossip: villagers swap fact ids on contact, no model call.
-- Six languages: Russian, English, Chinese, Japanese, French, Spanish — with
-  furigana rather than rōmaji for Japanese.
+- Ten languages: Russian, English, Chinese, Japanese, Korean, French, Spanish,
+  Polish, Arabic (MSA) and toki pona — furigana rather than rōmaji for
+  Japanese, full tashkeel for Arabic, and Hangul needing neither, since it is
+  already an alphabet rather than a logography.
 - ~140 items across five pools, so chains rarely repeat themselves.
 - Voices per villager, cast at load time from the ElevenLabs voice list.
 - A village of twelve across 80×56 tiles, with a flood-fill test that fails the build
@@ -196,3 +163,160 @@ The dice table is still there underneath for exactly that reason.
   the weather that genuinely takes the light.
 - Money: a ¤10 purse, villagers who buy and sell from behind their own counters, and
   haggling clamped either side of what a thing is worth.
+- A cost meter: calls, tokens and a running dollar total in the settings panel, exact
+  where a provider hands back its own price and marked with a `~` the moment any of it
+  is priced off a reference table instead.
+- 注音版 Chinese: pinyin or zhuyin, one reading per character, ruby-style like
+  furigana — rebuilt in the browser from the sentence and the whole-line pinyin
+  the model already sends rather than asked of the model as a second, ruby-shaped
+  reply, so a line that does not line up just falls back to the plain sentence
+  with pinyin underneath instead of showing something wrong.
+- A word list (🔤 button): every item the village has actually named for you —
+  bought, traded, picked up, or told about before you ever held it — logged once
+  each in the order you met it, gloss shown straight away rather than blurred.
+- Villagers know when they last talked to each other: a plain, dated line in the
+  next conversation between the same two ("you have talked with Mira before,
+  earlier today at 09:14"), read off a per-pair record each of them keeps rather
+  than parsed from anything — see "further" under villager conversations, above,
+  for the fuller version this is a first step toward.
+- The reason a villager went somewhere reaches the player, not just the console:
+  a nearby arrival gets a line in the event log naming why, the same `why` that
+  has always come back with the decision — legible from outside now, and only
+  for the one arrival it was actually the reason for, never a stale one carried
+  over from a decision the dice table has since walked past.
+- A gentle correction pass (⚙ → corrections, off by default): a cheap second
+  call footnotes what you typed with how a native speaker would actually say
+  it, when it would say it differently — never in the villager's own mouth,
+  who answers what they understood, in character, whether or not it was well
+  put.
+- Difficulty as scaffolding, not just chain shape: at Advanced, translations
+  are locked rather than a click away (the notebook, the event log, signs,
+  the dialogue box, all of it — even a tooltip stopped being a second way to
+  read the answer without clicking through it) and the Phrases tray goes
+  empty, so nothing is there to lean on. `spread`/`taper`/`gossip` already
+  made the chain itself harder to trace; this is the level that makes the
+  interface stop helping too.
+- Speech input (js/speech.js), the pair text-to-speech never had: a 🎤 next to
+  "Say it" that only ever appears in a browser that actually has
+  SpeechRecognition (Chrome/Chromium, as of writing), asks it in the village's
+  own language, and drops what it heard into the composer — read over and
+  sent, or not, by the player, never on their own say-so, because being
+  misheard is exactly the pronunciation feedback this exists to give.
+- Spaced repetition on the word list: a "Review N due" button runs one word
+  at a time — icon and the village's word, "Show answer" to reveal the
+  English, then Again/Good — on a small Leitner-style ladder (0, 1, 3, 7, 16,
+  35 days) scheduled by real wall-clock time rather than the village's own
+  clock, since "due tomorrow" only means something if tomorrow is an actual
+  day away. A word graded wrong goes to the back of *that session's* queue
+  rather than just being marked down for next time, so getting one wrong
+  means seeing it again before you stop, not filing it away for later.
+- Korean, the tenth language: no ruby of its own — Hangul is an alphabet,
+  not a logography, so unlike zh and ja there is no per-character reading to
+  line up — but `romanize` still applies, the same flag zh uses, since a
+  beginner still needs one. The four LG.TXN lines are noun-final throughout
+  rather than translations of "you buy/hand over/return", because Korean's
+  object and subject particles pick one of two forms depending on the sound
+  in front of them, and {items}/{item}/{name} are filled in at runtime from
+  whatever the game is narrating — the same shape of problem Arabic's
+  impersonal construction solves for grammatical gender, solved here by the
+  register Korean headlines and notices already use for exactly this reason.
+  Caught two pre-existing bugs on the way past: the language-count sentence
+  in both this file and README.md had quietly drifted stale by two languages
+  (Polish was shipped but uncounted in either), fixed alongside Korean since
+  both were already being touched. Also added the completeness test IDEAS.md
+  had been describing as already existing but wasn't: every language in
+  `LG.LANGUAGES` is now checked against `LG.ITEMS`, `LG.PLACENAMES`,
+  `LG.CONJ`, `LG.TXN`, `LG.CHATTER` and `LG.PHRASES`, and the smoke test
+  fails loudly on the first language missing from any of them.
+- The village's seed, surfaced: a save already only ever kept the seed
+  rather than the full state, so the game already had the machinery — this
+  just gives the player a handle on it. ⚙ shows the current seed with a
+  Copy button, and takes one back the other way: type one into "Start a
+  village from a seed" and the exact same errand, villagers' facts and
+  starting weather come back, difficulty held equal. A seed the generator
+  has to retry (`LG.chain.generate` reroll under `seed~1`, `seed~2`, …, for
+  the rare degenerate chain) still round-trips correctly — what is shown is
+  always the seed that actually built the village on screen, not the one
+  that was asked for and silently replaced.
+- A closing tally on the ending screen: days taken, villagers actually
+  spoken to (`metPlayer`, not `nameKnown` — you can talk to somebody all
+  errand and never catch their name), words picked up along the way. All of
+  it read off state the game was already keeping for its own reasons;
+  nothing here is scored or judged, the same "records beat rules" as a save
+  file, just read back as a sentence instead of state. The one new field —
+  which calendar day the village began on — travels in the save alongside
+  the current day rather than being reconstructed from it, since restoring
+  a save calls `newVillage` too and would otherwise reset it to whatever
+  throwaway day that reroll happened to land on.
+- A villager roster (👥 button), the same list shape as the word list but
+  for who lives here rather than what they've named. A face is all anyone
+  gets until `metPlayer` — then their job, the same headline the dialogue
+  box has always shown regardless of whether a name is known, with the name
+  itself only once `nameKnown` says they've actually given it. Deliberately
+  not "the village baker" printed twice when a job is known but a name
+  isn't: the dialogue box's own `dlgName` already solves this by showing
+  "?" rather than repeating the line right below it, and the roster follows
+  the same rule for the same reason.
+- A history of finished errands, in `lg-history` alongside `lg-save` and
+  `lg-settings` rather than inside either: the current village's single
+  save is mutable and gets overwritten by the next autosave, and this is
+  the opposite of that on purpose — small, append-only, and outliving even
+  Forget the saved village, because a village worth remembering the seed of
+  is not necessarily one you still want loaded. Capped at the last 25
+  rather than kept forever, and each row's own seed is one click ("Use
+  seed") from being rolled again via the seed feature above it. Found and
+  fixed a real gap in the smoke test's own fake DOM on the way past: setting
+  `.innerHTML` there was never clearing `.children`, so a second render of
+  any element built with `innerHTML=''` then `appendChild()` (the pattern
+  dialogue.js's chip rows already used) silently piled up on top of the
+  first rather than replacing it — invisible until something asserted an
+  exact row count. `elem()`'s `innerHTML` is a real getter/setter now,
+  clearing `children` the way a browser actually does.
+- Export the word list (⬇ button) as tab-separated native-word/English-gloss
+  lines — the plain-text format Anki and most other flashcard tools import
+  directly — so the vocabulary a session builds up does not have to stay
+  stuck behind this specific game. Split into a pure text-building function
+  and a thin download-triggering wrapper around it, the same reason
+  `endingStats` was split from `tallyNow`: the download half needs
+  `Blob`/`URL`, which not every browser has and the smoke test's sandbox
+  never does, so the half worth unit-testing exactly is the half that
+  doesn't.
+- `prefers-reduced-motion:reduce` already turned off every CSS *transition*
+  in the game, but not `#dlgMic.listening`'s pulse — an *animation*, the
+  property this setting is actually named for — which kept right on
+  pulsing regardless. One line.
+- The difficulty dropdown gets a line under it saying, in words, what
+  README.md's own difficulty table already says in numbers — how far a
+  fact spreads and how much of the errand the gossip knows — updating the
+  moment the dropdown changes rather than only after Save. Hand-written
+  from the table's own already-published, already-measured figures rather
+  than derived live from `LG.LEVELS`'s raw `spread`/`taper`/`gossip`
+  constants, on the theory that paraphrasing tuning constants on the fly
+  risks claiming something of the generator that isn't actually true of
+  it — the published numbers already are.
+- Export the notebook (⚙ → Export notebook as text) the same way as the
+  word list, but sentences rather than single words — the other half of
+  what a flashcard tool is normally fed, sentence mining alongside
+  vocabulary. Built from exactly what a villager said, never the English
+  gloss standing in for it: `learn`'s only caller (dialogue.js's
+  `verifyRevealed`) already falls back to the line as spoken specifically
+  so a note is never in the wrong language, which is what makes the
+  native-sentence half of this trustworthy without re-deriving it. Shares
+  the actual download step (`downloadText`) with the word list's own
+  export now, rather than a second copy of the same Blob/URL/anchor
+  dance.
+- 📋 Copy a summary on the ending screen: the same tally the screen already
+  shows, as one line of text, with the seed folded in — the point being
+  that a village worth bragging about is also, now, one click from being
+  the village whoever you send it to actually gets, not just a description
+  of one they would have to roll blind to try. Same clipboard feature-
+  detection as the seed row's own Copy button.
+- A real bug the smoke test's fake DOM cannot see, caught only by actually
+  rendering the page in a browser: both `<small hidden>` "Copied" notes
+  above stayed visible from the moment the panel opened, `hidden` attribute
+  and all, because `.panel-card small{display:block}` is an author rule and
+  a user-agent rule (`[hidden]{display:none}`) loses to *any* author rule
+  touching the same property, at any specificity. One `[hidden]{display:
+  none!important}` fixes it — and the two notes above, not only the one
+  that surfaced it — high enough in the cascade that no future `display`
+  declaration can quietly win against it the same way again.

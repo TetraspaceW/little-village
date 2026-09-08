@@ -34,13 +34,25 @@ const ctx2d = new Proxy({}, {
 
 function elem(id) {
   const e = {
-    id, textContent: '', innerHTML: '', value: '', checked: false,
+    id, textContent: '', value: '', checked: false,
     disabled: false, title: '', className: '', dataset: {},
     /* Enough of a CSSStyleDeclaration for both halves: things the game sets by
        name (style.display = …) and the custom properties it publishes the
        visible height through. */
     style: { setProperty(k, v) { this[k] = v; }, removeProperty(k) { delete this[k]; } },
     children: [],
+    _html: '',
+    get innerHTML() { return this._html; },
+    /* A real assignment to innerHTML replaces whatever was there, DOM nodes
+       appendChild()-ed in included — so `box.innerHTML = ''; then
+       box.appendChild(...)` (dialogue.js's renderItems, game.js's
+       renderHistory) is meant to leave exactly the freshly appended
+       children behind, not add to whatever the last render left there.
+       Clearing `children` here, not only the string, is what makes that
+       safe to call more than once — without it, every element the fake
+       DOM ever hands out for one id is the same object forever, and
+       nothing would ever come back out of `children`. */
+    set innerHTML(v) { this._html = v; this.children = []; },
     classList: {
       _s: new Set(),
       add(c) { this._s.add(c); }, remove(c) { this._s.delete(c); },
@@ -122,6 +134,36 @@ for (const f of files) {
 console.log('   ' + files.length + ' files: ' + files.map(f => path.basename(f)).join(' '));
 
 const LG = sandbox.LG;
+
+/* Adding a language means touching five places in data.js — LG.ITEMS,
+   LG.PLACENAMES, LG.CONJ, LG.TXN and LG.CHATTER, plus LG.PHRASES for the
+   player's own lines — and it is easy to add the fourth without noticing
+   the fifth still says nothing in the new language. This walks every
+   language in LG.LANGUAGES against every one of those and fails loudly on
+   the first gap, rather than leaving a villager to fall back to English
+   mid-sentence and nobody finding out until a player does. */
+section('every language is complete, everywhere one is expected to speak');
+const langCodes = Object.keys(LG.LANGUAGES);
+for (const lang of langCodes) {
+  for (const id of Object.keys(LG.ITEMS)) {
+    ok(typeof LG.ITEMS[id][lang] === 'string' && LG.ITEMS[id][lang].length > 0,
+       'LG.ITEMS.' + id + ' has a ' + lang + ' translation');
+  }
+  for (const key of Object.keys(LG.PLACENAMES)) {
+    ok(typeof LG.PLACENAMES[key][lang] === 'string' && LG.PLACENAMES[key][lang].length > 0,
+       'LG.PLACENAMES["' + key + '"] has a ' + lang + ' translation');
+  }
+  ok(typeof LG.CONJ[lang] === 'string' && LG.CONJ[lang].length > 0,
+     'LG.CONJ has a ' + lang + ' word for "and"');
+  for (const key of Object.keys(LG.TXN)) {
+    ok(typeof LG.TXN[key][lang] === 'string' && LG.TXN[key][lang].length > 0,
+       'LG.TXN.' + key + ' has a ' + lang + ' line');
+  }
+  ok(Array.isArray(LG.CHATTER[lang]) && LG.CHATTER[lang].length === LG.CHATTER.en.length,
+     'LG.CHATTER has ' + LG.CHATTER.en.length + ' ' + lang + ' mutterings, same as en');
+  LG.PHRASES.forEach((ph, i) => ok(typeof ph[lang] === 'string' && ph[lang].length > 0,
+     'LG.PHRASES[' + i + '] ("' + ph.en + '") has a ' + lang + ' translation'));
+}
 
 /* Start the game the way the page does. No key, so nothing is ever sent. */
 sandbox.LG.game.init();
@@ -570,6 +612,131 @@ section('a model nobody has looked up gets no schema');
      'Logfare has no catalogue to check, so it fails closed the same way');
 }
 
+section('speech input is progressive enhancement — off in a browser without it');
+{
+  // This sandbox never defines window.SpeechRecognition, the same as
+  // Firefox or Safari as of writing — so the module should settle into the
+  // same "not here" state a real unsupported browser leaves it in.
+  ok(LG.speech.available() === false, 'unavailable in a browser (or sandbox) with no SpeechRecognition');
+  ok(LG.speech.listen('ru', () => {}, () => {}) === false,
+     'asking it to listen anyway is refused rather than throwing');
+  ok(LG.speech.listening === false, 'and it never claims to be listening');
+  LG.speech.stop();   // idempotent — nothing to stop, nothing to throw either
+}
+
+section('the cost meter: exact where a provider says, estimated where it has to');
+{
+  const before = LG.llm.totals;
+  ok(before.calls === 0 && before.inputTokens === 0 && before.cost === 0,
+     'nothing spent before the first call');
+
+  // A model this game prices itself (see REFERENCE_PRICING) with no usage.cost
+  // of its own — 1M in, 1M out at $3/$15 per million is $18 exactly.
+  LG.llm._debugRecord('claude-sonnet-5', { input_tokens: 1e6, output_tokens: 1e6 });
+  let t = LG.llm.totals;
+  ok(t.calls === 1, 'one call recorded');
+  ok(t.inputTokens === 1e6 && t.outputTokens === 1e6, 'and its tokens counted');
+  ok(Math.abs(t.cost - 18) < 1e-9, 'priced off the reference table: $3+$15 per million');
+  ok(t.estimated === true, 'flagged as a guess, not a receipt');
+
+  // A provider that hands back its own usage.cost is taken at its word, added
+  // on top rather than re-derived.
+  LG.llm._debugRecord('anthropic/claude-sonnet-5', { input_tokens: 500, output_tokens: 500, cost: 0.02 });
+  t = LG.llm.totals;
+  ok(t.calls === 2, 'the second call counts too');
+  ok(Math.abs(t.cost - 18.02) < 1e-9, 'its exact cost is added to the estimate, not replacing it');
+
+  // A model nobody has priced, on a provider that did not say either — tokens
+  // are still counted, but it does not silently read as free.
+  LG.llm._debugRecord('nobody/never-heard-of-it', { input_tokens: 100, output_tokens: 100 });
+  t = LG.llm.totals;
+  ok(t.calls === 3 && t.inputTokens === 1e6 + 600, 'its tokens are still on the running total');
+  ok(Math.abs(t.cost - 18.02) < 1e-9, 'but it added nothing to the cost, priced or not');
+  ok(t.unpriced === 1, 'and is called out as unpriced rather than folded into the total silently');
+
+  {
+    LG.game.openSettings(false);
+    const note = sandbox.document.getElementById('setUsage').textContent;
+    ok(note.indexOf('3 calls') !== -1, 'the settings panel shows the running total');
+    ok(note.indexOf('~$18.02') !== -1, 'with the ~ once any part of it is a guess');
+    ok(note.indexOf('1 call on an unpriced model') !== -1,
+       'and says outright that one call is not in that figure');
+    sandbox.document.getElementById('settings').classList.remove('open');
+  }
+}
+
+section('pinyin, syllable by syllable, into zhuyin');
+{
+  const zy = LG.dialogue._pinyinToZhuyin;
+  // one of each tone, and the worked example the game's own romanNote uses
+  ok(zy('mā') === 'ㄇㄚ', 'first tone carries no mark');
+  ok(zy('wén') === 'ㄨㄣˊ', 'second tone');
+  ok(zy('hǎo') === 'ㄏㄠˇ', 'third tone');
+  ok(zy('xiè') === 'ㄒㄧㄝˋ', 'fourth tone');
+  ok(zy('ma') === '˙ㄇㄚ', 'no mark at all reads as neutral, dot first');
+  ok(zy('nǐ') === 'ㄋㄧˇ', 'and the pair the romanNote itself is worked from');
+  // the buzzed finals: zhi/chi/shi/ri/zi/ci/si carry no vowel symbol of their own
+  ok(zy('shì') === 'ㄕˋ', 'shi is ㄕ alone, not ㄕ plus ㄧ');
+  ok(zy('zhōng') === 'ㄓㄨㄥ', 'zhong keeps its final — the buzzed rule is "i" only');
+  ok(zy('rì') === 'ㄖˋ', 'ri, the same as shi');
+  // y/w/vowel-only spellings, which are not an initial-plus-final at all
+  ok(zy('wǒ') === 'ㄨㄛˇ', 'wo aliases to the uo final');
+  ok(zy('yī') === 'ㄧ', 'yi aliases to the bare i final');
+  ok(zy('ān') === 'ㄢ', 'an has no initial and needs no alias either');
+  ok(zy('yuǎn') === 'ㄩㄢˇ', 'yuan aliases to üan');
+  // ü: dropped from the spelling after j/q/x, kept after n/l
+  ok(zy('jué') === 'ㄐㄩㄝˊ', 'jue is j + üe, spelled without the umlaut');
+  ok(zy('xuǎn') === 'ㄒㄩㄢˇ', 'xuan is x + üan, same rule');
+  ok(zy('nǚ') === 'ㄋㄩˇ', 'nü keeps the umlaut — nu and nü are different syllables');
+  ok(zy('lüè') === 'ㄌㄩㄝˋ', 'so does lüe');
+  ok(zy('gū') === 'ㄍㄨ', 'plain u after a normal initial is u, not ü');
+  // failure is null, not a guess — the caller's fallback depends on that
+  ok(zy('xi\'an') === null, 'an inner apostrophe is not a letter this parses');
+  ok(zy('') === null, 'nor is nothing at all');
+}
+
+section('a sentence and its pinyin, zipped into ruby — or not, safely');
+{
+  const zhRuby = LG.dialogue._zhRuby;
+  const pinyin = zhRuby('你好', 'nǐ hǎo', 'pinyin');
+  ok(pinyin === '<ruby>你<rt>nǐ</rt></ruby><ruby>好<rt>hǎo</rt></ruby>',
+     'one ruby per character, in the pinyin the model actually wrote');
+  const zhuyin = zhRuby('你好', 'nǐ hǎo', 'zhuyin');
+  ok(zhuyin === '<ruby>你<rt>ㄋㄧˇ</rt></ruby><ruby>好<rt>ㄏㄠˇ</rt></ruby>',
+     'or converted to zhuyin, character for character the same');
+  ok(zhRuby('你好吗？', 'nǐ hǎo', 'pinyin') === null,
+     'a character the pinyin has no syllable for (a dropped 吗, say) fails closed rather than misaligning');
+  ok(zhRuby('你好', 'nǐhǎo', 'pinyin') === null,
+     'so does the ordinary way pinyin is actually typed, run together with no spaces');
+  ok(zhRuby('你好', '', 'pinyin') === null, 'and an empty roman line');
+  ok(zhRuby('', 'nǐ hǎo', 'pinyin') === null, 'or an empty sentence');
+  ok(zhRuby('hello', 'nǐ hǎo', 'pinyin') === null,
+     'no hanzi in the sentence at all — nothing to annotate, so nothing is');
+  // non-hanzi characters pass through untouched, only the hanzi get wrapped
+  ok(zhRuby('¤10, 你好!', 'nǐ hǎo', 'pinyin') ===
+     '¤10, <ruby>你<rt>nǐ</rt></ruby><ruby>好<rt>hǎo</rt></ruby>!',
+     'currency, digits and punctuation are carried through, not annotated');
+
+  const html = LG.dialogue.zhRubyHTML('你好', 'nǐ hǎo', 'pinyin');
+  ok(html === '<ruby>你<rt>nǐ</rt></ruby><ruby>好<rt>hǎo</rt></ruby>',
+     'zhRubyHTML is zhRuby run through the same sanitiser furigana uses');
+  ok(LG.dialogue.zhRubyHTML('你好', 'nǐhǎo', 'pinyin') === null,
+     'and passes the null straight through on a line that does not line up');
+}
+
+section('metBeforeLine: a plain fact, dated or not, never a summons to recap');
+{
+  const line = LG.dialogue._metBeforeLine;
+  ok(line(null, 'Mira') === null, 'nothing to say about somebody never met');
+  const today = LG.time.day;
+  const now = line({ day: today, at: '09:14' }, 'Mira');
+  ok(now === 'You have talked with Mira before, earlier today at 09:14.',
+     'names them and the time, when it was today');
+  const before = line({ day: today - 1, at: '09:14' }, 'Mira');
+  ok(before === 'You have talked with Mira before.',
+     'and drops the clock reading rather than claim "today" for an earlier day');
+}
+
 /* ------------------------------------------------------- what they believe now
    Villagers are not a table of rows to expire. They hold things, each with a
    time and a source, and when something arrives that overtakes one of them they
@@ -662,6 +829,164 @@ section('an opinion never reaches the notebook');
   }
 }
 
+section('a fact teaches its word too, read off the chain link rather than parsed');
+{
+  const g = LG.game;
+  const wantId = Object.keys(plan.facts).find(id => plan.facts[id].type === 'want');
+  ok(!!wantId, 'the village has at least one want fact');
+  if (wantId) {
+    const f = plan.facts[wantId];
+    const lk = plan.links[f.link];
+    const holder = npcs.find(n => n.facts.indexOf(wantId) !== -1);
+    g.state.words = [];
+    g.state.notes = [];
+    g.learn(wantId, holder, 'told about it');
+    if (lk.wants === 'coins') {
+      ok(g.state.words.length === 0, 'coins are never added — see game.js\'s itemForFact');
+    } else {
+      ok(g.hasWord(lk.wants), 'the item that fact concerns is now on the word list');
+      const before = g.state.words.length;
+      g.state.notes = [];
+      g.learn(wantId, holder, 'told about it again');
+      ok(g.state.words.length === before, 'and telling you again does not teach it twice');
+    }
+  }
+}
+
+section('the word list, from holding a thing rather than being told about it');
+{
+  const g = LG.game;
+  g.state.words = [];
+  ok(!g.hasWord('shiny_rock'), 'nothing logged yet');
+  g.give('shiny_rock', 1, 'picked up');
+  ok(g.hasWord('shiny_rock'), 'holding an item teaches its word');
+  ok(g.state.words[0].how === 'picked up', 'and remembers how it arrived');
+  const n = g.state.words.length;
+  g.give('shiny_rock', 1, 'picked up again');
+  ok(g.state.words.length === n, 'a second one does not teach the word twice');
+  ok(!g.hasWord('coins'), 'coins start off the list');
+  g.give('coins', 5);
+  ok(!g.hasWord('coins'), 'and stay off it even once you are actually holding some');
+
+  g.renderWords();
+  const html = sandbox.document.getElementById('wordsList').innerHTML;
+  ok(html.indexOf(LG.itemName('shiny_rock', g.settings.lang)) !== -1,
+     'the panel shows the word in the language you are learning');
+  ok(html.indexOf('shiny rock') !== -1,
+     'and its English gloss, unblurred — a study aid, not the same test the notebook is');
+  ok(html.indexOf('picked up') !== -1, 'and how it was learned');
+}
+
+section('the word list exports as plain, tab-separated text');
+{
+  const g = LG.game;
+  g.state.words = [];
+  ok(g._debugWordListText() === '', 'nothing to export when the list is empty');
+
+  g.give('shiny_rock', 1, 'picked up');
+  g.give('bread', 1, 'picked up');
+  const text = g._debugWordListText();
+  const lines = text.split('\n');
+  ok(lines.length === 2, 'one line per word');
+  ok(lines[0] === LG.itemName('shiny_rock', g.settings.lang) + '\t' + LG.ITEMS.shiny_rock.en,
+     'native word, a tab, then the English gloss — the plain format Anki and friends import directly');
+  ok(lines[1] === LG.itemName('bread', g.settings.lang) + '\t' + LG.ITEMS.bread.en,
+     'in the order they were learned, same as the panel itself');
+
+  // No Blob/URL in this sandbox — the same "not here" shape as no
+  // navigator.clipboard or no SpeechRecognition elsewhere in this file —
+  // so actually triggering the download must be a no-op, not a throw.
+  g.exportWordList();
+}
+
+section('the notebook exports as sentences, not the single words the word list does');
+{
+  const g = LG.game;
+  g.state.notes = [];
+  ok(g._debugNotebookText() === '', 'nothing to export when the notebook is empty');
+
+  // A non-opinion fact specifically — learn() silently declines opinions —
+  // and a holder who actually has it, the same guard used for this
+  // elsewhere in this file (see "no crutches at advanced").
+  const factId = Object.keys(plan.facts).find(id => plan.facts[id].type !== 'opinion');
+  const npc = (factId && g.npcs.find(n => n.facts.indexOf(factId) !== -1)) || g.npcs[0];
+  if (factId && npc.facts.indexOf(factId) !== -1) {
+    g.learn(factId, npc, "a stand-in line in the village's own language");
+    ok(g._debugNotebookText() === "a stand-in line in the village's own language\t" + plan.facts[factId].text,
+       'what was actually said, a tab, then the same English gloss the notebook panel shows underneath it');
+  }
+
+  g.exportNotebook();
+}
+
+section('spaced repetition on the word list: due, graded, and due again later — or not');
+{
+  const g = LG.game;
+  g.state.words = [];
+  g.give('shiny_rock', 1, 'picked up');
+  const w = g.state.words[0];
+  ok(w.level === 0 && typeof w.due === 'number' && w.due <= Date.now(),
+     'a freshly-learned word starts at level 0, due immediately');
+  ok(g.dueWords().indexOf(w) !== -1, 'so it shows up as due right away');
+
+  g.gradeWord(w, true);
+  ok(w.level === 1, 'graded "Good", it moves up a level');
+  ok(w.due > Date.now(), 'and is not due again until later — real time, not the village clock');
+  ok(g.dueWords().indexOf(w) === -1, 'so it drops out of what is due right now');
+
+  g.gradeWord(w, false);
+  ok(w.level === 0 && w.due <= Date.now(),
+     'graded "Again" instead, it resets to level 0, due immediately — a level 1 mistake is not remembered as level 1');
+
+  // A whole session: two words due, one graded wrong once before it is
+  // graded right, the queue only empties once every word has actually been
+  // gotten right at least once this session.
+  g.give('beans', 1, 'picked up');
+  const w2 = g.state.words[1];
+  ok(g.dueWords().length === 2, 'both words are due to start the session');
+  g.startReview();
+  ok(g.reviewQueue.length === 2, 'the session queue starts with everything due');
+  g.reviewGrade(false);                 // the first word, gotten wrong
+  ok(g.reviewQueue.length === 2, 'gotten wrong, it goes to the back of the queue rather than off it');
+  ok(g.reviewQueue[1] === w, 'specifically the one just answered, not the other one');
+  g.reviewGrade(true);                  // now the second word (w2), gotten right
+  ok(g.reviewQueue.length === 1 && g.reviewQueue[0] === w,
+     'gotten right, it leaves the queue — only the missed one is left');
+  g.reviewGrade(true);                  // w, tried again, gotten right this time
+  ok(g.reviewQueue === null, 'and the session ends once nothing is left in it');
+
+  // Rendered, not just in the data: the button, and the card itself.
+  g.state.words = [];
+  g.give('shiny_rock', 1, 'picked up');
+  g.renderWords();
+  let html = sandbox.document.getElementById('wordsReview').textContent;
+  ok(html.indexOf('1 due') !== -1, 'the button counts what is actually due');
+
+  g.startReview();
+  html = sandbox.document.getElementById('wordsList').innerHTML;
+  ok(html.indexOf(LG.itemName('shiny_rock', g.settings.lang)) !== -1,
+     'the card shows the word to be recalled');
+  ok(html.indexOf('display:none') !== -1,
+     'but the answer stays display:none until "Show answer" is pressed');
+  // getElementById auto-vivifies an id nobody has asked for in this fake DOM
+  // (see elem() at the top of this file), so "is it there" has to be read
+  // off the rendered markup itself, not off whether a lookup came back truthy.
+  ok(html.indexOf('id="wordsShow"') !== -1, 'a way to ask for it');
+  ok(html.indexOf('id="wordsGood"') === -1 && html.indexOf('id="wordsAgain"') === -1,
+     'and no way to grade a card not yet shown');
+
+  sandbox.document.getElementById('wordsShow').onclick();
+  html = sandbox.document.getElementById('wordsList').innerHTML;
+  ok(html.indexOf('id="wordsGood"') !== -1 && html.indexOf('id="wordsAgain"') !== -1,
+     'showing the answer is what reveals the grading buttons');
+  ok(html.indexOf('shiny rock') !== -1, 'and the answer itself');
+
+  sandbox.document.getElementById('wordsGood').onclick();
+  ok(g.reviewQueue === null, 'grading the only card due ends the session');
+
+  g.state.words = [];
+}
+
 /* ------------------------------------------------------------------- saving
    One format, both ways round. What is checked here is that a village survives
    being written down and read back — not that localStorage works, but that
@@ -700,15 +1025,25 @@ section('a village, written down and read back');
      lying at the end of the chain gets collected. */
   if (g.beast) { g.beast.caught = true; g.beast.following = true; }
   else if (g.worldItem) { g.worldItem.taken = true; }
+  // guaranteed non-empty regardless of what f0 happened to be about above
+  g.learnWord('shiny_rock', 'test fixture');
+  // same reason — this round trip runs before any villager has actually
+  // talked to another one, so metWith would otherwise be empty on both sides
+  npcs[0].metWith = {}; npcs[0].metWith[npcs[1].def.id] = { day: LG.time.day, at: '12:00' };
+  // distinct from LG.time.day, so a restore that quietly dropped it or
+  // quietly recomputed it from the current day would both show up
+  g.state.arrivedDay = LG.time.day - 3;
 
   const before = {
     seed: plan.seed, day: LG.time.day, frac: LG.time.frac,
-    weather: LG.time.weather, snow: LG.time.snow,
+    weather: LG.time.weather, snow: LG.time.snow, arrivedDay: g.state.arrivedDay,
     inv: JSON.stringify(g.state.inv), notes: JSON.stringify(g.state.notes),
+    words: JSON.stringify(g.state.words),
     deeds: JSON.stringify(g.state.deeds),
     px: Math.round(g.player.px * 10) / 10,
     facts: npcs.map(n => n.facts.join(',')).join('|'),
     memory: npcs.map(n => JSON.stringify(n.memory)).join('|'),
+    metWith: npcs.map(n => JSON.stringify(n.metWith || {})).join('|'),
     till: npcs.map(n => JSON.stringify(n.till || [])).join('|'),
     where: npcs.map(n => n.tx + ',' + n.ty).join('|')
   };
@@ -747,7 +1082,10 @@ section('a village, written down and read back');
      'under the same sky, with the same snow lying');
   ok(JSON.stringify(after.state.inv) === before.inv, 'with the same pockets');
   ok(JSON.stringify(after.state.notes) === before.notes, 'the same notebook');
+  ok(JSON.stringify(after.state.words) === before.words, 'and the same word list');
   ok(JSON.stringify(after.state.deeds) === before.deeds, 'and the same deeds behind you');
+  ok(after.state.arrivedDay === before.arrivedDay,
+     'and the same arrival day, so the ending screen still counts the errand right');
   ok(Math.round(after.player.px * 10) / 10 === before.px, 'standing where you were');
 
   const back = after.npcs;
@@ -756,6 +1094,8 @@ section('a village, written down and read back');
      'everyone knows what they knew');
   ok(back.map(n => JSON.stringify(n.memory)).join('|') === before.memory,
      'and remembers what they had picked up, with when and from whom');
+  ok(back.map(n => JSON.stringify(n.metWith || {})).join('|') === before.metWith,
+     'and who they have talked with before, and when');
   ok(back.map(n => JSON.stringify(n.till || [])).join('|') === before.till,
      'the tills square up');
   ok(back.map(n => n.tx + ',' + n.ty).join('|') === before.where,
@@ -966,6 +1306,62 @@ section('closing the tab and opening it again');
      'a save of the resumed village is a save of the same village');
 }
 
+/* ------------------------------------------------ a reason, shown or withheld
+   Every model-driven move comes back with a `why`, and it used to reach only
+   the console — see game.js's `think`. It reaches the player's own event log
+   now, close up and only once, which is the part actually worth pinning down:
+   a villager put back on the dice table between one decision and the next
+   must not have an old reason read out over an arrival it had nothing to do
+   with. */
+section('the reason a villager went somewhere, told to a nearby player once');
+{
+  const g = LG.game;
+  // read fresh rather than trusting the copy taken at the top of the file —
+  // the cast has been rebuilt by a restore since then (see villagersTalking's
+  // own version of this note)
+  const n = g.npcs[0];
+  const readLog = () => sandbox.document.getElementById('log').innerHTML;
+  const countMentions = html => (html.match(/heard bread was in/g) || []).length;
+
+  const restorePlayer = { px: g.player.px, py: g.player.py };
+  const restoreN = { patch: n.patch, why: n.why, whyPatch: n.whyPatch,
+                     wasWalking: n.wasWalking, route: n.route, frozen: n.frozen,
+                     followingPlayer: n.followingPlayer };
+  const restoreChatter = g.settings.npcChatter;
+  // `frozen` keeps A.routine (and, through it, a real decideWhereToGo call —
+  // this test does not mock LG.llm.intent) from touching n.patch/n.route out
+  // from under the fixture below; npcChatter off keeps A.meet from pulling n
+  // into a conversation of its own mid-test. Neither affects the "arrives"
+  // check itself, which reads state routine() would only have overwritten.
+  n.frozen = true;
+  g.settings.npcChatter = false;
+
+  g._debugPlayerAt(n.px, n.py);            // close enough to overhear
+  const rectA = { x: 1, y: 1, w: 2, h: 2 }, rectB = { x: 9, y: 9, w: 2, h: 2 };
+
+  // a model decision just landed, and the walk it started has just finished
+  n.followingPlayer = false; n.route = [];
+  n.patch = rectA; n.why = 'heard bread was in'; n.whyPatch = rectA;
+  n.wasWalking = true;
+  g._debugTick(1 / 30);
+  const first = readLog();
+  ok(countMentions(first) === 1, 'the reason for the arrival it was actually for reaches the log');
+  ok(!n.why && !n.whyPatch, 'and is consumed — not still sitting there for the next one');
+
+  // the dice table moves them again, with nothing behind it — routine's own
+  // fallback never sets whyPatch, which this reproduces directly
+  n.patch = rectB; n.why = 'heard bread was in'; n.whyPatch = rectA; // stale, from the first move
+  n.wasWalking = true; n.route = [];
+  g._debugTick(1 / 30);
+  const second = readLog();
+  ok(countMentions(second) === countMentions(first),
+     'a reason for a different patch is not read out over an unrelated arrival — no new copy of the line');
+
+  Object.assign(n, restoreN);
+  g.settings.npcChatter = restoreChatter;
+  g._debugPlayerAt(restorePlayer.px, restorePlayer.py);
+}
+
 /* ------------------------------------------------------- nothing left behind */
 section('the old copies are gone');
 const src = {};
@@ -1082,7 +1478,35 @@ async function villagersTalking() {
        'the reader gets the facts as written, not in either villager\'s own voice');
   }
 
+  section('and they remember having talked, next time');
+  ok(!!(a.metWith && a.metWith[b.def.id]), 'a now has b on their own metWith');
+  ok(!!(b.metWith && b.metWith[a.def.id]), 'and b has a on theirs — each side keeps its own copy');
+  if (a.metWith && a.metWith[b.def.id])
+    ok(a.metWith[b.def.id].day === LG.time.day, 'dated to today, the day this meeting happened');
+  {
+    const seen2 = [];
+    LG.llm.converse = async (cfg, opts) => {
+      seen2.push(opts);
+      return { say: 'Опять ты.', translation: 'You again.' };
+    };
+    a.chatting = b.chatting = false; a.frozen = b.frozen = false;
+    await LG.dialogue._startChat({ a, b, ctx: { a: LG.view.of(a, 'chat'), b: LG.view.of(b, 'chat') } });
+    ok(seen2.length >= 2, 'a second conversation between the same two happens too');
+    if (seen2.length >= 2) {
+      ok(typeof seen2[0].metBefore === 'string' && seen2[0].metBefore.indexOf(b.def.name) !== -1,
+         'and this time the first line carries that they have talked before, naming who');
+      ok(seen2[0].metBefore.indexOf('today') !== -1,
+         'dated, since — in this fake, instant-turnaround test — it really was earlier today');
+      ok(typeof seen2[1].metBefore === 'string' && seen2[1].metBefore.indexOf(a.def.name) !== -1,
+         'and the other side of the conversation gets its own version, naming the other name');
+    }
+  }
+
   await namesUnknownUntilTold();
+  await peopleRoster();
+  await gentleCorrections();
+  await noCrutchesAtAdvanced();
+  await micButton();
   await touchControls();
   await roomForTheComposer();
   whatYouCanSee();
@@ -1145,6 +1569,238 @@ async function namesUnknownUntilTold() {
   LG.llm.speak = real;
 }
 
+async function peopleRoster() {
+  section('the villager roster: a face until met, a job and maybe a name after');
+  const g = LG.game;
+  g.npcs.forEach(n => { n.metPlayer = false; n.nameKnown = false; });
+
+  g.openPeople();
+  let html = sandbox.document.getElementById('peopleList').innerHTML;
+  ok(g.npcs.every(n => html.indexOf(n.def.job) === -1),
+     'nobody unmet gives up their job just by being listed');
+  ok((html.match(/class="person muted"/g) || []).length === g.npcs.length,
+     'every row starts muted, before anyone has been spoken to');
+
+  const met = g.npcs[0], stillUnmet = g.npcs[1];
+  met.metPlayer = true;
+  g.renderPeople();
+  html = sandbox.document.getElementById('peopleList').innerHTML;
+  ok(html.indexOf(met.def.job) !== -1, 'met, their job shows up');
+  ok(html.indexOf(g.displayName(met)) !== -1,
+     'and the row reads the same name-or-job the dialogue box and nametag would');
+  ok(html.indexOf(stillUnmet.def.job) === -1,
+     'someone else stays a face regardless — meeting one villager does not out the rest');
+
+  met.nameKnown = true;
+  g.renderPeople();
+  html = sandbox.document.getElementById('peopleList').innerHTML;
+  ok(html.indexOf(met.def.name) !== -1, 'and their actual name appears once they have given it');
+}
+
+/* Off by default, and never in the villager's own mouth — see llm.js's
+   correct and dialogue.js's offerCorrection. */
+async function gentleCorrections() {
+  section('a gentle correction, footnoted under your own line');
+  const g = LG.game, npc = g.npcs[0];
+  const realSpeak = LG.llm.speak, realCorrect = LG.llm.correct;
+  LG.llm.speak = async () => ({ say: 'stand-in', translation: 'stand-in', understood: 'full' });
+  const dlgLog = sandbox.document.getElementById('dlgLog');
+  const wasOn = g.settings.corrections;
+
+  let calls = 0;
+  LG.llm.correct = async () => { calls++; return null; };
+
+  g.settings.corrections = false;
+  LG.dialogue.open(npc);
+  await LG.dialogue.send('a line, off by default');
+  await LG.dialogue.settled();
+  ok(calls === 0, 'off by default, nothing extra is asked at all');
+  LG.dialogue.close();
+
+  g.settings.corrections = true;
+  calls = 0;
+  LG.dialogue.open(npc);
+  await LG.dialogue.send('', 'coins');
+  await LG.dialogue.settled();
+  ok(calls === 0, 'a pure item offer, no words of its own, is not sent for checking');
+  LG.dialogue.close();
+
+  let seenSaid = null;
+  LG.llm.correct = async (cfg, said) => {
+    calls++; seenSaid = said;
+    return { correction: 'the tidied-up line', note: 'a small fix' };
+  };
+  calls = 0;
+  LG.dialogue.open(npc);
+  // the player's own row, not the villager's reply that lands right after it
+  const playerRowIdx = dlgLog.children.length;
+  await LG.dialogue.send('a line worth fixing');
+  await LG.dialogue.settled();
+  ok(calls === 1, 'with the setting on, a typed line is checked');
+  ok(seenSaid === 'a line worth fixing', 'the exact line typed, not the reply or anything else');
+  const row = dlgLog.children[playerRowIdx];
+  ok(!!(row && row._correction && row._correction.style.display === ''),
+     'the correction footnote is shown');
+  ok(!!(row && row._correction &&
+        row._correction.textContent.indexOf('the tidied-up line') !== -1 &&
+        row._correction.textContent.indexOf('a small fix') !== -1),
+     'carrying both the corrected line and why');
+  LG.dialogue.close();
+
+  LG.llm.correct = async () => null;
+  LG.dialogue.open(npc);
+  const playerRowIdx2 = dlgLog.children.length;
+  await LG.dialogue.send('a line that was already fine');
+  await LG.dialogue.settled();
+  const row2 = dlgLog.children[playerRowIdx2];
+  ok(!!(row2 && row2._correction && row2._correction.style.display === 'none'),
+     'and nothing shows at all when there was nothing to fix');
+  LG.dialogue.close();
+
+  g.settings.corrections = wasOn;
+  LG.llm.speak = realSpeak;
+  LG.llm.correct = realCorrect;
+}
+
+/* The interface's own difficulty knob — see data.js's LEVELS.advanced and
+   game.js's crutchesOff. `spread`/`taper`/`gossip` are exercised by the
+   chain-generation fuzz test elsewhere; this is the one that changes what
+   gets drawn, so it is checked by rendering something and reading the
+   result back rather than by inspecting a generated plan. */
+async function noCrutchesAtAdvanced() {
+  section('no crutches at advanced: translations locked, phrasebook empty');
+  const g = LG.game;
+  const wasLevel = g.settings.level, wasTrans = g.settings.showTranslation;
+
+  g.settings.level = 'beginner';
+  ok(g.crutchesOff() === false, 'beginner keeps its crutches');
+  g.settings.level = 'intermediate';
+  ok(g.crutchesOff() === false, 'so does intermediate');
+  g.settings.level = 'advanced';
+  ok(g.crutchesOff() === true, 'advanced does not');
+
+  // The notebook: locked even with the setting on, and the tooltip stops
+  // being a second way to read the answer without clicking through it.
+  // A non-opinion fact specifically — learn() silently declines opinions
+  // (see "an opinion never reaches the notebook" above), and npc.facts[0]
+  // is not guaranteed to be one of the facts it will actually take.
+  const factId = Object.keys(plan.facts).find(id => plan.facts[id].type !== 'opinion');
+  const npc = (factId && g.npcs.find(n => n.facts.indexOf(factId) !== -1)) || g.npcs[0];
+  if (factId && npc.facts.indexOf(factId) !== -1) {
+    g.state.notes = g.state.notes.filter(n => n.id !== factId);
+    g.settings.showTranslation = true;
+    g.learn(factId, npc, 'told about it');
+    const html = sandbox.document.getElementById('notebook').innerHTML;
+    ok(html.indexOf('hidden-tr') !== -1, 'the gloss stays blurred even with translations switched on');
+    ok(html.indexOf('title="no translations at this difficulty"') !== -1,
+       'and the tooltip does not just hand the answer over on hover');
+  }
+
+  // The dialogue box: same lock, read off the row object directly rather
+  // than through a fake DOM's inert querySelectorAll (see addLine).
+  const realSpeak = LG.llm.speak;
+  LG.llm.speak = async () => ({ say: 'stand-in', translation: 'a plain English gloss', understood: 'full' });
+  g.settings.showTranslation = true;
+  LG.dialogue.open(npc);
+  await LG.dialogue.send('hello');
+  const dlgLog = sandbox.document.getElementById('dlgLog');
+  const npcRow = dlgLog.children[dlgLog.children.length - 1];
+  ok(!!(npcRow && npcRow._trans && npcRow._trans.className.indexOf('hidden-tr') !== -1),
+     'the reply\'s own translation is locked too, "show translations" or not');
+  ok(!!(npcRow && npcRow._trans && npcRow._trans.onclick === null),
+     'and there is no handler left to click past it with');
+  LG.dialogue.close();
+  LG.llm.speak = realSpeak;
+
+  // The phrase tray: nothing to lean on.
+  LG.dialogue.open(npc);
+  ok(sandbox.document.getElementById('dlgPhrases').innerHTML.indexOf('Nothing to start from') !== -1,
+     'no phrase chips at this difficulty');
+  LG.dialogue.close();
+
+  g.settings.level = 'intermediate';
+  LG.dialogue.open(npc);
+  ok(sandbox.document.getElementById('dlgPhrases').innerHTML.indexOf('Nothing to start from') === -1,
+     'but they are back the moment the difficulty is');
+  LG.dialogue.close();
+
+  // The dropdown gets a plain-language line under it too, so the numbers
+  // README.md's own difficulty table gives are not only ever readable
+  // outside the game — and it updates the moment the dropdown does,
+  // without needing Save pressed first.
+  g.openSettings(false);
+  sandbox.document.getElementById('setLevel').value = 'beginner';
+  sandbox.document.getElementById('setLevel').onchange();
+  let info = sandbox.document.getElementById('setLevelInfo').textContent;
+  ok(info.indexOf('4 villagers') !== -1 && info.indexOf('whole errand') !== -1,
+     'beginner: wide spread, and the gossip knows all of it');
+
+  sandbox.document.getElementById('setLevel').value = 'advanced';
+  sandbox.document.getElementById('setLevel').onchange();
+  info = sandbox.document.getElementById('setLevelInfo').textContent;
+  ok(info.indexOf('usually just the owner') !== -1 && info.indexOf('only opinions') !== -1,
+     'advanced: barely spreads, and the gossip knows none of the errand itself');
+  sandbox.document.getElementById('settings').classList.remove('open');
+
+  g.settings.level = wasLevel;
+  g.settings.showTranslation = wasTrans;
+}
+
+/* LG.speech itself is exercised above, on its own, in a browser (this
+   sandbox) with no SpeechRecognition to give it. This is the wiring on the
+   other side of that: dialogue.js's _toggleMic, driven through a stand-in
+   LG.speech so the behaviour is checked independently of whether this
+   particular browser actually has the real thing. */
+async function micButton() {
+  section('the mic button: what it hears lands in the box, never sends itself');
+  const npc = LG.game.npcs[0];
+  const realSpeech = LG.speech;
+  LG.dialogue.open(npc);
+
+  const langsAsked = [];
+  let listeningFlag = false, onResult = null, onEnd = null;
+  LG.speech = {
+    available: () => true,
+    get listening() { return listeningFlag; },
+    listen: (lang, res, end) => {
+      langsAsked.push(lang);
+      listeningFlag = true;
+      onResult = res; onEnd = end;
+      return true;
+    },
+    stop: () => { listeningFlag = false; }
+  };
+
+  const mic = sandbox.document.getElementById('dlgMic');
+  const dlgLog = sandbox.document.getElementById('dlgLog');
+  const rowsBefore = dlgLog.children.length;
+
+  LG.dialogue._toggleMic();
+  ok(langsAsked.length === 1 && langsAsked[0] === LG.LANGUAGES[LG.game.settings.lang].tag,
+     'starting listens once, in the language the village actually speaks');
+  ok(mic.classList.contains('listening'), 'the button shows it is listening');
+
+  sandbox.document.getElementById('dlgInput').value = '';
+  onResult('a misheard line, maybe');
+  ok(sandbox.document.getElementById('dlgInput').value === 'a misheard line, maybe',
+     'what it heard fills the box, the same as a phrase chip would');
+  ok(dlgLog.children.length === rowsBefore,
+     'and nothing at all gets sent on the player\'s behalf — they still have to say it themselves');
+
+  LG.dialogue._toggleMic();
+  ok(!mic.classList.contains('listening'), 'a second tap stops it early');
+
+  LG.dialogue._toggleMic();
+  ok(langsAsked.length === 2, 'and it can be started again');
+  onEnd();
+  ok(!mic.classList.contains('listening'), 'and stops showing as listening when the browser ends it unprompted');
+
+  LG.dialogue.close();
+  ok(!listeningFlag, 'closing the conversation stops it too, mid-listen or not');
+
+  LG.speech = realSpeech;
+}
+
 /* The phone half of the controls. Nothing here dispatches a PointerEvent —
    there is no browser in this sandbox to build one — so the gesture is driven
    through the same three calls the real handlers make, which is where all the
@@ -1182,9 +1838,26 @@ async function touchControls() {
 
   /* --------------------------------------------------------------- the tap */
   // Somebody standing outdoors: a villager behind their own wall is not drawn,
-  // and what is not drawn cannot be aimed at.
-  const npc = g.npcs.find(n => !W.buildingUnder(n)) || g.npcs[0];
+  // and what is not drawn cannot be aimed at. Put on the green rather than
+  // trusted to already be there — by this point in the suite the clock has
+  // run through thousands of ticks fired by earlier sections, easily enough
+  // to reach night, when every villager is home and indoors (see game.js's
+  // Autonomy note), which silently broke `g.npcs.find(n => !W.buildingUnder(n))
+  // || g.npcs[0]` the way this used to read: no outdoor villager existed, the
+  // fallback npc was indoors like everyone else, and every tap on them below
+  // failed the same way a tap through a wall correctly should have.
+  const npc = g.npcs[0];
+  const npcWasAt = { px: npc.px, py: npc.py, tx: npc.tx, ty: npc.ty };
+  const spot0 = W.nearestOpen(LG.GREEN.x + (LG.GREEN.w / 2 | 0), LG.GREEN.y + (LG.GREEN.h / 2 | 0));
+  npc.px = spot0.x * TILE + TILE / 2; npc.py = spot0.y * TILE + TILE / 2;
+  npc.tx = spot0.x; npc.ty = spot0.y;
+  ok(!W.buildingUnder(npc), 'the green is outdoors, so the fixture above actually holds');
   const screen = a => ({ x: a.px - g.cam.x, y: a.py - g.cam.y });
+  /* Held still for the rest of this test. `_debugTick` below runs the real
+     village along with the camera it exists to move, and nobody else's
+     position is asserted on — but npc's is, on both sides of every tap. */
+  const npcWasFrozen = npc.frozen;
+  npc.frozen = true;
 
   g._debugPlayerAt(npc.px + 20, npc.py);
   g._debugTick(1 / 60);                        // the camera catches up with them
@@ -1192,6 +1865,7 @@ async function touchControls() {
   T._begin(2, p.x, p.y, 0); T._end(2, p.x, p.y, 90);
   ok(LG.dialogue.isOpen(), 'a tap on the villager beside you opens the conversation');
   LG.dialogue.close();
+  npc.frozen = true;   // close() rightly un-freezes them — hold still again for what follows
 
   T._begin(3, p.x, p.y, 0); T._move(3, p.x + 60, p.y); T._end(3, p.x + 60, p.y, 90);
   ok(!LG.dialogue.isOpen(), 'but a drag that starts on them walks past them instead');
@@ -1208,8 +1882,11 @@ async function touchControls() {
   T._begin(5, p.x, p.y, 0); T._end(5, p.x, p.y, 90);
   ok(!LG.dialogue.isOpen(), 'tapping someone across the green does not start a conversation');
   g._debugTick(1 / 60);
-  ok(/Walk over to/.test(sandbox.document.getElementById('hint').textContent),
+  const hintText = sandbox.document.getElementById('hint').textContent;
+  ok(/Walk over to/.test(hintText),
      'it says to walk over rather than going quiet');
+  npc.frozen = npcWasFrozen;
+  Object.assign(npc, npcWasAt);
 
   /* --------------------------------------------------- and it actually walks */
   // A stretch of ground with room to walk four tiles east, found rather than
@@ -1419,6 +2096,213 @@ function whatYouCanSee() {
   g._debugViewport();
   const back = g._debugSeen();
   ok(back.top === 0 && back.bottom === vh, 'and it all comes back');
+}
+
+section('the same seed builds the same village, twice');
+{
+  const seed = 'smoke-test-reproducibility';
+  const a = LG.chain.generate({ level: 'intermediate', seed });
+  const b = LG.chain.generate({ level: 'intermediate', seed });
+  ok(a.seed === seed && b.seed === seed, 'both plans kept the seed they were asked for');
+  ok(a.terminal.item === b.terminal.item && a.terminal.placeId === b.terminal.placeId,
+     'the same errand ends the same way both times');
+  ok(a.links.length === b.links.length &&
+     a.links.every((lk, i) => lk.npcId === b.links[i].npcId && lk.wants === b.links[i].wants
+                            && lk.gives === b.links[i].gives),
+     'and every link in the chain is identical, villager for villager, item for item');
+  ok(Object.keys(a.facts).length === Object.keys(b.facts).length,
+     'the same number of facts were dealt out');
+
+  const c = LG.chain.generate({ level: 'intermediate', seed: seed + '-different' });
+  ok(c.terminal.item !== a.terminal.item || c.links.length !== a.links.length ||
+     c.links.some((lk, i) => !a.links[i] || lk.npcId !== a.links[i].npcId),
+     'a different seed is, in practice, a different village');
+}
+
+/* This is the last section that touches LG.game.newVillage — deliberately
+   placed after everything else, since replacing the village mid-suite is
+   exactly the stale-reference trap this file's own comments warn about
+   elsewhere (see the top-level `npcs`/`plan` this file no longer reads by
+   this point). beliefsRevised and villagersTalking, below, read their own
+   npc off the *original* village captured when this file first read
+   LG.game.npcs — not off LG.game.npcs itself — which is precisely what
+   keeps them safe to run after this. */
+section('the village seed: read off the current plan, and re-enterable to reproduce it');
+{
+  LG.game.openSettings(false);
+  ok(sandbox.document.getElementById('setSeedShow').value === LG.game.plan.seed,
+     "the settings panel shows this village's actual seed");
+
+  // No navigator at all in this sandbox — the same "not here" shape as the
+  // SpeechRecognition check earlier — so the copy button has nothing to
+  // copy with and must not throw, or claim it copied something it didn't.
+  sandbox.document.getElementById('setSeedCopy').onclick();
+  ok(sandbox.document.getElementById('setSeedCopied').hidden === true,
+     'and says nothing happened, rather than claiming a copy with nowhere to put it');
+
+  const seed = LG.chain.makeSeed();
+  sandbox.document.getElementById('setSeedInput').value = seed;
+  sandbox.document.getElementById('setSeedGo').onclick();
+  // Usually exactly the typed seed — but LG.chain.generate() reuses it
+  // verbatim only on a first roll that validates; a seed whose first roll
+  // comes back degenerate is retried under seed+"~1", seed+"~2", and so on
+  // (see chain.js's own generate()), so that is a real outcome here too,
+  // not just a typed one.
+  ok(LG.game.plan.seed === seed || LG.game.plan.seed.indexOf(seed + '~') === 0,
+     'typing a seed and pressing Go starts exactly that village');
+  ok(!sandbox.document.getElementById('settings').classList.contains('open'),
+     'and the settings panel closes behind it');
+
+  // Pressing Go with nothing typed must not rebuild the village under you.
+  const before = LG.game.plan.seed;
+  sandbox.document.getElementById('setSeedInput').value = '   ';
+  sandbox.document.getElementById('setSeedGo').onclick();
+  ok(LG.game.plan.seed === before, 'an empty seed is not a request for a new village');
+}
+
+section('the ending screen counts the errand, not just announces it');
+{
+  const g = LG.game;
+  g.newVillage('ending-stats-village', true);
+  const stats = () => g._debugEndingStats();
+
+  g.state.words.length = 0;
+  g.npcs.forEach(n => { n.metPlayer = false; });
+  g.state.arrivedDay = LG.time.day;
+  ok(stats() === '1 day, 0 of ' + g.npcs.length + ' villagers spoken to, 0 words learned along the way.',
+     'nothing yet, on the day you arrived, reads as singular and zero rather than "0 days"');
+
+  g.learnWord('shiny_rock', 'test fixture');
+  g.npcs[0].metPlayer = true;
+  ok(stats() === '1 day, 1 of ' + g.npcs.length + ' villagers spoken to, 1 word learned along the way.',
+     'one of each stays singular');
+
+  g.npcs[1].metPlayer = true;
+  g.learnWord('bread', 'test fixture');
+  LG.time.start(LG.time.day + 4, LG.time.frac);
+  ok(stats() === '5 days, 2 of ' + g.npcs.length + ' villagers spoken to, 2 words learned along the way.',
+     'and the day count is inclusive — arriving and leaving on the same day is one day, not zero');
+
+  // A save from before endingStats existed has no `time.arrived` to read —
+  // restore() falls back to the day the save was made on, not day 0, so an
+  // old save's own ending screen undercounts to "1 day" rather than
+  // overcounting into the hundreds. See save.js's restore().
+  const shot = LG.save.snapshot();
+  delete shot.time.arrived;
+  const why = LG.save.restore(shot);
+  ok(why === null && LG.game.state.arrivedDay === shot.time.day,
+     "a save with no arrival day of its own falls back to the day it was saved on, not 0");
+}
+
+section('a shareable summary line for the ending screen, seed included');
+{
+  // Set up explicitly rather than trusting what the previous section left
+  // behind — that one's own last check was a restore's fallback, which
+  // resets state.arrivedDay on its own.
+  const g = LG.game;
+  g.newVillage('summary-test-village', true);
+  const seed = g.plan.seed, c = g.plan.links[0];
+  g.state.words.length = 0;
+  g.learnWord('shiny_rock', 'test fixture');
+  g.learnWord('bread', 'test fixture');
+  g.npcs[0].metPlayer = true;
+  g.npcs[1].metPlayer = true;
+  g.state.arrivedDay = LG.time.day - 4;   // "5 days"
+
+  const text = g._debugEndingSummaryText();
+  ok(text.indexOf(seed) !== -1, 'carries the exact seed that built this village');
+  ok(text.indexOf(c.npcName) !== -1 && text.indexOf(LG.ITEMS[c.wants].full) !== -1,
+     'names who the errand was for and what they finally got');
+  ok(text.indexOf('5 days') !== -1 &&
+     text.indexOf('2 of ' + g.npcs.length + ' villagers spoken to') !== -1 &&
+     text.indexOf('2 words learned') !== -1,
+     'and the same tally the ending screen itself shows');
+  ok(text.indexOf(LG.LANGUAGES[g.settings.lang].name) !== -1 &&
+     text.indexOf(LG.LEVELS[g.settings.level].label) !== -1,
+     'plus the language and difficulty, so the seed alone is not ambiguous about what it rebuilds');
+
+  // No navigator in this sandbox — the same "not here" shape as the seed
+  // feature's own Copy button — so the click must be a no-op, not a throw.
+  sandbox.document.getElementById('endingCopy').onclick();
+  ok(sandbox.document.getElementById('endingCopied').hidden === true,
+     'and says nothing happened, rather than claiming a copy with nowhere to put it');
+}
+
+section('a finished errand outlives the village it happened in');
+{
+  const g = LG.game;
+  try { sandbox.localStorage.removeItem('lg-history'); } catch (e) {}
+
+  // LG.chain.generate() can retry a seed that rolls a degenerate chain
+  // under seed+"~1", seed+"~2", … (see the village-seed section above) —
+  // so what a village is actually recorded under is g.plan.seed after the
+  // fact, not necessarily the literal string newVillage was asked for.
+  g.newVillage('history-test-village-one', true);
+  const seed1 = g.plan.seed;
+  g.state.words.length = 0;
+  g.learnWord('shiny_rock', 'test fixture');
+  g.npcs[0].metPlayer = true;
+  g.state.arrivedDay = LG.time.day - 2;   // "3 days"
+  g._debugWin();
+
+  let h = g._debugHistory();
+  ok(h.length === 1, 'the first finished errand is recorded');
+  ok(h[0].seed === seed1, 'under the seed that actually built it');
+  ok(h[0].level === g.settings.level && h[0].lang === g.settings.lang,
+     'with the difficulty and language it was played in');
+  ok(h[0].days === 3 && h[0].met === 1 && h[0].words === 1,
+     'and the same tally the ending screen itself showed');
+  ok(typeof h[0].at === 'string' && !isNaN(Date.parse(h[0].at)), 'stamped with when');
+
+  // A second finished errand, in a different village, goes to the front —
+  // most recent first — rather than replacing or appending after the last.
+  g.newVillage('history-test-village-two', true);
+  const seed2 = g.plan.seed;
+  g._debugWin();
+  h = g._debugHistory();
+  ok(h.length === 2 && h[0].seed === seed2 && h[1].seed === seed1,
+     'newest first, oldest still behind it');
+
+  // "Start a new village" without finishing it must not itself write a row.
+  g.newVillage('history-test-village-three', true);
+  ok(g._debugHistory().length === 2, 'an unfinished village leaves no mark');
+
+  // The list is capped rather than left to grow forever — see game.js's
+  // HISTORY_MAX. Twenty-nine already on the shelf plus one just won is
+  // one more than the cap, so the oldest of the thirty must be the one
+  // that does not survive.
+  const padded = [];
+  for (let i = 0; i < 29; i++) padded.push({ seed: 'padding-' + i, level: 'beginner',
+    lang: 'en', days: 1, met: 0, total: g.npcs.length, words: 0, at: new Date().toISOString() });
+  sandbox.localStorage.setItem('lg-history', JSON.stringify(padded));
+  g.newVillage('history-test-village-four', true);
+  const seed4 = g.plan.seed;
+  g._debugWin();
+  h = g._debugHistory();
+  ok(h.length === 25, 'the list stops growing once it is full, rather than tracking every village ever');
+  ok(h[0].seed === seed4, 'the one just finished is still first');
+  ok(h.every(e => e.seed !== 'padding-28'), 'and the oldest one is what falls off the end');
+
+  // Rendered into Settings, and readable back off the DOM the same way
+  // dialogue.js's chip rows are — built with createElement/appendChild,
+  // each row's own "Use seed" button closed over that row's own seed.
+  g._debugRenderHistory();
+  const box = sandbox.document.getElementById('setHistoryList');
+  ok(box.children.length === 25, 'one row per remembered errand');
+  const firstRow = box.children[0];
+  ok(firstRow.children[0].innerHTML.indexOf(seed4) !== -1,
+     'the newest row names the seed that built it');
+  sandbox.document.getElementById('setSeedInput').value = '';
+  firstRow.children[1].onclick();
+  ok(sandbox.document.getElementById('setSeedInput').value === seed4,
+     '"Use seed" drops that row\'s seed into the field next to Go, rather than rerolling on its own say-so');
+
+  // Opening Settings on a real village renders it too, not just a direct call.
+  try { sandbox.localStorage.removeItem('lg-history'); } catch (e) {}
+  g.openSettings(false);
+  ok(sandbox.document.getElementById('setHistoryList').innerHTML.indexOf('Nothing finished yet') !== -1,
+     'and says plainly that nothing has been finished yet, rather than showing an empty list');
+  sandbox.document.getElementById('settings').classList.remove('open');
 }
 
 beliefsRevised().then(villagersTalking);

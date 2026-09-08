@@ -164,6 +164,17 @@
         </select>
       </label>
 
+      <label>Chinese pronunciation <span class="opt">only used when the language above is Chinese</span>
+        <select id="setZhReading">
+          <option value="line">Pinyin under the line</option>
+          <option value="pinyin">Pinyin above each character, like furigana</option>
+          <option value="zhuyin">Zhuyin (注音) above each character</option>
+        </select>
+        <small>The per-character views are built from the sentence and its pinyin, character
+        for syllable — a line that will not line up (rare) just shows the pinyin underneath,
+        the same as it always has.</small>
+      </label>
+
       <label class="check"><input type="checkbox" id="setTrans"> Show English translations straight away
         <small>(off = translations are blurred until you click them)</small></label>
       <label class="check"><input type="checkbox" id="setChatter"> Let the villagers gossip with each other</label>

@@ -32,8 +32,21 @@ LG.LANGUAGES = {
     name: 'Chinese (Mandarin)', native: '中文', flag: '🇨🇳',
     tag: 'zh-Hans', romanTag: 'zh-Latn',
     romanize: true, romanLabel: 'pinyin',
-    // asking for "pinyin" alone got tone marks on some syllables and not others
-    romanNote: 'with tone marks on every syllable \u2014 n\u01d0 h\u01ceo, not ni hao',
+    // asking for "pinyin" alone got tone marks on some syllables and not
+    // others; the space-between-every-syllable half is newer, and is not
+    // how pinyin is normally typed \u2014 idiomatic pinyin groups a multi-
+    // character word as one run (\u8c22\u8c22 as "xi\u00e8xie") \u2014 but it is what makes
+    // dialogue.js's zhRuby able to line a reading up with each character
+    // without asking the model for a second, ruby-shaped copy of the same
+    // sentence. See that comment for what happens when a line does not
+    // follow this: nothing breaks, the per-character view just does not
+    // apply to that line.
+    romanNote: 'with tone marks on every syllable, and a space between every ' +
+      'syllable \u2014 even inside one word: \u8c22\u8c22 is "xi\u00e8 xie", not "xi\u00e8xie"',
+    // Unlike `furigana` below, there is no ruby markup here for the model to
+    // write \u2014 the flag means the game may build one itself, in code, from
+    // `say` plus the romanised line above; see dialogue.js's zhRuby.
+    rubyAll: true,
     fontStack: "'Noto Sans SC', system-ui, sans-serif"
   },
   ja: {

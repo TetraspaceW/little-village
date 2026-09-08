@@ -229,7 +229,7 @@ LG.save = (function () {
       player: { x: round(p.px), y: round(p.py), dir: p.dir },
       inventory: Object.assign({}, st.inv),
       // no `done`: whether a lead is spent is read off the world, not stored
-      notes: st.notes.map(n => ({ id: n.id, text: n.text, ruby: n.ruby || null })),
+      notes: st.notes.map(n => ({ id: n.id, text: n.text, ruby: n.ruby || null, roman: n.roman || null })),
       deeds: st.deeds.slice(),
       board: (st.board || []).map(b => ({ npcId: b.npcId, name: b.name, text: b.text,
                                           translation: b.translation || '', roman: b.roman || '',
@@ -317,7 +317,7 @@ LG.save = (function () {
     const noted = new Set();
     st.notes = (data.notes || [])
       .filter(n => g.plan.facts[n.id] && !noted.has(n.id) && noted.add(n.id))
-      .map(n => ({ id: n.id, text: n.text, ruby: n.ruby || null }));
+      .map(n => ({ id: n.id, text: n.text, ruby: n.ruby || null, roman: n.roman || null }));
     st.deeds = (data.deeds || []).slice();
     st.board = (data.board || []).map(b => ({
       npcId: b.npcId, name: b.name, text: b.text,

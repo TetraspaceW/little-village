@@ -187,10 +187,19 @@ connects; anything unrecognised falls back to prompt-based JSON with repair.
 ## Languages and difficulty
 
 The village speaks Russian, English, Chinese (Mandarin), Japanese, French,
-Spanish, Arabic (MSA) or toki pona, at three difficulty levels. Russian and
-Chinese lines carry a romanisation; Japanese gets furigana over kanji in
-dialogue (via `<ruby>` tags — not on item names, which stay plain kanji), and
-Arabic gets full tashkeel for the same reason, on the script it already has.
+Spanish, Arabic (MSA) or toki pona, at three difficulty levels. Russian
+carries a romanisation; Japanese gets furigana over kanji in dialogue (via
+`<ruby>` tags — not on item names, which stay plain kanji), and Arabic gets
+full tashkeel for the same reason, on the script it already has.
+
+Chinese carries a romanisation too, and (⚙ → Chinese pronunciation) can show
+it two other ways: pinyin or zhuyin (注音), one reading per character, ruby-
+style like furigana. Unlike furigana this isn't the model's own doing — it is
+rebuilt in the browser from the sentence and the whole-line pinyin the model
+already sends, syllable for character, so it needs nothing extra from the
+model and nothing extra to go wrong: a line that doesn't line up (rare, and
+mostly punctuation) just falls back to the plain sentence with pinyin
+underneath, exactly as it always looked.
 
 toki pona is the odd one: 137 words, so nothing has a name of its own and
 every item in the village is a description assembled out of the same handful

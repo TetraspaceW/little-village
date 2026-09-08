@@ -127,6 +127,145 @@ LG.dialogue = (function () {
 
   function itemName(id, lang) { return LG.itemName(id, lang); }
 
+  /* -------------------------------------------------- Chinese, per character
+
+     Japanese furigana is the model's own doing — it writes the ruby tags
+     inline as it speaks (see LG.FURIGANA). Chinese pinyin is not: the model
+     already sends a whole-sentence pinyin line (LANGUAGES.zh's `roman`
+     field), one tone-marked syllable per character and nothing else between
+     them — see zh's romanNote — because Mandarin transliterates one syllable
+     per hanzi almost without exception. So rather than asking the model for
+     a second, ruby-shaped rendering of the same sentence, this rebuilds one
+     in code from what it already sent: split `say` into characters, split
+     `roman` into syllables, and zip them in order.
+
+     That is also why it can degrade instead of needing a repair call the way
+     furigana does. When the counts do not match — a villager who dropped the
+     requested spacing, an erhua word, a stray bit of punctuation the
+     tokenizer could not place — `zhRuby` returns null and the caller shows
+     exactly what a Chinese village has always shown: the plain sentence with
+     the whole pinyin line underneath it. The per-character view is a bonus
+     when the alignment holds, never a chance of showing something wrong. */
+
+  // Trims anything that is not a pinyin letter off both ends of a token.
+  // Chinese punctuation never reaches this string, but the ASCII kind — a
+  // comma, a question mark — glued onto the last syllable of a line does.
+  const PINYIN_LETTER = "a-zA-Zāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜü";
+  const PINYIN_TRIM = new RegExp('^[^' + PINYIN_LETTER + ']+|[^' + PINYIN_LETTER + ']+$', 'g');
+  function tokenizePinyin(roman) {
+    return String(roman).trim().split(/\s+/).map(t => t.replace(PINYIN_TRIM, '')).filter(Boolean);
+  }
+
+  // Tone diacritics, stripped back to a plain vowel (ü kept distinct from u
+  // — they land on different zhuyin symbols) plus the tone number they
+  // carried. No diacritic at all reads as the neutral tone: zh's romanNote
+  // asks for a mark on every other syllable, so an unmarked one is the one
+  // tone that is genuinely markless in standard pinyin, not a villager who
+  // forgot.
+  const PINYIN_TONE = {
+    ā: ['a', 1], á: ['a', 2], ǎ: ['a', 3], à: ['a', 4],
+    ē: ['e', 1], é: ['e', 2], ě: ['e', 3], è: ['e', 4],
+    ī: ['i', 1], í: ['i', 2], ǐ: ['i', 3], ì: ['i', 4],
+    ō: ['o', 1], ó: ['o', 2], ǒ: ['o', 3], ò: ['o', 4],
+    ū: ['u', 1], ú: ['u', 2], ǔ: ['u', 3], ù: ['u', 4],
+    ǖ: ['ü', 1], ǘ: ['ü', 2], ǚ: ['ü', 3], ǜ: ['ü', 4]
+  };
+  function splitTone(token) {
+    let base = '', tone = 0;
+    for (const ch of String(token).toLowerCase()) {
+      const t = PINYIN_TONE[ch];
+      if (t) { base += t[0]; tone = t[1]; } else base += ch;
+    }
+    return { base: base, tone: tone || 5 };
+  }
+
+  /* Standard pinyin → zhuyin (注音符號), by decomposition rather than a
+     syllable table: an initial (checked longest-first, so "zh"/"ch"/"sh"
+     beat "z"/"c"/"s"), the final left over once the initial is off, and the
+     tone. Three special cases carry the whole irregularity of the spelling
+     system:
+       - y/w/vowel-only spellings (yi, wu, yan, ang, …) are not an initial
+         plus a final at all — SYLLABLE_ALIAS maps the whole written form to
+         the final it stands for, and the initial is empty.
+       - j/q/x write "ü" as "u" (ju, que, xuan — there is no genuine ju/que/
+         xuan with a plain u, so nothing is lost); this is the one place the
+         final actually depends on which initial it followed. n/l keep the
+         umlaut (nü, lüe), because there both readings are real and would
+         otherwise collide.
+       - zh/ch/sh/r/z/c/s before a bare "i" (zhi, chi, shi, ri, zi, ci, si)
+         carry no vowel sound of their own — shi is ㄕ alone, not ㄕ plus
+         ㄧ — so that final is written with nothing at all. */
+  const ZHUYIN_INITIAL = {
+    zh: 'ㄓ', ch: 'ㄔ', sh: 'ㄕ', b: 'ㄅ', p: 'ㄆ', m: 'ㄇ', f: 'ㄈ',
+    d: 'ㄉ', t: 'ㄊ', n: 'ㄋ', l: 'ㄌ', g: 'ㄍ', k: 'ㄎ', h: 'ㄏ',
+    j: 'ㄐ', q: 'ㄑ', x: 'ㄒ', r: 'ㄖ', z: 'ㄗ', c: 'ㄘ', s: 'ㄙ'
+  };
+  // longest match first, or "sh" would read as "s" plus a final of "h"
+  const PINYIN_INITIALS = ['zh', 'ch', 'sh', 'b', 'p', 'm', 'f', 'd', 't', 'n',
+    'l', 'g', 'k', 'h', 'j', 'q', 'x', 'r', 'z', 'c', 's'];
+  const ZHUYIN_FINAL = {
+    a: 'ㄚ', o: 'ㄛ', e: 'ㄜ', ai: 'ㄞ', ei: 'ㄟ', ao: 'ㄠ', ou: 'ㄡ',
+    an: 'ㄢ', en: 'ㄣ', ang: 'ㄤ', eng: 'ㄥ', ong: 'ㄨㄥ', er: 'ㄦ',
+    i: 'ㄧ', ia: 'ㄧㄚ', ie: 'ㄧㄝ', iao: 'ㄧㄠ', iu: 'ㄧㄡ', ian: 'ㄧㄢ',
+    in: 'ㄧㄣ', iang: 'ㄧㄤ', ing: 'ㄧㄥ', iong: 'ㄩㄥ',
+    u: 'ㄨ', ua: 'ㄨㄚ', uo: 'ㄨㄛ', uai: 'ㄨㄞ', ui: 'ㄨㄟ', uan: 'ㄨㄢ',
+    un: 'ㄨㄣ', uang: 'ㄨㄤ', ueng: 'ㄨㄥ',
+    ü: 'ㄩ', üe: 'ㄩㄝ', üan: 'ㄩㄢ', ün: 'ㄩㄣ'
+  };
+  const SYLLABLE_ALIAS = {
+    yi: 'i', ya: 'ia', ye: 'ie', yao: 'iao', you: 'iu', yan: 'ian', yin: 'in',
+    yang: 'iang', ying: 'ing', yong: 'iong', yu: 'ü', yue: 'üe', yuan: 'üan', yun: 'ün',
+    wu: 'u', wa: 'ua', wo: 'uo', wai: 'uai', wei: 'ui', wan: 'uan', wen: 'un',
+    wang: 'uang', weng: 'ueng'
+  };
+  const BUZZED_INITIALS = ['zh', 'ch', 'sh', 'r', 'z', 'c', 's'];
+  const TONE_MARK = { 1: '', 2: 'ˊ', 3: 'ˇ', 4: 'ˋ', 5: '˙' };
+
+  function pinyinToZhuyin(token) {
+    const parsed = splitTone(token), base = parsed.base, tone = parsed.tone;
+    if (!/^[a-zü]+$/.test(base)) return null;   // punctuation etc. got this far
+    let initial = '', finalKey;
+    if (SYLLABLE_ALIAS[base]) finalKey = SYLLABLE_ALIAS[base];
+    else {
+      initial = PINYIN_INITIALS.find(p => base.indexOf(p) === 0) || '';
+      finalKey = base.slice(initial.length);
+      if ((initial === 'j' || initial === 'q' || initial === 'x') && finalKey[0] === 'u')
+        finalKey = 'ü' + finalKey.slice(1);
+    }
+    const buzzed = BUZZED_INITIALS.indexOf(initial) !== -1 && finalKey === 'i';
+    const finalSym = buzzed ? '' : ZHUYIN_FINAL[finalKey];
+    if (finalSym === undefined) return null;
+    const initSym = ZHUYIN_INITIAL[initial] || '';
+    const toneMark = TONE_MARK[tone];
+    return tone === 5 ? toneMark + initSym + finalSym : initSym + finalSym + toneMark;
+  }
+
+  /* `say` and `roman` in, one <ruby>-tagged string out — or null the moment
+     the alignment this all depends on does not hold. `script` is 'pinyin'
+     (the syllable exactly as the model wrote it) or 'zhuyin'. */
+  function zhRuby(say, roman, script) {
+    if (!say || !roman) return null;
+    const chars = Array.from(String(say));
+    const hanziCount = chars.reduce((n, c) => n + (KANJI.test(c) ? 1 : 0), 0);
+    if (!hanziCount) return null;
+    const tokens = tokenizePinyin(roman);
+    if (tokens.length !== hanziCount) return null;
+    const readings = tokens.map(t => script === 'zhuyin' ? pinyinToZhuyin(t) : t);
+    if (readings.some(r => !r)) return null;
+    let out = '', ti = 0;
+    for (const c of chars) out += KANJI.test(c) ? ('<ruby>' + c + '<rt>' + readings[ti++] + '</rt></ruby>') : c;
+    return out;
+  }
+
+  // The one entry point every render site actually calls: sanitised HTML, or
+  // null to fall back to whatever that site already shows when there is no
+  // ruby — which for Chinese is the sentence plus its whole-line roman span,
+  // exactly as before this existed. See LANGUAGES.zh's `rubyAll` comment.
+  function zhRubyHTML(say, roman, script) {
+    const r = zhRuby(say, roman, script);
+    return r ? rubyHTML(r) : null;
+  }
+
   /* -------------------------------------------------------- prompt build */
   /* The prompt and the schema come out of one call because they come out of one
      field list — see `fields` below. `systemPrompt` stays the string-returning
@@ -574,8 +713,15 @@ LG.dialogue = (function () {
     bub.className = 'bub';
     const main = document.createElement('div');
     main.className = 'main';
+    // Chinese has no ruby of the model's own writing — see zhRuby's comment
+    // — so it is only tried once furigana has had its turn and said no.
+    const zh = (!ruby || !L.furigana) && L.rubyAll && roman && s.zhReading !== 'line'
+      ? zhRubyHTML(text, roman, s.zhReading) : null;
     if (ruby && L.furigana) {
       main.innerHTML = rubyHTML(ruby);
+      main.classList.add('has-ruby');
+    } else if (zh) {
+      main.innerHTML = zh;
       main.classList.add('has-ruby');
     } else {
       main.textContent = text;
@@ -602,7 +748,9 @@ LG.dialogue = (function () {
     r.className = 'roman';
     r.lang = L.romanTag;
     r.textContent = roman || '';
-    r.style.display = roman ? '' : 'none';
+    // Not shown twice: a per-character reading above the line already says
+    // this, and repeating it as a whole-line span below is just clutter.
+    r.style.display = roman && !zh ? '' : 'none';
     bub.appendChild(r);
 
     const tr = document.createElement('div');
@@ -948,7 +1096,11 @@ LG.dialogue = (function () {
         // fall back to the line as spoken, so a note is never in the wrong language
         const note = c.note || spoken;
         const nRuby = usableRuby(c.ruby, c.note) || (c.note ? null : ruby);
-        LG.game.learn(c.id, npc, note, nRuby);
+        // Only carried over when the note IS the line as spoken — a rewritten
+        // note has no pinyin of its own, and reply.roman is the reading of a
+        // sentence that is not, character for character, the one on screen.
+        const nRoman = c.note ? null : reply.roman;
+        LG.game.learn(c.id, npc, note, nRuby, nRoman);
       });
     } catch (e) { /* an unwritten note is always better than a wrong one */ }
   }
@@ -1165,5 +1317,7 @@ LG.dialogue = (function () {
            _rubyHTML: rubyHTML,
            _stripRuby: stripRuby, _rubyMatches: rubyMatches, _needsFurigana: needsFurigana,
            _looksEnglish: looksEnglish,
-           rubyHTML: rubyHTML, _usableRuby: usableRuby };
+           rubyHTML: rubyHTML, _usableRuby: usableRuby,
+           zhRubyHTML: zhRubyHTML, _zhRuby: zhRuby, _pinyinToZhuyin: pinyinToZhuyin,
+           _tokenizePinyin: tokenizePinyin };
 })();

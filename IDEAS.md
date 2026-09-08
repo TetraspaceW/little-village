@@ -140,16 +140,6 @@ The dice table is still there underneath for exactly that reason.
 - **Rooms worth being in.** Interiors exist but are only scenery. A villager who is
   *at* their anvil could be interruptible in a way they aren't on the street, and a
   bed you can sleep in would let you skip to morning rather than waiting out the night.
-- **注音版 Chinese.** Chinese children's books annotate *every* character, because
-  there is no phonetic base script to fall back on — pinyin above the characters on the
-  mainland, zhuyin down the right-hand side in Taiwan, the latter sitting in exactly the
-  typographic slot `<ruby>` was designed for. The game currently gives Chinese one pinyin
-  line under the whole sentence, which is the less authentic arrangement and harder to
-  map word to sound. The ruby machinery already exists for Japanese; pointing it at
-  Chinese would mean per-character readings and an option for zhuyin. Note the rule is
-  genuinely different between the two languages: furigana goes only on kanji and only
-  where the reading is not obvious, while an annotated Chinese edition annotates
-  everything, without exception.
 - **A word list.** Every noun a villager uses, logged with its translation and where
   you first heard it. Turns a session into something reviewable; spaced repetition on
   top if you want to go further.
@@ -197,3 +187,8 @@ The dice table is still there underneath for exactly that reason.
 - A cost meter: calls, tokens and a running dollar total in the settings panel, exact
   where a provider hands back its own price and marked with a `~` the moment any of it
   is priced off a reference table instead.
+- 注音版 Chinese: pinyin or zhuyin, one reading per character, ruby-style like
+  furigana — rebuilt in the browser from the sentence and the whole-line pinyin
+  the model already sends rather than asked of the model as a second, ruby-shaped
+  reply, so a line that does not line up just falls back to the plain sentence
+  with pinyin underneath instead of showing something wrong.

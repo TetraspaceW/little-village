@@ -611,6 +611,65 @@ section('the cost meter: exact where a provider says, estimated where it has to'
   }
 }
 
+section('pinyin, syllable by syllable, into zhuyin');
+{
+  const zy = LG.dialogue._pinyinToZhuyin;
+  // one of each tone, and the worked example the game's own romanNote uses
+  ok(zy('mā') === 'ㄇㄚ', 'first tone carries no mark');
+  ok(zy('wén') === 'ㄨㄣˊ', 'second tone');
+  ok(zy('hǎo') === 'ㄏㄠˇ', 'third tone');
+  ok(zy('xiè') === 'ㄒㄧㄝˋ', 'fourth tone');
+  ok(zy('ma') === '˙ㄇㄚ', 'no mark at all reads as neutral, dot first');
+  ok(zy('nǐ') === 'ㄋㄧˇ', 'and the pair the romanNote itself is worked from');
+  // the buzzed finals: zhi/chi/shi/ri/zi/ci/si carry no vowel symbol of their own
+  ok(zy('shì') === 'ㄕˋ', 'shi is ㄕ alone, not ㄕ plus ㄧ');
+  ok(zy('zhōng') === 'ㄓㄨㄥ', 'zhong keeps its final — the buzzed rule is "i" only');
+  ok(zy('rì') === 'ㄖˋ', 'ri, the same as shi');
+  // y/w/vowel-only spellings, which are not an initial-plus-final at all
+  ok(zy('wǒ') === 'ㄨㄛˇ', 'wo aliases to the uo final');
+  ok(zy('yī') === 'ㄧ', 'yi aliases to the bare i final');
+  ok(zy('ān') === 'ㄢ', 'an has no initial and needs no alias either');
+  ok(zy('yuǎn') === 'ㄩㄢˇ', 'yuan aliases to üan');
+  // ü: dropped from the spelling after j/q/x, kept after n/l
+  ok(zy('jué') === 'ㄐㄩㄝˊ', 'jue is j + üe, spelled without the umlaut');
+  ok(zy('xuǎn') === 'ㄒㄩㄢˇ', 'xuan is x + üan, same rule');
+  ok(zy('nǚ') === 'ㄋㄩˇ', 'nü keeps the umlaut — nu and nü are different syllables');
+  ok(zy('lüè') === 'ㄌㄩㄝˋ', 'so does lüe');
+  ok(zy('gū') === 'ㄍㄨ', 'plain u after a normal initial is u, not ü');
+  // failure is null, not a guess — the caller's fallback depends on that
+  ok(zy('xi\'an') === null, 'an inner apostrophe is not a letter this parses');
+  ok(zy('') === null, 'nor is nothing at all');
+}
+
+section('a sentence and its pinyin, zipped into ruby — or not, safely');
+{
+  const zhRuby = LG.dialogue._zhRuby;
+  const pinyin = zhRuby('你好', 'nǐ hǎo', 'pinyin');
+  ok(pinyin === '<ruby>你<rt>nǐ</rt></ruby><ruby>好<rt>hǎo</rt></ruby>',
+     'one ruby per character, in the pinyin the model actually wrote');
+  const zhuyin = zhRuby('你好', 'nǐ hǎo', 'zhuyin');
+  ok(zhuyin === '<ruby>你<rt>ㄋㄧˇ</rt></ruby><ruby>好<rt>ㄏㄠˇ</rt></ruby>',
+     'or converted to zhuyin, character for character the same');
+  ok(zhRuby('你好吗？', 'nǐ hǎo', 'pinyin') === null,
+     'a character the pinyin has no syllable for (a dropped 吗, say) fails closed rather than misaligning');
+  ok(zhRuby('你好', 'nǐhǎo', 'pinyin') === null,
+     'so does the ordinary way pinyin is actually typed, run together with no spaces');
+  ok(zhRuby('你好', '', 'pinyin') === null, 'and an empty roman line');
+  ok(zhRuby('', 'nǐ hǎo', 'pinyin') === null, 'or an empty sentence');
+  ok(zhRuby('hello', 'nǐ hǎo', 'pinyin') === null,
+     'no hanzi in the sentence at all — nothing to annotate, so nothing is');
+  // non-hanzi characters pass through untouched, only the hanzi get wrapped
+  ok(zhRuby('¤10, 你好!', 'nǐ hǎo', 'pinyin') ===
+     '¤10, <ruby>你<rt>nǐ</rt></ruby><ruby>好<rt>hǎo</rt></ruby>!',
+     'currency, digits and punctuation are carried through, not annotated');
+
+  const html = LG.dialogue.zhRubyHTML('你好', 'nǐ hǎo', 'pinyin');
+  ok(html === '<ruby>你<rt>nǐ</rt></ruby><ruby>好<rt>hǎo</rt></ruby>',
+     'zhRubyHTML is zhRuby run through the same sanitiser furigana uses');
+  ok(LG.dialogue.zhRubyHTML('你好', 'nǐhǎo', 'pinyin') === null,
+     'and passes the null straight through on a line that does not line up');
+}
+
 /* ------------------------------------------------------- what they believe now
    Villagers are not a table of rows to expire. They hold things, each with a
    time and a source, and when something arrives that overtakes one of them they

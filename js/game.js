@@ -8,7 +8,13 @@ LG.game = (function () {
     lang: 'ru', level: 'beginner',
     provider: 'anthropic', apiKey: '', model: 'claude-sonnet-5', helper: '',
     showTranslation: true, npcChatter: true,
-    voices: false, ttsKey: '', voiceSpeed: 'auto', voiceQuality: 'curated'
+    voices: false, ttsKey: '', voiceSpeed: 'auto', voiceQuality: 'curated',
+    // How Chinese pronunciation is shown — only read where LANGUAGES[lang].rubyAll
+    // is set. 'line' is the long-standing whole-sentence pinyin span, kept as the
+    // default because it needs nothing to line up; 'pinyin'/'zhuyin' put the
+    // reading on each character instead, ruby-style, whenever it can — see
+    // dialogue.js's zhRuby for what "whenever it can" means.
+    zhReading: 'line'
   };
 
   // No key, no village. `gated` freezes input until the front door is passed.
@@ -149,7 +155,7 @@ LG.game = (function () {
   function hasNote(factId) {
     return state.notes.some(n => n.id === factId);
   }
-  function learn(factId, fromNpc, note, ruby) {
+  function learn(factId, fromNpc, note, ruby, roman) {
     if (!plan || !plan.facts[factId]) return;
     if (plan.facts[factId].type === 'opinion') return;   // gossip, not the errand
     if (hasNote(factId)) return;
@@ -162,7 +168,7 @@ LG.game = (function () {
        render time instead, so there is no way to write a note that claims to be
        live when it is not. */
     state.notes.push({ id: factId, text: note || plan.facts[factId].text,
-                       ruby: ruby || null });
+                       ruby: ruby || null, roman: roman || null });
     log('📓 ' + (note || plan.facts[factId].text));
     renderHUD();
   }
@@ -191,12 +197,15 @@ LG.game = (function () {
      handing over the answer makes overhearing a way to skip the language. */
   function logSpeech(name, said, ruby, roman, gloss) {
     const L = LG.LANGUAGES[settings.lang];
-    const heard = (ruby && L.furigana) ? LG.dialogue.rubyHTML(ruby) : escapeHTML(said);
+    const zh = (!ruby || !L.furigana) && L.rubyAll && roman && settings.zhReading !== 'line'
+      ? LG.dialogue.zhRubyHTML(said, roman, settings.zhReading) : null;
+    const withRuby = (ruby && L.furigana) || zh;
+    const heard = (ruby && L.furigana) ? LG.dialogue.rubyHTML(ruby) : zh || escapeHTML(said);
     let html = '<span class="who">\uD83D\uDC42 ' + escapeHTML(name) + ':</span> ' +
                '<span class="heard" lang="' + L.tag + '"' +
-               (ruby && L.furigana ? ' style="line-height:2"' : '') +
+               (withRuby ? ' style="line-height:2"' : '') +
                '>' + heard + '</span>';
-    if (roman && L.romanize) html += '<span class="roman" lang="' + L.romanTag + '">' +
+    if (roman && L.romanize && !zh) html += '<span class="roman" lang="' + L.romanTag + '">' +
                                      escapeHTML(roman) + '</span>';
     if (gloss) html += '<span class="gloss hidden-tr" lang="en" title="click to read">' +
                        escapeHTML(gloss) + '</span>';
@@ -222,12 +231,15 @@ LG.game = (function () {
     const nb = document.getElementById('notebook');
     const rows = state.deeds.map(d => '<div class="q done">✔ ' + escapeHTML(d) + '</div>')
       .concat(state.notes.map(n => {
-        const heard = (n.ruby && L.furigana) ? LG.dialogue.rubyHTML(n.ruby) : escapeHTML(n.text);
+        const zh = (!n.ruby || !L.furigana) && L.rubyAll && n.roman && settings.zhReading !== 'line'
+          ? LG.dialogue.zhRubyHTML(n.text, n.roman, settings.zhReading) : null;
+        const withRuby = (n.ruby && L.furigana) || zh;
+        const heard = (n.ruby && L.furigana) ? LG.dialogue.rubyHTML(n.ruby) : zh || escapeHTML(n.text);
         const gloss = plan.facts[n.id].text;
         const hide = settings.showTranslation ? '' : ' hidden-tr';
         const done = factSpent(n.id);          // read off the world, never stored
         return '<div class="q' + (done ? ' done' : '') + '"><span class="heard" lang="' +
-               L.tag + '"' + (L.furigana && n.ruby ? ' style="line-height:2"' : '') +
+               L.tag + '"' + (withRuby ? ' style="line-height:2"' : '') +
                '>' + (done ? '\u2714 ' : '\u2022 ') + heard + '</span>' +
                '<span class="gloss' + hide + '" lang="en" title="' + escapeHTML(gloss) + '">' +
                escapeHTML(gloss) + '</span></div>';
@@ -1017,7 +1029,8 @@ LG.game = (function () {
       voices: document.getElementById('setVoices').checked,
       ttsKey: document.getElementById('setTtsKey').value.trim(),
       voiceSpeed: document.getElementById('setSpeed').value,
-      voiceQuality: document.getElementById('setQuality').value
+      voiceQuality: document.getElementById('setQuality').value,
+      zhReading: document.getElementById('setZhReading').value
     };
     err.textContent = '';
 
@@ -1149,6 +1162,7 @@ LG.game = (function () {
     document.getElementById('setTtsKey').value = settings.ttsKey;
     document.getElementById('setSpeed').value = settings.voiceSpeed;
     document.getElementById('setQuality').value = settings.voiceQuality;
+    document.getElementById('setZhReading').value = settings.zhReading;
     refreshModelList();
     refreshHelperList();
     showSaveNote();
@@ -1703,7 +1717,7 @@ LG.game = (function () {
      writer would still say it. */
   function openBoard() {
     (state.board || []).forEach(entry => {
-      entry.factIds.forEach(id => learn(id, null, entry.text, null));
+      entry.factIds.forEach(id => learn(id, null, entry.text, null, entry.roman));
     });
     renderBoard();
     document.getElementById('board').classList.add('open');
@@ -1719,9 +1733,12 @@ LG.game = (function () {
       // written thing, and a village that could not name its own notices
       // would not be much of a noticeboard.
       const who = entry.name;
+      const zh = L.rubyAll && entry.roman && settings.zhReading !== 'line'
+        ? LG.dialogue.zhRubyHTML(entry.text, entry.roman, settings.zhReading) : null;
       return '<div class="notice"><span class="who">' + escapeHTML(who) + '</span>' +
-             '<span class="heard" lang="' + L.tag + '">' + escapeHTML(entry.text) + '</span>' +
-             (entry.roman && L.romanize ? '<span class="roman" lang="' + L.romanTag + '">' +
+             '<span class="heard" lang="' + L.tag + '"' + (zh ? ' style="line-height:2"' : '') + '>' +
+             (zh || escapeHTML(entry.text)) + '</span>' +
+             (entry.roman && L.romanize && !zh ? '<span class="roman" lang="' + L.romanTag + '">' +
                escapeHTML(entry.roman) + '</span>' : '') +
              (entry.translation ? '<span class="gloss' + hide + '" lang="en" title="click to read">' +
                escapeHTML(entry.translation) + '</span>' : '') +

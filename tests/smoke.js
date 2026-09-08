@@ -1062,7 +1062,7 @@ async function villagersTalking() {
 
   await namesUnknownUntilTold();
   await touchControls();
-  roomForTheComposer();
+  await roomForTheComposer();
   whatYouCanSee();
 
   console.log('\n' + (failures ? failures + ' of ' + checks + ' CHECKS FAILED'
@@ -1232,7 +1232,7 @@ async function touchControls() {
    What is checked here is the measurement the CSS hangs off: that the classes
    go on and come off at the right heights, and that they never depend on focus,
    which this file cannot give or take anyway. */
-function roomForTheComposer() {
+async function roomForTheComposer() {
   section('how much room there is for the composer');
   const g = LG.game, body = sandbox.document.body;
   const at = h => { sandbox.innerHeight = h; g._debugViewport();
@@ -1296,6 +1296,36 @@ function roomForTheComposer() {
   at(380);
   at(428);
   ok(vvh() === 428, 'with nothing focused the card is laid out to what is really there');
+
+  /* The keyboard's own opening animation is not one clean reading either:
+     visualViewport is documented to report it dipping past its resting
+     height before climbing back to where it actually settles. A card that
+     latched onto the dip on the way down used to stay there, a keystroke's
+     worth of paper short of the room the keyboard had actually left it, for
+     the rest of the conversation. What is checked here is that a recovery
+     which is not the keyboard fully going away still gets there — just not
+     at once, and never while a fresh dip keeps arriving to cancel the wait. */
+  section('a keyboard that overshoots on the way up');
+  const box2 = { tagName: 'TEXTAREA', blur() {} };
+  doc.activeElement = box2;
+
+  at(839);                                    // starting fresh, no keyboard
+  at(700); at(560); at(460); at(400);         // the animation, dipping past rest
+  ok(vvh() === 400, 'the card follows the dip down like anything else');
+  at(415);                                    // climbing back towards where it rests
+  ok(vvh() === 400, 'a recovery is not believed at once, in case it dips again');
+  at(428);                                    // settles here and stays
+  ok(vvh() === 400, 'nor is a second, taller recovery, for the same reason');
+  await new Promise(r => setTimeout(r, 260));
+  ok(vvh() === 428, 'but once it has held still a beat, the room is given back');
+
+  at(380);                                    // the ordinary suggestion-strip bounce
+  ok(vvh() === 380, 'a fresh dip afterwards is still followed down at once');
+  at(428);
+  await new Promise(r => setTimeout(r, 100));
+  at(380);                                    // the next word's dip, inside the wait
+  await new Promise(r => setTimeout(r, 260));
+  ok(vvh() === 380, 'typing through the wait never lets a recovery through');
 
   LG.touch._setMode(false);
   at(900);                                    // leave it as it was found

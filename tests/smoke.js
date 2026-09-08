@@ -892,6 +892,28 @@ section('a village, written down and read back');
   ok(typeof LG.save.check(Object.assign({}, shot, { v: 0 })) === 'string',
      'nothing this old has a migration');
 
+  /* `learn` guarantees at most one note per fact id, but only on the path
+     that goes through it. A save file reaches `state.notes` a different
+     way, and nothing before this stopped one from naming the same fact
+     twice — hand-edited, or some future bug that writes a duplicate. */
+  section('a fact never ends up with two notes');
+  {
+    ok(after.state.notes.length === new Set(after.state.notes.map(n => n.id)).size,
+       'the notebook restored above has no fact id twice');
+    ok(after.state.notes.every(n => !!plan.facts[n.id]),
+       'and every note in it names a fact that actually exists');
+
+    const dupe = JSON.parse(text);
+    dupe.notes = [{ id: someFact, text: 'first telling', ruby: null },
+                  { id: someFact, text: 'second telling', ruby: null }];
+    ok(LG.save.restore(dupe) === null, 'a save with the same fact noted twice still loads');
+    const mine = LG.game.state.notes.filter(n => n.id === someFact);
+    ok(mine.length === 1, 'but only one note survives for that fact');
+    ok(mine[0].text === 'first telling', 'and it is the first telling that wins, not the last');
+
+    ok(LG.save.restore(JSON.parse(text)) === null, 'the untampered save still loads afterwards');
+  }
+
   section('both sinks are handed the same bytes');
   const written = LG.save.write();
   ok(!!written, 'a write produces a save');

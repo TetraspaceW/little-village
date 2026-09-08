@@ -578,6 +578,16 @@ would be a second answer again, restored from a file.
 A spent lead is struck through rather than deleted, wherever it came from: a line that
 vanishes reads as a bug, and you lose the record of who told you.
 
+**And a note only ever means one fact, even arriving from a file.** The guarantee
+above — one note per fact, at most — is enforced by `learn` refusing a second write
+once `hasNote` says there is already one. That is a guard on one function, not a
+property of `state.notes` itself, and a save file reaches the notebook by a different
+door: `restore` used to check only that a note's fact still existed and take the rest
+of the file on faith. A save naming the same fact twice — hand-edited, or some future
+bug — would have loaded both, and the one-note-per-fact guarantee would have quietly
+stopped being true for the rest of that session without anything saying so. Restoring
+now keeps the same rule `learn` does: first occurrence wins.
+
 ## A name is a fact too, and it works the same way
 
 The game used to know everyone's name from the moment their sprite loaded, which made

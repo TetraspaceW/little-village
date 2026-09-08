@@ -311,3 +311,12 @@ The dice table is still there underneath for exactly that reason.
   the village whoever you send it to actually gets, not just a description
   of one they would have to roll blind to try. Same clipboard feature-
   detection as the seed row's own Copy button.
+- A real bug the smoke test's fake DOM cannot see, caught only by actually
+  rendering the page in a browser: both `<small hidden>` "Copied" notes
+  above stayed visible from the moment the panel opened, `hidden` attribute
+  and all, because `.panel-card small{display:block}` is an author rule and
+  a user-agent rule (`[hidden]{display:none}`) loses to *any* author rule
+  touching the same property, at any specificity. One `[hidden]{display:
+  none!important}` fixes it — and the two notes above, not only the one
+  that surfaced it — high enough in the cascade that no future `display`
+  declaration can quietly win against it the same way again.

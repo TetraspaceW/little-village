@@ -9,6 +9,16 @@
   --good:#4f8a52;
   --shadow:0 10px 30px rgba(40,26,12,.28);
 }
+/* The `hidden` attribute is normally display:none for free, from the
+   browser's own user-agent stylesheet — but a user-agent rule loses to
+   *any* author rule that also sets display on the same element, at any
+   specificity, which is exactly what `.panel-card small{display:block}`
+   below does to `<small hidden>` (the seed row's "Copied." note, the
+   ending screen's own copy confirmation): both stayed visible the whole
+   time, `hidden` attribute notwithstanding, because nothing here had ever
+   said so this plainly. One rule, high enough in the cascade that no
+   future `display` declaration silently wins against it again. */
+[hidden]{display:none!important}
 /* Arabic is the one language here written right-to-left. Every span that
    carries the village's own words is already tagged lang="ar" for that
    language (see LG.LANGUAGES in data.js) — a romanisation or an English

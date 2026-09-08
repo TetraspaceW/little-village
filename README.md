@@ -261,6 +261,10 @@ signs, a villager's own reply, all of it, and a tooltip no longer hands you
 the answer on hover either — and the Phrases tray goes empty, so there is
 nothing to click on to get started. Beginner and Intermediate are unaffected.
 
+This same table, in short, is what ⚙ shows under the difficulty dropdown —
+a line that updates the moment you change it, before you've even pressed
+Save.
+
 ## Voices (optional)
 
 Tick "let the villagers speak aloud" and add an ElevenLabs key to give each

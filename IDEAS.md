@@ -281,3 +281,16 @@ The dice table is still there underneath for exactly that reason.
   `Blob`/`URL`, which not every browser has and the smoke test's sandbox
   never does, so the half worth unit-testing exactly is the half that
   doesn't.
+- `prefers-reduced-motion:reduce` already turned off every CSS *transition*
+  in the game, but not `#dlgMic.listening`'s pulse — an *animation*, the
+  property this setting is actually named for — which kept right on
+  pulsing regardless. One line.
+- The difficulty dropdown gets a line under it saying, in words, what
+  README.md's own difficulty table already says in numbers — how far a
+  fact spreads and how much of the errand the gossip knows — updating the
+  moment the dropdown changes rather than only after Save. Hand-written
+  from the table's own already-published, already-measured figures rather
+  than derived live from `LG.LEVELS`'s raw `spread`/`taper`/`gossip`
+  constants, on the theory that paraphrasing tuning constants on the fly
+  risks claiming something of the generator that isn't actually true of
+  it — the published numbers already are.

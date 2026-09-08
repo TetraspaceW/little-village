@@ -1704,6 +1704,24 @@ async function noCrutchesAtAdvanced() {
      'but they are back the moment the difficulty is');
   LG.dialogue.close();
 
+  // The dropdown gets a plain-language line under it too, so the numbers
+  // README.md's own difficulty table gives are not only ever readable
+  // outside the game — and it updates the moment the dropdown does,
+  // without needing Save pressed first.
+  g.openSettings(false);
+  sandbox.document.getElementById('setLevel').value = 'beginner';
+  sandbox.document.getElementById('setLevel').onchange();
+  let info = sandbox.document.getElementById('setLevelInfo').textContent;
+  ok(info.indexOf('4 villagers') !== -1 && info.indexOf('whole errand') !== -1,
+     'beginner: wide spread, and the gossip knows all of it');
+
+  sandbox.document.getElementById('setLevel').value = 'advanced';
+  sandbox.document.getElementById('setLevel').onchange();
+  info = sandbox.document.getElementById('setLevelInfo').textContent;
+  ok(info.indexOf('usually just the owner') !== -1 && info.indexOf('only opinions') !== -1,
+     'advanced: barely spreads, and the gossip knows none of the errand itself');
+  sandbox.document.getElementById('settings').classList.remove('open');
+
   g.settings.level = wasLevel;
   g.settings.showTranslation = wasTrans;
 }

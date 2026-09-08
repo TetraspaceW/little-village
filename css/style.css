@@ -592,7 +592,12 @@ body.touch.typing .tray{
 }
 
 /* Somebody who has asked for less movement gets the same layouts without the
-   travel between them. */
+   travel between them. #dlgMic.listening is an animation, not a transition —
+   the property this query is named for rather than the one it happens to
+   have caught so far — and a continuously pulsing button is exactly the
+   kind of movement this setting exists to turn off, so it needs naming
+   here too rather than assumed to already be covered. */
 @media (prefers-reduced-motion:reduce){
   .tray,.chips,#dlg,#hud,.panel{transition:none}
+  #dlgMic.listening{animation:none}
 }

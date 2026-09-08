@@ -113,6 +113,27 @@ LG.game = (function () {
      decision made once rather than a level name compared against in every
      place a translation or a phrase gets shown. */
   function crutchesOff() { return !!(LG.LEVELS[settings.level] || {}).noCrutches; }
+
+  /* What `spread`/`taper`/`gossip` actually add up to, in words rather than
+     the numbers chain.js reads them as — hand-written from the same figures
+     README.md's own difficulty table gives (averaged over villages, not
+     derived live from LG.LEVELS here), so this says only what has already
+     been measured and published rather than a fresh paraphrase of raw
+     tuning constants that could read into them something not actually
+     true of the generator. */
+  const LEVEL_INFO = {
+    beginner: 'Each fact is told to about 4 villagers besides its owner, and the ' +
+      'village gossip knows the whole errand — there is usually more than one way in.',
+    intermediate: 'Each fact reaches about 2 villagers besides its owner, and the ' +
+      'gossip knows roughly half of it.',
+    advanced: 'Facts barely spread — usually just the owner — and the gossip knows ' +
+      'only opinions, no part of the errand itself. Translations lock and the ' +
+      'phrasebook empties too.'
+  };
+  function updateLevelInfo() {
+    const el = document.getElementById('setLevelInfo');
+    if (el) el.textContent = LEVEL_INFO[document.getElementById('setLevel').value] || '';
+  }
   // Whether an English gloss should start out hidden — always at advanced,
   // otherwise whatever ⚙ → "show translations" says.
   function glossHidden() { return crutchesOff() || !settings.showTranslation; }
@@ -1181,6 +1202,7 @@ LG.game = (function () {
       showSaveNote();
     };
     document.getElementById('setSave').onclick = submitSettings;
+    document.getElementById('setLevel').onchange = updateLevelInfo;
     document.getElementById('setProvider').onchange = () => { refreshModelList(); refreshHelperList(); };
     document.getElementById('setModel').onchange = syncModelBox;
     document.getElementById('setHelper').onchange = syncHelperBox;
@@ -1339,6 +1361,7 @@ LG.game = (function () {
     document.getElementById('setError').textContent = '';
     document.getElementById('setLang').value = settings.lang;
     document.getElementById('setLevel').value = settings.level;
+    updateLevelInfo();
     document.getElementById('setProvider').value = settings.provider;
     document.getElementById('setKey').value = settings.apiKey;
     // where the key came from, so a field you did not fill in is not a mystery

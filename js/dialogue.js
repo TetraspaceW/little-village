@@ -233,6 +233,9 @@ LG.dialogue = (function () {
     lines.push('A sentence or two at a time.');
     // What they have to sell, when they are standing where they work
     const working = v.trade.open && v.trade.sells.length;
+    // Coins can change hands with nobody selling anything — trading hours
+    // still gate it (see commerce()'s night check), but having a shop does not.
+    const canDonate = v.trade.open;
     if (working) {
       const counter = v.trade.atCounter;
       lines.push('');
@@ -274,7 +277,7 @@ LG.dialogue = (function () {
          front of him said so — and then the traveller held out coins, because
          from where they stood the deal struck a moment ago had not been settled
          yet, and the rule told him to hand another knife over. He did. */
-      lines.push('If the traveller holds out their coins, they are paying for whatever the two of you have actually been discussing. If that is goods you have not handed over yet, take the money and hand them over in the same breath — but something the record already shows you were paid for is not being bought a second time. If it is not plain what the coins are for, ask before you take them.');
+      lines.push('If the traveller holds out their coins for goods you have not handed over yet, take the money and hand the goods over in the same breath — but something the record already shows you were paid for is not being bought a second time.');
       lines.push('Two things at once is still one sale: put both tags in "item" and the total in "price". Only list what you are actually handing over this turn.');
     } else if (v.trade.sells.length) {
       /* The small hours are the one time the shop is shut, and saying nothing
@@ -290,6 +293,23 @@ LG.dialogue = (function () {
       lines.push('');
       lines.push('# Your trade');
       lines.push('It is the middle of the night. Your trade is shut until morning.');
+    }
+
+    /* Coins used to have exactly one meaning in this prompt: payment for
+       something on a shelf. A villager with nothing to sell had no way to be
+       paid for anything else either, so a bargain struck in conversation —
+       money for a favour, for news, for help with something — was a promise
+       the game could never make good on: the traveller held the coins out,
+       nothing in the schema fit, and the villager improvised past a rejection
+       they never saw happen (see declineOffer, above). This is the general
+       case sell/buy are a special case of: coins for whatever the two of you
+       actually agreed on, goods or not. */
+    if (canDonate) {
+      lines.push('');
+      lines.push('# Coins for something that is not goods');
+      lines.push('Coins do not only pay for what is on a shelf. If the traveller is offering to pay you for a favour, some news, or anything else that was never an object changing hands, and the two of you have actually settled on a figure, take the coins and set "action" to "donate" with "price" as what you took — leave "item" out.');
+      lines.push('Do this the moment you actually take the coins, not while you are still discussing whether to. If it is not plain what coins held out to you are for, ask before you take them.');
+      if (!working) lines.push('The traveller has ' + coins(LG.game.count('coins')) + ' on them.');
     }
 
     {
@@ -309,6 +329,8 @@ LG.dialogue = (function () {
           if (t.failed) { lines.push('- (nothing happened: ' + t.note + ')'); return; }
           const line = t.act === 'sell'
             ? 'you handed over ' + t.names + ' and took ' + coins(t.coins)
+            : t.act === 'donate'
+            ? 'they paid you ' + coins(t.coins) + ' for something that was not goods'
             : t.refund ? 'they gave back ' + t.names + ' and you refunded ' + coins(t.coins)
                        : 'you took ' + t.names + ' off them for ' + coins(t.coins);
           lines.push('- ' + t.at + ' \u2014 ' + line +
@@ -371,6 +393,7 @@ LG.dialogue = (function () {
     const acts = ['none'];
     if (trade) acts.push('trade');
     if (working) acts.push('sell', 'buy');
+    if (canDonate) acts.push('donate');
 
     /* One list, three readers. The block the villager reads, the sentence naming
        what is never omitted, and — where the provider will take one — the JSON
@@ -406,13 +429,13 @@ LG.dialogue = (function () {
        a spelling of its own. */
     fields.push({ k: 'remember', type: { type: ['string', 'null'] },
       desc: 'anything the traveller has said that is worth remembering, as one short English sentence — null if nothing was' });
-    if (working) {
+    if (working || canDonate) {
       /* commerce() already takes either a tag or a list, so the schema asks for
          the list — one shape to check rather than two to allow. */
       fields.push({ k: 'item', type: { type: ['array', 'null'], items: { type: 'string' } },
-        desc: 'the [tag] of the goods, or a list of tags if it is more than one thing — only with sell or buy' });
+        desc: 'the [tag] of the goods, or a list of tags if it is more than one thing — only with sell or buy, never with donate' });
       fields.push({ k: 'price', type: { type: ['number', 'null'] },
-        desc: 'the coins agreed for all of it together, as a number — only with sell or buy' });
+        desc: 'the coins agreed for all of it together, as a number — only with sell, buy, or donate' });
     }
     fields.push({ k: 'action', type: { type: 'string', enum: acts },
       desc: acts.join(' | ') });
@@ -447,8 +470,8 @@ LG.dialogue = (function () {
                'reply — there is no short form of this object.');
     lines.push('Where nothing happened, say so in the field rather than dropping it: ' +
                '"revealed" is [], "remember" is null, "action" is "none".' +
-               (working ? ' Only "item" and "price" are ever absent.'
-                        : ' No field is ever absent.'));
+               ((working || canDonate) ? ' Only "item" and "price" are ever absent.'
+                                       : ' No field is ever absent.'));
     /* And a worked one, because this project has learned twice now that a filled-in
        example specifies a format better than a sentence about it does — the
        furigana spec moved out of the schema for the same reason. The rule above
@@ -469,6 +492,9 @@ LG.dialogue = (function () {
     lines.push('"remember" is about what they told you — what they want, who they are, what they are carrying, what they are like. Not everything said is worth remembering: a greeting, a thank-you, or a word they were asking after tells you nothing, and that is null. Write down what they said, never what you assumed.');
     if (working) {
       lines.push('Use "sell" at the moment you actually hand goods over and take the money, and "buy" when you take something off the traveller and pay for it — not while the two of you are still discussing it.');
+    }
+    if (canDonate) {
+      lines.push('Use "donate" at the moment you actually take coins for something that is not goods — not while the two of you are still discussing it.');
     }
     if (trade) {
       lines.push('Set "action" to "trade" at the moment you actually hand over ' + (trade.gives === 'coins' ? 'the coins' : LG.itemSaid(trade.gives, s.lang)) + ', and not before.');
@@ -790,9 +816,15 @@ LG.dialogue = (function () {
        working hours, so a midnight sale was neither made nor refused: the
        villager described handing the tea over, and nothing anywhere disagreed. */
     const act = gotIt ? String(reply.action || '').toLowerCase() : '';
-    if (act === 'sell' || act === 'buy') {
-      if (LG.game.commerce(npc, act, reply.item, reply.price)) renderItems();
-      else status('That sale could not be squared up.', 'miss');
+    // Whether a sale or a donation actually went through this turn — the
+    // offer-decline check below needs to know, or it talks over a coin
+    // handed out for "donate" with a verdict about a chain trade it was
+    // never part of. See declineOffer.
+    let commerceOK = false;
+    if (act === 'sell' || act === 'buy' || act === 'donate') {
+      commerceOK = LG.game.commerce(npc, act, reply.item, reply.price);
+      if (commerceOK) renderItems();
+      else status(act === 'donate' ? 'That payment could not be squared up.' : 'That sale could not be squared up.', 'miss');
     }
 
     /* A refund is a gesture too. Holding out something this villager sold you is
@@ -820,10 +852,10 @@ LG.dialogue = (function () {
         renderItems();
       } else if (offered === trade.wants && haveEnough) {
         pending.push(confirmOffer(npc, trade, spoken, reply.translation));
-      } else if (offered) {
+      } else if (offered && !commerceOK) {
         declineOffer(npc, offered);
       }
-    } else if (offered) {
+    } else if (offered && !commerceOK) {
       declineOffer(npc, offered);
     }
 

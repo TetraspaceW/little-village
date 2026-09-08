@@ -309,6 +309,29 @@ LG.game = (function () {
                     'No price was named, so nothing changed hands.');
     }
 
+    /* A donation is coins for something that was never goods — a favour, a
+       piece of news, help with something. There is no shelf to look a price
+       up on and nothing to hand back: the villager named a figure, the
+       traveller either can or cannot cover it, and that is the whole of it. */
+    if (act === 'donate') {
+      const cost = Math.round(Number(price));
+      if (!isFinite(cost) || cost <= 0) {
+        return refuse('No sensible amount was named, so nothing changed hands.',
+                      'No price was named, so nothing changed hands.');
+      }
+      if (count('coins') < cost) {
+        return refuse('The traveller could not afford that — they have ' +
+          coins(count('coins')) + ', and you asked for ' + coins(cost) + '.',
+          'Not enough coins for that (' + cost + ').');
+      }
+      take('coins', cost);
+      txnLog('¤', 'donate', { name: nameOrEmoji(npc), cost: cost },
+                            { name: displayName(npc), cost: cost });
+      npc.till.push({ act: 'donate', coins: cost, asked: cost, at: LG.time.clock(), turn: npc.turns || 0 });
+      renderHUD();
+      return true;
+    }
+
     const asked = (Array.isArray(itemId) ? itemId : String(itemId || '').split(/[,;+]|\band\b/))
       .map(x => String(x || '').replace(/[^\w]/g, ''))
       .filter(x => x && x !== 'coins' && LG.ITEMS[x]);

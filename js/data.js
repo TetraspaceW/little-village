@@ -981,6 +981,17 @@ LG.TXN = {
     ar: 'تم تسليم {item} من {name}.',
     pl: '{name} wręcza ci {item}.',
     tok: '{name} li pana e {item}.'
+  },
+  donate: {
+    en: 'You pay {name} ¤{cost}.',
+    ru: 'Вы платите {name} ¤{cost}.',
+    zh: '你付给{name} ¤{cost}。',
+    ja: '{name}に¤{cost}を払った。',
+    fr: 'Vous payez {name} ¤{cost}.',
+    es: 'Le pagas ¤{cost} a {name}.',
+    ar: 'تم دفع ¤{cost} إلى {name}.',
+    pl: 'Płacisz {name} ¤{cost}.',
+    tok: 'sina pana e mani ¤{cost} tawa {name}.'
   }
 };
 /* Every other language's four lines put the traveller in the grammatical

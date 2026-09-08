@@ -233,6 +233,12 @@ Fact-holders also thin out further down the chain the harder the difficulty,
 so a longer chain buries its tail instead of exposing it. At advanced you
 generally have to walk the chain in order.
 
+Advanced also changes what the interface will do for you, not just how the
+errand is built: translations are locked — the notebook, the event log,
+signs, a villager's own reply, all of it, and a tooltip no longer hands you
+the answer on hover either — and the Phrases tray goes empty, so there is
+nothing to click on to get started. Beginner and Intermediate are unaffected.
+
 ## Voices (optional)
 
 Tick "let the villagers speak aloud" and add an ElevenLabs key to give each

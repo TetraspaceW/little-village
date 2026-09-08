@@ -1335,6 +1335,7 @@ async function villagersTalking() {
 
   await namesUnknownUntilTold();
   await gentleCorrections();
+  await noCrutchesAtAdvanced();
   await touchControls();
   await roomForTheComposer();
   whatYouCanSee();
@@ -1460,6 +1461,72 @@ async function gentleCorrections() {
   g.settings.corrections = wasOn;
   LG.llm.speak = realSpeak;
   LG.llm.correct = realCorrect;
+}
+
+/* The interface's own difficulty knob — see data.js's LEVELS.advanced and
+   game.js's crutchesOff. `spread`/`taper`/`gossip` are exercised by the
+   chain-generation fuzz test elsewhere; this is the one that changes what
+   gets drawn, so it is checked by rendering something and reading the
+   result back rather than by inspecting a generated plan. */
+async function noCrutchesAtAdvanced() {
+  section('no crutches at advanced: translations locked, phrasebook empty');
+  const g = LG.game;
+  const wasLevel = g.settings.level, wasTrans = g.settings.showTranslation;
+
+  g.settings.level = 'beginner';
+  ok(g.crutchesOff() === false, 'beginner keeps its crutches');
+  g.settings.level = 'intermediate';
+  ok(g.crutchesOff() === false, 'so does intermediate');
+  g.settings.level = 'advanced';
+  ok(g.crutchesOff() === true, 'advanced does not');
+
+  // The notebook: locked even with the setting on, and the tooltip stops
+  // being a second way to read the answer without clicking through it.
+  // A non-opinion fact specifically — learn() silently declines opinions
+  // (see "an opinion never reaches the notebook" above), and npc.facts[0]
+  // is not guaranteed to be one of the facts it will actually take.
+  const factId = Object.keys(plan.facts).find(id => plan.facts[id].type !== 'opinion');
+  const npc = (factId && g.npcs.find(n => n.facts.indexOf(factId) !== -1)) || g.npcs[0];
+  if (factId && npc.facts.indexOf(factId) !== -1) {
+    g.state.notes = g.state.notes.filter(n => n.id !== factId);
+    g.settings.showTranslation = true;
+    g.learn(factId, npc, 'told about it');
+    const html = sandbox.document.getElementById('notebook').innerHTML;
+    ok(html.indexOf('hidden-tr') !== -1, 'the gloss stays blurred even with translations switched on');
+    ok(html.indexOf('title="no translations at this difficulty"') !== -1,
+       'and the tooltip does not just hand the answer over on hover');
+  }
+
+  // The dialogue box: same lock, read off the row object directly rather
+  // than through a fake DOM's inert querySelectorAll (see addLine).
+  const realSpeak = LG.llm.speak;
+  LG.llm.speak = async () => ({ say: 'stand-in', translation: 'a plain English gloss', understood: 'full' });
+  g.settings.showTranslation = true;
+  LG.dialogue.open(npc);
+  await LG.dialogue.send('hello');
+  const dlgLog = sandbox.document.getElementById('dlgLog');
+  const npcRow = dlgLog.children[dlgLog.children.length - 1];
+  ok(!!(npcRow && npcRow._trans && npcRow._trans.className.indexOf('hidden-tr') !== -1),
+     'the reply\'s own translation is locked too, "show translations" or not');
+  ok(!!(npcRow && npcRow._trans && npcRow._trans.onclick === null),
+     'and there is no handler left to click past it with');
+  LG.dialogue.close();
+  LG.llm.speak = realSpeak;
+
+  // The phrase tray: nothing to lean on.
+  LG.dialogue.open(npc);
+  ok(sandbox.document.getElementById('dlgPhrases').innerHTML.indexOf('Nothing to start from') !== -1,
+     'no phrase chips at this difficulty');
+  LG.dialogue.close();
+
+  g.settings.level = 'intermediate';
+  LG.dialogue.open(npc);
+  ok(sandbox.document.getElementById('dlgPhrases').innerHTML.indexOf('Nothing to start from') === -1,
+     'but they are back the moment the difficulty is');
+  LG.dialogue.close();
+
+  g.settings.level = wasLevel;
+  g.settings.showTranslation = wasTrans;
 }
 
 /* The phone half of the controls. Nothing here dispatches a PointerEvent —

@@ -753,12 +753,14 @@ LG.dialogue = (function () {
     r.style.display = roman && !zh ? '' : 'none';
     bub.appendChild(r);
 
+    const locked = LG.game.crutchesOff();
+    const hideTrans = locked || !s.showTranslation;
     const tr = document.createElement('div');
-    tr.className = 'trans' + (s.showTranslation ? '' : ' hidden-tr');
+    tr.className = 'trans' + (hideTrans ? ' hidden-tr' : '');
     tr.lang = 'en';
     tr.textContent = translation || '';
-    tr.title = s.showTranslation ? '' : 'click to reveal';
-    tr.onclick = () => tr.classList.remove('hidden-tr');
+    tr.title = locked ? 'no translations at this difficulty' : (hideTrans ? 'click to reveal' : '');
+    tr.onclick = locked ? null : () => tr.classList.remove('hidden-tr');
     tr.style.display = translation ? '' : 'none';
     bub.appendChild(tr);
 
@@ -782,6 +784,12 @@ LG.dialogue = (function () {
   function renderPhrases() {
     const s = LG.game.settings;
     el.dlgPhrases.innerHTML = '';
+    // The other crutch this difficulty takes away — see LG.game.crutchesOff.
+    // No chip to start from; whatever gets said has to come from the player.
+    if (LG.game.crutchesOff()) {
+      el.dlgPhrases.innerHTML = '<span class="muted">Nothing to start from at this difficulty.</span>';
+      return;
+    }
     LG.PHRASES.forEach(p => {
       const b = document.createElement('button');
       b.className = 'chip';

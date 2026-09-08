@@ -243,7 +243,14 @@ LG.LEVELS = {
   advanced: {
     label: 'Advanced (B2+)', spread: 0.5, taper: 1, gossip: 0, deliver: true, speed: 0.95,
     register: '',                        // two natives; they talk as they talk
-    prompt: 'Speak exactly as you would to another native — full range, including idiom, colloquialism and whatever regional flavour you have.'
+    prompt: 'Speak exactly as you would to another native — full range, including idiom, colloquialism and whatever regional flavour you have.',
+    /* The crutches everywhere else in the game — a translation a click away, a
+       phrase to start from — are themselves a difficulty knob nothing before
+       this used: `spread`/`taper`/`gossip` all make the *chain* harder to
+       trace, but the interface stays just as forgiving at every level. This
+       is the one flag that moves difficulty into the interface instead —
+       see game.js's crutchesOff, which is the one place that reads it. */
+    noCrutches: true
   }
 };
 

@@ -106,6 +106,31 @@ LG.game = (function () {
   }
   function itemLabel(id) { return LG.itemName(id, settings.lang); }
 
+  /* `spread`/`taper`/`gossip` — the rest of LG.LEVELS — make the chain harder
+     to trace; this is the one difficulty knob that changes the interface
+     instead, at advanced only: no phrase to fall back on, no translation to
+     click through to. One reader for LG.LEVELS[level].noCrutches so it is a
+     decision made once rather than a level name compared against in every
+     place a translation or a phrase gets shown. */
+  function crutchesOff() { return !!(LG.LEVELS[settings.level] || {}).noCrutches; }
+  // Whether an English gloss should start out hidden — always at advanced,
+  // otherwise whatever ⚙ → "show translations" says.
+  function glossHidden() { return crutchesOff() || !settings.showTranslation; }
+  function glossClass() { return glossHidden() ? ' hidden-tr' : ''; }
+  function glossTitle() {
+    return crutchesOff() ? 'no translations at this difficulty'
+         : glossHidden() ? 'click to reveal' : '';
+  }
+  // A gloss drawn `.hidden-tr` gets its click-to-reveal bound here, once,
+  // rather than three near-identical copies of the same loop at every place
+  // one gets drawn — and it is the one place "at advanced, it never reveals"
+  // has to be remembered at all.
+  function bindGlossReveal(box) {
+    Array.prototype.forEach.call(box.querySelectorAll('.gloss.hidden-tr'), el => {
+      el.onclick = crutchesOff() ? null : () => el.classList.remove('hidden-tr');
+    });
+  }
+
   /* Names are unknown until a villager actually tells you theirs — the same
      rule the notebook already runs on for everything else a villager knows,
      just applied to the one thing about them that used to be free. Every
@@ -145,9 +170,9 @@ LG.game = (function () {
     const L = LG.LANGUAGES[settings.lang];
     const line = fillTemplate(set[settings.lang] || set.en, native);
     const gloss = fillTemplate(set.en, english);
-    const hide = settings.showTranslation ? '' : ' hidden-tr';
     pushLog(icon + ' <span class="heard" lang="' + L.tag + '">' + escapeHTML(line) + '</span>' +
-            '<span class="gloss' + hide + '" lang="en" title="click to read">' + escapeHTML(gloss) + '</span>');
+            '<span class="gloss' + glossClass() + '" lang="en" title="' + glossTitle() + '">' +
+            escapeHTML(gloss) + '</span>');
   }
 
   /* ---------------------------------------------------------- word list
@@ -219,9 +244,7 @@ LG.game = (function () {
     if (logLines.length > 5) logLines.shift();
     const box = document.getElementById('log');
     box.innerHTML = logLines.map(l => '<div>' + l + '</div>').join('');
-    Array.prototype.forEach.call(box.querySelectorAll('.gloss.hidden-tr'), el => {
-      el.onclick = () => el.classList.remove('hidden-tr');
-    });
+    bindGlossReveal(box);
   }
 
   function log(msg) { pushLog(escapeHTML(msg)); }
@@ -247,8 +270,12 @@ LG.game = (function () {
                '>' + heard + '</span>';
     if (roman && L.romanize && !zh) html += '<span class="roman" lang="' + L.romanTag + '">' +
                                      escapeHTML(roman) + '</span>';
-    if (gloss) html += '<span class="gloss hidden-tr" lang="en" title="click to read">' +
-                       escapeHTML(gloss) + '</span>';
+    // Always blurred, even with translations switched on — see the comment
+    // above this function — so this reads crutchesOff() directly rather than
+    // through glossTitle(), which would call it revealable off-advanced.
+    if (gloss) html += '<span class="gloss hidden-tr" lang="en" title="' +
+                       (crutchesOff() ? 'no translations at this difficulty' : 'click to read') +
+                       '">' + escapeHTML(gloss) + '</span>';
     pushLog(html);
   }
   function escapeHTML(s) {
@@ -276,19 +303,20 @@ LG.game = (function () {
         const withRuby = (n.ruby && L.furigana) || zh;
         const heard = (n.ruby && L.furigana) ? LG.dialogue.rubyHTML(n.ruby) : zh || escapeHTML(n.text);
         const gloss = plan.facts[n.id].text;
-        const hide = settings.showTranslation ? '' : ' hidden-tr';
         const done = factSpent(n.id);          // read off the world, never stored
+        // The title used to be the gloss text itself \u2014 fine as a hover aid
+        // while blur is only ever a click away, a hole in it once a click
+        // can no longer get past the blur at all.
+        const glossHint = crutchesOff() ? 'no translations at this difficulty' : escapeHTML(gloss);
         return '<div class="q' + (done ? ' done' : '') + '"><span class="heard" lang="' +
                L.tag + '"' + (withRuby ? ' style="line-height:2"' : '') +
                '>' + (done ? '\u2714 ' : '\u2022 ') + heard + '</span>' +
-               '<span class="gloss' + hide + '" lang="en" title="' + escapeHTML(gloss) + '">' +
+               '<span class="gloss' + glossClass() + '" lang="en" title="' + glossHint + '">' +
                escapeHTML(gloss) + '</span></div>';
       }));
     nb.innerHTML = rows.length ? rows.join('')
       : '<div class="q muted">Nothing yet. Try asking around!</div>';
-    Array.prototype.forEach.call(nb.querySelectorAll('.gloss.hidden-tr'), el => {
-      el.onclick = () => el.classList.remove('hidden-tr');
-    });
+    bindGlossReveal(nb);
   }
 
   /* --------------------------------------------------------------- shops */
@@ -1783,7 +1811,6 @@ LG.game = (function () {
     const L = LG.LANGUAGES[settings.lang];
     const box = document.getElementById('boardList');
     const rows = (state.board || []).slice().reverse().map(entry => {
-      const hide = settings.showTranslation ? '' : ' hidden-tr';
       // A notice is signed with the poster's real name outright, unlike a
       // nametag or a line of spoken dialogue — a pinned note is a public,
       // written thing, and a village that could not name its own notices
@@ -1796,15 +1823,13 @@ LG.game = (function () {
              (zh || escapeHTML(entry.text)) + '</span>' +
              (entry.roman && L.romanize && !zh ? '<span class="roman" lang="' + L.romanTag + '">' +
                escapeHTML(entry.roman) + '</span>' : '') +
-             (entry.translation ? '<span class="gloss' + hide + '" lang="en" title="click to read">' +
-               escapeHTML(entry.translation) + '</span>' : '') +
+             (entry.translation ? '<span class="gloss' + glossClass() + '" lang="en" title="' +
+               glossTitle() + '">' + escapeHTML(entry.translation) + '</span>' : '') +
              '</div>';
     });
     box.innerHTML = rows.length ? rows.join('')
       : '<div class="notice muted">Nothing pinned up yet.</div>';
-    Array.prototype.forEach.call(box.querySelectorAll('.gloss.hidden-tr'), el => {
-      el.onclick = () => el.classList.remove('hidden-tr');
-    });
+    bindGlossReveal(box);
   }
 
   /* -------------------------------------------------------- the word list
@@ -2051,7 +2076,7 @@ LG.game = (function () {
 
     W.drawGround(ctx, cam, vw, vh, dpr);
     W.drawBuildings(ctx, room, cam, vw, vh);
-    W.drawSigns(ctx, cam, vw, vh, settings.lang, settings.showTranslation, dpr);
+    W.drawSigns(ctx, cam, vw, vh, settings.lang, !glossHidden(), dpr);
     drawWorldItem();
 
     /* A villager under a roof is out of sight. You can see into the room you are
@@ -2137,7 +2162,7 @@ LG.game = (function () {
            // and what came of it: the strip of canvas the player can see
            _debugSeen: seen,
            inventoryList, doTrade, commerce, renderHUD, openSettings, uiBlocked, newVillage,
-           openWords, renderWords, learnWord, hasWord,
+           openWords, renderWords, learnWord, hasWord, crutchesOff,
            get plan() { return plan; },
            get npcs() { return npcs; },
            // what save.js reads and writes back; the rest of the world it can

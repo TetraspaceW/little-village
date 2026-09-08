@@ -144,9 +144,6 @@ The dice table is still there underneath for exactly that reason.
 - **Spaced repetition on the word list.** The word list (Built, below) is every item
   the village has actually named for you, in order; a review mode on top of it —
   due-today, self-graded — is the natural next step for a list that already exists.
-- **Difficulty as scaffolding, not vocabulary.** Level already sets chain depth, how
-  widely facts are spread, and how they speak. It could also take away the crutches:
-  translations locked, phrasebook empty at advanced.
 - **Prompt caching.** Each villager's identity block is stable across turns. A cache
   breakpoint there would cut per-turn cost once conversations get long.
 - **More languages.** One `LG.LANGUAGES` entry, item translations, twelve phrasebook
@@ -208,3 +205,10 @@ The dice table is still there underneath for exactly that reason.
   it, when it would say it differently — never in the villager's own mouth,
   who answers what they understood, in character, whether or not it was well
   put.
+- Difficulty as scaffolding, not just chain shape: at Advanced, translations
+  are locked rather than a click away (the notebook, the event log, signs,
+  the dialogue box, all of it — even a tooltip stopped being a second way to
+  read the answer without clicking through it) and the Phrases tray goes
+  empty, so nothing is there to lean on. `spread`/`taper`/`gossip` already
+  made the chain itself harder to trace; this is the level that makes the
+  interface stop helping too.

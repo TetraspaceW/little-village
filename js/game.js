@@ -1068,6 +1068,9 @@ LG.game = (function () {
     document.getElementById('btnWords').onclick = openWords;
     document.getElementById('wordsClose').onclick = () =>
       document.getElementById('words').classList.remove('open');
+    document.getElementById('btnPeople').onclick = openPeople;
+    document.getElementById('peopleClose').onclick = () =>
+      document.getElementById('people').classList.remove('open');
     document.getElementById('endingClose').onclick = () =>
       document.getElementById('ending').classList.remove('open');
     document.getElementById('endingAgain').onclick = () => {
@@ -1988,6 +1991,39 @@ LG.game = (function () {
       : '<div class="word muted">Nothing yet — words turn up here as the village gives them to you.</div>';
   }
 
+  /* ------------------------------------------------------------- the people
+     A roster, the same shape as the word list but for who lives here rather
+     than what they have named — read entirely off npc.metPlayer/nameKnown,
+     which the game already keeps for the dialogue box and the nametag (see
+     dialogue.js's `open` and displayName above). Fixed roster order (LG.NPCS
+     order), not met-first, so the list does not reshuffle under a returning
+     player and does not itself say how many are left unmet by leaving gaps. */
+  function openPeople() {
+    renderPeople();
+    document.getElementById('people').classList.add('open');
+  }
+  function renderPeople() {
+    const box = document.getElementById('peopleList');
+    if (!box) return;
+    const rows = npcs.map(n => {
+      const met = !!n.metPlayer;
+      // Job is the headline either way — it is the one thing the dialogue box
+      // has always shown regardless of nameKnown. Name goes underneath, once
+      // there is one, rather than repeating the job there too: the dialogue
+      // box's own dlgName shows "?" sooner than that, for exactly this reason
+      // — see its comment on why a name placeholder must not read like a
+      // glitch by echoing the line right below it.
+      return '<div class="person' + (met ? '' : ' muted') + '">' +
+             '<span class="pEmoji">' + n.def.emoji + '</span>' +
+             '<span class="pText"><span class="pJob">' +
+             escapeHTML(met ? n.def.job : 'someone in the village') + '</span>' +
+             (met ? '<span class="pName">' + escapeHTML(n.nameKnown ? n.def.name : '?') +
+               '</span>' : '') +
+             '</span></div>';
+    });
+    box.innerHTML = rows.join('');
+  }
+
   /* ---------------------------------------------------------------- loop */
   /* Keys and the joystick add into the same pair of numbers, so a bluetooth
      keyboard next to a touchscreen is not a mode you have to be in. The keys
@@ -2294,7 +2330,7 @@ LG.game = (function () {
            // to its last link just to read a sentence off it
            _debugEndingStats: endingStats,
            inventoryList, doTrade, commerce, renderHUD, openSettings, uiBlocked, newVillage,
-           openWords, renderWords, learnWord, hasWord, crutchesOff,
+           openWords, renderWords, openPeople, renderPeople, learnWord, hasWord, crutchesOff,
            dueWords, gradeWord, startReview, endReview, reviewGrade,
            get reviewQueue() { return reviewQueue; },
            get plan() { return plan; },

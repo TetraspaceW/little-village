@@ -248,3 +248,12 @@ The dice table is still there underneath for exactly that reason.
   the current day rather than being reconstructed from it, since restoring
   a save calls `newVillage` too and would otherwise reset it to whatever
   throwaway day that reroll happened to land on.
+- A villager roster (👥 button), the same list shape as the word list but
+  for who lives here rather than what they've named. A face is all anyone
+  gets until `metPlayer` — then their job, the same headline the dialogue
+  box has always shown regardless of whether a name is known, with the name
+  itself only once `nameKnown` says they've actually given it. Deliberately
+  not "the village baker" printed twice when a job is known but a name
+  isn't: the dialogue box's own `dlgName` already solves this by showing
+  "?" rather than repeating the line right below it, and the roster follows
+  the same rule for the same reason.

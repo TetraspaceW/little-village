@@ -102,6 +102,11 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
   *"What is your name?"* (in the Phrases row) and they will. Being told
   about someone by a third party doesn't count; you have to hear it from
   them.
+- **Villagers** (👥 button). A roster of everyone who lives here. Someone
+  you haven't actually spoken to yet is only a face; speaking to them
+  reveals their job, the same as opening a conversation with them does, and
+  their name once they've given it — meeting one villager never gives away
+  anything about the rest.
 - **Money.** You start with ¤10. A villager at their own counter, in daytime,
   will buy and sell — the baker sells bread, the smith sells tools, and so
   on. Prices are fixed per item with a haggling band either side. Villagers

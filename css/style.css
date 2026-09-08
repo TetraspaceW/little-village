@@ -441,6 +441,23 @@ ruby rb{font-size:1em}
 .wGrade{display:flex;gap:10px;margin-top:6px}
 .wGrade button{flex:1 1 auto}
 
+/* The villager roster — same list shape as the word list, faces instead of
+   items. An unmet row stays legible (still a real person, just not one the
+   traveller has spoken to yet) rather than blanked out the way .word.muted's
+   placeholder row is, so `.person.muted` only dims rather than italicises. */
+#peopleList{max-height:420px;overflow-y:auto;margin:8px 0 14px}
+.person{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+.person:last-child{border-bottom:none}
+.person.muted{color:#9c8b72}
+.pEmoji{font-size:20px;flex:0 0 auto}
+.pText{flex:1 1 auto;min-width:0;display:flex;flex-direction:column}
+/* Job is the headline row either way — met or not, real job or the
+   "someone in the village" placeholder — the same as the dialogue box
+   always shows a job and only sometimes a name underneath it. */
+.pJob{font-size:15px;font-weight:600;color:#4a3b2a}
+.person.muted .pJob{font-weight:400;font-style:italic;color:#9c8b72}
+.pName{font-size:13px;color:#8a7355}
+
 .lede{font-size:16px;color:#4a3b2a;margin:0 0 8px}
 #setLede p{font-size:13.5px;color:#6d5b45}
 #ttsResult:empty{display:none}

@@ -1449,6 +1449,7 @@ async function villagersTalking() {
   }
 
   await namesUnknownUntilTold();
+  await peopleRoster();
   await gentleCorrections();
   await noCrutchesAtAdvanced();
   await micButton();
@@ -1512,6 +1513,34 @@ async function namesUnknownUntilTold() {
   ok(back.nameKnown === true, 'and a name once learned is not forgotten on reload');
 
   LG.llm.speak = real;
+}
+
+async function peopleRoster() {
+  section('the villager roster: a face until met, a job and maybe a name after');
+  const g = LG.game;
+  g.npcs.forEach(n => { n.metPlayer = false; n.nameKnown = false; });
+
+  g.openPeople();
+  let html = sandbox.document.getElementById('peopleList').innerHTML;
+  ok(g.npcs.every(n => html.indexOf(n.def.job) === -1),
+     'nobody unmet gives up their job just by being listed');
+  ok((html.match(/class="person muted"/g) || []).length === g.npcs.length,
+     'every row starts muted, before anyone has been spoken to');
+
+  const met = g.npcs[0], stillUnmet = g.npcs[1];
+  met.metPlayer = true;
+  g.renderPeople();
+  html = sandbox.document.getElementById('peopleList').innerHTML;
+  ok(html.indexOf(met.def.job) !== -1, 'met, their job shows up');
+  ok(html.indexOf(g.displayName(met)) !== -1,
+     'and the row reads the same name-or-job the dialogue box and nametag would');
+  ok(html.indexOf(stillUnmet.def.job) === -1,
+     'someone else stays a face regardless — meeting one villager does not out the rest');
+
+  met.nameKnown = true;
+  g.renderPeople();
+  html = sandbox.document.getElementById('peopleList').innerHTML;
+  ok(html.indexOf(met.def.name) !== -1, 'and their actual name appears once they have given it');
 }
 
 /* Off by default, and never in the villager's own mouth — see llm.js's

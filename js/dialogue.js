@@ -1023,6 +1023,7 @@ LG.dialogue = (function () {
           langName: L.name,
           furigana: !!L.furigana,
           diacritics: !!L.diacritics,
+          stageInLang: !!L.stageInLang,
           romanLabel: L.romanize ? L.romanLabel : null,
           grammarNote: L.grammarNote || '',
           register: (LG.LEVELS[s.level] || {}).register || ''

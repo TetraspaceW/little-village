@@ -1182,10 +1182,20 @@ LG.llm = (function () {
          about — naming the failure mode here would put English stage directions
          in the model's context. Measured on toki pona chatter, 298 prompts,
          haiku, two runs against two baselines: English words inside asterisks
-         349/313 -> 128/98, while the asterisks themselves went up by half. */
-      "Whatever you are doing while you speak — a glance, a shrug, flour wiped off your hands — belongs in " +
-        o.langName +
-        " like everything else you say.",
+         349/313 -> 128/98, while the asterisks themselves went up by half.
+
+         That measurement is the whole warrant for the line, and it is a toki
+         pona measurement — so `stageInLang` carries it only there (see
+         data.js), and the other eight languages are told nothing about their
+         stage business rather than handed a rule on evidence nobody has
+         gathered for them. A line in a prompt is never free: it spends context
+         and it steers, and steering a language nobody has counted the leak in
+         is a guess. Count it there and set the flag if it earns one. */
+      o.stageInLang
+        ? "Whatever you are doing while you speak — a glance, a shrug, flour wiped off your hands — belongs in " +
+          o.langName +
+          " like everything else you say."
+        : null,
       o.grammarNote ? "In " + o.langName + ", " + o.grammarNote : null,
       o.furigana ? 'Put the furigana in "say".\n' + LG.FURIGANA : null,
       o.diacritics

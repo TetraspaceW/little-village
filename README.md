@@ -62,8 +62,8 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
   language you get.
 - **Errands.** Each village generates a chain: someone wants an item, whoever
   has it wants something else, and so on back to something just lying in the
-  world. The village name (bottom of the notebook) is the seed — the same
-  name regenerates the same errand.
+  world. The village is generated from a seed, so the same seed regenerates
+  the same errand.
 - **The woods.** A large forest fills the northern two-fifths of the map,
   with tracks running through it and six named clearings: the big
   clearing, the old oak, the hollow, the charcoal burner's pit, the forest

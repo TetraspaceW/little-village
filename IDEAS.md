@@ -125,9 +125,6 @@ remaining rule that a person with the same information would not need:
 - **What they do when they get there.** A villager who walks to the Inn to find Sanna
   currently just stands in the Inn. Arriving with an intention, and acting on it when the
   person is there, is the other half of the movement change.
-- **Show the reason.** Every decision comes back with a few words of why, and nothing
-  displays them. A hover, or a line in the log when you are close, would make the village
-  legible and would make it obvious when the reasoning is bad.
 - **The trade rules.** `action: "trade"` still has a hint spelling out when to fire it.
   With the till visible, that may be derivable too.
 
@@ -204,3 +201,8 @@ The dice table is still there underneath for exactly that reason.
   earlier today at 09:14"), read off a per-pair record each of them keeps rather
   than parsed from anything — see "further" under villager conversations, above,
   for the fuller version this is a first step toward.
+- The reason a villager went somewhere reaches the player, not just the console:
+  a nearby arrival gets a line in the event log naming why, the same `why` that
+  has always come back with the decision — legible from outside now, and only
+  for the one arrival it was actually the reason for, never a stale one carried
+  over from a decision the dice table has since walked past.

@@ -109,7 +109,9 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
   you're close enough to overhear, the exchange (in their language, with a
   blurred gloss) shows up in your event log. They keep track of who they've
   already talked to, too, and say so at the start of a repeat conversation
-  rather than starting fresh every time.
+  rather than starting fresh every time. Arriving somewhere near you, they'll
+  say why in the log if they had a reason — an errand of their own, not
+  yours — the same way they already do for the console.
 
 ## Connecting a model (⚙ button)
 

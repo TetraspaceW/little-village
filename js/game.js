@@ -1646,14 +1646,25 @@ LG.game = (function () {
         // Chasing the traveller is not a walk to wherever they stood when
         // asked \u2014 see followPlayer. `wantsGo` is left unset so a decision
         // made later, once the chase is over, does not find a stale rect
-        // here waiting to be acted on.
+        // here waiting to be acted on. A chase's own "why" reaches the
+        // player a different way \u2014 see talkTo's `sought` \u2014 so there is no
+        // `patch` for this one to be matched against below, on purpose.
         n.followingPlayer = true;
         n.wentAfter = 'player';
+        n.whyPatch = null;
       } else {
         n.wantsGo = want.rect;
         // "after Mira" is a decision about a person, and the conversation
         // that follows should know it was not a coincidence
         n.wentAfter = want.after || null;
+        /* Which arrival this reason is actually for, by reference rather than
+           by name or rect contents \u2014 see the "arrives" handler in update().
+           Without it, a villager put back on cooldown mid-route (see
+           routine's byDice fallback) keeps walking on the old dice table but
+           still carries the last reason a model actually gave, and every
+           arrival after that one would be captioned with it whether or not
+           it had anything to do with getting there. */
+        n.whyPatch = want.rect;
       }
       think(n, '\u2192 ' + want.name, n.why);
     }).catch(() => { done(); think(n, 'could not decide', 'the call failed'); });
@@ -1911,7 +1922,20 @@ LG.game = (function () {
       if (!wasFollowing)
         A.routine(n, dt, LG.GREEN, settings.apiKey && settings.npcChatter ? decideWhereToGo : null);
       if (n.wasWalking && !walking) {
-        think(n, 'arrives', LG.view.where(n) + (n.why ? ' — ' + n.why : ''));
+        /* Whether `n.why` is actually the reason for *this* arrival, or a
+           reason still sitting there from an earlier decision — see the
+           comment over `whyPatch` in decideWhereToGo. A villager put back on
+           the dice table between one model decision and the next keeps
+           walking, and keeps the old reason, without either one having
+           anything to do with the other. */
+        const freshWhy = !!(n.why && n.whyPatch && n.patch === n.whyPatch);
+        think(n, 'arrives', LG.view.where(n) + (freshWhy ? ' — ' + n.why : ''));
+        // Legible from outside, not just from the console — a villager who
+        // is asked to reason about where to be and never shows it is a
+        // villager who might as well be rolling dice, from where you stand.
+        if (freshWhy && dist(player, n) < TILE * 11)
+          log('👣 ' + displayName(n) + ' arrives ' + LG.view.where(n) + ' — ' + n.why + '.');
+        if (freshWhy) { n.why = ''; n.whyPatch = null; }
         // `patch` is stale while chasing the traveller — the last place they
         // had actually decided to go, not where the chase just ended — so it
         // is not read as "arrived at the noticeboard" here.

@@ -1137,6 +1137,62 @@ section('closing the tab and opening it again');
      'a save of the resumed village is a save of the same village');
 }
 
+/* ------------------------------------------------ a reason, shown or withheld
+   Every model-driven move comes back with a `why`, and it used to reach only
+   the console — see game.js's `think`. It reaches the player's own event log
+   now, close up and only once, which is the part actually worth pinning down:
+   a villager put back on the dice table between one decision and the next
+   must not have an old reason read out over an arrival it had nothing to do
+   with. */
+section('the reason a villager went somewhere, told to a nearby player once');
+{
+  const g = LG.game;
+  // read fresh rather than trusting the copy taken at the top of the file —
+  // the cast has been rebuilt by a restore since then (see villagersTalking's
+  // own version of this note)
+  const n = g.npcs[0];
+  const readLog = () => sandbox.document.getElementById('log').innerHTML;
+  const countMentions = html => (html.match(/heard bread was in/g) || []).length;
+
+  const restorePlayer = { px: g.player.px, py: g.player.py };
+  const restoreN = { patch: n.patch, why: n.why, whyPatch: n.whyPatch,
+                     wasWalking: n.wasWalking, route: n.route, frozen: n.frozen,
+                     followingPlayer: n.followingPlayer };
+  const restoreChatter = g.settings.npcChatter;
+  // `frozen` keeps A.routine (and, through it, a real decideWhereToGo call —
+  // this test does not mock LG.llm.intent) from touching n.patch/n.route out
+  // from under the fixture below; npcChatter off keeps A.meet from pulling n
+  // into a conversation of its own mid-test. Neither affects the "arrives"
+  // check itself, which reads state routine() would only have overwritten.
+  n.frozen = true;
+  g.settings.npcChatter = false;
+
+  g._debugPlayerAt(n.px, n.py);            // close enough to overhear
+  const rectA = { x: 1, y: 1, w: 2, h: 2 }, rectB = { x: 9, y: 9, w: 2, h: 2 };
+
+  // a model decision just landed, and the walk it started has just finished
+  n.followingPlayer = false; n.route = [];
+  n.patch = rectA; n.why = 'heard bread was in'; n.whyPatch = rectA;
+  n.wasWalking = true;
+  g._debugTick(1 / 30);
+  const first = readLog();
+  ok(countMentions(first) === 1, 'the reason for the arrival it was actually for reaches the log');
+  ok(!n.why && !n.whyPatch, 'and is consumed — not still sitting there for the next one');
+
+  // the dice table moves them again, with nothing behind it — routine's own
+  // fallback never sets whyPatch, which this reproduces directly
+  n.patch = rectB; n.why = 'heard bread was in'; n.whyPatch = rectA; // stale, from the first move
+  n.wasWalking = true; n.route = [];
+  g._debugTick(1 / 30);
+  const second = readLog();
+  ok(countMentions(second) === countMentions(first),
+     'a reason for a different patch is not read out over an unrelated arrival — no new copy of the line');
+
+  Object.assign(n, restoreN);
+  g.settings.npcChatter = restoreChatter;
+  g._debugPlayerAt(restorePlayer.px, restorePlayer.py);
+}
+
 /* ------------------------------------------------------- nothing left behind */
 section('the old copies are gone');
 const src = {};
@@ -1377,9 +1433,26 @@ async function touchControls() {
 
   /* --------------------------------------------------------------- the tap */
   // Somebody standing outdoors: a villager behind their own wall is not drawn,
-  // and what is not drawn cannot be aimed at.
-  const npc = g.npcs.find(n => !W.buildingUnder(n)) || g.npcs[0];
+  // and what is not drawn cannot be aimed at. Put on the green rather than
+  // trusted to already be there — by this point in the suite the clock has
+  // run through thousands of ticks fired by earlier sections, easily enough
+  // to reach night, when every villager is home and indoors (see game.js's
+  // Autonomy note), which silently broke `g.npcs.find(n => !W.buildingUnder(n))
+  // || g.npcs[0]` the way this used to read: no outdoor villager existed, the
+  // fallback npc was indoors like everyone else, and every tap on them below
+  // failed the same way a tap through a wall correctly should have.
+  const npc = g.npcs[0];
+  const npcWasAt = { px: npc.px, py: npc.py, tx: npc.tx, ty: npc.ty };
+  const spot0 = W.nearestOpen(LG.GREEN.x + (LG.GREEN.w / 2 | 0), LG.GREEN.y + (LG.GREEN.h / 2 | 0));
+  npc.px = spot0.x * TILE + TILE / 2; npc.py = spot0.y * TILE + TILE / 2;
+  npc.tx = spot0.x; npc.ty = spot0.y;
+  ok(!W.buildingUnder(npc), 'the green is outdoors, so the fixture above actually holds');
   const screen = a => ({ x: a.px - g.cam.x, y: a.py - g.cam.y });
+  /* Held still for the rest of this test. `_debugTick` below runs the real
+     village along with the camera it exists to move, and nobody else's
+     position is asserted on — but npc's is, on both sides of every tap. */
+  const npcWasFrozen = npc.frozen;
+  npc.frozen = true;
 
   g._debugPlayerAt(npc.px + 20, npc.py);
   g._debugTick(1 / 60);                        // the camera catches up with them
@@ -1387,6 +1460,7 @@ async function touchControls() {
   T._begin(2, p.x, p.y, 0); T._end(2, p.x, p.y, 90);
   ok(LG.dialogue.isOpen(), 'a tap on the villager beside you opens the conversation');
   LG.dialogue.close();
+  npc.frozen = true;   // close() rightly un-freezes them — hold still again for what follows
 
   T._begin(3, p.x, p.y, 0); T._move(3, p.x + 60, p.y); T._end(3, p.x + 60, p.y, 90);
   ok(!LG.dialogue.isOpen(), 'but a drag that starts on them walks past them instead');
@@ -1403,8 +1477,11 @@ async function touchControls() {
   T._begin(5, p.x, p.y, 0); T._end(5, p.x, p.y, 90);
   ok(!LG.dialogue.isOpen(), 'tapping someone across the green does not start a conversation');
   g._debugTick(1 / 60);
-  ok(/Walk over to/.test(sandbox.document.getElementById('hint').textContent),
+  const hintText = sandbox.document.getElementById('hint').textContent;
+  ok(/Walk over to/.test(hintText),
      'it says to walk over rather than going quiet');
+  npc.frozen = npcWasFrozen;
+  Object.assign(npc, npcWasAt);
 
   /* --------------------------------------------------- and it actually walks */
   // A stretch of ground with room to walk four tiles east, found rather than

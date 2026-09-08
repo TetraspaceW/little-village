@@ -274,7 +274,7 @@ LG.dialogue = (function () {
          front of him said so — and then the traveller held out coins, because
          from where they stood the deal struck a moment ago had not been settled
          yet, and the rule told him to hand another knife over. He did. */
-      lines.push('If the traveller holds out their coins, that is them paying you for something you have not handed over yet — take the money and hand the goods over in the same breath. Something the record already shows you were paid for is not being bought a second time.');
+      lines.push('If the traveller holds out their coins, they are paying for whatever the two of you have actually been discussing. If that is goods you have not handed over yet, take the money and hand them over in the same breath — but something the record already shows you were paid for is not being bought a second time. If it is not plain what the coins are for, ask before you take them.');
       lines.push('Two things at once is still one sale: put both tags in "item" and the total in "price". Only list what you are actually handing over this turn.');
     } else if (v.trade.sells.length) {
       /* The small hours are the one time the shop is shut, and saying nothing
@@ -560,6 +560,21 @@ LG.dialogue = (function () {
     el.dlgStatus.className = 'dlg-status ' + (kind || '');
   }
 
+  /* An offer with nothing behind it still has to reach the villager, the same
+     way a refused sale does — see commerce()'s refuse() in game.js. Without
+     this, "nothing happened" was said only to the player: the status line was
+     the one place it appeared, and it framed the refusal as the villager's own
+     verdict ("Petra does not want your coins") delivered a beat after Petra had
+     asked for exactly that. The till entry lets next turn's prompt see what
+     actually changed hands — nothing — and react to that on its own terms,
+     instead of the game speaking for them. */
+  function declineOffer(npc, offered) {
+    npc.till = npc.till || [];
+    npc.till.push({ failed: true,
+      note: 'the traveller held out ' + LG.ITEMS[offered].en + ', and nothing changed hands' });
+    status('Nothing changed hands.', 'miss');
+  }
+
   function speakLine(npc, text) {
     if (!npc || !LG.game.settings.voices) return;
     LG.tts.speak(LG.game.ttsConfig(), npc.def.id, text);
@@ -806,10 +821,10 @@ LG.dialogue = (function () {
       } else if (offered === trade.wants && haveEnough) {
         pending.push(confirmOffer(npc, trade, spoken, reply.translation));
       } else if (offered) {
-        status(LG.game.displayName(npc) + ' does not want your ' + LG.ITEMS[offered].en + '.');
+        declineOffer(npc, offered);
       }
     } else if (offered) {
-      status(LG.game.displayName(npc) + ' has no use for that.');
+      declineOffer(npc, offered);
     }
 
     busy = false;

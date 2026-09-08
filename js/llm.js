@@ -1191,6 +1191,10 @@ LG.llm = (function () {
         ? null
         : o.them.name + ", " + o.them.job + ", is here too." +
           (o.them.persona ? " " + o.them.persona : ""),
+      // A plain fact, not a summons to recap it — what either of you actually
+      // took from that conversation is already in `held` below, when it is
+      // still there to be.
+      o.metBefore || null,
       o.when || null,
       "",
       /* Everyone else in the village is somebody both of you already know by

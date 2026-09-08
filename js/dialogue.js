@@ -1154,6 +1154,16 @@ LG.dialogue = (function () {
     const view = {};
     if (ctx.a) view[ctx.a.id] = ctx.a;
     if (ctx.b) view[ctx.b.id] = ctx.b;
+    /* Fixed for the whole conversation, from what each of them already had
+       going in — not recomputed turn by turn, or a six-line conversation
+       would have each of them "recall" meeting the other partway through it.
+       Each one's own map, keyed by the other's id: what *this* villager
+       remembers of meeting that particular person, not what the other one
+       remembers of them. */
+    const priorMeeting = {
+      [a.def.id]: (a.metWith || {})[b.def.id] || null,
+      [b.def.id]: (b.metWith || {})[a.def.id] || null
+    };
 
     try {
       for (let t = 0; t < turns; t++) {
@@ -1175,6 +1185,10 @@ LG.dialogue = (function () {
           transcript: transcript,
           closing: t === turns - 1,
           when: t === 0 ? LG.time.describe() : '',
+          // Each of them gets this once, on their own first line of the
+          // conversation — t < 2 covers both (a speaks at t=0, b at t=1) —
+          // rather than every turn, the same reasoning `when` already applies.
+          metBefore: t < 2 ? metBeforeLine(priorMeeting[me.def.id], them.def.name) : null,
           langName: L.name,
           furigana: !!L.furigana,
           diacritics: !!L.diacritics,
@@ -1210,7 +1224,33 @@ LG.dialogue = (function () {
 
     /* What either of them keeps is read off the conversation that happened,
        rather than decided before it started. */
-    if (transcript.length >= 2 && ctx.a && ctx.b) remember(a, b, transcript, ctx);
+    if (transcript.length >= 2 && ctx.a && ctx.b) {
+      remember(a, b, transcript, ctx);
+      noteMet(a, b); noteMet(b, a);
+    }
+  }
+
+  /* `me` now knows it has talked with `them` — see priorMeeting above, which
+     is what reads this back. A flat id-keyed map rather than a list: there is
+     nothing to keep about a pair beyond the most recent time, so a second
+     conversation the same day simply overwrites the first rather than the map
+     growing forever. */
+  function noteMet(me, them) {
+    me.metWith = me.metWith || {};
+    me.metWith[them.def.id] = { day: LG.time.day, at: LG.time.clock() };
+  }
+
+  /* A ready-made sentence rather than the raw {day, at} record — llm.js's
+     converse just drops this in or leaves it out, the same as `when` and
+     `register`, with nothing there needing to know what a "day" is. Content
+     they actually took from a past conversation already reaches them through
+     the ordinary memory list (see llm.js's `recall`/dialogue.js's `keep`);
+     this is only the plain fact that there was one, which that list is not
+     guaranteed to still be carrying by the time it matters. */
+  function metBeforeLine(entry, name) {
+    if (!entry) return null;
+    return 'You have talked with ' + name + ' before' +
+      (entry.day === LG.time.day ? ', earlier today at ' + entry.at : '') + '.';
   }
 
   function remember(a, b, transcript, ctx) {
@@ -1319,5 +1359,6 @@ LG.dialogue = (function () {
            _looksEnglish: looksEnglish,
            rubyHTML: rubyHTML, _usableRuby: usableRuby,
            zhRubyHTML: zhRubyHTML, _zhRuby: zhRuby, _pinyinToZhuyin: pinyinToZhuyin,
-           _tokenizePinyin: tokenizePinyin };
+           _tokenizePinyin: tokenizePinyin,
+           _noteMet: noteMet, _metBeforeLine: metBeforeLine, _startChat: startChat };
 })();

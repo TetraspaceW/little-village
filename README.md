@@ -107,7 +107,9 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
 - **Autonomy.** Villagers move and talk to each other on their own schedule —
   busiest around midday, home by dark — whether or not you're nearby. If
   you're close enough to overhear, the exchange (in their language, with a
-  blurred gloss) shows up in your event log.
+  blurred gloss) shows up in your event log. They keep track of who they've
+  already talked to, too, and say so at the start of a repeat conversation
+  rather than starting fresh every time.
 
 ## Connecting a model (⚙ button)
 

@@ -670,6 +670,19 @@ section('a sentence and its pinyin, zipped into ruby — or not, safely');
      'and passes the null straight through on a line that does not line up');
 }
 
+section('metBeforeLine: a plain fact, dated or not, never a summons to recap');
+{
+  const line = LG.dialogue._metBeforeLine;
+  ok(line(null, 'Mira') === null, 'nothing to say about somebody never met');
+  const today = LG.time.day;
+  const now = line({ day: today, at: '09:14' }, 'Mira');
+  ok(now === 'You have talked with Mira before, earlier today at 09:14.',
+     'names them and the time, when it was today');
+  const before = line({ day: today - 1, at: '09:14' }, 'Mira');
+  ok(before === 'You have talked with Mira before.',
+     'and drops the clock reading rather than claim "today" for an earlier day');
+}
+
 /* ------------------------------------------------------- what they believe now
    Villagers are not a table of rows to expire. They hold things, each with a
    time and a source, and when something arrives that overtakes one of them they
@@ -850,6 +863,9 @@ section('a village, written down and read back');
   else if (g.worldItem) { g.worldItem.taken = true; }
   // guaranteed non-empty regardless of what f0 happened to be about above
   g.learnWord('shiny_rock', 'test fixture');
+  // same reason — this round trip runs before any villager has actually
+  // talked to another one, so metWith would otherwise be empty on both sides
+  npcs[0].metWith = {}; npcs[0].metWith[npcs[1].def.id] = { day: LG.time.day, at: '12:00' };
 
   const before = {
     seed: plan.seed, day: LG.time.day, frac: LG.time.frac,
@@ -860,6 +876,7 @@ section('a village, written down and read back');
     px: Math.round(g.player.px * 10) / 10,
     facts: npcs.map(n => n.facts.join(',')).join('|'),
     memory: npcs.map(n => JSON.stringify(n.memory)).join('|'),
+    metWith: npcs.map(n => JSON.stringify(n.metWith || {})).join('|'),
     till: npcs.map(n => JSON.stringify(n.till || [])).join('|'),
     where: npcs.map(n => n.tx + ',' + n.ty).join('|')
   };
@@ -908,6 +925,8 @@ section('a village, written down and read back');
      'everyone knows what they knew');
   ok(back.map(n => JSON.stringify(n.memory)).join('|') === before.memory,
      'and remembers what they had picked up, with when and from whom');
+  ok(back.map(n => JSON.stringify(n.metWith || {})).join('|') === before.metWith,
+     'and who they have talked with before, and when');
   ok(back.map(n => JSON.stringify(n.till || [])).join('|') === before.till,
      'the tills square up');
   ok(back.map(n => n.tx + ',' + n.ty).join('|') === before.where,
@@ -1232,6 +1251,30 @@ async function villagersTalking() {
     const flat = JSON.stringify(recalled);
     ok(flat.indexOf('You think') === -1,
        'the reader gets the facts as written, not in either villager\'s own voice');
+  }
+
+  section('and they remember having talked, next time');
+  ok(!!(a.metWith && a.metWith[b.def.id]), 'a now has b on their own metWith');
+  ok(!!(b.metWith && b.metWith[a.def.id]), 'and b has a on theirs — each side keeps its own copy');
+  if (a.metWith && a.metWith[b.def.id])
+    ok(a.metWith[b.def.id].day === LG.time.day, 'dated to today, the day this meeting happened');
+  {
+    const seen2 = [];
+    LG.llm.converse = async (cfg, opts) => {
+      seen2.push(opts);
+      return { say: 'Опять ты.', translation: 'You again.' };
+    };
+    a.chatting = b.chatting = false; a.frozen = b.frozen = false;
+    await LG.dialogue._startChat({ a, b, ctx: { a: LG.view.of(a, 'chat'), b: LG.view.of(b, 'chat') } });
+    ok(seen2.length >= 2, 'a second conversation between the same two happens too');
+    if (seen2.length >= 2) {
+      ok(typeof seen2[0].metBefore === 'string' && seen2[0].metBefore.indexOf(b.def.name) !== -1,
+         'and this time the first line carries that they have talked before, naming who');
+      ok(seen2[0].metBefore.indexOf('today') !== -1,
+         'dated, since — in this fake, instant-turnaround test — it really was earlier today');
+      ok(typeof seen2[1].metBefore === 'string' && seen2[1].metBefore.indexOf(a.def.name) !== -1,
+         'and the other side of the conversation gets its own version, naming the other name');
+    }
   }
 
   await namesUnknownUntilTold();

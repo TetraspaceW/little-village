@@ -176,6 +176,10 @@ LG.save = (function () {
         x: round(n.px), y: round(n.py), tx: n.tx, ty: n.ty, dir: n.dir,
         facts: n.facts.slice(),
         memory: (n.memory || []).slice(),
+        // who they have talked with before, and when — see dialogue.js's
+        // noteMet/priorMeeting, which is what keeps two villagers from
+        // having the same conversation over and over with neither noticing
+        metWith: Object.assign({}, n.metWith),
         factAt: Object.assign({}, n.factAt),
         factNote: Object.assign({}, n.factNote),
         coins: n.coins,
@@ -348,6 +352,16 @@ LG.save = (function () {
          while, which is true of anything written down before this existed. */
       n.memory = (s.memory || []).map(m =>
         typeof m === 'string' ? { at: null, text: m, from: null } : m).filter(m => m && m.text);
+      // Same defensiveness as `facts` just above: only another id this
+      // village's roster actually has, so a hand-edited or future-generator
+      // file cannot claim a conversation with somebody who was never here.
+      n.metWith = {};
+      Object.keys(s.metWith || {}).forEach(id => {
+        const m = s.metWith[id];
+        if (g.npcs.some(o => o.id === id) && m && typeof m.day === 'number') {
+          n.metWith[id] = { day: m.day, at: String(m.at || '') };
+        }
+      });
       n.factAt = Object.assign({}, s.factAt);
       n.factNote = Object.assign({}, s.factNote);
       n.coins = typeof s.coins === 'number' ? s.coins : n.coins;

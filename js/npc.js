@@ -13,6 +13,7 @@ LG.actors = (function () {
       dir: 'down', frozen: false, pauseT: 1 + Math.random() * 2,
       facts: (factIds || []).slice(),   // ids of things they know (see chain.js)
       memory: [],                       // what they have picked up, from anyone
+      metWith: {},                      // other villager id -> when they last talked (see dialogue.js)
       coins: 3 + ((Math.random() * 9) | 0),   // a purse of their own
       stock: {},                        // goods in hand, however they came by them
       history: [],                      // recent dialogue turns with the player

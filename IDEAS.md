@@ -97,10 +97,14 @@ What's left to try, roughly in order of how much they'd add:
 They hold real conversations now, but the conversation is a closed loop: it is generated,
 displayed, and thrown away. Two things fall out of keeping it.
 
-- **Villagers should remember talking.** Right now the fact ids transfer but the
-  conversation itself evaporates, so Boris can tell Mira the same thing three times an
-  hour and neither of them notices. A few lines of transcript kept per pair, fed back in
-  next time, would fix the amnesia and cost nothing.
+- **Villagers should remember talking, further.** They now know *that* they talked —
+  see Built, below — which is the plain fact a repeat conversation was missing, but
+  the conversation's own transcript still evaporates the moment it ends. Keeping a
+  line or two of what was actually said, verbatim, and handing it back next time
+  ("last time you asked me about the rope, and I said I hadn't seen it") is the
+  fuller version of this and was judged the bigger, riskier change for one sitting —
+  a second player-facing prompt field, wired to a second per-pair store, and content
+  worth getting right rather than a fact worth just having.
 - **The player should be interruptible into one.** You can overhear two villagers but not
   join them. Walking up mid-conversation and being addressed by both — with the transcript
   as context — is the most natural three-way practice the game could offer, and the
@@ -195,3 +199,8 @@ The dice table is still there underneath for exactly that reason.
 - A word list (🔤 button): every item the village has actually named for you —
   bought, traded, picked up, or told about before you ever held it — logged once
   each in the order you met it, gloss shown straight away rather than blurred.
+- Villagers know when they last talked to each other: a plain, dated line in the
+  next conversation between the same two ("you have talked with Mira before,
+  earlier today at 09:14"), read off a per-pair record each of them keeps rather
+  than parsed from anything — see "further" under villager conversations, above,
+  for the fuller version this is a first step toward.

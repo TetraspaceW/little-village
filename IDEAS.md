@@ -132,10 +132,6 @@ The dice table is still there underneath for exactly that reason.
   bed you can sleep in would let you skip to morning rather than waiting out the night.
 - **Prompt caching.** Each villager's identity block is stable across turns. A cache
   breakpoint there would cut per-turn cost once conversations get long.
-- **More languages.** One `LG.LANGUAGES` entry, item translations, twelve phrasebook
-  strings, four gossip mutterings — all of it in `data.js`, and the smoke test fails if
-  any of the four is incomplete. Korean would follow Japanese exactly (romanisation
-  field plus a script-appropriate font stack).
 
 ## Built
 
@@ -144,8 +140,10 @@ The dice table is still there underneath for exactly that reason.
 - Monolingual villagers — English words genuinely don't land.
 - A key gate that validates before the game starts.
 - Free gossip: villagers swap fact ids on contact, no model call.
-- Six languages: Russian, English, Chinese, Japanese, French, Spanish — with
-  furigana rather than rōmaji for Japanese.
+- Ten languages: Russian, English, Chinese, Japanese, Korean, French, Spanish,
+  Polish, Arabic (MSA) and toki pona — furigana rather than rōmaji for
+  Japanese, full tashkeel for Arabic, and Hangul needing neither, since it is
+  already an alphabet rather than a logography.
 - ~140 items across five pools, so chains rarely repeat themselves.
 - Voices per villager, cast at load time from the ElevenLabs voice list.
 - A village of twelve across 80×56 tiles, with a flood-fill test that fails the build
@@ -212,3 +210,21 @@ The dice table is still there underneath for exactly that reason.
   day away. A word graded wrong goes to the back of *that session's* queue
   rather than just being marked down for next time, so getting one wrong
   means seeing it again before you stop, not filing it away for later.
+- Korean, the tenth language: no ruby of its own — Hangul is an alphabet,
+  not a logography, so unlike zh and ja there is no per-character reading to
+  line up — but `romanize` still applies, the same flag zh uses, since a
+  beginner still needs one. The four LG.TXN lines are noun-final throughout
+  rather than translations of "you buy/hand over/return", because Korean's
+  object and subject particles pick one of two forms depending on the sound
+  in front of them, and {items}/{item}/{name} are filled in at runtime from
+  whatever the game is narrating — the same shape of problem Arabic's
+  impersonal construction solves for grammatical gender, solved here by the
+  register Korean headlines and notices already use for exactly this reason.
+  Caught two pre-existing bugs on the way past: the language-count sentence
+  in both this file and README.md had quietly drifted stale by two languages
+  (Polish was shipped but uncounted in either), fixed alongside Korean since
+  both were already being touched. Also added the completeness test IDEAS.md
+  had been describing as already existing but wasn't: every language in
+  `LG.LANGUAGES` is now checked against `LG.ITEMS`, `LG.PLACENAMES`,
+  `LG.CONJ`, `LG.TXN`, `LG.CHATTER` and `LG.PHRASES`, and the smoke test
+  fails loudly on the first language missing from any of them.

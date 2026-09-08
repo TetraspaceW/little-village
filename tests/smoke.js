@@ -123,6 +123,36 @@ console.log('   ' + files.length + ' files: ' + files.map(f => path.basename(f))
 
 const LG = sandbox.LG;
 
+/* Adding a language means touching five places in data.js — LG.ITEMS,
+   LG.PLACENAMES, LG.CONJ, LG.TXN and LG.CHATTER, plus LG.PHRASES for the
+   player's own lines — and it is easy to add the fourth without noticing
+   the fifth still says nothing in the new language. This walks every
+   language in LG.LANGUAGES against every one of those and fails loudly on
+   the first gap, rather than leaving a villager to fall back to English
+   mid-sentence and nobody finding out until a player does. */
+section('every language is complete, everywhere one is expected to speak');
+const langCodes = Object.keys(LG.LANGUAGES);
+for (const lang of langCodes) {
+  for (const id of Object.keys(LG.ITEMS)) {
+    ok(typeof LG.ITEMS[id][lang] === 'string' && LG.ITEMS[id][lang].length > 0,
+       'LG.ITEMS.' + id + ' has a ' + lang + ' translation');
+  }
+  for (const key of Object.keys(LG.PLACENAMES)) {
+    ok(typeof LG.PLACENAMES[key][lang] === 'string' && LG.PLACENAMES[key][lang].length > 0,
+       'LG.PLACENAMES["' + key + '"] has a ' + lang + ' translation');
+  }
+  ok(typeof LG.CONJ[lang] === 'string' && LG.CONJ[lang].length > 0,
+     'LG.CONJ has a ' + lang + ' word for "and"');
+  for (const key of Object.keys(LG.TXN)) {
+    ok(typeof LG.TXN[key][lang] === 'string' && LG.TXN[key][lang].length > 0,
+       'LG.TXN.' + key + ' has a ' + lang + ' line');
+  }
+  ok(Array.isArray(LG.CHATTER[lang]) && LG.CHATTER[lang].length === LG.CHATTER.en.length,
+     'LG.CHATTER has ' + LG.CHATTER.en.length + ' ' + lang + ' mutterings, same as en');
+  LG.PHRASES.forEach((ph, i) => ok(typeof ph[lang] === 'string' && ph[lang].length > 0,
+     'LG.PHRASES[' + i + '] ("' + ph.en + '") has a ' + lang + ' translation'));
+}
+
 /* Start the game the way the page does. No key, so nothing is ever sent. */
 sandbox.LG.game.init();
 if (LG.game.thoughts !== undefined) LG.game.thoughts = false;   // no narration in a test

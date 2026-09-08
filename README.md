@@ -205,11 +205,14 @@ connects; anything unrecognised falls back to prompt-based JSON with repair.
 
 ## Languages and difficulty
 
-The village speaks Russian, English, Chinese (Mandarin), Japanese, French,
-Spanish, Arabic (MSA) or toki pona, at three difficulty levels. Russian
-carries a romanisation; Japanese gets furigana over kanji in dialogue (via
-`<ruby>` tags — not on item names, which stay plain kanji), and Arabic gets
-full tashkeel for the same reason, on the script it already has.
+The village speaks Russian, English, Chinese (Mandarin), Japanese, Korean,
+French, Spanish, Polish, Arabic (MSA) or toki pona, at three difficulty
+levels. Russian and Korean carry a romanisation; Japanese gets furigana over
+kanji in dialogue (via `<ruby>` tags — not on item names, which stay plain
+kanji), and Arabic gets full tashkeel for the same reason, on the script it
+already has. Korean needs no ruby of its own — Hangul is an alphabet, not a
+logography, so there is nothing in a Korean sentence that reads any way
+other than how it is spelled.
 
 Chinese carries a romanisation too, and (⚙ → Chinese pronunciation) can show
 it two other ways: pinyin or zhuyin (注音), one reading per character, ruby-

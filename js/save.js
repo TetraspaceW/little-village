@@ -230,6 +230,10 @@ LG.save = (function () {
       inventory: Object.assign({}, st.inv),
       // no `done`: whether a lead is spent is read off the world, not stored
       notes: st.notes.map(n => ({ id: n.id, text: n.text, ruby: n.ruby || null, roman: n.roman || null })),
+      // the word list — see game.js's learnWord. `item` is a key into LG.ITEMS,
+      // never text of its own, so there is nothing here for a stale generator
+      // to disagree with the way a fact id could.
+      words: (st.words || []).map(w => ({ item: w.item, how: w.how || '', at: w.at || '' })),
       deeds: st.deeds.slice(),
       board: (st.board || []).map(b => ({ npcId: b.npcId, name: b.name, text: b.text,
                                           translation: b.translation || '', roman: b.roman || '',
@@ -318,6 +322,14 @@ LG.save = (function () {
     st.notes = (data.notes || [])
       .filter(n => g.plan.facts[n.id] && !noted.has(n.id) && noted.add(n.id))
       .map(n => ({ id: n.id, text: n.text, ruby: n.ruby || null, roman: n.roman || null }));
+    // same guarantee, same reason — a word is in the list once, whatever a
+    // hand-edited or future-generator file might claim, and a game version
+    // that has since dropped the item is one fewer stale row rather than
+    // a word list entry LG.ITEMS can no longer say anything about.
+    const worded = new Set();
+    st.words = (data.words || [])
+      .filter(w => LG.ITEMS[w.item] && !worded.has(w.item) && worded.add(w.item))
+      .map(w => ({ item: w.item, how: w.how || '', at: w.at || '' }));
     st.deeds = (data.deeds || []).slice();
     st.board = (data.board || []).map(b => ({
       npcId: b.npcId, name: b.name, text: b.text,

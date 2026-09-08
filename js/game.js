@@ -21,7 +21,7 @@ LG.game = (function () {
   let gated = true, gateMode = false, lastValidated = '';
   let fromEnv = false;             // the keys were handed to us, not typed
 
-  const state = { inv: {}, notes: [], deeds: [], won: false, board: [] };
+  const state = { inv: {}, notes: [], deeds: [], won: false, board: [], words: [] };
 
   let plan = null;                 // the generated errand chain (chain.js)
   let canvas, ctx, cam = { x: 0, y: 0 }, vw = 0, vh = 0, dpr = 1;
@@ -82,7 +82,11 @@ LG.game = (function () {
 
   /* ---------------------------------------------------------- inventory */
   function count(id) { return state.inv[id] || 0; }
-  function give(id, n) { state.inv[id] = (state.inv[id] || 0) + (n || 1); renderHUD(); }
+  function give(id, n, how) {
+    state.inv[id] = (state.inv[id] || 0) + (n || 1);
+    learnWord(id, how);
+    renderHUD();
+  }
   function take(id, n) {
     state.inv[id] = Math.max(0, (state.inv[id] || 0) - (n || 1));
     if (!state.inv[id]) delete state.inv[id];
@@ -142,6 +146,37 @@ LG.game = (function () {
             '<span class="gloss' + hide + '" lang="en" title="click to read">' + escapeHTML(gloss) + '</span>');
   }
 
+  /* ---------------------------------------------------------- word list
+     Every item in the game already has a name in the village's language
+     (LG.ITEMS) — the word list is nothing but a record of which of those
+     names have actually reached the player, once each, with when and how.
+     No parsing of what a villager said: an item is on the list the moment
+     it enters your pockets (bought, traded, picked up, handed over) or the
+     moment a notebook fact is learned that is *about* it, whichever comes
+     first — never both, and never guessed at from free text. */
+  function hasWord(id) { return state.words.some(w => w.item === id); }
+  /* Which item, if any, a fact concerns — read off the chain link it came
+     from rather than out of its English text, so this never has to parse a
+     sentence to know what it was about. Mirrors the wording chain.js itself
+     builds each fact type from (see addFact in chain.js): 'deal' and 'has'
+     name what the villager is holding, 'want' names what they are after,
+     'where' is the terminal item wherever it ended up lying, and 'opinion'
+     is gossip about a person, never a thing. */
+  function itemForFact(f) {
+    if (!f || f.type === 'opinion') return null;
+    if (f.type === 'where') return plan.terminal && plan.terminal.item;
+    const lk = plan.links[f.link];
+    if (!lk) return null;
+    const id = f.type === 'want' ? lk.wants : lk.gives;
+    // coins are shown as ¤ from the first minute of the game, in every
+    // village — not a word anyone is discovering, so not one worth logging.
+    return id === 'coins' ? null : id;
+  }
+  function learnWord(id, how) {
+    if (!id || id === 'coins' || !LG.ITEMS[id] || hasWord(id)) return;
+    state.words.push({ item: id, how: how || '', at: LG.time.label() });
+  }
+
   /* ------------------------------------------------------------ notebook
      The player only knows what somebody has actually told them. Villagers
      report which facts they revealed; those are what land here.
@@ -169,6 +204,7 @@ LG.game = (function () {
        live when it is not. */
     state.notes.push({ id: factId, text: note || plan.facts[factId].text,
                        ruby: ruby || null, roman: roman || null });
+    learnWord(itemForFact(plan.facts[factId]), 'told about it');
     log('📓 ' + (note || plan.facts[factId].text));
     renderHUD();
   }
@@ -429,7 +465,7 @@ LG.game = (function () {
       take('coins', cost);
       priced.forEach(w => {
         if (npc.stock[w.id] > 0) npc.stock[w.id]--;      // off their own shelf
-        give(w.id, 1);
+        give(w.id, 1, 'bought from ' + d.name);
         const share = Math.max(1, Math.round(cost * w.base / base));
         npc.sold[w.id] = { price: share, n: (npc.sold[w.id] ? npc.sold[w.id].n : 0) + 1 };
       });
@@ -465,7 +501,7 @@ LG.game = (function () {
   function doTrade(npc, trade) {
     const needN = trade.wantsCount || 1, giveN = trade.givesCount || 1;
     take(trade.wants, needN);
-    give(trade.gives, giveN);
+    give(trade.gives, giveN, 'traded with ' + displayName(npc));
     npc.tradeDone = true;
 
     const got = trade.gives === 'coins' ? giveN + ' coins' : LG.ITEMS[trade.gives].full;
@@ -980,6 +1016,9 @@ LG.game = (function () {
       document.getElementById('help').classList.remove('open');
     document.getElementById('boardClose').onclick = () =>
       document.getElementById('board').classList.remove('open');
+    document.getElementById('btnWords').onclick = openWords;
+    document.getElementById('wordsClose').onclick = () =>
+      document.getElementById('words').classList.remove('open');
     document.getElementById('endingClose').onclick = () =>
       document.getElementById('ending').classList.remove('open');
     document.getElementById('endingAgain').onclick = () => {
@@ -1394,13 +1433,13 @@ LG.game = (function () {
 
   function catchBeast() {
     beast.caught = true; beast.following = true;
-    give(beast.item);
+    give(beast.item, 1, 'caught ' + beast.name);
     renderHUD();
     log(beast.emoji + ' ' + beast.name + ' lets you pick ' + (Math.random() < 0.5 ? 'her' : 'him') + ' up.');
   }
   function pickUp() {
     worldItem.taken = true;
-    give(worldItem.item);
+    give(worldItem.item, 1, 'picked up');
     renderHUD();
     log(LG.ITEMS[worldItem.item].icon + ' You pick up ' + LG.ITEMS[worldItem.item].full + '.');
   }
@@ -1751,6 +1790,33 @@ LG.game = (function () {
     });
   }
 
+  /* -------------------------------------------------------- the word list
+     A study aid, not a comprehension test the way the notebook is — so
+     unlike the notebook's gloss, the English here is never blurred: the
+     whole point of coming back to this panel is to check yourself against it. */
+  function openWords() {
+    renderWords();
+    document.getElementById('words').classList.add('open');
+  }
+  function renderWords() {
+    const box = document.getElementById('wordsList');
+    if (!box) return;
+    const L = LG.LANGUAGES[settings.lang];
+    const rows = state.words.map(w => {
+      const item = LG.ITEMS[w.item];
+      if (!item) return '';   // a save from a version with a different item pool
+      return '<div class="word"><span class="wIcon">' + item.icon + '</span>' +
+             '<span class="wText"><span class="wSaid" lang="' + L.tag + '">' +
+             escapeHTML(itemLabel(w.item)) + '</span>' +
+             '<span class="wGloss">' + escapeHTML(item.en) + '</span>' +
+             (w.how ? '<span class="wHow">' + escapeHTML(w.how) +
+               (w.at ? ' — ' + escapeHTML(w.at) : '') + '</span>' : '') +
+             '</span></div>';
+    }).filter(Boolean);
+    box.innerHTML = rows.length ? rows.join('')
+      : '<div class="word muted">Nothing yet — words turn up here as the village gives them to you.</div>';
+  }
+
   /* ---------------------------------------------------------------- loop */
   /* Keys and the joystick add into the same pair of numbers, so a bluetooth
      keyboard next to a touchscreen is not a mode you have to be in. The keys
@@ -2041,6 +2107,7 @@ LG.game = (function () {
            // and what came of it: the strip of canvas the player can see
            _debugSeen: seen,
            inventoryList, doTrade, commerce, renderHUD, openSettings, uiBlocked, newVillage,
+           openWords, renderWords, learnWord, hasWord,
            get plan() { return plan; },
            get npcs() { return npcs; },
            // what save.js reads and writes back; the rest of the world it can

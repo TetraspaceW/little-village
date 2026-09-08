@@ -77,6 +77,11 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
 - **Notebook.** Starts empty. A fact only appears once a villager actually
   tells you it, in the language they told it to you in, with an English
   gloss underneath. Leads you've already followed show struck through.
+- **Word list** (🔤 button). Every item the game has actually given you a
+  name for — bought, traded, picked up, or told about before you ever held
+  it — in the order you met it, with its English gloss shown straight away
+  rather than blurred: this one is a study aid, not a comprehension test the
+  way the notebook is.
 - **Names.** Nobody's name shows up on screen — the nametag, the dialogue
   panel, the log — until that villager has actually told it to you. Ask
   *"What is your name?"* (in the Phrases row) and they will. Being told
@@ -327,7 +332,7 @@ js/touch.js          the joystick and the tap: touch gestures, on a canvas
 js/npc.js            villager movement, meetings, rendering
 js/dialogue.js       prompt building, conversation UI, trades
 js/save.js           save format: snapshot/restore, both storage locations
-js/game.js           game state, main loop, input, notebook, settings
+js/game.js           game state, main loop, input, notebook, word list, settings
 tools/logserver.js   serves the game, exposes .env, collects logs, keeps the save
 tests/smoke.js       headless test of the full game
 ```

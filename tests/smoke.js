@@ -762,6 +762,54 @@ section('an opinion never reaches the notebook');
   }
 }
 
+section('a fact teaches its word too, read off the chain link rather than parsed');
+{
+  const g = LG.game;
+  const wantId = Object.keys(plan.facts).find(id => plan.facts[id].type === 'want');
+  ok(!!wantId, 'the village has at least one want fact');
+  if (wantId) {
+    const f = plan.facts[wantId];
+    const lk = plan.links[f.link];
+    const holder = npcs.find(n => n.facts.indexOf(wantId) !== -1);
+    g.state.words = [];
+    g.state.notes = [];
+    g.learn(wantId, holder, 'told about it');
+    if (lk.wants === 'coins') {
+      ok(g.state.words.length === 0, 'coins are never added — see game.js\'s itemForFact');
+    } else {
+      ok(g.hasWord(lk.wants), 'the item that fact concerns is now on the word list');
+      const before = g.state.words.length;
+      g.state.notes = [];
+      g.learn(wantId, holder, 'told about it again');
+      ok(g.state.words.length === before, 'and telling you again does not teach it twice');
+    }
+  }
+}
+
+section('the word list, from holding a thing rather than being told about it');
+{
+  const g = LG.game;
+  g.state.words = [];
+  ok(!g.hasWord('shiny_rock'), 'nothing logged yet');
+  g.give('shiny_rock', 1, 'picked up');
+  ok(g.hasWord('shiny_rock'), 'holding an item teaches its word');
+  ok(g.state.words[0].how === 'picked up', 'and remembers how it arrived');
+  const n = g.state.words.length;
+  g.give('shiny_rock', 1, 'picked up again');
+  ok(g.state.words.length === n, 'a second one does not teach the word twice');
+  ok(!g.hasWord('coins'), 'coins start off the list');
+  g.give('coins', 5);
+  ok(!g.hasWord('coins'), 'and stay off it even once you are actually holding some');
+
+  g.renderWords();
+  const html = sandbox.document.getElementById('wordsList').innerHTML;
+  ok(html.indexOf(LG.itemName('shiny_rock', g.settings.lang)) !== -1,
+     'the panel shows the word in the language you are learning');
+  ok(html.indexOf('shiny rock') !== -1,
+     'and its English gloss, unblurred — a study aid, not the same test the notebook is');
+  ok(html.indexOf('picked up') !== -1, 'and how it was learned');
+}
+
 /* ------------------------------------------------------------------- saving
    One format, both ways round. What is checked here is that a village survives
    being written down and read back — not that localStorage works, but that
@@ -800,11 +848,14 @@ section('a village, written down and read back');
      lying at the end of the chain gets collected. */
   if (g.beast) { g.beast.caught = true; g.beast.following = true; }
   else if (g.worldItem) { g.worldItem.taken = true; }
+  // guaranteed non-empty regardless of what f0 happened to be about above
+  g.learnWord('shiny_rock', 'test fixture');
 
   const before = {
     seed: plan.seed, day: LG.time.day, frac: LG.time.frac,
     weather: LG.time.weather, snow: LG.time.snow,
     inv: JSON.stringify(g.state.inv), notes: JSON.stringify(g.state.notes),
+    words: JSON.stringify(g.state.words),
     deeds: JSON.stringify(g.state.deeds),
     px: Math.round(g.player.px * 10) / 10,
     facts: npcs.map(n => n.facts.join(',')).join('|'),
@@ -847,6 +898,7 @@ section('a village, written down and read back');
      'under the same sky, with the same snow lying');
   ok(JSON.stringify(after.state.inv) === before.inv, 'with the same pockets');
   ok(JSON.stringify(after.state.notes) === before.notes, 'the same notebook');
+  ok(JSON.stringify(after.state.words) === before.words, 'and the same word list');
   ok(JSON.stringify(after.state.deeds) === before.deeds, 'and the same deeds behind you');
   ok(Math.round(after.player.px * 10) / 10 === before.px, 'standing where you were');
 

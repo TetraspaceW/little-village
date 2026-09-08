@@ -140,9 +140,9 @@ The dice table is still there underneath for exactly that reason.
 - **Rooms worth being in.** Interiors exist but are only scenery. A villager who is
   *at* their anvil could be interruptible in a way they aren't on the street, and a
   bed you can sleep in would let you skip to morning rather than waiting out the night.
-- **A word list.** Every noun a villager uses, logged with its translation and where
-  you first heard it. Turns a session into something reviewable; spaced repetition on
-  top if you want to go further.
+- **Spaced repetition on the word list.** The word list (Built, below) is every item
+  the village has actually named for you, in order; a review mode on top of it —
+  due-today, self-graded — is the natural next step for a list that already exists.
 - **Difficulty as scaffolding, not vocabulary.** Level already sets chain depth, how
   widely facts are spread, and how they speak. It could also take away the crutches:
   translations locked, phrasebook empty at advanced.
@@ -192,3 +192,6 @@ The dice table is still there underneath for exactly that reason.
   the model already sends rather than asked of the model as a second, ruby-shaped
   reply, so a line that does not line up just falls back to the plain sentence
   with pinyin underneath instead of showing something wrong.
+- A word list (🔤 button): every item the village has actually named for you —
+  bought, traded, picked up, or told about before you ever held it — logged once
+  each in the order you met it, gloss shown straight away rather than blurred.

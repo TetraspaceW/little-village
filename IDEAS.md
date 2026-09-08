@@ -294,3 +294,14 @@ The dice table is still there underneath for exactly that reason.
   constants, on the theory that paraphrasing tuning constants on the fly
   risks claiming something of the generator that isn't actually true of
   it — the published numbers already are.
+- Export the notebook (⚙ → Export notebook as text) the same way as the
+  word list, but sentences rather than single words — the other half of
+  what a flashcard tool is normally fed, sentence mining alongside
+  vocabulary. Built from exactly what a villager said, never the English
+  gloss standing in for it: `learn`'s only caller (dialogue.js's
+  `verifyRevealed`) already falls back to the line as spoken specifically
+  so a note is never in the wrong language, which is what makes the
+  native-sentence half of this trustworthy without re-deriving it. Shares
+  the actual download step (`downloadText`) with the word list's own
+  export now, rather than a second copy of the same Blob/URL/anchor
+  dance.

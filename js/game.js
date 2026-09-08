@@ -1158,6 +1158,7 @@ LG.game = (function () {
       document.getElementById('board').classList.remove('open');
     document.getElementById('btnWords').onclick = openWords;
     document.getElementById('wordsExport').onclick = exportWordList;
+    document.getElementById('setExportNotebook').onclick = exportNotebook;
     document.getElementById('wordsClose').onclick = () =>
       document.getElementById('words').classList.remove('open');
     document.getElementById('btnPeople').onclick = openPeople;
@@ -1354,6 +1355,7 @@ LG.game = (function () {
     // No village exists yet behind the front door, so there is nothing to
     // read a seed off, and nowhere sensible to send a typed one either.
     document.getElementById('setSeedRow').style.display = gateMode ? 'none' : '';
+    document.getElementById('setNotebookRow').style.display = gateMode ? 'none' : '';
     document.getElementById('setSeedShow').value = plan ? plan.seed : '';
     document.getElementById('setSeedCopied').hidden = true;
     if (!gateMode) renderHistory();
@@ -2100,8 +2102,22 @@ LG.game = (function () {
       .map(w => itemLabel(w.item) + '\t' + LG.ITEMS[w.item].en)
       .join('\n');
   }
-  function exportWordList() {
-    const text = wordListText();
+  /* Same idea, one native sentence per line rather than one word — sentence
+     mining, the other half of what a flashcard tool is normally fed, built
+     from exactly what a villager actually said (see `learn`'s only caller,
+     dialogue.js's verifyRevealed: `note` there always falls back to the
+     line as spoken, specifically so a note is never in the wrong language)
+     rather than the English the notebook shows underneath it. */
+  function notebookText() {
+    return state.notes
+      .filter(n => plan && plan.facts[n.id])
+      .map(n => n.text + '\t' + plan.facts[n.id].text)
+      .join('\n');
+  }
+  // The download half both share: feature-detected the same way the seed
+  // feature's clipboard copy already is, and a no-op rather than a throw
+  // wherever Blob/URL/anchor-click downloads are not there to ask for.
+  function downloadText(text, filename) {
     if (!text) return;
     try {
       if (typeof Blob === 'undefined' || typeof URL === 'undefined' || !URL.createObjectURL) return;
@@ -2109,13 +2125,15 @@ LG.game = (function () {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'little-village-words-' + settings.lang + '.txt';
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (e) { /* no download support in this browser, or it refused */ }
   }
+  function exportWordList() { downloadText(wordListText(), 'little-village-words-' + settings.lang + '.txt'); }
+  function exportNotebook() { downloadText(notebookText(), 'little-village-notebook-' + settings.lang + '.txt'); }
 
   /* ------------------------------------------------------------- the people
      A roster, the same shape as the word list but for who lives here rather
@@ -2458,6 +2476,7 @@ LG.game = (function () {
            inventoryList, doTrade, commerce, renderHUD, openSettings, uiBlocked, newVillage,
            openWords, renderWords, openPeople, renderPeople, learnWord, hasWord, crutchesOff,
            _debugWordListText: wordListText, exportWordList,
+           _debugNotebookText: notebookText, exportNotebook,
            _debugTally: tallyNow, _debugHistory: loadHistory, _debugRenderHistory: renderHistory,
            _debugWin: win,
            dueWords, gradeWord, startReview, endReview, reviewGrade,

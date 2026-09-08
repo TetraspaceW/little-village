@@ -899,6 +899,26 @@ section('the word list exports as plain, tab-separated text');
   g.exportWordList();
 }
 
+section('the notebook exports as sentences, not the single words the word list does');
+{
+  const g = LG.game;
+  g.state.notes = [];
+  ok(g._debugNotebookText() === '', 'nothing to export when the notebook is empty');
+
+  // A non-opinion fact specifically — learn() silently declines opinions —
+  // and a holder who actually has it, the same guard used for this
+  // elsewhere in this file (see "no crutches at advanced").
+  const factId = Object.keys(plan.facts).find(id => plan.facts[id].type !== 'opinion');
+  const npc = (factId && g.npcs.find(n => n.facts.indexOf(factId) !== -1)) || g.npcs[0];
+  if (factId && npc.facts.indexOf(factId) !== -1) {
+    g.learn(factId, npc, "a stand-in line in the village's own language");
+    ok(g._debugNotebookText() === "a stand-in line in the village's own language\t" + plan.facts[factId].text,
+       'what was actually said, a tab, then the same English gloss the notebook panel shows underneath it');
+  }
+
+  g.exportNotebook();
+}
+
 section('spaced repetition on the word list: due, graded, and due again later — or not');
 {
   const g = LG.game;

@@ -305,3 +305,9 @@ The dice table is still there underneath for exactly that reason.
   the actual download step (`downloadText`) with the word list's own
   export now, rather than a second copy of the same Blob/URL/anchor
   dance.
+- 📋 Copy a summary on the ending screen: the same tally the screen already
+  shows, as one line of text, with the seed folded in — the point being
+  that a village worth bragging about is also, now, one click from being
+  the village whoever you send it to actually gets, not just a description
+  of one they would have to roll blind to try. Same clipboard feature-
+  detection as the seed row's own Copy button.

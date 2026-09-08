@@ -74,7 +74,9 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
   screen with a one-line tally — how many days it took, how many of the
   village's thirteen you actually spoke to, how many words the word list
   picked up along the way — then lets you keep wandering the same village or
-  start a new one.
+  start a new one. **📋 Copy a summary** copies that tally as one line of
+  text, seed included, so the village being bragged about is the exact one
+  whoever reads it can roll for themselves.
 - **The woods.** A large forest fills the northern two-fifths of the map,
   with tracks running through it and six named clearings: the big
   clearing, the old oak, the hollow, the charcoal burner's pit, the forest

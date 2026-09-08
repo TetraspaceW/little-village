@@ -2194,6 +2194,40 @@ section('the ending screen counts the errand, not just announces it');
      "a save with no arrival day of its own falls back to the day it was saved on, not 0");
 }
 
+section('a shareable summary line for the ending screen, seed included');
+{
+  // Set up explicitly rather than trusting what the previous section left
+  // behind — that one's own last check was a restore's fallback, which
+  // resets state.arrivedDay on its own.
+  const g = LG.game;
+  g.newVillage('summary-test-village', true);
+  const seed = g.plan.seed, c = g.plan.links[0];
+  g.state.words.length = 0;
+  g.learnWord('shiny_rock', 'test fixture');
+  g.learnWord('bread', 'test fixture');
+  g.npcs[0].metPlayer = true;
+  g.npcs[1].metPlayer = true;
+  g.state.arrivedDay = LG.time.day - 4;   // "5 days"
+
+  const text = g._debugEndingSummaryText();
+  ok(text.indexOf(seed) !== -1, 'carries the exact seed that built this village');
+  ok(text.indexOf(c.npcName) !== -1 && text.indexOf(LG.ITEMS[c.wants].full) !== -1,
+     'names who the errand was for and what they finally got');
+  ok(text.indexOf('5 days') !== -1 &&
+     text.indexOf('2 of ' + g.npcs.length + ' villagers spoken to') !== -1 &&
+     text.indexOf('2 words learned') !== -1,
+     'and the same tally the ending screen itself shows');
+  ok(text.indexOf(LG.LANGUAGES[g.settings.lang].name) !== -1 &&
+     text.indexOf(LG.LEVELS[g.settings.level].label) !== -1,
+     'plus the language and difficulty, so the seed alone is not ambiguous about what it rebuilds');
+
+  // No navigator in this sandbox — the same "not here" shape as the seed
+  // feature's own Copy button — so the click must be a no-op, not a throw.
+  sandbox.document.getElementById('endingCopy').onclick();
+  ok(sandbox.document.getElementById('endingCopied').hidden === true,
+     'and says nothing happened, rather than claiming a copy with nowhere to put it');
+}
+
 section('a finished errand outlives the village it happened in');
 {
   const g = LG.game;

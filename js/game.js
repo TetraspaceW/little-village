@@ -623,6 +623,7 @@ LG.game = (function () {
       c.npcName + ' has ' + (LG.ITEMS[c.wants].full) + ' at last, and you have ' +
       LG.ITEMS[c.gives].full + ' to show for it — along with a fistful of a new language.';
     document.getElementById('endingStats').textContent = endingStats();
+    document.getElementById('endingCopied').hidden = true;
     recordHistory();
     setTimeout(() => document.getElementById('ending').classList.add('open'), 900);
   }
@@ -646,6 +647,34 @@ LG.game = (function () {
     return t.days + (t.days === 1 ? ' day' : ' days') + ', ' +
       t.met + ' of ' + t.total + ' villagers spoken to, ' +
       t.words + (t.words === 1 ? ' word' : ' words') + ' learned along the way.';
+  }
+  // One line worth sending someone, seed included — so "Copy a summary" on
+  // the ending screen hands over the same thing "Use seed" in Settings
+  // reads back in, and the village a friend gets is the one actually
+  // being bragged about rather than a fresh roll under the same name.
+  function endingSummaryText() {
+    if (!plan) return '';
+    const c = plan.links[0];
+    const t = tallyNow();
+    const L = LG.LANGUAGES[settings.lang] || {};
+    const lvl = (LG.LEVELS[settings.level] || {}).label || settings.level;
+    return c.npcName + ' finally has ' + LG.ITEMS[c.wants].full + ' — ' +
+      t.days + (t.days === 1 ? ' day' : ' days') + ', ' +
+      t.met + ' of ' + t.total + ' villagers spoken to, ' +
+      t.words + (t.words === 1 ? ' word' : ' words') + ' learned. ' +
+      'Little Village, ' + (L.name || settings.lang) + ', ' + lvl + ' — seed: ' + plan.seed;
+  }
+  function copyEndingSummary() {
+    let copied = false;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(endingSummaryText());
+        copied = true;
+      }
+    } catch (e) { /* clipboard permission denied, or none to ask */ }
+    const note = document.getElementById('endingCopied');
+    note.hidden = !copied;
+    if (copied) setTimeout(() => { note.hidden = true; }, 3000);
   }
 
   /* -------------------------------------------------------------- history
@@ -1166,6 +1195,7 @@ LG.game = (function () {
       document.getElementById('people').classList.remove('open');
     document.getElementById('endingClose').onclick = () =>
       document.getElementById('ending').classList.remove('open');
+    document.getElementById('endingCopy').onclick = copyEndingSummary;
     document.getElementById('endingAgain').onclick = () => {
       document.getElementById('ending').classList.remove('open');
       newVillage();
@@ -2478,6 +2508,7 @@ LG.game = (function () {
            _debugWordListText: wordListText, exportWordList,
            _debugNotebookText: notebookText, exportNotebook,
            _debugTally: tallyNow, _debugHistory: loadHistory, _debugRenderHistory: renderHistory,
+           _debugEndingSummaryText: endingSummaryText,
            _debugWin: win,
            dueWords, gradeWord, startReview, endReview, reviewGrade,
            get reviewQueue() { return reviewQueue; },

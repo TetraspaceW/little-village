@@ -228,3 +228,13 @@ The dice table is still there underneath for exactly that reason.
   `LG.LANGUAGES` is now checked against `LG.ITEMS`, `LG.PLACENAMES`,
   `LG.CONJ`, `LG.TXN`, `LG.CHATTER` and `LG.PHRASES`, and the smoke test
   fails loudly on the first language missing from any of them.
+- The village's seed, surfaced: a save already only ever kept the seed
+  rather than the full state, so the game already had the machinery — this
+  just gives the player a handle on it. ⚙ shows the current seed with a
+  Copy button, and takes one back the other way: type one into "Start a
+  village from a seed" and the exact same errand, villagers' facts and
+  starting weather come back, difficulty held equal. A seed the generator
+  has to retry (`LG.chain.generate` reroll under `seed~1`, `seed~2`, …, for
+  the rare degenerate chain) still round-trips correctly — what is shown is
+  always the seed that actually built the village on screen, not the one
+  that was asked for and silently replaced.

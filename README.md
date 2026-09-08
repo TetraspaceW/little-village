@@ -313,6 +313,14 @@ save comes back saying so.
 ⚙ → **Forget the saved village** clears both copies. **Start a new village**
 overwrites them immediately.
 
+Since a save is really just a seed, ⚙ shows the current one — **This
+village's seed**, with a **Copy** button — and takes one back: type a seed
+into **Start a village from a seed** and press **Go** to roll that exact
+village again, difficulty and all. Two villages built from the same seed at
+the same difficulty are the same village, right down to who has what and
+where the loose end of the errand is lying — worth keeping if one is
+particularly good, or sending to someone else to try the same one you did.
+
 ## Logs and debugging
 
 With the log server running, every session writes to

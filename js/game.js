@@ -1062,6 +1062,28 @@ LG.game = (function () {
       document.getElementById('settings').classList.remove('open');
       newVillage();
     };
+    document.getElementById('setSeedCopy').onclick = () => {
+      let copied = false;
+      // Same `typeof navigator !== 'undefined'` guard data.js uses for the
+      // Gecko flag patch: no navigator at all in the smoke test's sandbox,
+      // and Clipboard access itself is asked for, never assumed, everywhere
+      // else a browser API might not be there (see speech.js's `available`).
+      try {
+        if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(document.getElementById('setSeedShow').value);
+          copied = true;
+        }
+      } catch (e) { /* clipboard permission denied, or none to ask */ }
+      const note = document.getElementById('setSeedCopied');
+      note.hidden = !copied;
+      if (copied) setTimeout(() => { note.hidden = true; }, 2000);
+    };
+    document.getElementById('setSeedGo').onclick = () => {
+      const seed = document.getElementById('setSeedInput').value.trim();
+      if (!seed) return;
+      document.getElementById('settings').classList.remove('open');
+      newVillage(seed);
+    };
     document.getElementById('setTtsTest').onclick = testVoices;
     document.getElementById('setForget').onclick = () => {
       LG.save.forget();
@@ -1217,6 +1239,11 @@ LG.game = (function () {
     document.getElementById('setTitle').textContent = gateMode ? 'Little Village' : 'Settings';
     document.getElementById('setLede').style.display = gateMode ? '' : 'none';
     document.getElementById('setNew').style.display = gateMode ? 'none' : '';
+    // No village exists yet behind the front door, so there is nothing to
+    // read a seed off, and nowhere sensible to send a typed one either.
+    document.getElementById('setSeedRow').style.display = gateMode ? 'none' : '';
+    document.getElementById('setSeedShow').value = plan ? plan.seed : '';
+    document.getElementById('setSeedCopied').hidden = true;
     document.getElementById('setSave').textContent = gateMode ? 'Enter the village' : 'Save';
     document.getElementById('setError').textContent = '';
     document.getElementById('setLang').value = settings.lang;

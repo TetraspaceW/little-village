@@ -1992,4 +1992,66 @@ function whatYouCanSee() {
   ok(back.top === 0 && back.bottom === vh, 'and it all comes back');
 }
 
+section('the same seed builds the same village, twice');
+{
+  const seed = 'smoke-test-reproducibility';
+  const a = LG.chain.generate({ level: 'intermediate', seed });
+  const b = LG.chain.generate({ level: 'intermediate', seed });
+  ok(a.seed === seed && b.seed === seed, 'both plans kept the seed they were asked for');
+  ok(a.terminal.item === b.terminal.item && a.terminal.placeId === b.terminal.placeId,
+     'the same errand ends the same way both times');
+  ok(a.links.length === b.links.length &&
+     a.links.every((lk, i) => lk.npcId === b.links[i].npcId && lk.wants === b.links[i].wants
+                            && lk.gives === b.links[i].gives),
+     'and every link in the chain is identical, villager for villager, item for item');
+  ok(Object.keys(a.facts).length === Object.keys(b.facts).length,
+     'the same number of facts were dealt out');
+
+  const c = LG.chain.generate({ level: 'intermediate', seed: seed + '-different' });
+  ok(c.terminal.item !== a.terminal.item || c.links.length !== a.links.length ||
+     c.links.some((lk, i) => !a.links[i] || lk.npcId !== a.links[i].npcId),
+     'a different seed is, in practice, a different village');
+}
+
+/* This is the last section that touches LG.game.newVillage — deliberately
+   placed after everything else, since replacing the village mid-suite is
+   exactly the stale-reference trap this file's own comments warn about
+   elsewhere (see the top-level `npcs`/`plan` this file no longer reads by
+   this point). beliefsRevised and villagersTalking, below, read their own
+   npc off the *original* village captured when this file first read
+   LG.game.npcs — not off LG.game.npcs itself — which is precisely what
+   keeps them safe to run after this. */
+section('the village seed: read off the current plan, and re-enterable to reproduce it');
+{
+  LG.game.openSettings(false);
+  ok(sandbox.document.getElementById('setSeedShow').value === LG.game.plan.seed,
+     "the settings panel shows this village's actual seed");
+
+  // No navigator at all in this sandbox — the same "not here" shape as the
+  // SpeechRecognition check earlier — so the copy button has nothing to
+  // copy with and must not throw, or claim it copied something it didn't.
+  sandbox.document.getElementById('setSeedCopy').onclick();
+  ok(sandbox.document.getElementById('setSeedCopied').hidden === true,
+     'and says nothing happened, rather than claiming a copy with nowhere to put it');
+
+  const seed = LG.chain.makeSeed();
+  sandbox.document.getElementById('setSeedInput').value = seed;
+  sandbox.document.getElementById('setSeedGo').onclick();
+  // Usually exactly the typed seed — but LG.chain.generate() reuses it
+  // verbatim only on a first roll that validates; a seed whose first roll
+  // comes back degenerate is retried under seed+"~1", seed+"~2", and so on
+  // (see chain.js's own generate()), so that is a real outcome here too,
+  // not just a typed one.
+  ok(LG.game.plan.seed === seed || LG.game.plan.seed.indexOf(seed + '~') === 0,
+     'typing a seed and pressing Go starts exactly that village');
+  ok(!sandbox.document.getElementById('settings').classList.contains('open'),
+     'and the settings panel closes behind it');
+
+  // Pressing Go with nothing typed must not rebuild the village under you.
+  const before = LG.game.plan.seed;
+  sandbox.document.getElementById('setSeedInput').value = '   ';
+  sandbox.document.getElementById('setSeedGo').onclick();
+  ok(LG.game.plan.seed === before, 'an empty seed is not a request for a new village');
+}
+
 beliefsRevised().then(villagersTalking);

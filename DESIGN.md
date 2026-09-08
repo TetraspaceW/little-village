@@ -652,6 +652,19 @@ else's speech does not put it on screen. What changed is only what a villager is
 allowed to already know about their own neighbours, not what the player is handed
 for free.
 
+**The roster carries persona too, now.** Name and trade stopping short of character
+was the same mistake in miniature: Petra had run around this village her whole life
+and still had nothing to say about Yuri beyond his job, because persona lived only on
+a villager's own entry, read solely to voice their own lines. Two people who have
+shared a village for years know what the other is like the same way they know their
+trade — Petra knows Yuri answers everything with a question about fish whether or not
+she has ever personally sat through it. So the roster's `persona` field, and the
+description each half of a villager-to-villager conversation gets of the other, now
+carry it. The line held is the same one as above: character is what years of
+unsimulated small talk would obviously have settled, and it does not move — whether
+Tomas has sold his hammer yet is news, still has to reach them the way it always did,
+and still costs nothing to say if it never comes up.
+
 ## There is no gossip mechanic
 
 There was one: two villagers in range each copied a random fact id to the other, and

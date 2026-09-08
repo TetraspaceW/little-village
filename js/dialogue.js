@@ -151,18 +151,21 @@ LG.dialogue = (function () {
     lines.push('Personality: ' + v.persona);
     lines.push('Your current concern: ' + v.goal);
     lines.push('');
-    /* Everybody in a village this size knows everybody else, at least by name
-       and trade — that is background, not a fact anyone had to tell them, and
-       it is not the same thing as the *player* learning a name (see
-       `nameKnown` below): a villager saying "Tomas" to the traveller does not
-       put Tomas's name on screen until Tomas says it himself. Without this a
-       villager asked about a neighbour they had not personally exchanged a
-       fact with had nothing to go on — which is exactly the gap that
-       produced a rice merchant nobody had sold anything (see OLD-LI.md). */
+    /* Everybody in a village this size knows everybody else — name, trade,
+       and what they are like — that is background, not a fact anyone had to
+       tell them, and it is not the same thing as the *player* learning a
+       name (see `nameKnown` below): a villager saying "Tomas" to the
+       traveller does not put Tomas's name on screen until Tomas says it
+       himself. Without this a villager asked about a neighbour they had not
+       personally exchanged a fact with had nothing to go on — which is
+       exactly the gap that produced a rice merchant nobody had sold
+       anything (see OLD-LI.md). It stops at what they are like: whether
+       Tomas has sold his hammer yet is news, not character, and news still
+       has to actually reach them. */
     if (v.roster.length) {
       lines.push('# Everyone else in the village');
-      lines.push('You have lived here for years; you know everyone in the village by name and trade, whether or not you have any news of them today:');
-      v.roster.forEach(r => lines.push('- ' + r.name + ' — ' + r.job));
+      lines.push('You have lived here for years; you know everyone in the village, whether or not you have any news of them today:');
+      v.roster.forEach(r => lines.push('- ' + r.name + ' — ' + r.job + '. ' + r.persona));
       lines.push('');
     }
     /* One list, and it tells the truth about itself.

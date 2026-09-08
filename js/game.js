@@ -203,7 +203,8 @@ LG.game = (function () {
   }
   function learnWord(id, how) {
     if (!id || id === 'coins' || !LG.ITEMS[id] || hasWord(id)) return;
-    state.words.push({ item: id, how: how || '', at: LG.time.label() });
+    // due now, level 0 — a fresh word is due for its first review immediately
+    state.words.push({ item: id, how: how || '', at: LG.time.label(), level: 0, due: Date.now() });
   }
 
   /* ------------------------------------------------------------ notebook
@@ -1835,15 +1836,100 @@ LG.game = (function () {
   /* -------------------------------------------------------- the word list
      A study aid, not a comprehension test the way the notebook is — so
      unlike the notebook's gloss, the English here is never blurred: the
-     whole point of coming back to this panel is to check yourself against it. */
+     whole point of coming back to this panel is to check yourself against it.
+
+     Review runs on real, wall-clock time (Date.now()) rather than the
+     village's own clock, deliberately: LG.time can run a whole in-game week
+     in one sitting, and "due tomorrow" only means something if tomorrow is
+     an actual day away. A word's `due`/`level` are read at review time and
+     nowhere else, so this needing wall-clock time is not a village-clock
+     wrinkle to keep straight anywhere but here. */
+  const REVIEW_INTERVALS = [0, 1, 3, 7, 16, 35];   // days, index = level
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  function wordDue(w) { return !w.due || w.due <= Date.now(); }
+  function dueWords() { return state.words.filter(wordDue); }
+  function gradeWord(w, good) {
+    if (!w) return;
+    w.level = good ? Math.min((w.level || 0) + 1, REVIEW_INTERVALS.length - 1) : 0;
+    w.due = Date.now() + REVIEW_INTERVALS[w.level] * DAY_MS;
+  }
+
+  // null when not reviewing; otherwise the words still to get through this
+  // session, in order — a session-only ordering, not stored anywhere, so
+  // reopening the panel never resumes a review left half finished.
+  let reviewQueue = null, reviewShown = false;
+
   function openWords() {
+    reviewQueue = null;
     renderWords();
     document.getElementById('words').classList.add('open');
   }
+  function startReview() {
+    const due = dueWords();
+    if (!due.length) return;
+    reviewQueue = due.slice();
+    reviewShown = false;
+    renderWords();
+  }
+  function endReview() {
+    reviewQueue = null;
+    renderWords();
+  }
+  // Graded from the review card itself; failing one (`good` false) sends it
+  // to the back of *this session's* queue rather than clearing it — the
+  // point of a wrong answer is seeing the card again before you stop, not
+  // just marking it down for next time and moving on.
+  function reviewGrade(good) {
+    if (!reviewQueue || !reviewQueue.length) return;
+    const w = reviewQueue.shift();
+    gradeWord(w, good);
+    if (!good) reviewQueue.push(w);
+    reviewShown = false;
+    if (!reviewQueue.length) reviewQueue = null;
+    renderWords();
+  }
+
   function renderWords() {
     const box = document.getElementById('wordsList');
     if (!box) return;
     const L = LG.LANGUAGES[settings.lang];
+    const btn = document.getElementById('wordsReview');
+    const lede = document.getElementById('wordsLede');
+
+    if (reviewQueue) {
+      const w = reviewQueue[0];
+      const item = w && LG.ITEMS[w.item];
+      if (btn) { btn.textContent = 'End review'; btn.disabled = false; btn.onclick = endReview; }
+      if (lede) lede.textContent = (reviewQueue.length) +
+        ' word' + (reviewQueue.length === 1 ? '' : 's') + ' left to go through.';
+      box.innerHTML = !item ? '' : (
+        '<div class="wReview"><span class="wIcon">' + item.icon + '</span>' +
+        '<span class="wSaid" lang="' + L.tag + '">' + escapeHTML(itemLabel(w.item)) + '</span>' +
+        '<div id="wordsAnswer" class="wGloss"' + (reviewShown ? '' : ' style="display:none"') + '>' +
+        escapeHTML(item.en) + '</div>' +
+        (reviewShown
+          ? '<div class="wGrade"><button id="wordsAgain" class="secondary" type="button">Again</button>' +
+            '<button id="wordsGood" class="primary" type="button">Good</button></div>'
+          : '<button id="wordsShow" class="secondary" type="button">Show answer</button>') +
+        '</div>'
+      );
+      const show = document.getElementById('wordsShow');
+      if (show) show.onclick = () => { reviewShown = true; renderWords(); };
+      const again = document.getElementById('wordsAgain');
+      if (again) again.onclick = () => reviewGrade(false);
+      const good = document.getElementById('wordsGood');
+      if (good) good.onclick = () => reviewGrade(true);
+      return;
+    }
+
+    if (lede) lede.textContent = 'Every word this village has actually given you — bought, ' +
+      'traded, picked up, or just told about — in the order you met it.';
+    const due = dueWords().length;
+    if (btn) {
+      btn.textContent = due ? 'Review ' + due + ' due' : 'Nothing due right now';
+      btn.disabled = !due;
+      btn.onclick = startReview;
+    }
     const rows = state.words.map(w => {
       const item = LG.ITEMS[w.item];
       if (!item) return '';   // a save from a version with a different item pool
@@ -2163,6 +2249,8 @@ LG.game = (function () {
            _debugSeen: seen,
            inventoryList, doTrade, commerce, renderHUD, openSettings, uiBlocked, newVillage,
            openWords, renderWords, learnWord, hasWord, crutchesOff,
+           dueWords, gradeWord, startReview, endReview, reviewGrade,
+           get reviewQueue() { return reviewQueue; },
            get plan() { return plan; },
            get npcs() { return npcs; },
            // what save.js reads and writes back; the rest of the world it can

@@ -835,6 +835,74 @@ section('the word list, from holding a thing rather than being told about it');
   ok(html.indexOf('picked up') !== -1, 'and how it was learned');
 }
 
+section('spaced repetition on the word list: due, graded, and due again later — or not');
+{
+  const g = LG.game;
+  g.state.words = [];
+  g.give('shiny_rock', 1, 'picked up');
+  const w = g.state.words[0];
+  ok(w.level === 0 && typeof w.due === 'number' && w.due <= Date.now(),
+     'a freshly-learned word starts at level 0, due immediately');
+  ok(g.dueWords().indexOf(w) !== -1, 'so it shows up as due right away');
+
+  g.gradeWord(w, true);
+  ok(w.level === 1, 'graded "Good", it moves up a level');
+  ok(w.due > Date.now(), 'and is not due again until later — real time, not the village clock');
+  ok(g.dueWords().indexOf(w) === -1, 'so it drops out of what is due right now');
+
+  g.gradeWord(w, false);
+  ok(w.level === 0 && w.due <= Date.now(),
+     'graded "Again" instead, it resets to level 0, due immediately — a level 1 mistake is not remembered as level 1');
+
+  // A whole session: two words due, one graded wrong once before it is
+  // graded right, the queue only empties once every word has actually been
+  // gotten right at least once this session.
+  g.give('beans', 1, 'picked up');
+  const w2 = g.state.words[1];
+  ok(g.dueWords().length === 2, 'both words are due to start the session');
+  g.startReview();
+  ok(g.reviewQueue.length === 2, 'the session queue starts with everything due');
+  g.reviewGrade(false);                 // the first word, gotten wrong
+  ok(g.reviewQueue.length === 2, 'gotten wrong, it goes to the back of the queue rather than off it');
+  ok(g.reviewQueue[1] === w, 'specifically the one just answered, not the other one');
+  g.reviewGrade(true);                  // now the second word (w2), gotten right
+  ok(g.reviewQueue.length === 1 && g.reviewQueue[0] === w,
+     'gotten right, it leaves the queue — only the missed one is left');
+  g.reviewGrade(true);                  // w, tried again, gotten right this time
+  ok(g.reviewQueue === null, 'and the session ends once nothing is left in it');
+
+  // Rendered, not just in the data: the button, and the card itself.
+  g.state.words = [];
+  g.give('shiny_rock', 1, 'picked up');
+  g.renderWords();
+  let html = sandbox.document.getElementById('wordsReview').textContent;
+  ok(html.indexOf('1 due') !== -1, 'the button counts what is actually due');
+
+  g.startReview();
+  html = sandbox.document.getElementById('wordsList').innerHTML;
+  ok(html.indexOf(LG.itemName('shiny_rock', g.settings.lang)) !== -1,
+     'the card shows the word to be recalled');
+  ok(html.indexOf('display:none') !== -1,
+     'but the answer stays display:none until "Show answer" is pressed');
+  // getElementById auto-vivifies an id nobody has asked for in this fake DOM
+  // (see elem() at the top of this file), so "is it there" has to be read
+  // off the rendered markup itself, not off whether a lookup came back truthy.
+  ok(html.indexOf('id="wordsShow"') !== -1, 'a way to ask for it');
+  ok(html.indexOf('id="wordsGood"') === -1 && html.indexOf('id="wordsAgain"') === -1,
+     'and no way to grade a card not yet shown');
+
+  sandbox.document.getElementById('wordsShow').onclick();
+  html = sandbox.document.getElementById('wordsList').innerHTML;
+  ok(html.indexOf('id="wordsGood"') !== -1 && html.indexOf('id="wordsAgain"') !== -1,
+     'showing the answer is what reveals the grading buttons');
+  ok(html.indexOf('shiny rock') !== -1, 'and the answer itself');
+
+  sandbox.document.getElementById('wordsGood').onclick();
+  ok(g.reviewQueue === null, 'grading the only card due ends the session');
+
+  g.state.words = [];
+}
+
 /* ------------------------------------------------------------------- saving
    One format, both ways round. What is checked here is that a village survives
    being written down and read back — not that localStorage works, but that

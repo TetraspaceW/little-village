@@ -87,7 +87,11 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
   name for — bought, traded, picked up, or told about before you ever held
   it — in the order you met it, with its English gloss shown straight away
   rather than blurred: this one is a study aid, not a comprehension test the
-  way the notebook is.
+  way the notebook is. A **Review** button runs through whatever is due —
+  word first, tap to see the gloss, then say whether you knew it — on a
+  spaced schedule that gets longer each time you do, in real days rather
+  than village ones, so it is still there to come back to after you close
+  the tab.
 - **Names.** Nobody's name shows up on screen — the nametag, the dialogue
   panel, the log — until that villager has actually told it to you. Ask
   *"What is your name?"* (in the Phrases row) and they will. Being told

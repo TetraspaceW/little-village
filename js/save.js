@@ -236,8 +236,11 @@ LG.save = (function () {
       notes: st.notes.map(n => ({ id: n.id, text: n.text, ruby: n.ruby || null, roman: n.roman || null })),
       // the word list — see game.js's learnWord. `item` is a key into LG.ITEMS,
       // never text of its own, so there is nothing here for a stale generator
-      // to disagree with the way a fact id could.
-      words: (st.words || []).map(w => ({ item: w.item, how: w.how || '', at: w.at || '' })),
+      // to disagree with the way a fact id could. `level`/`due` are the
+      // spaced-repetition review state (real wall-clock ms, not the village
+      // clock — see game.js's dueWords), carried over unchanged by a save.
+      words: (st.words || []).map(w => ({ item: w.item, how: w.how || '', at: w.at || '',
+                                          level: w.level || 0, due: w.due || 0 })),
       deeds: st.deeds.slice(),
       board: (st.board || []).map(b => ({ npcId: b.npcId, name: b.name, text: b.text,
                                           translation: b.translation || '', roman: b.roman || '',
@@ -333,7 +336,9 @@ LG.save = (function () {
     const worded = new Set();
     st.words = (data.words || [])
       .filter(w => LG.ITEMS[w.item] && !worded.has(w.item) && worded.add(w.item))
-      .map(w => ({ item: w.item, how: w.how || '', at: w.at || '' }));
+      .map(w => ({ item: w.item, how: w.how || '', at: w.at || '',
+                  level: typeof w.level === 'number' ? w.level : 0,
+                  due: typeof w.due === 'number' ? w.due : 0 }));
     st.deeds = (data.deeds || []).slice();
     st.board = (data.board || []).map(b => ({
       npcId: b.npcId, name: b.name, text: b.text,

@@ -130,9 +130,6 @@ The dice table is still there underneath for exactly that reason.
 - **Rooms worth being in.** Interiors exist but are only scenery. A villager who is
   *at* their anvil could be interruptible in a way they aren't on the street, and a
   bed you can sleep in would let you skip to morning rather than waiting out the night.
-- **Spaced repetition on the word list.** The word list (Built, below) is every item
-  the village has actually named for you, in order; a review mode on top of it —
-  due-today, self-graded — is the natural next step for a list that already exists.
 - **Prompt caching.** Each villager's identity block is stable across turns. A cache
   breakpoint there would cut per-turn cost once conversations get long.
 - **More languages.** One `LG.LANGUAGES` entry, item translations, twelve phrasebook
@@ -207,3 +204,11 @@ The dice table is still there underneath for exactly that reason.
   own language, and drops what it heard into the composer — read over and
   sent, or not, by the player, never on their own say-so, because being
   misheard is exactly the pronunciation feedback this exists to give.
+- Spaced repetition on the word list: a "Review N due" button runs one word
+  at a time — icon and the village's word, "Show answer" to reveal the
+  English, then Again/Good — on a small Leitner-style ladder (0, 1, 3, 7, 16,
+  35 days) scheduled by real wall-clock time rather than the village's own
+  clock, since "due tomorrow" only means something if tomorrow is an actual
+  day away. A word graded wrong goes to the back of *that session's* queue
+  rather than just being marked down for next time, so getting one wrong
+  means seeing it again before you stop, not filing it away for later.

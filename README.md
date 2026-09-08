@@ -168,6 +168,15 @@ jq -s 'map(.usage.cost // 0) | add' logs/session-*.jsonl
 gives you the real figure for a real session. Anthropic's API returns token
 counts only, not a cost figure.
 
+The settings panel keeps a running total for the session that is open right
+now — calls, tokens in and out, and a dollar figure — without needing the log
+server or a `jq` invocation. OpenRouter's `usage.cost` (and Logfare's) is
+taken exactly; an Anthropic call is priced off the reference figures above
+instead, so the total is marked with a `~` the moment any part of it is a
+guess rather than a receipt, and a model this game doesn't have a reference
+price for is counted in tokens but left out of the dollar figure, called out
+by name rather than folded in as free.
+
 ### Structured output
 
 Where a provider supports it, replies are constrained with a JSON Schema

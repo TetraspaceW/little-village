@@ -1152,7 +1152,35 @@ LG.game = (function () {
     refreshModelList();
     refreshHelperList();
     showSaveNote();
+    showUsageNote();
     s.classList.add('open');
+  }
+
+  /* Tokens and estimated spend, so the model picker above is not a choice made
+     blind. Read straight off LG.llm.totals each time the panel opens rather
+     than kept here — the panel is the only place this is shown, so there is
+     nothing to keep in sync between. See llm.js's meter comment for where the
+     numbers come from and why some of them are a guess. */
+  function fmtTok(n) {
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k';
+    return String(n);
+  }
+  function showUsageNote() {
+    const note = document.getElementById('setUsage');
+    if (!note) return;
+    const t = LG.llm.totals;
+    if (!t.calls) { note.textContent = 'No calls made yet this session.'; return; }
+    const calls = t.calls + (t.calls === 1 ? ' call' : ' calls');
+    const tok = fmtTok(t.inputTokens) + '→' + fmtTok(t.outputTokens) + ' tokens';
+    let cost = '';
+    if (t.cost > 0 || t.unpriced) {
+      const dollars = (t.estimated ? '~$' : '$') + t.cost.toFixed(2);
+      cost = ', ' + dollars +
+        (t.unpriced ? ' (' + t.unpriced + ' call' + (t.unpriced === 1 ? '' : 's') +
+          ' on an unpriced model not counted)' : ' this session');
+    }
+    note.textContent = calls + ', ' + tok + cost + '.';
   }
 
   /* What the saved village is, in one line. The autosave is silent by design —

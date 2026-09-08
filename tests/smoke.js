@@ -570,6 +570,47 @@ section('a model nobody has looked up gets no schema');
      'Logfare has no catalogue to check, so it fails closed the same way');
 }
 
+section('the cost meter: exact where a provider says, estimated where it has to');
+{
+  const before = LG.llm.totals;
+  ok(before.calls === 0 && before.inputTokens === 0 && before.cost === 0,
+     'nothing spent before the first call');
+
+  // A model this game prices itself (see REFERENCE_PRICING) with no usage.cost
+  // of its own — 1M in, 1M out at $3/$15 per million is $18 exactly.
+  LG.llm._debugRecord('claude-sonnet-5', { input_tokens: 1e6, output_tokens: 1e6 });
+  let t = LG.llm.totals;
+  ok(t.calls === 1, 'one call recorded');
+  ok(t.inputTokens === 1e6 && t.outputTokens === 1e6, 'and its tokens counted');
+  ok(Math.abs(t.cost - 18) < 1e-9, 'priced off the reference table: $3+$15 per million');
+  ok(t.estimated === true, 'flagged as a guess, not a receipt');
+
+  // A provider that hands back its own usage.cost is taken at its word, added
+  // on top rather than re-derived.
+  LG.llm._debugRecord('anthropic/claude-sonnet-5', { input_tokens: 500, output_tokens: 500, cost: 0.02 });
+  t = LG.llm.totals;
+  ok(t.calls === 2, 'the second call counts too');
+  ok(Math.abs(t.cost - 18.02) < 1e-9, 'its exact cost is added to the estimate, not replacing it');
+
+  // A model nobody has priced, on a provider that did not say either — tokens
+  // are still counted, but it does not silently read as free.
+  LG.llm._debugRecord('nobody/never-heard-of-it', { input_tokens: 100, output_tokens: 100 });
+  t = LG.llm.totals;
+  ok(t.calls === 3 && t.inputTokens === 1e6 + 600, 'its tokens are still on the running total');
+  ok(Math.abs(t.cost - 18.02) < 1e-9, 'but it added nothing to the cost, priced or not');
+  ok(t.unpriced === 1, 'and is called out as unpriced rather than folded into the total silently');
+
+  {
+    LG.game.openSettings(false);
+    const note = sandbox.document.getElementById('setUsage').textContent;
+    ok(note.indexOf('3 calls') !== -1, 'the settings panel shows the running total');
+    ok(note.indexOf('~$18.02') !== -1, 'with the ~ once any part of it is a guess');
+    ok(note.indexOf('1 call on an unpriced model') !== -1,
+       'and says outright that one call is not in that figure');
+    sandbox.document.getElementById('settings').classList.remove('open');
+  }
+}
+
 /* ------------------------------------------------------- what they believe now
    Villagers are not a table of rows to expire. They hold things, each with a
    time and a source, and when something arrives that overtakes one of them they

@@ -161,8 +161,6 @@ The dice table is still there underneath for exactly that reason.
   mouth — they shouldn't turn into teachers.
 - **Prompt caching.** Each villager's identity block is stable across turns. A cache
   breakpoint there would cut per-turn cost once conversations get long.
-- **Cost meter.** Tokens and estimated spend in the corner. Makes the model choice
-  concrete for anyone paying per call.
 - **More languages.** One `LG.LANGUAGES` entry, item translations, twelve phrasebook
   strings, four gossip mutterings — all of it in `data.js`, and the smoke test fails if
   any of the four is incomplete. Korean would follow Japanese exactly (romanisation
@@ -196,3 +194,6 @@ The dice table is still there underneath for exactly that reason.
   the weather that genuinely takes the light.
 - Money: a ¤10 purse, villagers who buy and sell from behind their own counters, and
   haggling clamped either side of what a thing is worth.
+- A cost meter: calls, tokens and a running dollar total in the settings panel, exact
+  where a provider hands back its own price and marked with a `~` the moment any of it
+  is priced off a reference table instead.

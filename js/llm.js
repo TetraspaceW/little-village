@@ -264,6 +264,7 @@ LG.llm = (function () {
 
        LG.llm.audit = false     stop printing (still recorded)
        LG.llm.transcript        the records, newest last
+       LG.llm.totals            running tokens/cost for the whole session
        LG.llm.dump()            the lot as plain text, for copying out */
   /* Helper calls are known by the opening of their system prompt. A villager's
      own prompt opens with their name, which is not something to match on, so it
@@ -280,6 +281,52 @@ LG.llm = (function () {
   const transcript = [];
   let audit = true,
     seq = 0;
+
+  /* ------------------------------------------------------------- the meter
+
+     OpenRouter (and, per its own docs, Logfare) hand back what a call
+     actually cost in `usage.cost` — exact, no guessing needed. Anthropic's
+     direct API does not (see the README's Cost section), so a call to it is
+     priced from this table instead: reference $/million-token figures for
+     the three models this game actually offers on that provider, in the
+     same spirit as the README's own "reference pricing" — a number worth
+     having, not a promise it is still current. A model that isn't in the
+     table (a future one typed into the "Other" box, say) is simply left
+     unpriced rather than guessed at.
+
+     Only Anthropic's own model ids are worth listing here: every OpenRouter
+     entry in MODELS/HELPERS gets its cost from usage.cost directly, and
+     pricing someone else's models third-hand is a good way to be
+     confidently wrong. */
+  const REFERENCE_PRICING = {
+    // [input, output], $ per million tokens
+    "claude-opus-5": [15, 75],
+    "claude-sonnet-5": [3, 15],
+    "claude-haiku-4-5": [1, 5],
+  };
+
+  function priceFor(model, usage) {
+    if (usage && typeof usage.cost === "number")
+      return { dollars: usage.cost, exact: true };
+    const p = REFERENCE_PRICING[model];
+    if (!p || !usage) return null;
+    const inTok = usage.input_tokens || usage.prompt_tokens || 0;
+    const outTok = usage.output_tokens || usage.completion_tokens || 0;
+    if (!inTok && !outTok) return null;
+    return { dollars: (inTok / 1e6) * p[0] + (outTok / 1e6) * p[1], exact: false };
+  }
+
+  // Kept separately from `transcript`, which drops its oldest entries once it
+  // has 200 — a session that runs longer than that should still know what it
+  // has spent.
+  const totals = {
+    calls: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    costExact: 0, // summed from a provider's own usage.cost
+    costEst: 0, // summed from REFERENCE_PRICING, for calls with no cost of their own
+    unpriced: 0, // calls that spent tokens under a model this can't price at all
+  };
   const KEEP = 200;
 
   function kindOf(system) {
@@ -328,6 +375,21 @@ LG.llm = (function () {
     };
     transcript.push(entry);
     if (transcript.length > KEEP) transcript.shift();
+
+    {
+      const u = entry.usage || {};
+      const inTok = u.input_tokens || u.prompt_tokens || 0;
+      const outTok = u.output_tokens || u.completion_tokens || 0;
+      totals.calls++;
+      totals.inputTokens += inTok;
+      totals.outputTokens += outTok;
+      const priced = priceFor(entry.model, entry.usage);
+      if (priced) {
+        if (priced.exact) totals.costExact += priced.dollars;
+        else totals.costEst += priced.dollars;
+      } else if (inTok || outTok) totals.unpriced++;
+    }
+
     if (LG.logbook) LG.logbook.call(entry); // and onto the disk, if a log is running
     if (audit && typeof console !== "undefined" && console.log) {
       const u = entry.usage || {};
@@ -1421,6 +1483,21 @@ LG.llm = (function () {
     get transcript() {
       return transcript;
     },
+    // Running total for the whole session (not just the 200 kept above) — see
+    // the meter comment near REFERENCE_PRICING. `cost` folds together whatever
+    // is exact and whatever is estimated; `estimated` and `unpriced` say
+    // whether that number, or part of it, is a guess or missing entirely, so a
+    // display can flag it rather than presenting a guess as a receipt.
+    get totals() {
+      return {
+        calls: totals.calls,
+        inputTokens: totals.inputTokens,
+        outputTokens: totals.outputTokens,
+        cost: totals.costExact + totals.costEst,
+        estimated: totals.costEst > 0,
+        unpriced: totals.unpriced,
+      };
+    },
     dump,
     get audit() {
       return audit;
@@ -1436,5 +1513,14 @@ LG.llm = (function () {
     parseJSON,
     repairJSON,
     salvage,
+    // Feeds a fabricated usage straight through `record`'s totals bookkeeping,
+    // without a network call — for testing the meter against known token
+    // counts. Everything else `record` does (the transcript entry, the
+    // console group) happens too; that is the point of reusing it rather than
+    // duplicating the arithmetic.
+    _debugRecord: (model, usage) =>
+      record({ model: model, provider: "test" }, "", [], "", null, 1, {
+        usage: usage,
+      }),
   };
 })();

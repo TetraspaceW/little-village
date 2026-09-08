@@ -570,6 +570,18 @@ section('a model nobody has looked up gets no schema');
      'Logfare has no catalogue to check, so it fails closed the same way');
 }
 
+section('speech input is progressive enhancement — off in a browser without it');
+{
+  // This sandbox never defines window.SpeechRecognition, the same as
+  // Firefox or Safari as of writing — so the module should settle into the
+  // same "not here" state a real unsupported browser leaves it in.
+  ok(LG.speech.available() === false, 'unavailable in a browser (or sandbox) with no SpeechRecognition');
+  ok(LG.speech.listen('ru', () => {}, () => {}) === false,
+     'asking it to listen anyway is refused rather than throwing');
+  ok(LG.speech.listening === false, 'and it never claims to be listening');
+  LG.speech.stop();   // idempotent — nothing to stop, nothing to throw either
+}
+
 section('the cost meter: exact where a provider says, estimated where it has to');
 {
   const before = LG.llm.totals;
@@ -1336,6 +1348,7 @@ async function villagersTalking() {
   await namesUnknownUntilTold();
   await gentleCorrections();
   await noCrutchesAtAdvanced();
+  await micButton();
   await touchControls();
   await roomForTheComposer();
   whatYouCanSee();
@@ -1527,6 +1540,61 @@ async function noCrutchesAtAdvanced() {
 
   g.settings.level = wasLevel;
   g.settings.showTranslation = wasTrans;
+}
+
+/* LG.speech itself is exercised above, on its own, in a browser (this
+   sandbox) with no SpeechRecognition to give it. This is the wiring on the
+   other side of that: dialogue.js's _toggleMic, driven through a stand-in
+   LG.speech so the behaviour is checked independently of whether this
+   particular browser actually has the real thing. */
+async function micButton() {
+  section('the mic button: what it hears lands in the box, never sends itself');
+  const npc = LG.game.npcs[0];
+  const realSpeech = LG.speech;
+  LG.dialogue.open(npc);
+
+  const langsAsked = [];
+  let listeningFlag = false, onResult = null, onEnd = null;
+  LG.speech = {
+    available: () => true,
+    get listening() { return listeningFlag; },
+    listen: (lang, res, end) => {
+      langsAsked.push(lang);
+      listeningFlag = true;
+      onResult = res; onEnd = end;
+      return true;
+    },
+    stop: () => { listeningFlag = false; }
+  };
+
+  const mic = sandbox.document.getElementById('dlgMic');
+  const dlgLog = sandbox.document.getElementById('dlgLog');
+  const rowsBefore = dlgLog.children.length;
+
+  LG.dialogue._toggleMic();
+  ok(langsAsked.length === 1 && langsAsked[0] === LG.LANGUAGES[LG.game.settings.lang].tag,
+     'starting listens once, in the language the village actually speaks');
+  ok(mic.classList.contains('listening'), 'the button shows it is listening');
+
+  sandbox.document.getElementById('dlgInput').value = '';
+  onResult('a misheard line, maybe');
+  ok(sandbox.document.getElementById('dlgInput').value === 'a misheard line, maybe',
+     'what it heard fills the box, the same as a phrase chip would');
+  ok(dlgLog.children.length === rowsBefore,
+     'and nothing at all gets sent on the player\'s behalf — they still have to say it themselves');
+
+  LG.dialogue._toggleMic();
+  ok(!mic.classList.contains('listening'), 'a second tap stops it early');
+
+  LG.dialogue._toggleMic();
+  ok(langsAsked.length === 2, 'and it can be started again');
+  onEnd();
+  ok(!mic.classList.contains('listening'), 'and stops showing as listening when the browser ends it unprompted');
+
+  LG.dialogue.close();
+  ok(!listeningFlag, 'closing the conversation stops it too, mid-listen or not');
+
+  LG.speech = realSpeech;
 }
 
 /* The phone half of the controls. Nothing here dispatches a PointerEvent —

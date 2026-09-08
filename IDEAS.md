@@ -3,17 +3,6 @@
 Where Little Village could go next. Things that have since been built are at the
 bottom, for the record.
 
-## Speech input
-
-Text-to-speech is in (see the README). The natural pair is speech *input* —
-`SpeechRecognition`, Chrome only: say the line aloud, the recogniser transcribes, and
-what it heard becomes your message. Being misheard is itself useful feedback, and it
-closes the loop on pronunciation, which the game currently does nothing about.
-
-Worth knowing when tuning voices: readings are the weak point, not the audio. A wrong
-furigana reading feeds straight into a wrong pronunciation, so the two systems fail
-together.
-
 ## Relationships, and the shape of the problem
 
 The bit of the current design that people react to is the pure-flavour gossip —
@@ -212,3 +201,9 @@ The dice table is still there underneath for exactly that reason.
   empty, so nothing is there to lean on. `spread`/`taper`/`gossip` already
   made the chain itself harder to trace; this is the level that makes the
   interface stop helping too.
+- Speech input (js/speech.js), the pair text-to-speech never had: a 🎤 next to
+  "Say it" that only ever appears in a browser that actually has
+  SpeechRecognition (Chrome/Chromium, as of writing), asks it in the village's
+  own language, and drops what it heard into the composer — read over and
+  sent, or not, by the player, never on their own say-so, because being
+  misheard is exactly the pronunciation feedback this exists to give.

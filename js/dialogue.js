@@ -9,7 +9,7 @@ LG.dialogue = (function () {
   const el = {};
   function bind() {
     ['dlg','dlgName','dlgRole','dlgLog','dlgInput','dlgSend','dlgClose','dlgPhrases',
-     'dlgItems','dlgStatus','dlgAvatar'].forEach(id => el[id] = document.getElementById(id));
+     'dlgItems','dlgStatus','dlgAvatar','dlgMic'].forEach(id => el[id] = document.getElementById(id));
   }
 
   function chatterLine() {
@@ -687,6 +687,7 @@ LG.dialogue = (function () {
 
   function close() {
     LG.tts.stop();
+    if (LG.speech) { LG.speech.stop(); setMicState(false); }
     try { document.body.classList.remove('typing'); } catch (e) {}   // blur is not owed to a hidden box
     if (current) current.frozen = false;
     current = null;
@@ -1363,10 +1364,38 @@ LG.dialogue = (function () {
       new ResizeObserver(() => { if (stuck) log.scrollTop = log.scrollHeight; }).observe(log);
   }
 
+  /* Speech input, the pair speakLine (above) never had. Progressive
+     enhancement start to finish: the button is `hidden` in the markup and
+     only ever shown here, once, if this browser actually has
+     SpeechRecognition — see speech.js. Everywhere else in this file can go
+     on assuming el.dlgMic might simply not exist. */
+  function toggleMic() {
+    if (!LG.speech || !LG.speech.available() || busy) return;
+    if (LG.speech.listening) { LG.speech.stop(); setMicState(false); return; }
+    setMicState(true);
+    const started = LG.speech.listen(LG.LANGUAGES[LG.game.settings.lang].tag, said => {
+      // Lands in the box the same way a phrase chip does — read over and
+      // sent (or not) by the player, never sent on their own say-so. Hearing
+      // yourself mistranscribed is exactly the feedback this exists to give.
+      el.dlgInput.value = said;
+      el.dlgInput.focus();
+    }, () => setMicState(false));
+    if (!started) setMicState(false);
+  }
+  function setMicState(on) {
+    if (!el.dlgMic) return;
+    el.dlgMic.classList.toggle('listening', on);
+    el.dlgMic.title = on ? 'Listening… tap to stop' : 'Say it aloud instead';
+  }
+
   function init() {
     bind();
     el.dlgSend.onclick = () => send(el.dlgInput.value);
     el.dlgClose.onclick = close;
+    if (el.dlgMic) {
+      if (LG.speech && LG.speech.available()) el.dlgMic.hidden = false;
+      el.dlgMic.onclick = toggleMic;
+    }
     /* Tapping into the box is a decision about what you want to look at: the
        phrase rack gives its room to the line you are answering. Height already
        decides what fits (see trackViewport in game.js) — this is the separate
@@ -1405,5 +1434,5 @@ LG.dialogue = (function () {
            zhRubyHTML: zhRubyHTML, _zhRuby: zhRuby, _pinyinToZhuyin: pinyinToZhuyin,
            _tokenizePinyin: tokenizePinyin,
            _noteMet: noteMet, _metBeforeLine: metBeforeLine, _startChat: startChat,
-           _offerCorrection: offerCorrection };
+           _offerCorrection: offerCorrection, _toggleMic: toggleMic };
 })();

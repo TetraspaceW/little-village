@@ -105,6 +105,9 @@
 
       <div class="composer">
         <textarea id="dlgInput" rows="1" placeholder="Say something…"></textarea>
+        <!-- Hidden by default; js/speech.js unhides it only once it has
+             confirmed SpeechRecognition actually exists in this browser. -->
+        <button id="dlgMic" type="button" title="Say it aloud instead" hidden>🎤</button>
         <button id="dlgSend">Say it</button>
       </div>
     </div>
@@ -337,6 +340,7 @@
 <script src="js/chain.js"></script>
 <script src="js/llm.js"></script>
 <script src="js/tts.js"></script>
+<script src="js/speech.js"></script>
 <script src="js/world.js"></script>
 <script src="js/sky.js"></script>
 <script src="js/view.js"></script>

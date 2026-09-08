@@ -50,7 +50,10 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
   page itself never scrolls under your finger.
 - Type in the villager's own language. The **Phrases** row suggests something
   to start from; **Offer an item** holds an item out of your pockets instead
-  of typing.
+  of typing. A 🎤 sits next to Say it in any browser with speech recognition
+  (Chrome/Chromium, as of writing — the button only appears where it works):
+  say the line aloud and the transcript drops into the box for you to check
+  and send yourself, same as a phrase chip would.
 - Translations can show immediately or stay blurred until clicked (⚙ →
   settings).
 - Gentle corrections (⚙ → settings, off by default) footnote what you typed
@@ -338,6 +341,7 @@ js/data.js           languages, phrasebook, place names, ~140 items, 24 places, 
 js/chain.js          errand chain generator + associated facts
 js/llm.js            provider abstraction, key validation, reply parsing
 js/tts.js            ElevenLabs voice casting and playback
+js/speech.js          speech input (SpeechRecognition), tts.js's pair
 js/world.js          tile map, forest, station, collision, pathfinding, interiors, rendering
 js/sky.js            hour/season colour, precipitation
 js/view.js           per-villager prompt assembly (single source of truth)

@@ -238,3 +238,13 @@ The dice table is still there underneath for exactly that reason.
   the rare degenerate chain) still round-trips correctly — what is shown is
   always the seed that actually built the village on screen, not the one
   that was asked for and silently replaced.
+- A closing tally on the ending screen: days taken, villagers actually
+  spoken to (`metPlayer`, not `nameKnown` — you can talk to somebody all
+  errand and never catch their name), words picked up along the way. All of
+  it read off state the game was already keeping for its own reasons;
+  nothing here is scored or judged, the same "records beat rules" as a save
+  file, just read back as a sentence instead of state. The one new field —
+  which calendar day the village began on — travels in the save alongside
+  the current day rather than being reconstructed from it, since restoring
+  a save calls `newVillage` too and would otherwise reset it to whatever
+  throwaway day that reroll happened to land on.

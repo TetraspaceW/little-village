@@ -976,10 +976,13 @@ section('a village, written down and read back');
   // same reason — this round trip runs before any villager has actually
   // talked to another one, so metWith would otherwise be empty on both sides
   npcs[0].metWith = {}; npcs[0].metWith[npcs[1].def.id] = { day: LG.time.day, at: '12:00' };
+  // distinct from LG.time.day, so a restore that quietly dropped it or
+  // quietly recomputed it from the current day would both show up
+  g.state.arrivedDay = LG.time.day - 3;
 
   const before = {
     seed: plan.seed, day: LG.time.day, frac: LG.time.frac,
-    weather: LG.time.weather, snow: LG.time.snow,
+    weather: LG.time.weather, snow: LG.time.snow, arrivedDay: g.state.arrivedDay,
     inv: JSON.stringify(g.state.inv), notes: JSON.stringify(g.state.notes),
     words: JSON.stringify(g.state.words),
     deeds: JSON.stringify(g.state.deeds),
@@ -1027,6 +1030,8 @@ section('a village, written down and read back');
   ok(JSON.stringify(after.state.notes) === before.notes, 'the same notebook');
   ok(JSON.stringify(after.state.words) === before.words, 'and the same word list');
   ok(JSON.stringify(after.state.deeds) === before.deeds, 'and the same deeds behind you');
+  ok(after.state.arrivedDay === before.arrivedDay,
+     'and the same arrival day, so the ending screen still counts the errand right');
   ok(Math.round(after.player.px * 10) / 10 === before.px, 'standing where you were');
 
   const back = after.npcs;
@@ -2052,6 +2057,40 @@ section('the village seed: read off the current plan, and re-enterable to reprod
   sandbox.document.getElementById('setSeedInput').value = '   ';
   sandbox.document.getElementById('setSeedGo').onclick();
   ok(LG.game.plan.seed === before, 'an empty seed is not a request for a new village');
+}
+
+section('the ending screen counts the errand, not just announces it');
+{
+  const g = LG.game;
+  g.newVillage('ending-stats-village', true);
+  const stats = () => g._debugEndingStats();
+
+  g.state.words.length = 0;
+  g.npcs.forEach(n => { n.metPlayer = false; });
+  g.state.arrivedDay = LG.time.day;
+  ok(stats() === '1 day, 0 of ' + g.npcs.length + ' villagers spoken to, 0 words learned along the way.',
+     'nothing yet, on the day you arrived, reads as singular and zero rather than "0 days"');
+
+  g.learnWord('shiny_rock', 'test fixture');
+  g.npcs[0].metPlayer = true;
+  ok(stats() === '1 day, 1 of ' + g.npcs.length + ' villagers spoken to, 1 word learned along the way.',
+     'one of each stays singular');
+
+  g.npcs[1].metPlayer = true;
+  g.learnWord('bread', 'test fixture');
+  LG.time.start(LG.time.day + 4, LG.time.frac);
+  ok(stats() === '5 days, 2 of ' + g.npcs.length + ' villagers spoken to, 2 words learned along the way.',
+     'and the day count is inclusive — arriving and leaving on the same day is one day, not zero');
+
+  // A save from before endingStats existed has no `time.arrived` to read —
+  // restore() falls back to the day the save was made on, not day 0, so an
+  // old save's own ending screen undercounts to "1 day" rather than
+  // overcounting into the hundreds. See save.js's restore().
+  const shot = LG.save.snapshot();
+  delete shot.time.arrived;
+  const why = LG.save.restore(shot);
+  ok(why === null && LG.game.state.arrivedDay === shot.time.day,
+     "a save with no arrival day of its own falls back to the day it was saved on, not 0");
 }
 
 beliefsRevised().then(villagersTalking);

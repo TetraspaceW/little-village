@@ -70,6 +70,11 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
   has it wants something else, and so on back to something just lying in the
   world. The village is generated from a seed, so the same seed regenerates
   the same errand.
+- **The ending.** Handing over the last link closes the chain and opens a
+  screen with a one-line tally — how many days it took, how many of the
+  village's thirteen you actually spoke to, how many words the word list
+  picked up along the way — then lets you keep wandering the same village or
+  start a new one.
 - **The woods.** A large forest fills the northern two-fifths of the map,
   with tracks running through it and six named clearings: the big
   clearing, the old oak, the hollow, the charcoal burner's pit, the forest

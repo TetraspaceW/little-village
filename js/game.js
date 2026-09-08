@@ -25,7 +25,7 @@ LG.game = (function () {
   let gated = true, gateMode = false, lastValidated = '';
   let fromEnv = false;             // the keys were handed to us, not typed
 
-  const state = { inv: {}, notes: [], deeds: [], won: false, board: [], words: [] };
+  const state = { inv: {}, notes: [], deeds: [], won: false, board: [], words: [], arrivedDay: 0 };
 
   let plan = null;                 // the generated errand chain (chain.js)
   let canvas, ctx, cam = { x: 0, y: 0 }, vw = 0, vh = 0, dpr = 1;
@@ -601,7 +601,22 @@ LG.game = (function () {
     document.getElementById('endingText').textContent =
       c.npcName + ' has ' + (LG.ITEMS[c.wants].full) + ' at last, and you have ' +
       LG.ITEMS[c.gives].full + ' to show for it — along with a fistful of a new language.';
+    document.getElementById('endingStats').textContent = endingStats();
     setTimeout(() => document.getElementById('ending').classList.add('open'), 900);
+  }
+
+  /* A closing tally, pulled from state the game was already keeping for its
+     own reasons — the word list, who has spoken to you at all (`metPlayer`,
+     not `nameKnown`: you can talk to somebody all errand and never catch
+     their name), and the calendar day the village began on. Nothing here
+     is scored or judged; it is the same kind of thing a save file already
+     is, read back as a sentence instead of state. */
+  function endingStats() {
+    const met = npcs.filter(n => n.metPlayer).length;
+    const days = Math.max(1, LG.time.day - state.arrivedDay + 1);
+    return days + (days === 1 ? ' day' : ' days') + ', ' +
+      met + ' of ' + npcs.length + ' villagers spoken to, ' +
+      state.words.length + (state.words.length === 1 ? ' word' : ' words') + ' learned along the way.';
   }
 
   /* ------------------------------------------------------------- startup */
@@ -697,6 +712,7 @@ LG.game = (function () {
 
     state.inv = { coins: 10 };          // a little money to be going on with
     state.notes = []; state.deeds = []; state.won = false; state.board = [];
+    state.arrivedDay = LG.time.day;     // for the ending screen's "N days" — see win()
 
     /* You arrive by train. The platform is the far east end of the high
        street, so the first thing you do is walk the length of it into a
@@ -2274,6 +2290,9 @@ LG.game = (function () {
            _debugViewport: () => { readInsets(); measureViewport(); },
            // and what came of it: the strip of canvas the player can see
            _debugSeen: seen,
+           // the ending screen's closing tally, without driving a whole chain
+           // to its last link just to read a sentence off it
+           _debugEndingStats: endingStats,
            inventoryList, doTrade, commerce, renderHUD, openSettings, uiBlocked, newVillage,
            openWords, renderWords, learnWord, hasWord, crutchesOff,
            dueWords, gradeWord, startReview, endReview, reviewGrade,

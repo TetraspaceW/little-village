@@ -228,8 +228,14 @@ LG.save = (function () {
       /* The weather is part of the calendar, not scenery: villagers decide where
          to stand by it, and the snow that is lying took several village days to
          get there. Reloading into a random sky would undo all of that. */
+      // `arrived` is the calendar day this village began on — see game.js's
+      // newVillage — carried separately from the current day rather than
+      // reconstructed from it, because restoring calls newVillage too (to
+      // rebuild the village from its seed) and that would otherwise reset
+      // it to whatever throwaway day the restore happened to roll before
+      // `time.day` below puts the clock back where the save left it.
       time: { day: LG.time.day, frac: LG.time.frac, weather: LG.time.weather,
-              hold: LG.time.weatherLeft, snow: LG.time.snow },
+              hold: LG.time.weatherLeft, snow: LG.time.snow, arrived: st.arrivedDay },
       player: { x: round(p.px), y: round(p.py), dir: p.dir },
       inventory: Object.assign({}, st.inv),
       // no `done`: whether a lead is spent is read off the world, not stored
@@ -310,6 +316,11 @@ LG.save = (function () {
     LG.time.start(tm.day, tm.frac);
     LG.time.setWeather(tm.weather, tm.hold);
     LG.time.setSnow(tm.snow);
+    // A save from before this existed has no `arrived` to read — falling
+    // back to the current day rather than 0 means an old save's own ending
+    // screen undercounts to "1 day" instead of overcounting into the
+    // hundreds, the harmless direction to be wrong in.
+    g.state.arrivedDay = typeof tm.arrived === 'number' ? tm.arrived : tm.day;
 
     const p = g.player;
     p.px = data.player.x; p.py = data.player.y; p.dir = data.player.dir || 'down';

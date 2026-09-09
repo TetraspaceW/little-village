@@ -1239,6 +1239,37 @@ async function touchControls() {
     ok(gentle > 0 && gentle < hard,
        'and a gentler lean walks you slower, not just in a different direction (' +
        gentle.toFixed(1) + 'px)');
+
+    /* --------------------------------------------------------- and it runs */
+    // A double-tap is two fingers by another name: one taps twice while a
+    // second, separate touch is off holding the stick, exactly as a thumb on
+    // the joystick and another on the ground would land on a real screen.
+    const dtap = (id, t0) => {
+      T._begin(id, 500, 500, t0);     T._end(id, 500, 500, t0 + 20);
+      T._begin(id, 505, 500, t0 + 60); T._end(id, 505, 500, t0 + 80);
+    };
+    const covered = running => {
+      g._debugPlayerAt(spot.x, spot.y);
+      if (running) dtap(20, 0);
+      const from = g.player.px;
+      T._begin(9, 100, 100, 1e3);
+      T._move(9, 100 + T.RANGE + 40, 100);
+      g._debugTick(1 / 60);
+      T._end(9, 100, 100, 9e5);
+      if (running) dtap(21, 2e3);   // leave it as it was found: not running
+      return g.player.px - from;
+    };
+    const walkFrame = covered(false), runFrame = covered(true);
+    ok(runFrame > walkFrame * 1.3,
+       'double-tapping the ground covers more per frame once running (' +
+       walkFrame.toFixed(2) + 'px walking, ' + runFrame.toFixed(2) + 'px running)');
+
+    const runBtn = sandbox.document.getElementById('btnRun');
+    ok(!runBtn.classList.contains('active'), 'the run button starts un-pressed');
+    runBtn.onclick();
+    ok(runBtn.classList.contains('active'), 'clicking it shows running is on');
+    runBtn.onclick();
+    ok(!runBtn.classList.contains('active'), 'and clicking it again turns running back off');
   }
 }
 

@@ -201,6 +201,7 @@ body:not(.touch) .touch-only{display:none}
   box-shadow:var(--shadow);
 }
 .tool:hover{background:#fff}
+.tool.active{background:var(--accent);border-color:var(--accent);color:#fff}
 
 /* ------------------------------------------------------------- dialogue */
 /* Sized to the visual viewport, not the page: a phone's keyboard slides a

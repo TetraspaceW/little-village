@@ -32,10 +32,14 @@ LG.touch = (function () {
   const RANGE = 54;     // the stick's throw: full speed at the rim
   const TAP_MS = 320;   // a maybe that lingers longer than this is neither
   const SLOW = 0.4;     // the slowest a barely-leaning finger will walk you
+  const DBL_MS = 350;   // gap a second tap has to land inside to pair with the first
+  const DBL_DIST = 40;  // and how far it may have landed from it
 
   let canvas = null;
   let blocked = () => false;          // a panel is up; the world is not listening
   let onTap = null;
+  let onDoubleTap = null;
+  let lastTap = null;                 // {x, y, t} of the previous tap, waiting for a partner
 
   /* Every finger currently on the glass, and which one of them (if any) has
      been promoted to the stick. Only the first can be — a second finger is
@@ -87,7 +91,22 @@ LG.touch = (function () {
        it did not sit there. `blocked` is asked again rather than trusted from
        when the finger landed, because what the finger did in between may have
        opened something. */
-    if (!p.moved && t - p.t0 <= TAP_MS && onTap && !blocked()) onTap(x, y);
+    if (p.moved || t - p.t0 > TAP_MS || blocked()) { lastTap = null; return; }
+    if (onTap) onTap(x, y);
+    /* A second tap landing soon enough and close enough to the last one pairs
+       with it instead of starting a new wait — the pair fires once, on the
+       second tap, and does not itself arm a third. Nothing here asks what got
+       tapped; on a villager or a sign the first tap already opened something
+       and `blocked` above catches the second before it gets this far, so the
+       only place a pair actually lands is empty ground, which a single tap
+       already does nothing with. */
+    if (onDoubleTap && lastTap && t - lastTap.t <= DBL_MS &&
+        Math.hypot(x - lastTap.x, y - lastTap.y) <= DBL_DIST) {
+      lastTap = null;
+      onDoubleTap(x, y);
+    } else {
+      lastTap = { x, y, t };
+    }
   }
 
   function cancel(id) {
@@ -130,13 +149,14 @@ LG.touch = (function () {
   /* Everything lets go. The tab losing focus with a thumb still down is the
      case that matters — without this it comes back still walking north — and
      it is exported so a caller with its own reason can do the same. */
-  function release() { down.clear(); stickId = null; ring = null; vec = null; }
+  function release() { down.clear(); stickId = null; ring = null; vec = null; lastTap = null; }
 
   /* ---------------------------------------------------------------- the wiring */
   function init(cv, hooks) {
     canvas = cv;
     blocked = (hooks && hooks.blocked) || blocked;
     onTap = (hooks && hooks.tap) || null;
+    onDoubleTap = (hooks && hooks.doubleTap) || null;
     setMode(coarse());
     if (!canvas || !canvas.addEventListener) return;
 

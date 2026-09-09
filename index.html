@@ -68,6 +68,7 @@
     <div id="hint"></div>
 
     <div id="topbar">
+      <button id="btnRun" class="tool" title="Run (Shift, or double-tap the ground)">🏃</button>
       <button id="btnHelp" class="tool" title="How to play">?</button>
       <button id="btnSettings" class="tool" title="Settings">⚙</button>
     </div>
@@ -230,12 +231,14 @@
       <ul>
         <!-- Both control schemes are always in the page; style.css shows whichever
              one matches how you last touched the screen (see LG.touch). -->
-        <li class="keys-only"><b>WASD</b> or <b>arrow keys</b> to walk.</li>
+        <li class="keys-only"><b>WASD</b> or <b>arrow keys</b> to walk, holding <b>Shift</b> to run.</li>
         <li class="keys-only"><b>E</b> or <b>Space</b> to talk to whoever you are standing next to.</li>
         <li class="touch-only">Put a finger anywhere on the village and <b>drag</b> — a
             joystick appears under it. Lift to stop.</li>
         <li class="touch-only"><b>Tap</b> a villager you are standing beside to talk to them,
             and tap anything else worth picking up.</li>
+        <li><b>Double-tap</b> the ground, or press the 🏃 button, to switch into running until
+            you do it again.</li>
         <li>In a conversation, type in <em>their</em> language. The <b>Phrases</b> row gives you
             something to start from, and <b>Offer an item</b> holds something out from your pockets.</li>
         <li>They remember what you tell them — and they repeat it to each other.</li>

@@ -219,9 +219,14 @@ LG.world = (function () {
     northWoods();
     station();
 
-    // Terrain painted after the buildings can land on a doorway — an orchard row
-    // sealed the farmhouse once. Clear every door and its step, last of all.
+    // Terrain painted after the buildings can land on more than just the
+    // doorway — the orchard and the fields both reach far enough to plough
+    // straight over a wall (the mill's and the farmhouse's), leaving a gap
+    // you could walk in through the side. Re-stamp every wall and floor
+    // exactly as addBuilding first laid them, then clear the door and step.
     for (const b of buildings) {
+      rect(b.x, b.y, b.w, b.h, T.WALL);
+      rect(b.inside.x, b.inside.y, b.inside.w, b.inside.h, T.FLOOR);
       set(b.doorX, b.doorY, T.DOOR);
       if (b.doorY + 1 < H && isSolid(b.doorX, b.doorY + 1)) set(b.doorX, b.doorY + 1, T.PATH);
     }

@@ -139,7 +139,7 @@ LG.dialogue = (function () {
        stand and what they say to each other. See view.js for why this stopped
        being three separate readings of the same character. */
     const v = LG.view.of(npc, 'player');
-    const inv = LG.game.inventoryList();
+    const inv = LG.game.inventoryList(v.companion && v.companion.item);
     const trade = v.trade.deal;
 
     const lines = [];
@@ -202,6 +202,8 @@ LG.dialogue = (function () {
     lines.push('# The player');
     lines.push('A traveller visiting the village.');
     lines.push('They are carrying: ' + (inv || 'nothing'));
+    if (v.companion) lines.push(v.companion.name + ', ' + LG.itemSaid(v.companion.item, s.lang, true) +
+                                 ', is following right behind them — you can see it as plainly as you can see them.');
     if (offered) lines.push('RIGHT NOW the player is holding out their ' + LG.itemSaid(offered, s.lang, true) + ' towards you.');
     lines.push('');
     lines.push('# Your language');

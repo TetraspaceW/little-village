@@ -141,6 +141,17 @@ LG.view = (function () {
   function stock(n) { return itemised(n.stock); }
   function sold(n)  { return itemised(n.sold, v => v && v.n > 0); }
 
+  /* Whatever is following at the traveller's heels right now. This is not
+     something they have to be told, the way a chain fact is, or something
+     tucked out of sight in a pocket — an animal trotting along behind
+     someone is right there for whoever they are talking to to notice on
+     their own, the same way `where` is something a villager simply sees
+     rather than something they have to be informed of. */
+  function companion() {
+    const beast = LG.game && LG.game.beast;
+    return (beast && beast.following) ? { name: beast.name, item: beast.item } : null;
+  }
+
   /* Why they are standing here, and whether they came looking for someone.
 
      `after` used to be set when they set off and never unset, so a villager who
@@ -197,6 +208,7 @@ LG.view = (function () {
       folk: firstOf(folk(n), t.folk),
       roster: roster(n),
       errand: errand(n),
+      companion: companion(),
       /* What a villager may sell is a prior, not a list: `sells` is what they
          plainly keep and `sellsTags` is the run of the trade. `stock` is the
          separate, harder fact of what they are actually holding because they
@@ -218,5 +230,5 @@ LG.view = (function () {
   }
 
   return { of, where, open, atCounter, arrived, knows, folk, roster, ownVoice, near, sourced, held, heldEntries,
-           TRIM, SIGHT };
+           companion, TRIM, SIGHT };
 })();

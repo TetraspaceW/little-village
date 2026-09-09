@@ -920,10 +920,7 @@ LG.game = (function () {
       document.getElementById('ending').classList.remove('open');
       newVillage();
     };
-    document.getElementById('setNew').onclick = () => {
-      document.getElementById('settings').classList.remove('open');
-      newVillage();
-    };
+    document.getElementById('setNew').onclick = () => submitSettings(true);
     document.getElementById('setTtsTest').onclick = testVoices;
     document.getElementById('setForget').onclick = () => {
       LG.save.forget();
@@ -948,8 +945,9 @@ LG.game = (function () {
     document.querySelectorAll('.panel.open').forEach(p => p.classList.remove('open'));
   }
 
-  async function submitSettings() {
+  async function submitSettings(forceNewVillage) {
     const btn = document.getElementById('setSave');
+    const newBtn = document.getElementById('setNew');
     const err = document.getElementById('setError');
     const next = {
       lang: document.getElementById('setLang').value,
@@ -972,6 +970,7 @@ LG.game = (function () {
     const stamp = next.provider + '|' + next.apiKey + '|' + next.model;
     if (stamp !== lastValidated) {
       btn.disabled = true;
+      newBtn.disabled = true;
       btn.textContent = 'Checking your key…';
       try {
         await LG.llm.validate({ provider: next.provider, apiKey: next.apiKey, model: next.model });
@@ -979,10 +978,12 @@ LG.game = (function () {
       } catch (e) {
         err.textContent = e.message;
         btn.disabled = false;
+        newBtn.disabled = false;
         btn.textContent = gateMode ? 'Enter the village' : 'Save';
         return;
       }
       btn.disabled = false;
+      newBtn.disabled = false;
     }
 
     const levelChanged = next.level !== settings.level;
@@ -1014,6 +1015,8 @@ LG.game = (function () {
       document.getElementById('help').classList.add('open');
     } else if (levelChanged) {
       log('A different sort of errand, then.');
+      newVillage();
+    } else if (forceNewVillage) {
       newVillage();
     } else {
       log('The villagers now speak ' + LG.LANGUAGES[settings.lang].name + '.');

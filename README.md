@@ -51,8 +51,7 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
 - Type in the villager's own language. The **Phrases** row suggests something
   to start from; **Offer an item** holds an item out of your pockets instead
   of typing.
-- Translations can show immediately or stay blurred until clicked (⚙ →
-  settings).
+- Translations stay blurred until you click them.
 
 ## Gameplay
 
@@ -206,19 +205,14 @@ generally have to walk the chain in order.
 ## Voices (optional)
 
 Tick "let the villagers speak aloud" and add an ElevenLabs key to give each
-villager a voice, cast at load time from whatever your account has,
-matched for quality and distinctness. This is a third, independent key —
-without it, the village is silent.
+villager a voice, cast at load time from the curated ElevenLabs library and
+professional clones only, matched for quality and distinctness. This is a
+third, independent key — without it, the village is silent.
 
-- Speech is slowed by default (0.75× beginner, 0.95× advanced) for
+- Speech paces to the difficulty (0.75× beginner, 0.95× advanced) for
   intelligibility.
 - Lines play as they arrive; a new line interrupts the previous one.
   Every line keeps a 🔊 replay button.
-- **Test this key** lists the voice assigned to each villager with a preview
-  button (no credits used), and reports the exact ElevenLabs error if the key
-  is rejected — usually a missing `voices_read` permission.
-- Only curated voices are cast by default; a setting opens casting to your
-  whole account.
 
 ## Time and weather
 

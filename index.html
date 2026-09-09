@@ -164,36 +164,14 @@
         </select>
       </label>
 
-      <label class="check"><input type="checkbox" id="setTrans"> Show English translations straight away
-        <small>(off = translations are blurred until you click them)</small></label>
-      <label class="check"><input type="checkbox" id="setChatter"> Let the villagers gossip with each other</label>
       <label class="check"><input type="checkbox" id="setVoices"> Let the villagers speak aloud
         <small>(needs a separate ElevenLabs key, below)</small></label>
-
-      <label>Which voices may be cast?
-        <select id="setQuality">
-          <option value="curated">Curated only — ElevenLabs library and professional clones</option>
-          <option value="any">Any voice on the account</option>
-        </select>
-        <small>Instant voice clones vary a lot in quality; curated ones do not.</small>
-      </label>
-
-      <label>How fast should they talk?
-        <select id="setSpeed">
-          <option value="auto">Match the difficulty (slower for beginners)</option>
-          <option value="0.7">Very slow</option>
-          <option value="0.8">Slow</option>
-          <option value="0.9">Relaxed</option>
-          <option value="1">Natural</option>
-        </select>
-      </label>
 
       <label id="ttsRow">ElevenLabs key <span class="opt">optional</span>
         <input id="setTtsKey" type="password" placeholder="sk_…" autocomplete="off">
         <small>From elevenlabs.io. Each villager is cast a distinct voice from your account
-        when the village loads. Leave blank for a silent village.</small>
-        <button id="setTtsTest" class="secondary" type="button">Test this key</button>
-        <div id="ttsResult"></div>
+        when the village loads, spoken at a pace matched to the difficulty. Leave blank for
+        a silent village.</small>
       </label>
 
       <hr>

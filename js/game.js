@@ -7,7 +7,13 @@ LG.game = (function () {
   const settings = {
     lang: 'ru', level: 'beginner',
     provider: 'anthropic', apiKey: '', model: 'claude-sonnet-5', helper: '',
-    showTranslation: true, npcChatter: true,
+    /* These are no longer player-facing settings: villagers always gossip,
+       translations always start blurred (click a line to reveal it), voices
+       are always cast from the curated library, and speech always paces to
+       the difficulty. Kept as fields — other code still reads
+       settings.npcChatter etc. — but loadSettings() pins them below so an
+       old localStorage save can't reintroduce a choice. */
+    showTranslation: false, npcChatter: true,
     voices: false, ttsKey: '', voiceSpeed: 'auto', voiceQuality: 'curated'
   };
 
@@ -59,13 +65,18 @@ LG.game = (function () {
       const raw = localStorage.getItem('lg-settings');
       if (raw) Object.assign(settings, JSON.parse(raw));
     } catch (e) { /* ignore */ }
+    // No longer choices — pin them even over an old save that had them set.
+    settings.npcChatter = true;
+    settings.showTranslation = false;
+    settings.voiceQuality = 'curated';
+    settings.voiceSpeed = 'auto';
   }
   function saveSettings() {
     try { localStorage.setItem('lg-settings', JSON.stringify(settings)); } catch (e) {}
   }
   function ttsConfig() {
-    const auto = (LG.LEVELS[settings.level] || {}).speed || 0.85;
-    const speed = settings.voiceSpeed === 'auto' ? auto : Number(settings.voiceSpeed);
+    // Talking speed always matches the difficulty — not a player choice.
+    const speed = (LG.LEVELS[settings.level] || {}).speed || 0.85;
     return { key: settings.ttsKey.trim(), speed: speed,
              lang: settings.lang, curatedOnly: settings.voiceQuality === 'curated' };
   }
@@ -974,11 +985,7 @@ LG.game = (function () {
       document.getElementById('ending').classList.remove('open');
       newVillage();
     };
-    document.getElementById('setNew').onclick = () => {
-      document.getElementById('settings').classList.remove('open');
-      newVillage();
-    };
-    document.getElementById('setTtsTest').onclick = testVoices;
+    document.getElementById('setNew').onclick = () => submitSettings(true);
     document.getElementById('setForget').onclick = () => {
       LG.save.forget();
       log('\u00a4 The saved village has been forgotten. This one goes on until you start another.');
@@ -1002,8 +1009,9 @@ LG.game = (function () {
     document.querySelectorAll('.panel.open').forEach(p => p.classList.remove('open'));
   }
 
-  async function submitSettings() {
+  async function submitSettings(forceNewVillage) {
     const btn = document.getElementById('setSave');
+    const newBtn = document.getElementById('setNew');
     const err = document.getElementById('setError');
     const next = {
       lang: document.getElementById('setLang').value,
@@ -1012,12 +1020,15 @@ LG.game = (function () {
       apiKey: document.getElementById('setKey').value.trim(),
       model: readModel() || settings.model,
       helper: readHelper(),
-      showTranslation: document.getElementById('setTrans').checked,
-      npcChatter: document.getElementById('setChatter').checked,
+      // Not player choices any more: villagers always gossip, translations
+      // always start blurred, voices are always curated, and speech always
+      // paces to the difficulty.
+      showTranslation: false,
+      npcChatter: true,
       voices: document.getElementById('setVoices').checked,
       ttsKey: document.getElementById('setTtsKey').value.trim(),
-      voiceSpeed: document.getElementById('setSpeed').value,
-      voiceQuality: document.getElementById('setQuality').value
+      voiceSpeed: 'auto',
+      voiceQuality: 'curated'
     };
     err.textContent = '';
 
@@ -1025,6 +1036,7 @@ LG.game = (function () {
     const stamp = next.provider + '|' + next.apiKey + '|' + next.model;
     if (stamp !== lastValidated) {
       btn.disabled = true;
+      newBtn.disabled = true;
       btn.textContent = 'Checking your key…';
       try {
         await LG.llm.validate({ provider: next.provider, apiKey: next.apiKey, model: next.model });
@@ -1032,15 +1044,16 @@ LG.game = (function () {
       } catch (e) {
         err.textContent = e.message;
         btn.disabled = false;
+        newBtn.disabled = false;
         btn.textContent = gateMode ? 'Enter the village' : 'Save';
         return;
       }
       btn.disabled = false;
+      newBtn.disabled = false;
     }
 
     const levelChanged = next.level !== settings.level;
-    const voiceChanged = next.voices !== settings.voices || next.ttsKey !== settings.ttsKey
-                      || next.voiceQuality !== settings.voiceQuality;
+    const voiceChanged = next.voices !== settings.voices || next.ttsKey !== settings.ttsKey;
     Object.assign(settings, next);
     saveSettings();
     // whether these models will take a schema is a fact about this pair; ask again
@@ -1065,49 +1078,11 @@ LG.game = (function () {
     } else if (levelChanged) {
       log('A different sort of errand, then.');
       newVillage();
+    } else if (forceNewVillage) {
+      newVillage();
     } else {
       log('The villagers now speak ' + LG.LANGUAGES[settings.lang].name + '.');
     }
-  }
-
-  /* Try the key without leaving the settings panel, and show exactly what came
-     back — a 401 from ElevenLabs says which of key/permission/kind it was. */
-  async function testVoices() {
-    const box = document.getElementById('ttsResult');
-    const btn = document.getElementById('setTtsTest');
-    const key = document.getElementById('setTtsKey').value.trim();
-    if (!key) { box.className = 'bad'; box.textContent = 'Paste a key first.'; return; }
-    btn.disabled = true; btn.textContent = 'Asking ElevenLabs…';
-    box.className = ''; box.textContent = '';
-    const ok = await LG.tts.load({ key });
-    btn.disabled = false; btn.textContent = 'Test this key';
-    box.className = ok ? 'good' : 'bad';
-    box.textContent = '';
-    const head = document.createElement('div');
-    head.textContent = LG.tts.error;
-    box.appendChild(head);
-    if (!ok) return;
-
-    LG.NPCS.forEach(n => {
-      const id = LG.tts.voices[n.id];
-      const v = id && LG.tts.info(id);
-      const row = document.createElement('div');
-      row.className = 'castrow';
-      const play = document.createElement('button');
-      play.type = 'button';
-      play.className = 'replay';
-      play.textContent = '▶';
-      play.title = 'Hear this voice';
-      play.disabled = !(v && (v.preview_url || v.previewUrl));
-      play.onclick = () => LG.tts.preview(id);
-      row.appendChild(play);
-      const who = document.createElement('span');
-      who.innerHTML = '<b>' + n.name + '</b> — ' +
-        escapeHTML((v && v.name) || id || 'no voice') +
-        (v && v.category ? ' <i>(' + escapeHTML(v.category) + ')</i>' : '');
-      row.appendChild(who);
-      box.appendChild(row);
-    });
   }
 
   /* Casting the villagers takes one request; do it while the player is reading
@@ -1143,12 +1118,8 @@ LG.game = (function () {
       note.textContent = fromEnv ? 'filled from .env — type over it to change it for this session' : '';
       note.style.display = fromEnv ? '' : 'none';
     }
-    document.getElementById('setTrans').checked = settings.showTranslation;
-    document.getElementById('setChatter').checked = settings.npcChatter;
     document.getElementById('setVoices').checked = settings.voices;
     document.getElementById('setTtsKey').value = settings.ttsKey;
-    document.getElementById('setSpeed').value = settings.voiceSpeed;
-    document.getElementById('setQuality').value = settings.voiceQuality;
     refreshModelList();
     refreshHelperList();
     showSaveNote();

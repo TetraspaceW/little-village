@@ -109,8 +109,12 @@ LG.game = (function () {
     if (!state.inv[id]) delete state.inv[id];
     renderHUD();
   }
-  function inventoryList() {
-    const ks = Object.keys(state.inv).filter(k => state.inv[k] > 0);
+  /* `exclude` leaves an item out of the reading entirely — for the one item
+     that is not really in a pocket: a caught animal that is following at
+     the traveller's heels, not carried, and said so separately — see
+     LG.view.companion. */
+  function inventoryList(exclude) {
+    const ks = Object.keys(state.inv).filter(k => state.inv[k] > 0 && k !== exclude);
     if (!ks.length) return '';
     // read only by the villager's prompt, so it names things the way the rest
     // of that prompt does — see LG.itemSaid
@@ -1818,7 +1822,9 @@ LG.game = (function () {
         }
       } else {
         A.wander(beast, dt, beast.home, 26);
-        if (!beast.caught && !uiBlocked() && dist(player, beast) < TILE * 0.8) catchBeast();
+        // Catching it is deliberate — see interact()/tapPick — so merely
+        // walking within arm's reach must not scoop it up on its own. An
+        // animal is not a dropped coin; the hint text already says press E.
       }
     }
     if (worldItem && !worldItem.taken && !uiBlocked() && dist(player, worldItem) < TILE * 0.7) pickUp();

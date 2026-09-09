@@ -251,6 +251,10 @@ LG.actors = (function () {
       ctx.fillStyle = 'rgba(253,246,232,.55)';
       ctx.beginPath(); ctx.arc(x, y + bob, 15, 0, Math.PI * 2); ctx.fill();
 
+      // fillText draws an emoji at whatever alpha fillStyle last carried, not
+      // just its color — left at the halo's .55 (or the shadow's .22 before
+      // that), the animal itself came out translucent. Full alpha, opaque.
+      ctx.fillStyle = '#000';
       ctx.font = '30px system-ui'; ctx.textAlign = 'center';
       ctx.fillText(a.emoji, x, y + 11 + bob);
       if (opts && opts.name) {

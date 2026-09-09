@@ -39,8 +39,24 @@ LG.game = (function () {
     return k === 'e' || k === ' ' || k === 'spacebar';
   }
   function isCancel(e) { return e.code === 'Escape' || e.key === 'Escape'; }
+  function isShift(e) { return e.code === 'ShiftLeft' || e.code === 'ShiftRight' || e.key === 'Shift'; }
 
-  const held = { up: false, down: false, left: false, right: false };
+  const held = { up: false, down: false, left: false, right: false, run: false };
+  /* Running is two switches, not one, because the two devices that flip it
+     work differently. Shift is a hold — it reports itself every frame through
+     `held.run`, same as a direction key, and lets go the instant you do. A
+     phone has no key to hold without covering the stick with the same thumb
+     that is steering it, so a double-tap instead flips `runToggle`, a latch
+     that stays run until something turns it off again — a second double-tap,
+     or the button below doing the same job with a click. */
+  let runToggle = false;
+  function running() { return held.run || runToggle; }
+  function toggleRun() {
+    runToggle = !runToggle;
+    aside(runToggle ? 'Running — double-tap or the button to stop.' : 'Walking again.');
+    const btn = document.getElementById('btnRun');
+    if (btn) btn.classList.toggle('active', runToggle);
+  }
   /* Arm's length. Three things were separately writing TILE * 1.6 and one of
      them said in a comment that it matched the other two: who counts as
      "nearby" for the hint and the E key, how close a villager chasing you has
@@ -868,12 +884,14 @@ LG.game = (function () {
       const dir = moveDir(e);
       if (dir) { held[dir] = true; if (e.code !== 'KeyW' && e.code !== 'KeyA' &&
                  e.code !== 'KeyS' && e.code !== 'KeyD') e.preventDefault(); }
+      if (isShift(e)) held.run = true;
       if (isInteract(e)) { e.preventDefault(); interact(); }
       if (isCancel(e)) closePanels();
     });
     window.addEventListener('keyup', e => {
       const dir = moveDir(e);
       if (dir) held[dir] = false;
+      if (isShift(e)) held.run = false;
     });
     window.addEventListener('blur', () => { for (const k in held) held[k] = false; });
 
@@ -898,7 +916,7 @@ LG.game = (function () {
       const p = toWorld(e);
       canvas.style.cursor = (!uiBlocked() && W.overSign(p.x, p.y)) ? 'pointer' : 'default';
     });
-    LG.touch.init(canvas, { blocked: uiBlocked, tap: tapAt });
+    LG.touch.init(canvas, { blocked: uiBlocked, tap: tapAt, doubleTap: toggleRun });
 
     /* The two boxes in the corners are most of a phone's screen. Their
        headings fold them away, so the village underneath can be walked
@@ -908,6 +926,7 @@ LG.game = (function () {
     });
 
     document.getElementById('btnSettings').onclick = () => openSettings(false);
+    document.getElementById('btnRun').onclick = () => { if (!uiBlocked()) toggleRun(); };
     document.getElementById('btnHelp').onclick = () =>
       document.getElementById('help').classList.toggle('open');
     document.getElementById('helpClose').onclick = () =>
@@ -1661,12 +1680,15 @@ LG.game = (function () {
   }
 
   /* ---------------------------------------------------------------- loop */
+  const WALK_SPEED = 132, RUN_SPEED = 210;
   /* Keys and the joystick add into the same pair of numbers, so a bluetooth
      keyboard next to a touchscreen is not a mode you have to be in. The keys
      are digital — each one is a whole 1 — and the stick is not: its length is
      already how hard you are leaning. Normalising only when the total runs
      past 1 keeps diagonals on the keyboard exactly as fast as they were while
-     leaving a half-pushed stick at half speed. */
+     leaving a half-pushed stick at half speed. Running scales the same
+     ceiling either way, rather than adding a second axis of speed the stick
+     would have to lean into on its own. */
   function movePlayer(dt) {
     if (uiBlocked()) return;
     let dx = 0, dy = 0;
@@ -1679,7 +1701,7 @@ LG.game = (function () {
     const len = Math.hypot(dx, dy);
     if (!len) return;
     const scale = len > 1 ? 1 / len : 1;
-    const speed = 132;
+    const speed = running() ? RUN_SPEED : WALK_SPEED;
     const nx = player.px + dx * scale * speed * dt;
     const ny = player.py + dy * scale * speed * dt;
     if (canStand(nx, player.py)) player.px = nx;

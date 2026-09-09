@@ -14,8 +14,7 @@ LG.game = (function () {
        settings.npcChatter etc. — but loadSettings() pins them below so an
        old localStorage save can't reintroduce a choice. */
     showTranslation: false, npcChatter: true,
-    voices: false, ttsKey: '', voiceSpeed: 'auto', voiceQuality: 'curated',
-    dayMinutes: 6
+    voices: false, ttsKey: '', voiceSpeed: 'auto', voiceQuality: 'curated'
   };
 
   // No key, no village. `gated` freezes input until the front door is passed.
@@ -245,7 +244,7 @@ LG.game = (function () {
                escapeHTML(gloss) + '</span></div>';
       }));
     nb.innerHTML = rows.length ? rows.join('')
-      : '<div class="q muted">Nothing yet. Ask around — somebody here wants something.</div>';
+      : '<div class="q muted">Nothing yet. Try asking around!</div>';
     Array.prototype.forEach.call(nb.querySelectorAll('.gloss.hidden-tr'), el => {
       el.onclick = () => el.classList.remove('hidden-tr');
     });
@@ -542,7 +541,6 @@ LG.game = (function () {
     ctx = canvas.getContext('2d');
     W.build();
 
-    LG.time.dayLength = Math.max(1, Number(settings.dayMinutes) || 6) * 60 * 1000;
     /* A village you have already been to comes back as it was; only a first
        arrival is rolled. `resume` puts the local copy back at once and asks the
        log server for its own in the background, so a missing or slow server
@@ -678,7 +676,6 @@ LG.game = (function () {
       worldItem = { item: t.item, px: spot.x * TILE + TILE / 2, py: spot.y * TILE + TILE / 2, taken: false };
     }
 
-    document.getElementById('seed').textContent = plan.seed;
     renderHUD();
     logLines.length = 0;
     log(quiet ? (LG.touch.on
@@ -783,13 +780,31 @@ LG.game = (function () {
      smaller than this is furniture on top of the keyboard rather than the
      keyboard itself. */
   const KB_ROW = 96;
+  /* How long a recovery that is not the keyboard fully closing has to hold
+     before it is believed. A suggestion strip's whole cycle — commit a word,
+     the strip goes, the next word starts, it is back — happens well inside
+     this, so an ordinary bounce while typing never reaches it. What it
+     actually catches is the keyboard's own opening animation: visualViewport
+     is documented to report mid-flight readings for that which can overshoot
+     past where the keyboard actually comes to rest, dipping lower than the
+     settled height before climbing back to it. Without this, a card that
+     latched onto one of those on the way down never got the room back for
+     the rest of the conversation — held a keystroke's worth of paper short
+     of what the keyboard had actually left it. */
+  const GROW_MS = 220;
   let fullH = 0, fullW = 0;   // the tallest this window has been at this width
   let heldH = 0;              // the height the overlays are being laid out to
   let kbUp = false;           // is a keyboard over the page right now
+  let growTimer = null;       // a taller reading waiting to see if it sticks
+  let growTo = 0;             // what it is waiting to become
 
   function typingBox() {
     const a = document.activeElement;
     return !!a && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT');
+  }
+
+  function cancelGrow() {
+    if (growTimer !== null) { clearTimeout(growTimer); growTimer = null; }
   }
 
   /* A Japanese flick keyboard is not one height. The suggestion strip appears
@@ -814,13 +829,33 @@ LG.game = (function () {
      bottom the way it was when the layout itself was keyed off focus.
 
      Only under a finger: a desktop window that is resized while somebody is
-     typing into the settings panel should be believed straight away. */
+     typing into the settings panel should be believed straight away.
+
+     A recovery that is not that — taller than what is held, but nowhere near
+     fullH — is treated the same way as the strip itself: not believed at
+     once, in case it is the keyboard's own animation overshooting on its way
+     to rest rather than actually settling there. It only gets GROW_MS to
+     prove itself before another look is taken for real, which is nowhere
+     near long enough for a person to notice as a delay but is comfortably
+     longer than one animation's worth of overshoot correcting itself. */
   function heightForOverlays(raw, w) {
-    if (w !== fullW) { fullW = w; fullH = 0; heldH = 0; }   // the phone turned
+    if (w !== fullW) { fullW = w; fullH = 0; heldH = 0; cancelGrow(); }   // the phone turned
     if (raw > fullH) fullH = raw;
     kbUp = fullH > 0 && fullH - raw > KB_ROW;
-    if (!(kbUp && LG.touch.on && typingBox())) { heldH = 0; return raw; }
-    if (!heldH || raw < heldH) heldH = raw;
+    if (!(kbUp && LG.touch.on && typingBox())) { heldH = 0; cancelGrow(); return raw; }
+    if (!heldH || raw <= heldH) {
+      heldH = raw;
+      cancelGrow();
+    } else if (growTimer === null || raw !== growTo) {
+      cancelGrow();
+      growTo = raw;
+      growTimer = setTimeout(() => {
+        growTimer = null;
+        const vv = window.visualViewport;
+        const nowRaw = vv ? vv.height : (window.innerHeight || 0);
+        if (kbUp && nowRaw === growTo) { heldH = growTo; measureViewport(); }
+      }, GROW_MS);
+    }
     return heldH;
   }
 
@@ -862,6 +897,20 @@ LG.game = (function () {
       }
     }
   }
+  /* Firefox on Android has been seen to leave visualViewport.height reporting
+     the pre-keyboard figure for a beat after a text box takes focus and the
+     keyboard is visibly up on screen, only correcting itself later — on a
+     scroll, or some other nudge — rather than with a resize event of its own.
+     The keyboard finishing its own slide into place is then not the moment
+     the card catches up; some later, unrelated event is, and the card jumps
+     to where it should already have been. A few extra looks after a text box
+     takes focus catch that correction even when nothing ever fires one, so
+     the card is late by a few hundred milliseconds instead of by however long
+     it takes something else to nudge the browser into noticing. Harmless
+     where the browser was not late in the first place: a look that finds
+     nothing changed writes the same numbers back. */
+  const FOCUS_RECHECK_MS = [80, 220, 450];
+
   function trackViewport() {
     const vv = window.visualViewport;
     if (vv && vv.addEventListener) {
@@ -869,6 +918,11 @@ LG.game = (function () {
       vv.addEventListener('scroll', measureViewport);
     }
     window.addEventListener('resize', measureViewport);
+    document.addEventListener('focusin', e => {
+      const t = e.target;
+      if (!LG.touch.on || !t || (t.tagName !== 'TEXTAREA' && t.tagName !== 'INPUT')) return;
+      FOCUS_RECHECK_MS.forEach(ms => setTimeout(measureViewport, ms));
+    });
     measureViewport();
   }
 
@@ -974,8 +1028,7 @@ LG.game = (function () {
       voices: document.getElementById('setVoices').checked,
       ttsKey: document.getElementById('setTtsKey').value.trim(),
       voiceSpeed: 'auto',
-      voiceQuality: 'curated',
-      dayMinutes: Number(document.getElementById('setDayLength').value) || 6
+      voiceQuality: 'curated'
     };
     err.textContent = '';
 
@@ -1000,9 +1053,6 @@ LG.game = (function () {
     }
 
     const levelChanged = next.level !== settings.level;
-    if (next.dayMinutes !== settings.dayMinutes) {
-      LG.time.dayLength = Math.max(1, next.dayMinutes) * 60 * 1000;
-    }
     const voiceChanged = next.voices !== settings.voices || next.ttsKey !== settings.ttsKey;
     Object.assign(settings, next);
     saveSettings();
@@ -1070,7 +1120,6 @@ LG.game = (function () {
     }
     document.getElementById('setVoices').checked = settings.voices;
     document.getElementById('setTtsKey').value = settings.ttsKey;
-    document.getElementById('setDayLength').value = String(settings.dayMinutes || 6);
     refreshModelList();
     refreshHelperList();
     showSaveNote();
@@ -1707,7 +1756,10 @@ LG.game = (function () {
 
   function update(dt) {
     if (saving()) LG.save.tick(dt);
-    if (LG.time.tick(dt)) log('🗓 ' + LG.time.season().name + ', day ' + LG.time.dayOfSeason() + '.');
+    // Time stands still mid-conversation — a chat that runs long shouldn't
+    // cost the village an hour of daylight, or roll the weather over underneath it.
+    if (!LG.dialogue.isOpen() && LG.time.tick(dt))
+      log('🗓 ' + LG.time.season().name + ', day ' + LG.time.dayOfSeason() + '.');
     const el = document.getElementById('clock');
     if (el) el.textContent = LG.time.label();
 

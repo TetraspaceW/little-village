@@ -25,7 +25,6 @@ LG.llm = (function () {
       { id: "anthropic/claude-sonnet-5", label: "Claude Sonnet 5" }, // ant
       { id: "z-ai/glm-5.3-flash", label: "GLM-5.3 Flash" }, // z-ai
       { id: "google/gemini-3.8-flash", label: "Gemini 3.8 Flash" }, // google
-      { id: "x-ai/grok-4.6", label: "Grok 4.6" }, // x-ai
     ],
     logfare: [{ id: LOGFARE_MODEL, label: "Auto" }],
   };
@@ -1110,27 +1109,36 @@ LG.llm = (function () {
          interruption, and the village spent its days telling each other to go
          home. They are where they chose to be, for the reason they chose it. */
       o.here ? "You are " + o.here + "." : null,
+      /* Not a stranger arriving with a job title pinned on: the two of you
+         have lived in this village for years, so whatever o.them is like is
+         already known going in, the same as their name and trade — see the
+         roster note below. Only o.them's business today (`errand`, whatever
+         it turns out to be) is actually news. */
       o.sought
         ? "You came looking for " +
           o.them.name +
           ", " +
           o.them.job +
+          (o.them.persona ? ". " + o.them.persona : "") +
           "." +
           (o.errand ? " What brought you: " + o.errand + "." : "")
         : o.errand
           ? "What brought you here: " + o.errand + "."
           : null,
-      o.sought ? null : o.them.name + ", " + o.them.job + ", is here too.",
+      o.sought
+        ? null
+        : o.them.name + ", " + o.them.job + ", is here too." +
+          (o.them.persona ? " " + o.them.persona : ""),
       o.when || null,
       "",
       /* Everyone else in the village is somebody both of you already know by
-         name and trade — that is the same background a villager gets talking
-         to the traveller, and here it is what lets a third party come up by
-         name ("Tomas has one of those") without it reading as a name pulled
-         from nowhere. */
+         name, trade, and character — that is the same background a villager
+         gets talking to the traveller, and here it is what lets a third
+         party come up by name ("Tomas has one of those, he never lends a
+         thing out") without it reading as a name pulled from nowhere. */
       o.me.roster && o.me.roster.length
-        ? "Everyone else in the village, by name and trade:\n" +
-          o.me.roster.map((r) => "- " + r.name + " — " + r.job).join("\n")
+        ? "Everyone else in the village:\n" +
+          o.me.roster.map((r) => "- " + r.name + " — " + r.job + ". " + r.persona).join("\n")
         : null,
       "",
       // the same one dated list the other two calls get
@@ -1182,10 +1190,20 @@ LG.llm = (function () {
          about — naming the failure mode here would put English stage directions
          in the model's context. Measured on toki pona chatter, 298 prompts,
          haiku, two runs against two baselines: English words inside asterisks
-         349/313 -> 128/98, while the asterisks themselves went up by half. */
-      "Whatever you are doing while you speak — a glance, a shrug, flour wiped off your hands — belongs in " +
-        o.langName +
-        " like everything else you say.",
+         349/313 -> 128/98, while the asterisks themselves went up by half.
+
+         That measurement is the whole warrant for the line, and it is a toki
+         pona measurement — so `stageInLang` carries it only there (see
+         data.js), and the other eight languages are told nothing about their
+         stage business rather than handed a rule on evidence nobody has
+         gathered for them. A line in a prompt is never free: it spends context
+         and it steers, and steering a language nobody has counted the leak in
+         is a guess. Count it there and set the flag if it earns one. */
+      o.stageInLang
+        ? "Whatever you are doing while you speak — a glance, a shrug, flour wiped off your hands — belongs in " +
+          o.langName +
+          " like everything else you say."
+        : null,
       o.grammarNote ? "In " + o.langName + ", " + o.grammarNote : null,
       o.furigana ? 'Put the furigana in "say".\n' + LG.FURIGANA : null,
       o.diacritics

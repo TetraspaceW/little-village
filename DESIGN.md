@@ -578,6 +578,16 @@ would be a second answer again, restored from a file.
 A spent lead is struck through rather than deleted, wherever it came from: a line that
 vanishes reads as a bug, and you lose the record of who told you.
 
+**And a note only ever means one fact, even arriving from a file.** The guarantee
+above — one note per fact, at most — is enforced by `learn` refusing a second write
+once `hasNote` says there is already one. That is a guard on one function, not a
+property of `state.notes` itself, and a save file reaches the notebook by a different
+door: `restore` used to check only that a note's fact still existed and take the rest
+of the file on faith. A save naming the same fact twice — hand-edited, or some future
+bug — would have loaded both, and the one-note-per-fact guarantee would have quietly
+stopped being true for the rest of that session without anything saying so. Restoring
+now keeps the same rule `learn` does: first occurrence wins.
+
 ## A name is a fact too, and it works the same way
 
 The game used to know everyone's name from the moment their sprite loaded, which made
@@ -641,6 +651,19 @@ only a villager's own testimony about themselves, so a name surfacing in someone
 else's speech does not put it on screen. What changed is only what a villager is
 allowed to already know about their own neighbours, not what the player is handed
 for free.
+
+**The roster carries persona too, now.** Name and trade stopping short of character
+was the same mistake in miniature: Petra had run around this village her whole life
+and still had nothing to say about Yuri beyond his job, because persona lived only on
+a villager's own entry, read solely to voice their own lines. Two people who have
+shared a village for years know what the other is like the same way they know their
+trade — Petra knows Yuri answers everything with a question about fish whether or not
+she has ever personally sat through it. So the roster's `persona` field, and the
+description each half of a villager-to-villager conversation gets of the other, now
+carry it. The line held is the same one as above: character is what years of
+unsimulated small talk would obviously have settled, and it does not move — whether
+Tomas has sold his hammer yet is news, still has to reach them the way it always did,
+and still costs nothing to say if it never comes up.
 
 ## There is no gossip mechanic
 
@@ -1082,11 +1105,34 @@ than a row shorter than the tallest it has been at this width; turning the phone
 starts that measurement again. Focus is allowed to say *still typing* and
 nothing else: letting go of the box drops straight back to the real
 measurement, which is still the short one, so the trap in the paragraph above
-is not reopened. A gain bigger than a row is the keyboard actually going away
-and is believed at once — including by the blur that finally lets the box go,
-which a suggestion strip can no longer trip on its way past. Only under a
-finger; a desktop window resized while somebody is typing into the settings
-panel should be believed immediately.
+is not reopened. A gain that reaches all the way back to the tallest height is
+the keyboard actually going away and is believed at once — including by the
+blur that finally lets the box go, which a suggestion strip can no longer trip
+on its way past. Only under a finger; a desktop window resized while somebody
+is typing into the settings panel should be believed immediately.
+
+A gain that does *not* reach all the way back — taller than what is held, but
+the keyboard is still plainly up — is not believed at once either
+(`GROW_MS`, 220 milliseconds). `visualViewport` is documented to report the
+keyboard's own opening animation dipping past its resting height before
+climbing back to it, and without this a card that latched onto one of those
+dips on the way down kept it for the rest of the conversation: a keystroke's
+worth of paper short of what the keyboard had actually left it, with no way
+back short of the keys going away entirely. A suggestion strip's whole cycle
+happens well inside `GROW_MS`, so ordinary typing keeps cancelling the wait
+and re-holding to whatever it dipped to; only a reading that has genuinely
+stopped moving gets believed, a beat later than the moment it first showed up.
+
+Firefox on Android has also been seen not to fire a `visualViewport` resize at
+all for a beat after the keyboard is visibly up — correcting itself later, on
+a scroll or some other unrelated nudge, rather than on its own. Nothing here
+can make the keyboard's own animation smoother than the browser reports it,
+but a text box taking focus schedules a few extra looks over the following
+half second regardless of whether anything actually fired an event, so a
+correction Firefox was going to make eventually is not waiting on the player
+to do something else first — costing nothing when the browser was not late in
+the first place, since a look that finds nothing changed writes back the
+numbers already there.
 
 **The message box had never had the font it was written for.** `font: 16px/1.4
 inherit` is not a font shorthand — `inherit` is only legal there as the whole

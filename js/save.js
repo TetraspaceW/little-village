@@ -306,7 +306,17 @@ LG.save = (function () {
 
     const st = g.state;
     st.inv = Object.assign({}, data.inventory);
-    st.notes = (data.notes || []).filter(n => g.plan.facts[n.id])
+    /* A note only ever means one thing about one fact — the same guarantee
+       `learn` enforces on the live path, by refusing a second write once
+       `hasNote` says there is already one (see game.js). A save file is the
+       one way around that guard: nothing stops it, hand-edited or produced
+       by some bug this version doesn't have yet, from naming the same fact
+       id twice. Restoring re-establishes the guarantee rather than trusting
+       the file's own shape — first occurrence wins, the same as it would
+       arriving in play. */
+    const noted = new Set();
+    st.notes = (data.notes || [])
+      .filter(n => g.plan.facts[n.id] && !noted.has(n.id) && noted.add(n.id))
       .map(n => ({ id: n.id, text: n.text, ruby: n.ruby || null }));
     st.deeds = (data.deeds || []).slice();
     st.board = (data.board || []).map(b => ({

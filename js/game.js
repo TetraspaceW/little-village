@@ -25,6 +25,10 @@ LG.game = (function () {
 
   let plan = null;                 // the generated errand chain (chain.js)
   let canvas, ctx, cam = { x: 0, y: 0 }, vw = 0, vh = 0, dpr = 1;
+  /* The vignette is the same gradient every frame — only vw/vh (which change
+     only on resize) feed it. Built once here and rebuilt in resize() instead
+     of by createRadialGradient() on every tick. */
+  let vignette = null;
   let player, npcs = [], beast = null, worldItem = null;
   let whereFact = null;             // the fact saying where the world thing is lying
   let chainNeeds = {};              // items the errand cannot be finished without
@@ -717,6 +721,11 @@ LG.game = (function () {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.imageSmoothingEnabled = false;
     readInsets();       // a phone that turned has swapped notch for home bar
+
+    vignette = ctx.createRadialGradient(vw / 2, vh / 2, Math.min(vw, vh) * 0.42,
+                                         vw / 2, vh / 2, Math.max(vw, vh) * 0.75);
+    vignette.addColorStop(0, 'rgba(0,0,0,0)');
+    vignette.addColorStop(1, 'rgba(20,14,8,.30)');
   }
 
   /* ------------------------------------------------- what you can see of it
@@ -1945,11 +1954,7 @@ LG.game = (function () {
     ctx.restore();
     LG.sky.draw(ctx, vw, vh, W.roofRects(cam, vw, vh, dpr), dpr);
 
-    const g = ctx.createRadialGradient(vw / 2, vh / 2, Math.min(vw, vh) * 0.42,
-                                       vw / 2, vh / 2, Math.max(vw, vh) * 0.75);
-    g.addColorStop(0, 'rgba(0,0,0,0)');
-    g.addColorStop(1, 'rgba(20,14,8,.30)');
-    ctx.fillStyle = g;
+    ctx.fillStyle = vignette;
     ctx.fillRect(0, 0, vw, vh);
 
     // On top of the weather and the vignette: it is a control, not scenery.

@@ -25,6 +25,20 @@ LG.game = (function () {
 
   let plan = null;                 // the generated errand chain (chain.js)
   let canvas, ctx, cam = { x: 0, y: 0 }, vw = 0, vh = 0, dpr = 1;
+  /* The vignette is the same gradient every frame — only vw/vh (which change
+     only on resize) feed it. Built once here and rebuilt in resize() instead
+     of by createRadialGradient() on every tick. */
+  let vignette = null;
+
+  /* The ground, the buildings and the signs do not bob or blow in the wind —
+     they only look different when the camera has moved to a new spot, the
+     player has crossed into or out of a roof, the snow has settled another
+     notch, or a sign's language changed. Everything else about a frame
+     (characters breathing, weather, the vignette) still redraws every tick;
+     this layer alone is painted once into a canvas of its own and reused
+     — a plain blit — until one of those five things actually changes. */
+  let groundCanvas = null, groundCtx = null;
+  const groundSeen = { camX: NaN, camY: NaN, roomX: NaN, roomY: NaN, snow: -1, lang: '', trans: false };
   let player, npcs = [], beast = null, worldItem = null;
   let whereFact = null;             // the fact saying where the world thing is lying
   let chainNeeds = {};              // items the errand cannot be finished without
@@ -713,6 +727,18 @@ LG.game = (function () {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.imageSmoothingEnabled = false;
     readInsets();       // a phone that turned has swapped notch for home bar
+
+    vignette = ctx.createRadialGradient(vw / 2, vh / 2, Math.min(vw, vh) * 0.42,
+                                         vw / 2, vh / 2, Math.max(vw, vh) * 0.75);
+    vignette.addColorStop(0, 'rgba(0,0,0,0)');
+    vignette.addColorStop(1, 'rgba(20,14,8,.30)');
+
+    if (!groundCanvas) groundCanvas = document.createElement('canvas');
+    groundCanvas.width = vw * dpr; groundCanvas.height = vh * dpr;
+    groundCtx = groundCanvas.getContext('2d');
+    groundCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    groundCtx.imageSmoothingEnabled = false;
+    groundSeen.camX = NaN;               // a resized canvas has nothing painted on it yet
   }
 
   /* ------------------------------------------------- what you can see of it
@@ -1890,23 +1916,57 @@ LG.game = (function () {
     ctx.fillText(LG.ITEMS[worldItem.item].icon, worldItem.px, worldItem.py + 4 + bob);
   }
 
+  /* The camera offset is rounded to whole *device* pixels, not CSS pixels:
+     the canvas is scaled by dpr, so at a fractional dpr (125%/150% display
+     scaling is common) a camera offset that is merely a whole CSS pixel can
+     still land tile edges on a fractional device pixel. Adjacent ground
+     tiles then each get their own antialiased edge instead of sharing one
+     crisp seam, which prints the tile grid as a lattice of faint lines over
+     the terrain. Both draw() and paintGroundLayer() round the same way, so
+     the blitted layer lines up with where the live translate would have put it. */
+  function roundedCam() {
+    return { x: Math.round(cam.x * dpr) / dpr, y: Math.round(cam.y * dpr) / dpr };
+  }
+
+  function paintGroundLayer(room) {
+    const g = groundCtx, c = roundedCam();
+    g.fillStyle = '#3f6b3a';
+    g.fillRect(0, 0, vw, vh);
+    g.save();
+    g.translate(-c.x, -c.y);
+    W.drawGround(g, cam, vw, vh, dpr);
+    W.drawBuildings(g, room, cam, vw, vh);
+    W.drawSigns(g, cam, vw, vh, settings.lang, settings.showTranslation, dpr);
+    g.restore();
+  }
+
+  /* Repaints the cached ground layer only when something it actually shows
+     has changed — the camera lands somewhere new, the player crosses into or
+     out of a roof, the snow settles another notch (bucketed the same way
+     world.js buckets it — see readSnow() there), or a sign's language or
+     reveal state changes. Otherwise draw() just blits what is already there. */
+  function refreshGroundLayer(room) {
+    const c = roundedCam();
+    const snow = Math.round((LG.time && typeof LG.time.snow === 'number' ? LG.time.snow : 0) * 400);
+    const roomX = room ? room.x : -1, roomY = room ? room.y : -1;
+    if (c.x === groundSeen.camX && c.y === groundSeen.camY &&
+        roomX === groundSeen.roomX && roomY === groundSeen.roomY &&
+        snow === groundSeen.snow && settings.lang === groundSeen.lang &&
+        settings.showTranslation === groundSeen.trans) return;
+    groundSeen.camX = c.x; groundSeen.camY = c.y; groundSeen.roomX = roomX; groundSeen.roomY = roomY;
+    groundSeen.snow = snow; groundSeen.lang = settings.lang; groundSeen.trans = settings.showTranslation;
+    paintGroundLayer(room);
+  }
+
   function draw() {
-    ctx.fillStyle = '#3f6b3a';
-    ctx.fillRect(0, 0, vw, vh);
-    ctx.save();
-    /* Rounded to whole *device* pixels, not CSS pixels: the canvas is scaled by
-       dpr, so at a fractional dpr (125%/150% display scaling is common) a
-       camera offset that is merely a whole CSS pixel can still land tile edges
-       on a fractional device pixel. Adjacent ground tiles then each get their
-       own antialiased edge instead of sharing one crisp seam, which prints the
-       tile grid as a lattice of faint lines over the terrain. */
-    ctx.translate(-Math.round(cam.x * dpr) / dpr, -Math.round(cam.y * dpr) / dpr);
-
     const room = W.buildingUnder(player);
+    refreshGroundLayer(room);
+    ctx.drawImage(groundCanvas, 0, 0, vw, vh);
 
-    W.drawGround(ctx, cam, vw, vh, dpr);
-    W.drawBuildings(ctx, room, cam, vw, vh);
-    W.drawSigns(ctx, cam, vw, vh, settings.lang, settings.showTranslation, dpr);
+    ctx.save();
+    const c = roundedCam();
+    ctx.translate(-c.x, -c.y);
+
     drawWorldItem();
 
     /* A villager under a roof is out of sight. You can see into the room you are
@@ -1942,11 +2002,7 @@ LG.game = (function () {
     ctx.restore();
     LG.sky.draw(ctx, vw, vh, W.roofRects(cam, vw, vh, dpr), dpr);
 
-    const g = ctx.createRadialGradient(vw / 2, vh / 2, Math.min(vw, vh) * 0.42,
-                                       vw / 2, vh / 2, Math.max(vw, vh) * 0.75);
-    g.addColorStop(0, 'rgba(0,0,0,0)');
-    g.addColorStop(1, 'rgba(20,14,8,.30)');
-    ctx.fillStyle = g;
+    ctx.fillStyle = vignette;
     ctx.fillRect(0, 0, vw, vh);
 
     // On top of the weather and the vignette: it is a control, not scenery.

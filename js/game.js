@@ -5,7 +5,7 @@ LG.game = (function () {
   const W = LG.world, A = LG.actors, TILE = 32;
 
   const settings = {
-    lang: 'ru', level: 'beginner',
+    lang: 'ru', level: 'beginner', autorun: false,
     provider: 'anthropic', apiKey: '', model: 'claude-sonnet-5', helper: '',
     /* These are no longer player-facing settings: villagers always gossip,
        translations always start blurred (click a line to reveal it), voices
@@ -47,21 +47,17 @@ LG.game = (function () {
   function isShift(e) { return e.code === 'ShiftLeft' || e.code === 'ShiftRight' || e.key === 'Shift'; }
 
   const held = { up: false, down: false, left: false, right: false, run: false };
-  /* Running is two switches, not one, because the two devices that flip it
-     work differently. Shift is a hold — it reports itself every frame through
-     `held.run`, same as a direction key, and lets go the instant you do. A
-     phone has no key to hold without covering the stick with the same thumb
-     that is steering it, so a double-tap instead flips `runToggle`, a latch
-     that stays run until something turns it off again — a second double-tap,
-     or the button below doing the same job with a click. */
-  let runToggle = false;
-  function running() { return held.run || runToggle; }
-  function toggleRun() {
-    runToggle = !runToggle;
-    aside(runToggle ? 'Running — double-tap or the button to stop.' : 'Walking again.');
-    const btn = document.getElementById('btnRun');
-    if (btn) btn.classList.toggle('active', runToggle);
-  }
+  /* Running is a hold either way, just held with different hands. Shift
+     reports itself every frame through `held.run`, same as a direction key,
+     and lets go the instant you do. A phone has no key to hold without
+     covering the stick with the same thumb that is steering it, so touch
+     gets its own hold instead: double-tap the ground and keep the second
+     finger down. That gesture lives entirely in LG.touch — it already tracks
+     every finger — and is polled the same way, through `runHeld`. Settings
+     adds a third, unconditional way in: `autorun` skips the gesture rather
+     than replacing it, so Shift and a double-tap still work under it as
+     the same nothing-more they already were. */
+  function running() { return settings.autorun || held.run || LG.touch.runHeld; }
   /* Arm's length. Three things were separately writing TILE * 1.6 and one of
      them said in a comment that it matched the other two: who counts as
      "nearby" for the hint and the E key, how close a villager chasing you has
@@ -985,7 +981,7 @@ LG.game = (function () {
       const p = toWorld(e);
       canvas.style.cursor = (!uiBlocked() && W.overSign(p.x, p.y)) ? 'pointer' : 'default';
     });
-    LG.touch.init(canvas, { blocked: uiBlocked, tap: tapAt, doubleTap: toggleRun });
+    LG.touch.init(canvas, { blocked: uiBlocked, tap: tapAt });
 
     /* The two boxes in the corners are most of a phone's screen. Their
        headings fold them away, so the village underneath can be walked
@@ -995,7 +991,6 @@ LG.game = (function () {
     });
 
     document.getElementById('btnSettings').onclick = () => openSettings(false);
-    document.getElementById('btnRun').onclick = () => { if (!uiBlocked()) toggleRun(); };
     document.getElementById('btnHelp').onclick = () =>
       document.getElementById('help').classList.toggle('open');
     document.getElementById('helpClose').onclick = () =>
@@ -1039,6 +1034,7 @@ LG.game = (function () {
     const next = {
       lang: document.getElementById('setLang').value,
       level: document.getElementById('setLevel').value,
+      autorun: document.getElementById('setAutorun').checked,
       provider: document.getElementById('setProvider').value,
       apiKey: document.getElementById('setKey').value.trim(),
       model: readModel() || settings.model,
@@ -1133,6 +1129,7 @@ LG.game = (function () {
     document.getElementById('setError').textContent = '';
     document.getElementById('setLang').value = settings.lang;
     document.getElementById('setLevel').value = settings.level;
+    document.getElementById('setAutorun').checked = settings.autorun;
     document.getElementById('setProvider').value = settings.provider;
     document.getElementById('setKey').value = settings.apiKey;
     // where the key came from, so a field you did not fill in is not a mystery

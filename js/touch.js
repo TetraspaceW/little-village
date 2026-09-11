@@ -6,6 +6,7 @@
 
      put a finger down and drag  — a joystick appears where you put it
      put a finger down and lift  — a tap, aimed at whatever is under it
+     tap, then land again and stay down — you run for as long as it stays down
 
    The joystick floats rather than sitting in a fixed corner, because a corner
    is wherever the designer's thumb was and never wherever yours is. It is
@@ -32,14 +33,14 @@ LG.touch = (function () {
   const RANGE = 54;     // the stick's throw: full speed at the rim
   const TAP_MS = 320;   // a maybe that lingers longer than this is neither
   const SLOW = 0.4;     // the slowest a barely-leaning finger will walk you
-  const DBL_MS = 350;   // gap a second tap has to land inside to pair with the first
-  const DBL_DIST = 40;  // and how far it may have landed from it
+  const DBL_MS = 350;   // gap the next touch has to land inside to pair with the last tap
+  const DBL_DIST = 40;  // and how far it may land from it
 
   let canvas = null;
   let blocked = () => false;          // a panel is up; the world is not listening
   let onTap = null;
-  let onDoubleTap = null;
   let lastTap = null;                 // {x, y, t} of the previous tap, waiting for a partner
+  let runHoldId = null;               // the touch currently running, or null if none is
 
   /* Every finger currently on the glass, and which one of them (if any) has
      been promoted to the stick. Only the first can be — a second finger is
@@ -72,6 +73,20 @@ LG.touch = (function () {
     if (blocked()) return;
     down.set(id, { x0: x, y0: y, x: x, y: y, t0: t, moved: false });
     if (stickId === null) stickId = id;
+    /* A touch landing soon enough and close enough to the last tap reads as
+       the hold half of a double-tap-and-hold — running starts the instant it
+       touches down, because there is no way yet to tell a hold from a tap
+       that is only passing through. If it turns out to be the latter, `end`
+       below drops the run again a moment later, too briefly for anyone to
+       feel, and still reports the tap like any other. Nothing here asks what
+       the touch landed on; on a villager or a sign the first tap already
+       opened something and `blocked` above catches the second before this
+       runs, so the only place a pair actually forms is empty ground. */
+    if (lastTap && t - lastTap.t <= DBL_MS &&
+        Math.hypot(x - lastTap.x, y - lastTap.y) <= DBL_DIST) {
+      lastTap = null;
+      runHoldId = id;
+    }
   }
 
   function move(id, x, y) {
@@ -87,32 +102,21 @@ LG.touch = (function () {
     if (!p) return;
     down.delete(id);
     if (id === stickId) hand();
+    if (id === runHoldId) runHoldId = null;   // let go, however long it was down for
     /* A tap is the gesture that did nothing else: it never became a walk and
        it did not sit there. `blocked` is asked again rather than trusted from
        when the finger landed, because what the finger did in between may have
        opened something. */
     if (p.moved || t - p.t0 > TAP_MS || blocked()) { lastTap = null; return; }
     if (onTap) onTap(x, y);
-    /* A second tap landing soon enough and close enough to the last one pairs
-       with it instead of starting a new wait — the pair fires once, on the
-       second tap, and does not itself arm a third. Nothing here asks what got
-       tapped; on a villager or a sign the first tap already opened something
-       and `blocked` above catches the second before it gets this far, so the
-       only place a pair actually lands is empty ground, which a single tap
-       already does nothing with. */
-    if (onDoubleTap && lastTap && t - lastTap.t <= DBL_MS &&
-        Math.hypot(x - lastTap.x, y - lastTap.y) <= DBL_DIST) {
-      lastTap = null;
-      onDoubleTap(x, y);
-    } else {
-      lastTap = { x, y, t };
-    }
+    lastTap = { x, y, t };   // armed for a moment, in case the next touch pairs with it
   }
 
   function cancel(id) {
     if (!down.has(id)) return;
     down.delete(id);
     if (id === stickId) hand();
+    if (id === runHoldId) runHoldId = null;
   }
 
   /* The walking finger lifted. If another is still down it takes over, from
@@ -149,14 +153,15 @@ LG.touch = (function () {
   /* Everything lets go. The tab losing focus with a thumb still down is the
      case that matters — without this it comes back still walking north — and
      it is exported so a caller with its own reason can do the same. */
-  function release() { down.clear(); stickId = null; ring = null; vec = null; lastTap = null; }
+  function release() {
+    down.clear(); stickId = null; ring = null; vec = null; lastTap = null; runHoldId = null;
+  }
 
   /* ---------------------------------------------------------------- the wiring */
   function init(cv, hooks) {
     canvas = cv;
     blocked = (hooks && hooks.blocked) || blocked;
     onTap = (hooks && hooks.tap) || null;
-    onDoubleTap = (hooks && hooks.doubleTap) || null;
     setMode(coarse());
     if (!canvas || !canvas.addEventListener) return;
 
@@ -270,6 +275,9 @@ LG.touch = (function () {
               scaled — its length is how fast, not just which way. */
            get axis() { return vec; },
            get on() { return mode; },
+           /* true from the instant a double-tap's second touch lands until it
+              lifts — polled each frame the same way a held key is. */
+           get runHeld() { return runHoldId !== null; },
            DEAD, RANGE, TAP_MS,
            _begin: begin, _move: move, _end: end, _cancel: cancel, _setMode: setMode,
            get _ring() { return ring; } };

@@ -1282,13 +1282,6 @@ async function touchControls() {
     ok(runFrame > walkFrame * 1.3,
        'double-tapping and holding the ground covers more per frame once running (' +
        walkFrame.toFixed(2) + 'px walking, ' + runFrame.toFixed(2) + 'px running)');
-
-    const runBtn = sandbox.document.getElementById('btnRun');
-    ok(!runBtn.classList.contains('active'), 'the run button starts un-pressed');
-    runBtn.onclick();
-    ok(runBtn.classList.contains('active'), 'clicking it shows running is on');
-    runBtn.onclick();
-    ok(!runBtn.classList.contains('active'), 'and clicking it again turns running back off');
   }
 }
 

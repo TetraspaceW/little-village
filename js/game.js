@@ -47,25 +47,14 @@ LG.game = (function () {
   function isShift(e) { return e.code === 'ShiftLeft' || e.code === 'ShiftRight' || e.key === 'Shift'; }
 
   const held = { up: false, down: false, left: false, right: false, run: false };
-  /* Running has three switches, because the devices that flip it are shaped so
-     differently. Shift is a hold — it reports itself every frame through
-     `held.run`, same as a direction key, and lets go the instant you do. A
-     phone has no key to hold without covering the stick with the same thumb
-     that is steering it, so touch gets its own hold instead: double-tap the
-     ground and keep the second finger down. That gesture lives entirely in
-     LG.touch — it already tracks every finger — and is polled the same way,
-     through `runHeld`. The button is the odd one out, a latch rather than a
-     hold, because a click or a tap is over before a finger could stay down
-     through it: `runToggle` flips once and stays until the button flips it
-     back. */
-  let runToggle = false;
-  function running() { return held.run || runToggle || LG.touch.runHeld; }
-  function toggleRun() {
-    runToggle = !runToggle;
-    aside(runToggle ? 'Running — tap the button again to stop.' : 'Walking again.');
-    const btn = document.getElementById('btnRun');
-    if (btn) btn.classList.toggle('active', runToggle);
-  }
+  /* Running is a hold either way, just held with different hands. Shift
+     reports itself every frame through `held.run`, same as a direction key,
+     and lets go the instant you do. A phone has no key to hold without
+     covering the stick with the same thumb that is steering it, so touch
+     gets its own hold instead: double-tap the ground and keep the second
+     finger down. That gesture lives entirely in LG.touch — it already tracks
+     every finger — and is polled the same way, through `runHeld`. */
+  function running() { return held.run || LG.touch.runHeld; }
   /* Arm's length. Three things were separately writing TILE * 1.6 and one of
      them said in a comment that it matched the other two: who counts as
      "nearby" for the hint and the E key, how close a villager chasing you has
@@ -999,7 +988,6 @@ LG.game = (function () {
     });
 
     document.getElementById('btnSettings').onclick = () => openSettings(false);
-    document.getElementById('btnRun').onclick = () => { if (!uiBlocked()) toggleRun(); };
     document.getElementById('btnHelp').onclick = () =>
       document.getElementById('help').classList.toggle('open');
     document.getElementById('helpClose').onclick = () =>

@@ -1282,6 +1282,15 @@ async function touchControls() {
     ok(runFrame > walkFrame * 1.3,
        'double-tapping and holding the ground covers more per frame once running (' +
        walkFrame.toFixed(2) + 'px walking, ' + runFrame.toFixed(2) + 'px running)');
+
+    // "Always run" in Settings is a third, unconditional way in — no gesture
+    // needed at all, and orthogonal to the two that are.
+    g.settings.autorun = true;
+    const autorunFrame = covered(false);   // no gesture this time, just the setting
+    ok(autorunFrame > walkFrame * 1.3,
+       'switching on "always run" runs you with no gesture at all (' +
+       autorunFrame.toFixed(2) + 'px)');
+    g.settings.autorun = false;            // leave it as it was found
   }
 }
 

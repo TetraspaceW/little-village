@@ -5,7 +5,7 @@ LG.game = (function () {
   const W = LG.world, A = LG.actors, TILE = 32;
 
   const settings = {
-    lang: 'ru', level: 'beginner',
+    lang: 'ru', level: 'beginner', autorun: false,
     provider: 'anthropic', apiKey: '', model: 'claude-sonnet-5', helper: '',
     /* These are no longer player-facing settings: villagers always gossip,
        translations always start blurred (click a line to reveal it), voices
@@ -53,8 +53,11 @@ LG.game = (function () {
      covering the stick with the same thumb that is steering it, so touch
      gets its own hold instead: double-tap the ground and keep the second
      finger down. That gesture lives entirely in LG.touch — it already tracks
-     every finger — and is polled the same way, through `runHeld`. */
-  function running() { return held.run || LG.touch.runHeld; }
+     every finger — and is polled the same way, through `runHeld`. Settings
+     adds a third, unconditional way in: `autorun` skips the gesture rather
+     than replacing it, so Shift and a double-tap still work under it as
+     the same nothing-more they already were. */
+  function running() { return settings.autorun || held.run || LG.touch.runHeld; }
   /* Arm's length. Three things were separately writing TILE * 1.6 and one of
      them said in a comment that it matched the other two: who counts as
      "nearby" for the hint and the E key, how close a villager chasing you has
@@ -1031,6 +1034,7 @@ LG.game = (function () {
     const next = {
       lang: document.getElementById('setLang').value,
       level: document.getElementById('setLevel').value,
+      autorun: document.getElementById('setAutorun').checked,
       provider: document.getElementById('setProvider').value,
       apiKey: document.getElementById('setKey').value.trim(),
       model: readModel() || settings.model,
@@ -1125,6 +1129,7 @@ LG.game = (function () {
     document.getElementById('setError').textContent = '';
     document.getElementById('setLang').value = settings.lang;
     document.getElementById('setLevel').value = settings.level;
+    document.getElementById('setAutorun').checked = settings.autorun;
     document.getElementById('setProvider').value = settings.provider;
     document.getElementById('setKey').value = settings.apiKey;
     // where the key came from, so a field you did not fill in is not a mystery

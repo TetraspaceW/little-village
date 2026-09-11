@@ -1241,27 +1241,46 @@ async function touchControls() {
        gentle.toFixed(1) + 'px)');
 
     /* --------------------------------------------------------- and it runs */
-    // A double-tap is two fingers by another name: one taps twice while a
-    // second, separate touch is off holding the stick, exactly as a thumb on
-    // the joystick and another on the ground would land on a real screen.
-    const dtap = (id, t0) => {
-      T._begin(id, 500, 500, t0);     T._end(id, 500, 500, t0 + 20);
-      T._begin(id, 505, 500, t0 + 60); T._end(id, 505, 500, t0 + 80);
-    };
+    // The gesture is a hold, not a toggle, so it is checked directly against
+    // the flag LG.touch exposes before trusting it to move the player at all.
+    g._debugPlayerAt(spot.x, spot.y);
+    ok(!T.runHeld, 'nothing is running before any of this starts');
+    T._begin(20, 500, 500, 0); T._end(20, 500, 500, 20);
+    ok(!T.runHeld, 'a single tap alone does not start it');
+    T._begin(21, 505, 500, 60);
+    ok(T.runHeld, 'but a second touch landing right after, and staying down, does');
+    T._end(21, 505, 500, 500);
+    ok(!T.runHeld, 'and it stops the instant that finger lifts');
+
+    // Two taps released quickly — neither one held — used to latch running on
+    // for good. Now they are just two taps, and nothing sticks afterwards.
+    T._begin(22, 500, 500, 1000); T._end(22, 500, 500, 1020);
+    T._begin(23, 505, 500, 1060); T._end(23, 505, 500, 1080);
+    ok(!T.runHeld, 'tapping twice quickly, without holding either one, never latches it on');
+    T.release();
+
+    // A double-tap-and-hold is two fingers by another name: one taps twice
+    // and keeps the second one down while a separate, second touch is off
+    // holding the stick — exactly as a thumb on the joystick and another
+    // finger landing beside it would on a real screen.
     const covered = running => {
       g._debugPlayerAt(spot.x, spot.y);
-      if (running) dtap(20, 0);
-      const from = g.player.px;
       T._begin(9, 100, 100, 1e3);
+      if (running) {
+        T._begin(20, 500, 500, 1e3);    T._end(20, 500, 500, 1e3 + 20);
+        T._begin(21, 505, 500, 1e3 + 60);   // held down through the measurement below
+      }
+      const from = g.player.px;
       T._move(9, 100 + T.RANGE + 40, 100);
       g._debugTick(1 / 60);
+      const dx = g.player.px - from;
+      if (running) T._end(21, 505, 500, 9e5);   // let go: back to walking
       T._end(9, 100, 100, 9e5);
-      if (running) dtap(21, 2e3);   // leave it as it was found: not running
-      return g.player.px - from;
+      return dx;
     };
     const walkFrame = covered(false), runFrame = covered(true);
     ok(runFrame > walkFrame * 1.3,
-       'double-tapping the ground covers more per frame once running (' +
+       'double-tapping and holding the ground covers more per frame once running (' +
        walkFrame.toFixed(2) + 'px walking, ' + runFrame.toFixed(2) + 'px running)');
 
     const runBtn = sandbox.document.getElementById('btnRun');

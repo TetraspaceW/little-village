@@ -47,18 +47,22 @@ LG.game = (function () {
   function isShift(e) { return e.code === 'ShiftLeft' || e.code === 'ShiftRight' || e.key === 'Shift'; }
 
   const held = { up: false, down: false, left: false, right: false, run: false };
-  /* Running is two switches, not one, because the two devices that flip it
-     work differently. Shift is a hold — it reports itself every frame through
+  /* Running has three switches, because the devices that flip it are shaped so
+     differently. Shift is a hold — it reports itself every frame through
      `held.run`, same as a direction key, and lets go the instant you do. A
      phone has no key to hold without covering the stick with the same thumb
-     that is steering it, so a double-tap instead flips `runToggle`, a latch
-     that stays run until something turns it off again — a second double-tap,
-     or the button below doing the same job with a click. */
+     that is steering it, so touch gets its own hold instead: double-tap the
+     ground and keep the second finger down. That gesture lives entirely in
+     LG.touch — it already tracks every finger — and is polled the same way,
+     through `runHeld`. The button is the odd one out, a latch rather than a
+     hold, because a click or a tap is over before a finger could stay down
+     through it: `runToggle` flips once and stays until the button flips it
+     back. */
   let runToggle = false;
-  function running() { return held.run || runToggle; }
+  function running() { return held.run || runToggle || LG.touch.runHeld; }
   function toggleRun() {
     runToggle = !runToggle;
-    aside(runToggle ? 'Running — double-tap or the button to stop.' : 'Walking again.');
+    aside(runToggle ? 'Running — tap the button again to stop.' : 'Walking again.');
     const btn = document.getElementById('btnRun');
     if (btn) btn.classList.toggle('active', runToggle);
   }
@@ -985,7 +989,7 @@ LG.game = (function () {
       const p = toWorld(e);
       canvas.style.cursor = (!uiBlocked() && W.overSign(p.x, p.y)) ? 'pointer' : 'default';
     });
-    LG.touch.init(canvas, { blocked: uiBlocked, tap: tapAt, doubleTap: toggleRun });
+    LG.touch.init(canvas, { blocked: uiBlocked, tap: tapAt });
 
     /* The two boxes in the corners are most of a phone's screen. Their
        headings fold them away, so the village underneath can be walked

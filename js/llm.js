@@ -188,7 +188,7 @@ LG.llm = (function () {
      schema, and the prompt and the repair carry the turn the way they already
      do. */
   const SCHEMA_OK = {}; // 'provider:model' -> true | false, resolved once
-  let orModels = null; // the OpenRouter list is one fetch for both models
+  let orModels = null; // the OpenRouter list is one fetch, shared with the price lookup below
 
   async function getJSON(url, headers) {
     const res = await fetch(url, { headers: headers || {} });
@@ -248,6 +248,51 @@ LG.llm = (function () {
     } catch (e) {
       /* fails closed on its own */
     }
+  }
+
+  /* ---------------------------------------------------------- nitro, capped
+
+     sort: "throughput" (OpenRouter's ":nitro" shortcut) picks whichever
+     provider is fastest with no price tiebreak at all — a provider a hair
+     quicker than the rest wins the routing even if it charges 100x more per
+     token, because throughput is the only key it sorts on. max_price is the
+     fix: a hard ceiling, filtering out anyone above it before throughput
+     gets a say, rather than a second sort key
+     (https://openrouter.ai/docs/guides/routing/provider-selection).
+
+     The ceiling itself is read off Anthropic's own current OpenRouter
+     listing rather than a number typed in here that would drift out of date
+     — Sonnet's price for the villager-facing model, Haiku's (the helper's
+     own reference model, see VERIFIER above) for the cheap bookkeeping
+     calls, whichever OpenRouter model a player actually picked for either
+     role. Resolved once and cached, same shape as SCHEMA_OK. */
+  const PRICE_REF = {
+    big: "anthropic/claude-sonnet-5",
+    fast: VERIFIER.openrouter,
+  };
+  const maxPriceCache = {}; // 'big' | 'fast' -> {prompt, completion} in $/M tokens, or null
+
+  async function maxPriceFor(kind) {
+    if (kind in maxPriceCache) return maxPriceCache[kind];
+    maxPriceCache[kind] = null; // stands unless we learn otherwise — never blocks a call
+    try {
+      if (!orModels)
+        orModels = getJSON("https://openrouter.ai/api/v1/models");
+      const d = await orModels;
+      const m = (d.data || []).find((x) => x.id === PRICE_REF[kind]);
+      const p = m && m.pricing;
+      // OpenRouter lists pricing per token; max_price wants dollars per
+      // million, the unit it displays prices in everywhere else.
+      if (p && p.prompt != null && p.completion != null) {
+        maxPriceCache[kind] = {
+          prompt: Number(p.prompt) * 1e6,
+          completion: Number(p.completion) * 1e6,
+        };
+      }
+    } catch (e) {
+      orModels = null; // a failed list should not poison a later look
+    }
+    return maxPriceCache[kind];
   }
 
   /* ---------------------------------------------------------------- audit
@@ -515,6 +560,12 @@ LG.llm = (function () {
        identified by cfg.fast) rather than the max_tokens throttle below. */
     if (cfg.model === AUTO_MODEL) body.reasoning = { effort: cfg.fast ? "medium" : "high" };
     else if (cfg.fast) body.reasoning = { max_tokens: FAST_REASONING_TOKENS };
+    /* Nitro, capped — see the comment on maxPriceFor above. No cap resolved
+       (the lookup failed, or the reference model was not in the list) means
+       no sort is sent either: fail closed into OpenRouter's ordinary
+       price-aware default rather than chasing throughput with no ceiling. */
+    const price = await maxPriceFor(cfg.fast ? "fast" : "big");
+    if (price) body.provider = { sort: "throughput", max_price: price };
     if (schema) {
       body.response_format = {
         type: "json_schema",

@@ -1037,21 +1037,10 @@ LG.PLACES = [
 
   { id: 'platform', en: 'on the station platform', rect: { x: 84, y: 52, w: 4, h: 13 } }
 ];
-
-/* The order and membership LG.PLACES had before the forest and the station
-   joined it. `LG.chain.generate` picks the terminal item's home with
-   `pick(LG.PLACES..., rnd)`, which reads nothing but the list's length and
-   order — so growing the list from 17 places to 24 is, on its own, enough to
-   send the same seed's item somewhere else. A save written under the old
-   list is not wrong, it is answering a question that has since changed
-   shape, and the only way to still get its answer is to ask the old
-   question. See the v1 migration in save.js.
-
-   This is a historical fact about what LG.PLACES *used to be*, not a mirror
-   of what it is — it must never be "kept in sync" with the array above. */
-LG.PLACES_V1_IDS = ['pond', 'mine', 'fields', 'green', 'hall', 'woods', 'behind', 'road',
-                     'orchard', 'beeyard', 'mill', 'school', 'chapel', 'graves', 'woodpile',
-                     'smithy', 'hut'];
+/* The list this used to be, before the forest and the station joined it, is
+   `LG.saveMigrate.PLACES_V1_IDS` in save-migrate.js — a historical fact
+   about an old save format, not something that belongs next to the places
+   as they stand today. */
 
 /* ------------------------------------------------------------- flavour */
 LG.REASONS = [

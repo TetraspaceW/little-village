@@ -1,34 +1,38 @@
-/* touch.js — the village under a thumb.
+/* touch.js — touch/mobile input handling: virtual joystick and tap-to-interact.
 
-   The keyboard scheme is two hands: one walks, the other presses E at whoever
-   is in front of you. A phone has neither. What it has is a finger that is
-   already touching the thing it means, so the two halves come apart:
+   The keyboard scheme maps to two separate inputs: movement keys walk,
+   E interacts with whatever's in front of the player. Touch input has
+   neither concept built in — a finger just touches a point on screen —
+   so this module derives both gestures from raw touch events:
 
-     put a finger down and drag  — a joystick appears where you put it
-     put a finger down and lift  — a tap, aimed at whatever is under it
-     tap, then land again and stay down — you run for as long as it stays down
+     touch down and drag       — a virtual joystick appears at that point
+     touch down, then lift     — a tap, aimed at whatever's under it
+     tap, then touch again and hold — running, for as long as held
 
-   The joystick floats rather than sitting in a fixed corner, because a corner
-   is wherever the designer's thumb was and never wherever yours is. It is
-   drawn only once you have committed to walking, so a tap leaves no smear of
-   UI behind it.
+   The joystick appears wherever the touch started rather than in a
+   fixed screen position, since a fixed position matches only one
+   specific hand/thumb placement. It's only drawn once a drag is
+   confirmed, so a plain tap leaves no UI artifact behind.
 
-   Which of the two a touch turns out to be is not decided when it lands — it
-   cannot be, they start identically — so every pointer is held as a maybe
-   until it either travels past DEAD (a walk) or lifts inside TAP_MS without
-   having (a tap). Anything else — a long press that never moves — is neither,
-   and does nothing, which is the right answer for a finger resting on the
-   glass.
+   Whether a touch is a drag or a tap can't be determined the instant it
+   starts, since both begin identically — every touch is tracked as
+   ambiguous until it either moves past DEAD pixels (drag) or lifts
+   within TAP_MS (tap). A touch that does neither (a long press that
+   never moves and isn't released) resolves to neither gesture and has
+   no effect, which is the correct behavior for an idle finger resting
+   on the screen.
 
-   Nothing here knows what a villager is. It reports a point on the canvas and
-   game.js decides what was at it; that keeps the gesture code testable without
-   a village, and keeps the reach rules in one place with the ones the E key
-   already obeys. */
+   This module has no concept of villagers or other game entities — it
+   only reports a screen coordinate, and game.js determines what's
+   there. This keeps the gesture logic testable independent of game
+   state, and keeps interaction-range logic in one place shared with
+   the E key's equivalent checks. */
 window.LG = window.LG || {};
 
 LG.touch = (function () {
-  /* All CSS pixels — the canvas is drawn in them and fingers are measured in
-     them, whatever the device pixel ratio underneath. */
+  /* All measured in CSS pixels — the canvas is drawn in CSS pixels and
+     touch coordinates are reported in them, regardless of the
+     underlying device pixel ratio. */
   const DEAD = 12;      // travel before a maybe becomes a walk
   const RANGE = 54;     // the stick's throw: full speed at the rim
   const TAP_MS = 320;   // a maybe that lingers longer than this is neither
@@ -37,23 +41,24 @@ LG.touch = (function () {
   const DBL_DIST = 40;  // and how far it may land from it
 
   let canvas = null;
-  let blocked = () => false;          // a panel is up; the world is not listening
+  let blocked = () => false;          // true while a panel is open and input should be ignored
   let onTap = null;
-  let lastTap = null;                 // {x, y, t} of the previous tap, waiting for a partner
-  let runHoldId = null;               // the touch currently running, or null if none is
+  let lastTap = null;                 // {x, y, t} of the previous tap, kept briefly in case a second touch pairs with it
+  let runHoldId = null;               // id of the touch currently triggering running, or null
 
-  /* Every finger currently on the glass, and which one of them (if any) has
-     been promoted to the stick. Only the first can be — a second finger is
-     free to tap while the first walks, which is the whole reason for keeping
-     more than one. */
+  /* Tracks every active touch, and which one (if any) has been promoted
+     to drive the joystick. Only one touch can drive the joystick at a
+     time — a second touch can still register as a tap while the first
+     is walking, which is the reason multiple touches are tracked at all. */
   const down = new Map();
   let stickId = null;
-  let ring = null;      // where to draw it, once there is something to draw
-  let vec = null;       // null in the dead zone: leaning back to centre stops you
+  let ring = null;      // joystick draw position, set once there's something to draw
+  let vec = null;       // null while in the dead zone -- returning to center stops movement
 
-  /* What the hints should say. A phone is assumed to be a phone before it has
-     been touched, so the first thing the player reads is already right; a
-     mouse arriving later says otherwise and is believed. */
+  /* Determines the initial control-scheme hint shown to the player. A
+     coarse pointer (touch) is assumed before any input is received, so
+     the initial hint is already correct for a phone; a mouse event
+     arriving afterward overrides that assumption. */
   let mode = false;
   function coarse() {
     try { return !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches); }
@@ -66,22 +71,25 @@ LG.touch = (function () {
   }
 
   /* ------------------------------------------------------------- the gesture */
-  /* Split out from the event handlers so a test can drive them: the smoke test
-     has no browser to dispatch a PointerEvent in, and the interesting parts —
-     the dead zone, the origin giving way, tap versus walk — are all here. */
+  /* These are separated out from the DOM event handlers so tests can
+     call them directly — the smoke test sandbox has no browser to
+     dispatch real PointerEvents, and the logic worth testing (the dead
+     zone, joystick origin behavior, tap vs. drag detection) all lives here. */
   function begin(id, x, y, t) {
     if (blocked()) return;
     down.set(id, { x0: x, y0: y, x: x, y: y, t0: t, moved: false });
     if (stickId === null) stickId = id;
-    /* A touch landing soon enough and close enough to the last tap reads as
-       the hold half of a double-tap-and-hold — running starts the instant it
-       touches down, because there is no way yet to tell a hold from a tap
-       that is only passing through. If it turns out to be the latter, `end`
-       below drops the run again a moment later, too briefly for anyone to
-       feel, and still reports the tap like any other. Nothing here asks what
-       the touch landed on; on a villager or a sign the first tap already
-       opened something and `blocked` above catches the second before this
-       runs, so the only place a pair actually forms is empty ground. */
+    /* A touch landing soon enough and close enough to the previous tap
+       is treated as the "hold" half of a double-tap-and-hold gesture --
+       running starts immediately on touch-down, since there's no way
+       yet to distinguish a hold from a tap that's merely passing
+       through this same spot. If it does turn out to be just a tap,
+       `end` below clears the run state again shortly after, briefly
+       enough not to be noticeable, and the tap is still reported
+       normally. This doesn't check what the touch landed on: if the
+       first tap opened something (a villager, a sign), `blocked()`
+       above prevents this second touch from being processed at all, so
+       a genuine double-tap pairing can only form on empty ground. */
     if (lastTap && t - lastTap.t <= DBL_MS &&
         Math.hypot(x - lastTap.x, y - lastTap.y) <= DBL_DIST) {
       lastTap = null;
@@ -102,14 +110,14 @@ LG.touch = (function () {
     if (!p) return;
     down.delete(id);
     if (id === stickId) hand();
-    if (id === runHoldId) runHoldId = null;   // let go, however long it was down for
-    /* A tap is the gesture that did nothing else: it never became a walk and
-       it did not sit there. `blocked` is asked again rather than trusted from
-       when the finger landed, because what the finger did in between may have
-       opened something. */
+    if (id === runHoldId) runHoldId = null;   // release regardless of how long it was held
+    /* A tap is whatever's left when a touch neither became a drag nor
+       lingered too long. `blocked()` is re-checked here rather than
+       trusted from touch-start, since something that happened between
+       touch-down and touch-up may have opened a panel in the meantime. */
     if (p.moved || t - p.t0 > TAP_MS || blocked()) { lastTap = null; return; }
     if (onTap) onTap(x, y);
-    lastTap = { x, y, t };   // armed for a moment, in case the next touch pairs with it
+    lastTap = { x, y, t };   // kept briefly, in case the next touch pairs with it into a double-tap
   }
 
   function cancel(id) {
@@ -119,10 +127,12 @@ LG.touch = (function () {
     if (id === runHoldId) runHoldId = null;
   }
 
-  /* The walking finger lifted. If another is still down it takes over, from
-     wherever it happens to be — you were mid-stride and the alternative is
-     stopping dead because you leaned on the screen with a second thumb. It
-     starts as a maybe again, so taking over cannot itself be a tap. */
+  /* Called when the touch driving the joystick is released. If another
+     touch is still active, it takes over the joystick from its current
+     position — the alternative would be abruptly stopping movement just
+     because a second finger happened to be resting on the screen. The
+     new touch restarts as ambiguous (drag vs. tap), so this handoff
+     can't itself register as a tap. */
   function hand() {
     stickId = null; ring = null; vec = null;
     const next = down.keys().next();
@@ -135,14 +145,16 @@ LG.touch = (function () {
   function aim(p) {
     const dx = p.x - p.x0, dy = p.y - p.y0;
     const len = Math.hypot(dx, dy);
-    /* The knob is clamped to the rim rather than dragging the origin along
-       behind an overshooting finger. That used to be the trick — it saves a
-       full throw of the thumb after a long walk — but it meant a stride
-       forward, a step back, and a stride forward again dragged the base
-       across the screen chasing its own trail, which reads as the stick
-       sliding around rather than as you steering it. Speed already saturates
-       at the rim (below), so nothing is lost by just pinning the knob there:
-       the origin now moves only when the finger lifts and lands again. */
+    /* The joystick knob is clamped to the outer rim rather than having
+       the origin itself drift to follow an overshooting finger. Origin
+       drift was tried previously (it lets the thumb avoid a full
+       re-throw after a long walk), but it caused the joystick base to
+       visibly chase the finger's trail across the screen during
+       back-and-forth movement, which read as the stick sliding around
+       rather than as controlled steering. Since speed already saturates
+       at the rim (see the push calculation below), clamping the knob
+       there loses nothing — the origin now only moves when the finger
+       lifts and touches down again. */
     const cap = len > RANGE ? RANGE / len : 1;
     ring = { x: p.x0, y: p.y0, kx: p.x0 + dx * cap, ky: p.y0 + dy * cap };
     if (len <= DEAD) { vec = null; return; }
@@ -150,9 +162,10 @@ LG.touch = (function () {
     vec = { x: (dx / len) * push, y: (dy / len) * push };
   }
 
-  /* Everything lets go. The tab losing focus with a thumb still down is the
-     case that matters — without this it comes back still walking north — and
-     it is exported so a caller with its own reason can do the same. */
+  /* Clears all touch state. The important case is the tab losing focus
+     while a finger is still down — without this, the player would
+     resume walking in whatever direction they were last moving. Exported
+     so other callers can trigger the same reset for their own reasons. */
   function release() {
     down.clear(); stickId = null; ring = null; vec = null; lastTap = null; runHoldId = null;
   }
@@ -175,8 +188,9 @@ LG.touch = (function () {
     canvas.addEventListener('pointerdown', e => {
       setMode(finger(e));
       if (!finger(e)) return;              // a mouse still goes through click, below
-      /* Stops the browser turning this into a scroll, a double-tap zoom, or a
-         synthetic click that would toggle the same sign back off again. */
+      /* Prevents the browser's default touch behaviors: scrolling,
+         double-tap zoom, or a synthetic click event that would
+         re-trigger the same sign toggle a second time. */
       e.preventDefault();
       try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
       begin(e.pointerId, at(e).x, at(e).y, now());
@@ -194,23 +208,25 @@ LG.touch = (function () {
     lockPage();
   }
 
-  /* The page itself must not move under a finger.
+  /* Prevents the page itself from scrolling under a finger.
 
-     With a keyboard up, the window onto the page is smaller than the page, and
-     a browser will let you drag the whole thing about inside it — so touching
-     beside the dialogue slides the village, the dialogue and all out from under
-     you. `touch-action` is the CSS way to say no to that, but it is refused by
-     intersection: a `none` anywhere above the finger kills scrolling in
-     everything below it, and every surface worth pinning here — the dialogue's
-     backdrop, a HUD box, a settings panel — is the ancestor of something that
-     genuinely does scroll.
+     With the keyboard open, the visible window is smaller than the
+     page, and browsers normally let the whole page be dragged around
+     within that space — so a touch beside the dialogue could drag the
+     entire page (village, dialogue, everything) out of view. `touch-action`
+     is the standard CSS way to prevent this, but it doesn't compose the
+     way needed here: `touch-action: none` on any ancestor disables
+     scrolling for everything inside it, and every UI surface that needs
+     this protection (the dialogue backdrop, a HUD box, a settings
+     panel) contains something that legitimately needs to scroll.
 
-     So the question is answered once per gesture instead of once per element.
-     If the finger came down inside something that can really scroll — a
-     conversation with more of itself above, a rack of chips taller than its
-     row, any box you can type in — it may. Otherwise the drag is refused.
-     Two fingers are always let through, because that is a pinch, and making
-     the text bigger is nobody's business but the reader's. */
+     So this checks per-gesture instead of relying on CSS per-element:
+     if a touch starts inside something that can genuinely scroll (a
+     conversation log with overflow, a chip row taller than its
+     container, any text input), the drag is allowed. Otherwise it's
+     prevented. Two-finger touches are always allowed through, since
+     that's a pinch-zoom gesture, and zooming text is the reader's call,
+     not something this should block. */
   function lockPage() {
     if (!document || !document.querySelectorAll) return;
     const canScroll = el => {
@@ -225,8 +241,9 @@ LG.touch = (function () {
       }
       return false;
     };
-    // Only the overlays need this guard. The canvas already uses touch-action:
-    // none; a non-passive document listener also intercepts every joystick drag.
+    // Only these overlay elements need this guard -- the canvas already
+    // uses touch-action: none, and a non-passive listener on it would
+    // also incorrectly intercept every joystick drag.
     document.querySelectorAll('#hud, #dlg, .panel').forEach(surface => {
       let allowed = false;
       surface.addEventListener('touchstart', e => { allowed = canScroll(e.target); },
@@ -239,16 +256,17 @@ LG.touch = (function () {
   }
 
   /* ------------------------------------------------------------- the picture */
-  /* Screen space, so this is called after the camera transform has been undone.
-     Paper and ink, like the rest of the furniture. */
+  /* Draws in screen space -- called after the camera transform has been
+     reset, same as other fixed UI elements. */
   function draw(ctx) {
-    /* Nothing to steer while a panel is up, and the canvas shows through above
-       the dialogue card — a stick frozen mid-throw up there reads as a bug. */
+    /* No joystick to draw while a panel is open -- the canvas is still
+       visible behind the dialogue card, and a joystick frozen mid-drag
+       there would look like a rendering bug. */
     if (!ring || blocked()) return;
     ctx.save();
-    /* The village is grass, dirt track and red roof by turns, so the rim is
-       drawn twice — dark then pale — and reads against all of them rather than
-       vanishing into whichever one it happens to be over. */
+    /* The ground underneath varies between grass, dirt path, and red
+       roofs, so the rim is drawn twice (dark outline, then pale outline)
+       to stay visible against any of them rather than blending in. */
     ctx.beginPath();
     ctx.arc(ring.x, ring.y, RANGE, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(28,20,12,.26)';
@@ -271,12 +289,14 @@ LG.touch = (function () {
   }
 
   return { init, draw, release,
-           /* null unless a finger is actually pushing; {x, y} is already
-              scaled — its length is how fast, not just which way. */
+           /* null unless a finger is actively pushing the joystick;
+              otherwise {x, y}, pre-scaled so its magnitude represents
+              speed, not just direction. */
            get axis() { return vec; },
            get on() { return mode; },
-           /* true from the instant a double-tap's second touch lands until it
-              lifts — polled each frame the same way a held key is. */
+           /* True from the instant a double-tap's second touch lands
+              until it's released — polled each frame the same way a held
+              keyboard key is. */
            get runHeld() { return runHoldId !== null; },
            DEAD, RANGE, TAP_MS,
            _begin: begin, _move: move, _end: end, _cancel: cancel, _setMode: setMode,

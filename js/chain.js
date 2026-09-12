@@ -1,12 +1,13 @@
-/* chain.js — builds a fresh errand chain for each playthrough.
-   A chain is a line of villagers, each holding the thing the one before them
-   wants, ending in something lying out in the world:
+/* chain.js — generates a fresh errand chain for each playthrough.
+
+   A chain is a sequence of villagers, each wanting the item the next one
+   down the chain holds, terminating in an item found out in the world:
 
      client wants G  <-  H1 has G, wants A  <-  H2 has A, wants <world thing>
 
-   Everything the player could learn is a *fact* with an id. Facts are dealt out
-   to villagers; the player only ever sees one in their notebook once somebody
-   has actually told them. */
+   Everything the player can learn is represented as a *fact* with an id.
+   Facts are distributed to villagers who know them; a fact only appears in
+   the player's notebook once some villager has actually told it to them. */
 window.LG = window.LG || {};
 
 LG.chain = (function () {
@@ -53,14 +54,15 @@ LG.chain = (function () {
     const level = LG.LEVELS[opts.level] || LG.LEVELS.beginner;
     const seed = opts.seed || makeSeed();
     const rnd = mulberry32(hashSeed(seed));
-    // Length is variety, not difficulty — the same range at every level. See the
-    // note over LG.LEVELS for why it stopped being the difficulty knob.
+    // Chain length is randomized the same way at every difficulty level —
+    // it controls variety, not difficulty. See the note above LG.LEVELS
+    // for why difficulty no longer scales chain length.
     const span = LG.DEPTH || [2, 4];
     const rolled = span[0] + ((rnd() * (span[1] - span[0] + 1)) | 0);
     const depth = Math.min(rolled, LG.NPCS.length - 1);
 
-    // Who plays which part. The shopkeeper is kept for a shop link if we have
-    // one; the farmer is a natural person to be missing an animal.
+    // Randomly cast which villagers take part in the chain (`cast`) vs.
+    // stay uninvolved (`bystanders`).
     const roster = shuffled(LG.NPCS, rnd);
     const cast = roster.slice(0, depth);
     const bystanders = roster.slice(depth);
@@ -69,7 +71,7 @@ LG.chain = (function () {
     function freshItem(tag) {
       let pool = itemsWith(tag).filter(k => !usedItems[k]);
       if (!pool.length) pool = itemsWith('hold').filter(k => !usedItems[k]);
-      if (!pool.length) return null;               // caller retries with a new seed
+      if (!pool.length) return null;               // signals attempt() to fail; generate() retries with a new seed
       const chosen = pick(pool, rnd);
       usedItems[chosen] = true;
       return chosen;
@@ -83,7 +85,7 @@ LG.chain = (function () {
       const npc = cast[i];
       const last = i === depth - 1;
       if (last) {
-        // the end of the line: something out in the world
+        // last link in the chain wants something out in the world, not held by anyone
         wants[i] = rnd() < 0.5 ? freshItem('ground') : freshItem('beast');
       } else if (npc.prefers === 'shop' || rnd() < 0.35) {
         wants[i] = 'coins';
@@ -138,12 +140,13 @@ LG.chain = (function () {
       return pool.slice(0, n);
     }
 
-    /* Spread scales with the population: a fact known by two of six villagers is
-       findable, the same two of twelve is a needle in a haystack. It then tapers
-       with depth, so the further down the chain a fact sits the fewer people have
-       heard it — a long errand is a deeper secret rather than a wider net. The
-       owner always knows their own business, so the chain stays walkable in order
-       however far the taper runs down. */
+    /* How many extra villagers (besides the fact's owner) get told a fact.
+       Scales with village population — a fixed count of 2 is easy to find
+       among 6 villagers but hard to find among 12, so `base` scales with
+       LG.NPCS.length. It then decreases (`taper`) for facts further down
+       the chain, so longer chains hide facts more deeply rather than
+       spreading them wider. The link owner always knows their own part
+       regardless of taper, so the chain stays solvable end-to-end. */
     const base = Math.max(0, Math.round((level.spread || 1) * LG.NPCS.length / 6));
     const taper = level.taper || 0;
     const heardBy = i => Math.max(0, base - taper * i);
@@ -171,15 +174,16 @@ LG.chain = (function () {
       }
     });
 
-    // where the world thing is — someone has to have seen it
-    // someone has to have seen it, however deep it is — nobody owns this one
+    // The terminal item's location has no owning villager (nobody "has" it,
+    // it's just out in the world), so at least one villager must be picked
+    // to have seen it, regardless of how low heardBy() would otherwise go.
     const seenBy = others([], Math.max(1, heardBy(depth - 1)));
     const whereText = isBeast
       ? beastName + ' the ' + named(terminalItem) + ' was last seen ' + place.en + '.'
       : 'There is ' + a(terminalItem) + ' lying ' + place.en + '.';
     factOrder.push(addFact(whereText, seenBy, { type: 'where' }));
 
-    // a couple of pieces of pure gossip, because the village needs opinions
+    // add a few unrelated opinion facts (villager A's opinion of villager B) for flavor
     const opinionCount = 2 + ((rnd() * 2) | 0);
     for (let i = 0; i < opinionCount; i++) {
       const two = shuffled(all, rnd).slice(0, 2);
@@ -188,10 +192,13 @@ LG.chain = (function () {
         [a.id].concat(others([a.id, b.id], 1)), { type: 'opinion' });
     }
 
-    /* The village gossip. At beginner she has heard the lot and will hand you the
-       whole errand in one conversation; further up she has caught only some of it,
-       and at advanced nothing but who thinks what about whom — an omniscient
-       villager is a skeleton key that makes every other difficulty knob moot. */
+    /* The village's designated gossip villager (LG.NPCS entry with
+       prefers==='gossip') knows a difficulty-dependent share of all facts.
+       At beginner she knows nearly everything and can hand the player the
+       whole errand in one conversation; at higher difficulty she knows
+       less (down to just opinion facts at advanced). Capping this per
+       difficulty matters — an always-omniscient gossip would let the
+       player skip every other difficulty setting. */
     const gossip = LG.NPCS.find(n => n.prefers === 'gossip');
     const share = typeof level.gossip === 'number' ? level.gossip : 1;
     if (gossip) {
@@ -206,10 +213,11 @@ LG.chain = (function () {
       roles[n.id] = { goal: '', trade: null, link: -1 };
     });
 
-    /* What a villager is about once their part of the errand is over. It is the
-       same line the generator already writes for everybody who never had a part
-       in it, which is the point: a finished errand leaves you a villager with a
-       job, not a villager still wanting something they have been given. */
+    /* Default goal text for a villager with no active role in the errand —
+       either a bystander, or a link whose part of the chain is complete.
+       Reused for both cases deliberately: once a villager's trade is
+       settled, they should go back to being an ordinary villager, not
+       keep acting like they still want something they've already received. */
     const plainGoal = id => {
       const d = LG.NPCS.find(x => x.id === id) || {};
       return 'Your own work, as ' + (d.job || 'a villager') +
@@ -252,7 +260,7 @@ LG.chain = (function () {
         r.trade.hint = 'Once the traveller is giving you ' + a(lk.wants) +
           ', take it and hand over ' + a(lk.gives) + '.';
       } else {
-        // "You have coins ... you keep it on you" — mind the plural
+        // "coins" is plural, so use "them"/"they" instead of "it" when gives === 'coins'
         const them = lk.gives === 'coins' ? 'them' : 'it';
         r.goal = 'You have ' + a(lk.gives) + ' and you keep ' + them + ' on you. You will part ' +
           'with ' + them + ' for one thing only: ' + a(lk.wants) + ' — ' + lk.reason +
@@ -262,10 +270,12 @@ LG.chain = (function () {
       }
     });
 
-    /* This used to open "You want nothing in particular today", which was meant
-       to say "you have no part in the errand" and was read as "you have no
-       reason to do anything" — the shopkeeper reasoned her way out of going to
-       her own shop with it. A villager with no errand still has a trade. */
+    /* Bug history: this text used to open "You want nothing in particular
+       today," meaning "you have no part in the errand." The model read it
+       as "you have no reason to do anything" instead, and a shopkeeper
+       given that goal reasoned her way out of opening her own shop.
+       plainGoal() avoids that phrasing — having no errand role doesn't
+       mean having no reason to act normally. */
     bystanders.forEach(n => { roles[n.id].goal = plainGoal(n.id); });
 
     /* -------------------------------------------------------- assemble */
@@ -282,12 +292,13 @@ LG.chain = (function () {
         item: terminalItem, isBeast, beastName,
         placeId: place.id, placeText: place.en, rect: place.rect
       },
-      // the whole point of the errand, for the ending screen
+      // used by the ending screen to describe what the errand accomplished
       goalItem: wants[0], clientId: links[0].npcId, clientName: links[0].npcName
     };
   }
 
-  /* Build, check, and reroll if the dice produced something degenerate. */
+  /* Checks a generated plan for consistency (see generate() below, which
+     rerolls on failure). */
   function validate(plan) {
     if (!plan) return false;
     for (let i = 0; i < plan.links.length; i++) {

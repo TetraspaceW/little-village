@@ -1490,13 +1490,20 @@ LG.game = (function () {
      hoping she would turn up. So whoever they can see is a destination too. */
   function placesFor(n) {
     const out = [{ name: 'home', rect: n.def.home, note: 'your own place' }];
+    let workLabel = null;
     if (n.work) {
       // "your work" was a literal option name, and it made villagers wonder aloud
-      // what and where their work was. Name the place.
-      const label = n.workBuilding ? n.workBuilding.label : (n.def.job || 'your work');
-      out.push({ name: label, rect: n.work, note: 'where you work' });
+      // what and where their work was. Name the place. A villager without a
+      // building of their own falls back to `job` — fine for "the miner", a
+      // place-shaped phrase, but Petra's job is a description, not a place, so
+      // anyone whose worksite isn't a proper building gets an explicit label.
+      workLabel = n.workBuilding ? n.workBuilding.label : (n.def.workLabel || n.def.job || 'your work');
+      out.push({ name: workLabel, rect: n.work, note: 'where you work' });
     }
-    out.push({ name: 'the village green', rect: LG.GREEN, note: 'where people gather' });
+    // Petra's patch is the green itself — don't list it twice under two names.
+    if (workLabel !== 'the village green') {
+      out.push({ name: 'the village green', rect: LG.GREEN, note: 'where people gather' });
+    }
     out.push({ name: 'the noticeboard', rect: LG.BOARD_SPOT,
                note: 'where anyone may pin up a note for the village to read' });
     /* The two edges of the map worth walking to. Not every glade in the woods

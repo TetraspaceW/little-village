@@ -237,6 +237,20 @@ function costKindOf(e) {
   return 'other';
 }
 
+/* The one split DESIGN.md itself measures cost by (see "And the log is where
+   the cost shows up"): the in-character model that plays the player-facing
+   villager — `cfg.model`, the "villager" kind — against the helper model
+   (`helperModel(cfg)`) doing every other kind of bookkeeping call. `chatter`
+   (villager-to-villager) is dispatched with helperModel too (js/llm.js's own
+   villager-to-villager call site sets `model: helperModel(cfg)`), so it
+   belongs on the helper side despite reading like dialogue — the split
+   follows which model answered, not what the prompt sounds like. That
+   passage found the helper leg 3.5x the call volume and the bill nobody was
+   watching, which is exactly the kind of thing a kind-by-kind table alone
+   does not say — so this grand split gets its own line, above the detail. */
+const VILLAGER_KINDS = new Set(['villager']);
+function grandKindOf(kind) { return VILLAGER_KINDS.has(kind) ? 'villager' : 'helper'; }
+
 /* Token fields differ by provider's own dialect — Anthropic's `usage` says
    input_tokens/output_tokens, the OpenAI-shaped ones (OpenRouter, Logfare)
    say prompt_tokens/completion_tokens. `cost` is OpenRouter-only: it is the
@@ -383,7 +397,31 @@ function main() {
 
   console.log(files.length + ' log file(s), ' + calls.length + ' call(s) read.\n');
 
-  console.log('# Calls by kind, and cost');
+  console.log('# Villager vs helper');
+  console.log('the in-character model for the player-facing villager reply against the');
+  console.log('helper model doing every other kind of call, chatter included. "cost" is a');
+  console.log('floor, same caveat as below.\n');
+  const grandBuckets = new Map([
+    ['villager', { n: 0, cost: 0, costSeen: false }],
+    ['helper', { n: 0, cost: 0, costSeen: false }]
+  ]);
+  for (const e of calls) {
+    const b = grandBuckets.get(grandKindOf(costKindOf(e)));
+    b.n++;
+    const cost = e.usage && e.usage.cost;
+    if (typeof cost === 'number') { b.cost += cost; b.costSeen = true; }
+  }
+  const grandRows = [...grandBuckets.entries()]
+    .map(([grand, b]) => ({ grand, ...b }))
+    .sort((a, b) => b.n - a.n);
+  table(grandRows, [
+    { label: 'grand', get: r => r.grand },
+    { label: 'n', get: r => r.n },
+    { label: 'cost', get: r => r.costSeen ? money(r.cost) : 'n/a' },
+    { label: '$/call', get: r => r.costSeen ? money(r.cost / r.n) : '—' }
+  ]);
+
+  console.log('\n# Calls by kind, and cost');
   console.log('every call in the log, whatever shape its reply — grouped by what it was');
   console.log('asking (see COST_KINDS above) and which model answered. Sorted by cost where');
   console.log('any is known, then by call count. "cost" is OpenRouter\'s own usage.cost;');

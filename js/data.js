@@ -1092,7 +1092,7 @@ LG.NPCS = [
     persona: 'Gruff, short sentences, secretly soft-hearted. Complains about his back.',
     x: 6, y: 56, home: { x: 3, y: 53, w: 6, h: 6 },
     voice: { gender: 'male', age: 'old' },
-    workRect: { x: 3, y: 52, w: 5, h: 5 },
+    workRect: { x: 3, y: 52, w: 5, h: 5 }, workLabel: 'the mine',
     sells: [{ i: 'stone', p: 1 }, { i: 'lantern', p: 4 }, { i: 'shiny_rock', p: 6 }],
     buys: [{ i: 'candle', p: 1 }, { i: 'rope', p: 2 }]
   },
@@ -1123,7 +1123,7 @@ LG.NPCS = [
     persona: 'Excitable, nosy, knows everybody\'s business, speaks in short bursts. Asks questions back.',
     x: 41, y: 75, home: { x: 34, y: 73, w: 14, h: 6 }, prefers: 'gossip',
     voice: { gender: 'female', age: 'young' },
-    workRect: { x: 32, y: 67, w: 18, h: 12 },
+    workRect: { x: 32, y: 67, w: 18, h: 12 }, workLabel: 'the village green',
     sells: [{ i: 'flower', p: 1 }, { i: 'shell', p: 1 }, { i: 'feather', p: 1 }],
     buys: [{ i: 'sweets', p: 1 }, { i: 'apple', p: 1 }]
   },
@@ -1133,7 +1133,7 @@ LG.NPCS = [
     persona: 'Dreamy and philosophical, half asleep, answers questions with questions about fish.',
     x: 12, y: 67, home: { x: 6, y: 66, w: 11, h: 2 },
     voice: { gender: 'male', age: 'middle' },
-    workRect: { x: 6, y: 65, w: 12, h: 3 },
+    workRect: { x: 6, y: 65, w: 12, h: 3 }, workLabel: 'the lake',
     sells: [{ i: 'fish', p: 2 }, { i: 'rope', p: 3 }],
     buys: [{ i: 'bread', p: 2 }, { i: 'beer', p: 2 }]
   },
@@ -1183,7 +1183,7 @@ LG.NPCS = [
     persona: 'Soft-spoken and easily distracted, trails off mid-sentence to look at something. Unbothered by everything.',
     x: 70, y: 68, home: { x: 63, y: 66, w: 14, h: 6 },
     voice: { gender: 'female', age: 'young' },
-    workRect: { x: 63, y: 64, w: 14, h: 7 },
+    workRect: { x: 63, y: 64, w: 14, h: 7 }, workLabel: 'the apiary',
     sells: [{ i: 'honey', p: 4 }, { i: 'candle', p: 2 }, { i: 'flower', p: 1 }],
     buys: [{ i: 'flower', p: 1 }, { i: 'herbs', p: 1 }]
   },
@@ -1203,7 +1203,7 @@ LG.NPCS = [
     persona: 'Says little, and what he says is dry. Answers questions with one word unless the subject is trees.',
     x: 19, y: 65, home: { x: 16, y: 63, w: 8, h: 7 },
     voice: { gender: 'male', age: 'middle' },
-    workRect: { x: 16, y: 63, w: 8, h: 7 },
+    workRect: { x: 16, y: 63, w: 8, h: 7 }, workLabel: 'the grove',
     sells: [{ i: 'log', p: 2 }, { i: 'rope', p: 3 }, { i: 'mushrooms', p: 2 }, { i: 'chestnut', p: 1 }],
     buys: [{ i: 'axe', p: 4 }, { i: 'saw', p: 4 }]
   }

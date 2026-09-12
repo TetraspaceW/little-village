@@ -28,17 +28,14 @@ LG.saveMigrate = (function () {
   function shiftRectV1(r) { return r ? { x: r.x, y: r.y + V1_SHIFT_TILES, w: r.w, h: r.h } : null; }
 
   /* The order and membership `LG.PLACES` had before the forest and the
-     station joined it. `LG.chain.generate` picks the terminal item's home
-     with `pick(LG.PLACES..., rnd)`, which reads nothing but the list's
-     length and order — so growing the list from 17 places to 24 is, on its
-     own, enough to send the same seed's item somewhere else. A save written
-     under the old list is not wrong, it is answering a question that has
-     since changed shape, and the only way to still get its answer is to ask
-     the old question — see `withPlacesV1` below.
-
-     This is a historical fact about what `LG.PLACES` *used to be*, not a
-     mirror of what it is — it must never be "kept in sync" with the array in
-     data.js. */
+     station joined it — a historical fact about what the list *used to be*,
+     not a mirror of what it is. It must never be "kept in sync" with the
+     array in data.js. Kept only as the snapshot for a raw version-1 file,
+     which predates plans recording their own (see `placesSnapshot` below,
+     and `LG.chain.generate`'s `attempt()`) — everything generated since
+     carries the list it actually needs replayed against, so this one stays
+     frozen at exactly 17 entries rather than growing a `PLACES_V2_IDS`
+     beside it. */
   const PLACES_V1_IDS = ['pond', 'mine', 'fields', 'green', 'hall', 'woods', 'behind', 'road',
                           'orchard', 'beeyard', 'mill', 'school', 'chapel', 'graves', 'woodpile',
                           'smithy', 'hut'];
@@ -47,31 +44,24 @@ LG.saveMigrate = (function () {
      of ids in it — see `pick` in chain.js — so a longer list is on its own
      enough to send an unchanged seed's terminal item somewhere else, exactly
      as if the generator's logic had changed. It hasn't; only the list it
-     draws from has grown. Replaying the old draw means asking with the old
-     list, which is what `PLACES_V1_IDS` is for.
+     draws from has grown. Replaying the old draw means asking with the same
+     list of ids the plan was actually drawn against, which every plan now
+     records as its own `placesSnapshot` at generation time — this function
+     just restricts `LG.PLACES` to whichever `ids` it's handed for the one
+     synchronous call that needs it, so `save.js`'s `restore()` can replay
+     any village's original draw this way, new or years old, rather than
+     every list-growing change needing its own hardcoded frozen array and
+     its own flag to say so (`PLACES_V1_IDS` above is what's left of that,
+     kept only for saves too old to carry a `placesSnapshot` at all).
 
-     This is not only asked of a raw version-1 file. Once a village has been
-     migrated it goes on saving as version 2 — its coordinates really are
-     version 2 now — but its seed still only ever produced this exact plan
-     under the old list, forever: `LG.PLACES` is longer with every passing
-     version, potentially, and this plan is pinned to how long it was the day
-     this village was born. So the plan itself carries `_placesV1`, and
-     `save.js`'s `snapshot` writes it into `village.placesV1` on every single
-     save from then on, and `restore` reads it back rather than inferring it
-     from `v`. Without that, the second time this village was ever closed and
-     reopened would regenerate it against a `LG.PLACES` that had grown again,
-     fail the digest it had itself just written, and refuse a save that was
-     never wrong — see the round trip this is tested against in the smoke
-     test.
-
-     This function is the only place the global gets touched, and only for
-     the one synchronous call that needs it — put back in a `finally`
-     whether or not that call throws. */
-  function withPlacesV1(fn) {
+     This is the only place the global gets touched, and only for the one
+     synchronous call passed in — put back in a `finally` whether or not
+     that call throws. */
+  function withPlaces(ids, fn) {
     const real = LG.PLACES;
     const byId = {};
     real.forEach(p => { byId[p.id] = p; });
-    LG.PLACES = PLACES_V1_IDS.map(id => byId[id]).filter(Boolean);
+    LG.PLACES = ids.map(id => byId[id]).filter(Boolean);
     try { return fn(); } finally { LG.PLACES = real; }
   }
 
@@ -96,5 +86,5 @@ LG.saveMigrate = (function () {
     return out;
   }
 
-  return { PLACES_V1_IDS, withPlacesV1, migrateV1 };
+  return { PLACES_V1_IDS, withPlaces, migrateV1 };
 })();

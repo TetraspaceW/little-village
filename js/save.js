@@ -46,7 +46,7 @@ LG.save = (function () {
      coordinate field by the same fixed amount the village moved. The one
      non-coordinate exception is where the errand's terminal item ended
      up, which gets re-derived under the old place list instead (see
-     `migrateV1` / `LG.saveMigrate.withPlacesV1`). */
+     `migrateV1` / `LG.saveMigrate.withPlaces`). */
   const VERSION = 2;
   const KEY = 'lg-save';                 // localStorage
   const ENDPOINT = '/save';              // the log server, when there is one
@@ -155,7 +155,7 @@ LG.save = (function () {
       game: 'little-village',
       saved: new Date().toISOString(),
       village: { seed: plan.seed, level: g.settings.level, lang: g.settings.lang,
-                 digest: digestOf(plan), placesV1: !!plan._placesV1 },
+                 digest: digestOf(plan), placesSnapshot: plan.placesSnapshot },
       /* Weather affects villager behavior (see byDice() in npc.js) and
          accumulated snow depth takes multiple in-game days to build up —
          both must be restored exactly, not re-randomized on load. */
@@ -190,16 +190,20 @@ LG.save = (function () {
     /* Two distinct questions, easy to conflate since one file can answer
        both: (1) "is this a raw v1 file?" — determines whether coordinates
        need shifting (a one-time operation; the result is always written
-       back as v2), and (2) "was this village's plan built under the old
-       place list?" — determines how to regenerate that plan (see
-       `LG.saveMigrate.withPlacesV1`), and stays true permanently once set.
-       A raw v1 file is both; a v2 resave of a formerly-v1 village is only
-       the second. `data` itself isn't mutated by migration — it may have
-       come from the server, and mutating the caller's object would be a
-       surprise. */
+       back as v2), and (2) "which place ids was this village's plan
+       actually drawn against?" — determines how to regenerate that plan
+       (see `LG.saveMigrate.withPlaces`). Every plan generated since this
+       field existed records its own `placesSnapshot`, so (2) only needs
+       falling back to the frozen `PLACES_V1_IDS` for a save old enough to
+       predate it: a raw v1 file, or a v2 resave written back when this
+       was still a boolean flag rather than a list. `data` itself isn't
+       mutated by any of this — it may have come from the server, and
+       mutating the caller's object would be a surprise. */
     const isRawV1 = data.v === 1;
-    const usePlacesV1 = isRawV1 || !!(data.village && data.village.placesV1);
     data = isRawV1 ? LG.saveMigrate.migrateV1(data, VERSION) : data;
+    const placesSnapshot = (data.village && data.village.placesSnapshot) ||
+      (isRawV1 || (data.village && data.village.placesV1) ? LG.saveMigrate.PLACES_V1_IDS : null);
+    const withPlaces = fn => placesSnapshot ? LG.saveMigrate.withPlaces(placesSnapshot, fn) : fn();
 
     /* All validation happens before any game state is touched. The
        generator runs once here purely to check the digest still matches —
@@ -208,9 +212,7 @@ LG.save = (function () {
        this can be called with a save arriving from the server mid-session. */
     let candidate = null;
     try {
-      candidate = usePlacesV1
-        ? LG.saveMigrate.withPlacesV1(() => LG.chain.generate({ level: data.village.level, seed: data.village.seed }))
-        : LG.chain.generate({ level: data.village.level, seed: data.village.seed });
+      candidate = withPlaces(() => LG.chain.generate({ level: data.village.level, seed: data.village.seed }));
     }
     catch (e) { return 'the generator could not rebuild that village at all'; }
     if (digestOf(candidate) !== data.village.digest) {
@@ -219,16 +221,16 @@ LG.save = (function () {
 
     /* Difficulty/language must be set before newVillage() runs, since the
        village is generated from them. newVillage() builds its own plan
-       from the seed rather than reusing `candidate` above, so it needs
-       withPlacesV1 applied too — otherwise it could build a different plan
-       from the same seed than the one just verified against the digest.
-       The resulting plan is tagged with _placesV1 so future saves of this
-       village keep using the same place list. */
+       from the seed rather than reusing `candidate` above, so it needs the
+       same place-list restriction applied — otherwise it could build a
+       different plan from the same seed than the one just verified
+       against the digest. The resulting plan records its own
+       `placesSnapshot` (see chain.js's `attempt()`), so future saves of
+       this village keep replaying the same list without restore() having
+       to remember anything about it itself. */
     g.settings.lang = data.village.lang;
     g.settings.level = data.village.level;
-    if (usePlacesV1) LG.saveMigrate.withPlacesV1(() => g.newVillage(data.village.seed, true));
-    else g.newVillage(data.village.seed, true);
-    g.plan._placesV1 = usePlacesV1;
+    withPlaces(() => g.newVillage(data.village.seed, true));
 
     const tm = data.time || {};
     LG.time.start(tm.day, tm.frac);
@@ -446,7 +448,5 @@ LG.save = (function () {
            get lastAt() { return lastAt; },
            get onServer() { return serverOk; },
            get resumed() { return resumed; },
-           _local: fromLocal, _toLocal: toLocal,
-           // so a test can build a plan the way a v1 save's digest was built
-           _withPlacesV1: LG.saveMigrate.withPlacesV1 };
+           _local: fromLocal, _toLocal: toLocal };
 })();

@@ -866,7 +866,7 @@ section('a village, written down and read back');
     // chain.js), so what a save records is whatever `plan.seed` actually
     // came back as, same as `snapshot` reads from the live plan rather
     // than from the original request.
-    const v1Plan = LG.save._withPlacesV1(() =>
+    const v1Plan = LG.saveMigrate.withPlaces(LG.saveMigrate.PLACES_V1_IDS, () =>
       LG.chain.generate({ level: 'beginner', seed: 'migration-check-' + plan.seed }));
     const v1Digest = LG.save.digestOf(v1Plan);
 
@@ -910,11 +910,37 @@ section('a village, written down and read back');
        prevent: a still-correct save being refused over an unrelated change. */
     const resaved = LG.save.snapshot();
     ok(resaved.v === LG.save.VERSION, 'the next save this village writes is tagged current');
-    ok(resaved.village.placesV1 === true,
+    ok(JSON.stringify(resaved.village.placesSnapshot) === JSON.stringify(LG.saveMigrate.PLACES_V1_IDS),
        'and still says which place list its seed has to be replayed against');
     ok(LG.save.restore(JSON.parse(JSON.stringify(resaved))) === null,
        'so closing and reopening it a second time still works');
     ok(LG.game.plan.seed === v1Plan.seed, 'as the same village, not a refusal or a new one');
+  }
+
+  /* Before `placesSnapshot` existed, a migrated village said the same
+     thing with a boolean: `village.placesV1: true`, meaning "replay this
+     seed against LG.saveMigrate.PLACES_V1_IDS", full stop. Those saves
+     are still out there tagged version 2 -- this isn't a new save
+     version, just a new (and more general) way of saying the same thing
+     -- so restore() has to keep reading the old flag, not just the new
+     field. */
+  section('an old-style v2 save (a placesV1 flag, not yet a snapshot) still loads');
+  {
+    const oldPlan = LG.saveMigrate.withPlaces(LG.saveMigrate.PLACES_V1_IDS, () =>
+      LG.chain.generate({ level: 'beginner', seed: 'old-flag-check-' + plan.seed }));
+    const oldStyleSave = {
+      v: 2, game: 'little-village', saved: new Date().toISOString(),
+      village: { seed: oldPlan.seed, level: 'beginner', lang: 'en',
+                 digest: LG.save.digestOf(oldPlan), placesV1: true },
+      time: { day: 1, frac: 0.5, weather: 'clear', hold: 0, snow: 0 },
+      player: { x: 100, y: 100, dir: 'down' },
+      inventory: { coins: 3 },
+      notes: [], deeds: [], board: [], won: false,
+      terminal: null, villagers: {}
+    };
+    ok(LG.save.restore(oldStyleSave) === null,
+       'a village saved under the old boolean flag, before snapshots existed, still loads');
+    ok(LG.game.plan.seed === oldPlan.seed, 'as the same village the flag named');
   }
 
   section('a save this version cannot read backwards is still refused');

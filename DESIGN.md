@@ -847,10 +847,10 @@ which turns out to be exactly as disruptive.
 
 So a migrating save can't just be handed to today's generator — it has to be replayed
 against the seventeen-entry list it was actually drawn from, or the digest it carries will
-disagree with a village that never actually changed. `LG.PLACES_V1_IDS` is that old order,
-kept as a named historical fact rather than folded into `LG.PLACES` itself, and
-`withPlacesV1` swaps the live global out for exactly one synchronous call and puts it back
-in a `finally`.
+disagree with a village that never actually changed. `LG.saveMigrate.PLACES_V1_IDS` is
+that old order, kept as a named historical fact rather than folded into `LG.PLACES`
+itself, and `withPlaces` swaps the live global out for exactly one synchronous call and
+puts it back in a `finally`.
 
 **And that has to keep being true, not just be true once.** The first working version of
 this passed its own test and then failed the very next section of the smoke suite —

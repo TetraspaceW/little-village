@@ -292,6 +292,14 @@ LG.chain = (function () {
         item: terminalItem, isBeast, beastName,
         placeId: place.id, placeText: place.en, rect: place.rect
       },
+      /* Which place ids `pick(LG.PLACES..., rnd)` above actually had to
+         choose from -- not just this plan's *result*, but the list length
+         and order it was drawn against. `LG.PLACES` only ever grows, so a
+         plan built today may need to be replayed against a shorter list
+         later, once new places have joined it; this is what lets
+         save.js's restore() do that (see `LG.saveMigrate.withPlaces`)
+         without caring whether the plan is brand new or years old. */
+      placesSnapshot: LG.PLACES.map(p => p.id),
       // used by the ending screen to describe what the errand accomplished
       goalItem: wants[0], clientId: links[0].npcId, clientName: links[0].npcName
     };

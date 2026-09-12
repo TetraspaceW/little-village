@@ -1,18 +1,19 @@
 #!/usr/bin/env node
-/* latency-report.js — how long each kind of call takes, and on which model.
+/* latency-report.js — reports round-trip time per call kind and model.
 
-   Every call the game makes already carries its own round-trip time: js/llm.js's
-   `audited` times from just before the provider call to just after it returns
-   or throws, and `record` writes that as `ms` onto the log entry (see
-   DESIGN.md's "Every call is on the record"). This script never talks to a
-   model itself; it only sums and sorts what logs/*.jsonl already has.
+   Every logged call already has its round-trip time recorded: js/llm.js's
+   `audited` measures from just before the provider request to just
+   after it resolves or throws, and `record` stores that as `ms` on the
+   log entry. This script makes no API calls itself; it only aggregates
+   and sorts data already present in logs/*.jsonl.
 
        node tools/latency-report.js                  # every logs/*.jsonl
        node tools/latency-report.js logs/foo.jsonl    # just this one (or several)
 
-   A call that errored still has an `ms` — audited() times the attempt whether
-   it resolves or throws — so a slow, failing model shows up here as slow, not
-   as absent. Nothing here decides anything about the game; it only reads. */
+   A failed call still has a valid `ms` value, since `audited()` times
+   the attempt regardless of whether it resolves or throws — so a slow,
+   failing model shows up here as slow, not missing. This script is
+   read-only -- it doesn't affect game behavior. */
 'use strict';
 const fs = require('fs'), path = require('path');
 
@@ -20,10 +21,9 @@ const ROOT = path.resolve(__dirname, '..');
 
 /* ------------------------------------------------------------ log reading
 
-   Same shape as tools/format-stats.js's own logFiles/readCalls — a copy, not
-   a require, for the same reason format-stats gives for its own copies: two
-   short functions are cheaper to keep in step by eye than to wire a shared
-   module for. */
+   Duplicates tools/format-stats.js's logFiles/readCalls rather than
+   importing them — for two short functions, keeping copies in sync
+   manually is simpler than introducing a shared module. */
 
 function logFiles(argv) {
   if (argv.length) return argv;
@@ -51,13 +51,14 @@ function readCalls(files) {
 
 /* -------------------------------------------------------------- grouping
 
-   The `kind` field already on each entry is matched off a fixed system-prompt
-   prefix list in js/llm.js's own KINDS, which (as format-stats.js notes) has
-   no row for the noticeboard call, belief-revision, or the after-conversation
-   takeaway — those three land in its catch-all "call" bucket. A latency
-   breakdown wants every call to land somewhere legible, so this is the same
-   fuller COST_KINDS table format-stats.js uses for its own cost breakdown,
-   copied rather than shared for the same by-eye-in-step reason as above. */
+   The `kind` field already on each log entry is matched from a fixed
+   system-prompt prefix list in js/llm.js's `KINDS`, which (as noted in
+   format-stats.js) has no entry for the noticeboard call, belief-
+   revision, or the after-conversation takeaway — those three land in
+   its catch-all "call" bucket. A latency breakdown needs every call
+   categorized legibly, so this reuses the same fuller table
+   format-stats.js defines as `COST_KINDS`, duplicated here for the same
+   reason as the log-reading functions above. */
 const KINDS = [
   ['You decide what a villager does next', 'intent'],
   ['You play one villager', 'chatter'],
@@ -77,26 +78,27 @@ function kindOf(e) {
   return 'other';
 }
 
-/* The one distinction DESIGN.md itself measures cost by (see "And the log is
-   where the cost shows up"): the in-character model that plays the
-   player-facing villager — `cfg.model`, the "villager" kind — against the
-   helper model (`helperModel(cfg)`) doing every other kind of bookkeeping
-   call. `chatter` (villager-to-villager) is dispatched with helperModel too
-   (js/llm.js's own villager-to-villager call site sets `model: helperModel
-   (cfg)`), so it belongs on the helper side of the split despite reading
-   like dialogue — the split follows which model answered, not what the
-   prompt sounds like. Latency reads the same way cost did there: what looks
-   like a rounding error next to the dialogue is a different question once it
-   is actually measured apart from it, so this split is the top of the
-   report, not an afterthought. */
+/* The same primary split DESIGN.md tracks cost by: the in-character
+   model playing the player-facing villager (`cfg.model`, the
+   "villager" kind) versus the helper model (`helperModel(cfg)`)
+   handling every other kind of bookkeeping call. `chatter`
+   (villager-to-villager dialogue) is dispatched via helperModel too
+   (see js/llm.js's villager-to-villager call site, which sets `model:
+   helperModel(cfg)`), so it counts as helper-side latency despite
+   being dialogue — the split is by which model answered, not what the
+   prompt looks like. Helper-side latency, aggregated across its higher
+   call volume, can be a meaningfully larger share of total wait time
+   than it appears next to any single dialogue exchange, which is why
+   this split leads the report rather than being buried in the detail. */
 const VILLAGER_KINDS = new Set(['villager']);
 function grandOf(kind) { return VILLAGER_KINDS.has(kind) ? 'villager' : 'helper'; }
 
 /* -------------------------------------------------------------- stats
 
-   Sum and count are enough for a total, but a mean alone hides a bimodal
-   model — fast unless it decides to reason, say — so each bucket also keeps
-   every ms and reports min/median/max. */
+   Sum and count alone are enough for a total, but a mean alone can
+   hide a bimodal distribution (e.g. a model that's fast unless it
+   decides to reason at length) -- so each bucket keeps every individual
+   value and reports min/median/p90/max too. */
 function stats(values) {
   const sorted = values.slice().sort((a, b) => a - b);
   const n = sorted.length;

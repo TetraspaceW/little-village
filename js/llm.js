@@ -1,17 +1,19 @@
-/* llm.js — provider abstraction: OpenRouter, Anthropic, and Logfare (direct from the browser). */
+/* llm.js — LLM provider abstraction for Anthropic, OpenRouter, and
+   Logfare, called directly from the browser. */
 window.LG = window.LG || {};
 
 LG.llm = (function () {
-  /* Logfare has exactly one model worth naming: "logfare/auto" routes to
-     whatever it currently rates best, falling through its chain on failures.
-     There is nothing else to pick, so it is the only entry in its lists and
-     the send path below pins it rather than trusting whatever cfg.model says. */
+  /* Logfare exposes only one selectable model: "logfare/auto" routes to
+     whichever underlying model it currently rates best, falling back
+     through its chain on failure. Since there's nothing else to choose,
+     it's the only entry in the model lists below, and the send path
+     hardcodes it rather than trusting cfg.model. */
   const LOGFARE_MODEL = "logfare/auto";
 
-  /* OpenRouter's own router picks the underlying model per-request rather than
-     naming one; how hard that underlying model thinks is a separate knob
-     (reasoning.effort) sent alongside it in openrouterSend, high for the main
-     model and medium for the helper. */
+  /* OpenRouter's "auto" router picks the underlying model per-request
+     rather than a fixed model being named; how much that underlying
+     model reasons is set separately via `reasoning.effort` in
+     openrouterSend (high for the main model, medium for the helper). */
   const AUTO_MODEL = "openrouter/auto";
 
   const MODELS = {
@@ -29,9 +31,9 @@ LG.llm = (function () {
     logfare: [{ id: LOGFARE_MODEL, label: "Auto" }],
   };
 
-  /* A second, smaller model does the bookkeeping the in-character one is bad at:
-     notebook fact-checking, furigana repair, and confirming a trade was agreed.
-     Anything cheap and literal-minded suits it. */
+  /* Small/cheap helper model list, used for bookkeeping tasks the
+     in-character model handles poorly: notebook fact-checking, furigana
+     repair, confirming a trade completed. Any cheap, literal model works. */
   const HELPERS = {
     anthropic: [
       { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
@@ -52,8 +54,8 @@ LG.llm = (function () {
     logfare: LOGFARE_MODEL,
   };
 
-  /* An explicit choice wins; otherwise the provider's default; otherwise fall
-     back to whatever is playing the villagers. */
+  /* Resolves the helper model: explicit user choice, else provider's
+     default VERIFIER, else falls back to the main villager model. */
   function helperModel(cfg) {
     return (
       (cfg && cfg.helper) || VERIFIER[cfg && cfg.provider] || (cfg && cfg.model)
@@ -64,9 +66,9 @@ LG.llm = (function () {
   // reject it, so we only send it where it is supported.
   const SUPPORTS_EFFORT = /^claude-(opus-5|sonnet-5|opus-4-8|opus-4-7|fable-5)/;
 
-  /* Turn transport failures into something a player can act on. The most common
-     one by far is opening the page from file://, where the browser sends
-     `Origin: null` and the provider's CORS check rejects it. */
+  /* Wraps transport/HTTP failures into player-readable error messages. The
+     most common failure is opening the page via file://, which sends
+     `Origin: null` and fails the provider's CORS check. */
   async function post(url, headers, body) {
     let res;
     try {
@@ -113,8 +115,8 @@ LG.llm = (function () {
   function anthropicBody(cfg, system, messages, maxTokens, schema) {
     const body = { model: cfg.model, max_tokens: maxTokens, system, messages };
     if (SUPPORTS_EFFORT.test(cfg.model)) {
-      // Snappy dialogue matters more than deep reasoning here. Disabling thinking
-      // is allowed at effort "high" or below.
+      // Response speed matters more than reasoning depth for in-character
+      // dialogue. Disabling thinking is only permitted at effort "high" or below.
       body.thinking = { type: "disabled" };
       body.output_config = { effort: "low" };
     }
@@ -137,16 +139,15 @@ LG.llm = (function () {
     };
   }
 
-  /* OpenRouter attributes a call to an app by its URL, and the calls were coming
-     through as "unknown" because we sent `location.origin` — the literal string
-     "null" when the page is opened from a file:// path, which names no app at
-     all. The URL is the app's primary key (the app page is
-     openrouter.ai/apps?url=<this>), so it is fixed rather than derived: served
-     on one port or another, or from a file, every call belongs to one village.
-     Localhost is attributed only when a title comes with it, which it does.
+  /* OpenRouter attributes calls to an "app" keyed by this URL (viewable
+     at openrouter.ai/apps?url=<this>). Previously this was derived from
+     `location.origin`, which is the literal string "null" when opened via
+     file://, so calls showed up as unattributed. Hardcoded instead, so
+     every call is attributed to the same app regardless of what port or
+     protocol the page is served from.
 
-     Changing APP_URL later starts a fresh app with its own history; the title
-     beside it can be rewritten any time and stays with the same app. */
+     Changing APP_URL later creates a new, separate app with its own
+     history; APP_TITLE can be edited freely without that effect. */
   const APP_URL = "https://github.com/TetraspaceW/little-village";
   const APP_TITLE = "Little Village (Beta)";
 
@@ -168,27 +169,27 @@ LG.llm = (function () {
 
   /* ------------------------------------------------------- can it take a schema
 
-     Asking a model for JSON and hoping is what this game did everywhere, and one
-     session's logs showed what that costs: a third of the player-facing replies
-     came back missing the fields that carry the English and the romanisation.
-     Both providers can be told the shape instead — Anthropic as
-     `output_config.format`, OpenRouter as OpenAI's `response_format` — and
-     OpenRouter translates the one shape to whatever its chosen backend speaks,
-     so this stays two branches rather than one per model.
+     Previously every call just asked for JSON in the prompt and hoped;
+     logging showed roughly a third of player-facing replies came back
+     missing fields (English translation, romanization). Both providers
+     support telling the model the exact expected shape — Anthropic via
+     `output_config.format`, OpenRouter via OpenAI-style `response_format`
+     (which it translates to whatever its backend actually speaks) — so
+     this only needs two branches, not one per model.
 
-     What it cannot be is unconditional. Support is per endpoint, not per model:
-     OpenRouter rejects the request outright rather than ignoring the field, so
-     sending a schema to a model that has none turns a reply that merely arrived
-     thin into no reply at all. Some listed models are exactly that case — they
-     take `response_format` for plain JSON mode but are not on the
-     structured-outputs list.
+     Support isn't universal, though, and it's per-endpoint rather than
+     per-model: OpenRouter rejects the whole request if the target model
+     doesn't support structured outputs, rather than ignoring the field.
+     Some models support `response_format` for plain JSON mode without
+     supporting the stricter structured-outputs schema, so this can't just
+     be assumed available.
 
-     So it is asked once, when the key is accepted, and it fails closed: anything
-     we could not look up, could not reach, or do not recognise is treated as no
-     schema, and the prompt and the repair carry the turn the way they already
-     do. */
-  const SCHEMA_OK = {}; // 'provider:model' -> true | false, resolved once
-  let orModels = null; // the OpenRouter list is one fetch, shared with the price lookup below
+     So support is probed once per model, right after the key is
+     accepted, and failure is treated as "no" — a failed/unknown lookup
+     falls back to prompt-only JSON with repair, same as before this
+     existed. */
+  const SCHEMA_OK = {}; // 'provider:model' -> true | false, cached after first check
+  let orModels = null; // OpenRouter's model list, fetched once and shared with the price lookup below
 
   async function getJSON(url, headers) {
     const res = await fetch(url, { headers: headers || {} });
@@ -200,7 +201,7 @@ LG.llm = (function () {
     return cfg.provider + ":" + model;
   }
 
-  /* Synchronous, so the send path never waits on it. Unknown reads as no. */
+  /* Synchronous check so the send path never blocks on it. Unresolved/unknown reads as false. */
   function schemaOK(cfg, model) {
     return SCHEMA_OK[schemaKey(cfg, model || cfg.model)] === true;
   }
@@ -208,9 +209,9 @@ LG.llm = (function () {
   async function probeOne(cfg, model) {
     const key = schemaKey(cfg, model);
     if (key in SCHEMA_OK) return SCHEMA_OK[key];
-    SCHEMA_OK[key] = false; // stands unless we learn otherwise
-    // Logfare picks the backing model itself, so there is no catalogue to ask —
-    // fails closed the same as anything else we have no way to look up.
+    SCHEMA_OK[key] = false; // cached as false unless the lookup below proves otherwise
+    // Logfare picks its own backing model, so there's no catalogue to
+    // query -- fails closed the same as any other unresolvable lookup.
     if (cfg.provider !== "anthropic" && cfg.provider !== "openrouter")
       return false;
     try {
@@ -231,13 +232,13 @@ LG.llm = (function () {
           (m.supported_parameters || []).indexOf("structured_outputs") !== -1;
       }
     } catch (e) {
-      orModels = null; // a failed list should not poison a later look
+      orModels = null; // don't cache a failed fetch -- allow retrying later
     }
     return SCHEMA_OK[key];
   }
 
-  /* Both models, one round of lookups, at the door. Never throws: not knowing is
-     a supported answer. */
+  /* Probes both the main and helper model once, up front. Never throws —
+     an unresolved probe is a valid, handled state (see schemaOK). */
   async function probe(cfg) {
     if (!cfg || !cfg.provider) return;
     try {
@@ -252,20 +253,21 @@ LG.llm = (function () {
 
   /* ---------------------------------------------------------- nitro, capped
 
-     sort: "throughput" (OpenRouter's ":nitro" shortcut) picks whichever
-     provider is fastest with no price tiebreak at all — a provider a hair
-     quicker than the rest wins the routing even if it charges 100x more per
-     token, because throughput is the only key it sorts on. max_price is the
-     fix: a hard ceiling, filtering out anyone above it before throughput
-     gets a say, rather than a second sort key
+     OpenRouter's `sort: "throughput"` (the ":nitro" shortcut) routes to
+     whichever backend provider is fastest, with no price consideration
+     at all -- a provider that's marginally faster wins the routing even
+     if it costs 100x more per token, since throughput is the only sort
+     key. `max_price` fixes this: a hard price ceiling that filters out
+     providers before throughput sorting runs, rather than being a
+     second sort key
      (https://openrouter.ai/docs/guides/routing/provider-selection).
 
-     The ceiling itself is read off Anthropic's own current OpenRouter
-     listing rather than a number typed in here that would drift out of date
-     — Sonnet's price for the villager-facing model, Haiku's (the helper's
-     own reference model, see VERIFIER above) for the cheap bookkeeping
-     calls, whichever OpenRouter model a player actually picked for either
-     role. Resolved once and cached, same shape as SCHEMA_OK. */
+     The price ceiling is read from Anthropic's current OpenRouter
+     listing rather than hardcoded (which would drift out of date) —
+     Sonnet's price for the main villager-facing model, Haiku's (the
+     helper's reference model per VERIFIER above) for cheap bookkeeping
+     calls, whichever OpenRouter model the player actually selected for
+     either role. Resolved once and cached, same pattern as SCHEMA_OK. */
   const PRICE_REF = {
     big: "anthropic/claude-sonnet-5",
     fast: VERIFIER.openrouter,
@@ -274,7 +276,7 @@ LG.llm = (function () {
 
   async function maxPriceFor(kind) {
     if (kind in maxPriceCache) return maxPriceCache[kind];
-    maxPriceCache[kind] = null; // stands unless we learn otherwise — never blocks a call
+    maxPriceCache[kind] = null; // cached as null until resolved; never blocks a call either way
     try {
       if (!orModels)
         orModels = getJSON("https://openrouter.ai/api/v1/models");
@@ -290,30 +292,32 @@ LG.llm = (function () {
         };
       }
     } catch (e) {
-      orModels = null; // a failed list should not poison a later look
+      orModels = null; // don't cache a failed fetch -- allow retrying later
     }
     return maxPriceCache[kind];
   }
 
   /* ---------------------------------------------------------------- audit
 
-     Every call the game makes goes through the two functions below, so this is
-     the one place that sees all of it. Each one is recorded whole — the system
-     prompt, the messages, the raw reply before any parsing or repair, how long
-     it took and what it cost — and printed as a collapsed console group you can
-     open and read.
+     Every API call goes through anthropicCall/openrouterCall/logfareCall
+     below, which is why this is centralized here rather than at each
+     call site. Each call is recorded in full — system prompt, messages,
+     the *raw* reply before any parsing/repair, timing, and usage — and
+     printed as a collapsed console group.
 
-     Raw matters: most of the failures in this game have been the difference
-     between what the model actually returned and what the game made of it, and
-     a log of the tidied-up version would have hidden every one of them.
+     Recording the raw (pre-repair) reply matters: most bugs in this game
+     have come from mismatches between what the model actually returned
+     and what the game did with it, which a cleaned-up log would hide.
 
        LG.llm.audit = false     stop printing (still recorded)
        LG.llm.transcript        the records, newest last
        LG.llm.dump()            the lot as plain text, for copying out */
-  /* Helper calls are known by the opening of their system prompt. A villager's
-     own prompt opens with their name, which is not something to match on, so it
-     is known by a section heading only it has — keep these in step with the
-     prompts or the log fills up with "call". */
+  /* Identifies which kind of call a log entry is by matching the opening
+     of its system prompt. A villager's own system prompt opens with their
+     name (not matchable), so those are instead identified by a section
+     heading unique to that prompt ('# Your character'). Keep these
+     strings in sync with the actual prompt text below, or entries fall
+     through to the generic 'call' label. */
   const KINDS = [
     ["You decide what a villager does next", "intent"],
     ["You play one villager", "chatter"],
@@ -334,8 +338,9 @@ LG.llm = (function () {
     return "call";
   }
 
-  /* Who it is about, when the prompt says so — a log of twenty "villager" calls
-     is much less use than one that names them. */
+  /* Extracts the villager's name from the prompt when present, so log
+     entries can be labeled by who they're about instead of all showing
+     as generic "villager" calls. */
   function subjectOf(system, messages) {
     const t =
       String(system || "") +
@@ -360,10 +365,10 @@ LG.llm = (function () {
       reasoning: (res && res.reasoning) || null,
       usage: (res && res.usage) || null,
       stop: (res && res.stop) || null,
-      // whether this one was shape-checked by the provider or only asked nicely
+      // whether the provider enforced the response shape (structured outputs) or it was just requested in-prompt
       schema: !!(res && res.schema),
-      // A reasoning model can spend the whole budget thinking and never get to the
-      // JSON. That comes back as an empty-handed success, so it is called out.
+      // A reasoning model can exhaust its token budget on thinking and never
+      // emit the JSON -- that comes back as a 200 with an empty body, so flag it explicitly.
       truncated: !!(
         res &&
         (res.stop === "max_tokens" || res.stop === "length")
@@ -373,7 +378,7 @@ LG.llm = (function () {
     };
     transcript.push(entry);
     if (transcript.length > KEEP) transcript.shift();
-    if (LG.logbook) LG.logbook.call(entry); // and onto the disk, if a log is running
+    if (LG.logbook) LG.logbook.call(entry); // also persist to disk, if logging is active
     if (audit && typeof console !== "undefined" && console.log) {
       const u = entry.usage || {};
       const tok =
@@ -425,7 +430,7 @@ LG.llm = (function () {
     return entry;
   }
 
-  /* Wraps a provider call so the record is written whether it returns or throws. */
+  /* Wraps a provider call so a log entry is recorded whether it succeeds or throws. */
   async function audited(cfg, system, messages, run) {
     const t0 =
       typeof performance !== "undefined" && performance.now
@@ -445,9 +450,9 @@ LG.llm = (function () {
     }
   }
 
-  /* A caller hands over the shape it wants and stays out of the question of
-     whether this model can be told it — the gate lives here, in the one place
-     all the traffic already goes through. */
+  /* Callers pass the schema they want without needing to know whether the
+     target model actually supports structured outputs — that check
+     (schemaOK) happens centrally here. */
   async function anthropicCall(cfg, system, messages, schema) {
     const s = schema && schemaOK(cfg, cfg.model) ? schema : null;
     return audited(cfg, system, messages, () =>
@@ -469,10 +474,10 @@ LG.llm = (function () {
     );
   }
 
-  /* Every call site used to spell out its own three-way (well, two-way, before
-     Logfare) branch on cfg.provider. One dispatcher here means a new provider
-     is one line in each of these tables plus one branch, not one branch per
-     call site. */
+  /* Every call site used to repeat its own branch on cfg.provider
+     (two-way before Logfare, three-way now). Centralizing it here means
+     adding a provider only requires one line in each model table plus
+     one branch here, not a branch at every call site. */
   function providerCall(cfg, system, messages, schema) {
     if (cfg.provider === "anthropic")
       return anthropicCall(cfg, system, messages, schema);
@@ -523,7 +528,7 @@ LG.llm = (function () {
         .filter((b) => b.type === "text")
         .map((b) => b.text)
         .join(""),
-      // the model's own working, when it shows any — this is the interesting half
+      // the model's reasoning trace, when present
       reasoning:
         blocks
           .filter(
@@ -537,16 +542,15 @@ LG.llm = (function () {
     };
   }
 
-  /* The helper model's calls are small bookkeeping judgements — deciding an
-     intent, checking a claim, confirming a trade — not something that benefits
-     from extended thinking, and a reasoning model left to itself will burn
-     tokens ruminating on them. The prompts these calls send run to about 490
-     tokens characteristically (session logs put the median at 489, mean 480),
-     so a third of that is a reasonable ceiling. A model with no reasoning
-     budget of its own just ignores the field — OpenRouter's default is to
-     drop parameters a provider doesn't support rather than reject the
-     request — except Anthropic models, where OpenRouter clamps anything below
-     its own 1024-token floor up to 1024 rather than honouring a smaller one. */
+  /* Cap on reasoning tokens for helper-model calls (intent decisions,
+     claim checks, trade confirmations) — small, simple judgments that
+     don't need extended thinking, but a reasoning model given no cap will
+     burn tokens on them anyway. These prompts run ~480-490 tokens
+     (session log median/mean), so this cap is roughly a third of that.
+     Models without a reasoning budget just ignore this field — OpenRouter
+     drops unsupported parameters rather than rejecting the request —
+     except Anthropic models via OpenRouter, which clamp any value below
+     OpenRouter's own 1024-token floor up to 1024. */
   const FAST_REASONING_TOKENS = 160;
 
   async function openrouterSend(cfg, system, messages, schema) {
@@ -554,16 +558,18 @@ LG.llm = (function () {
       model: cfg.model,
       messages: [{ role: "system", content: system }].concat(messages),
     };
-    /* The auto router has no reasoning budget of its own to cap with max_tokens
-       — effort is the dial it understands — so it gets high for the villager-
-       facing main model and medium for the helper's bookkeeping calls (still
-       identified by cfg.fast) rather than the max_tokens throttle below. */
+    /* The "auto" router has no fixed reasoning budget to cap via
+       max_tokens -- `effort` is the parameter it actually respects -- so
+       it gets "high" for the main villager-facing model and "medium" for
+       helper/bookkeeping calls (still identified via cfg.fast), instead
+       of the max_tokens cap used below for non-auto models. */
     if (cfg.model === AUTO_MODEL) body.reasoning = { effort: cfg.fast ? "medium" : "high" };
     else if (cfg.fast) body.reasoning = { max_tokens: FAST_REASONING_TOKENS };
-    /* Nitro, capped — see the comment on maxPriceFor above. No cap resolved
-       (the lookup failed, or the reference model was not in the list) means
-       no sort is sent either: fail closed into OpenRouter's ordinary
-       price-aware default rather than chasing throughput with no ceiling. */
+    /* Nitro routing with a price cap -- see the comment on maxPriceFor
+       above. If no cap could be resolved (lookup failed, or the
+       reference model isn't in OpenRouter's list), no `sort` is sent
+       either -- falls back to OpenRouter's normal price-aware default
+       rather than optimizing for throughput with no price ceiling. */
     const price = await maxPriceFor(cfg.fast ? "fast" : "big");
     if (price) body.provider = { sort: "throughput", max_price: price };
     if (schema) {
@@ -580,10 +586,10 @@ LG.llm = (function () {
     if (data.error) throw new Error(data.error.message || "OpenRouter error");
     const choice = (data.choices || [])[0] || {};
     const m = choice.message || {};
-    /* Reasoning models return their working in a field of its own and it was
-       being dropped on the floor — which is a shame, because it is where you can
-       see a villager talk themselves into something daft. Providers disagree
-       about the name, so take whichever turns up. */
+    /* Reasoning models return their trace in a separate field, previously
+       discarded here (it's useful for debugging odd model decisions).
+       Different OpenRouter backends name the field differently, so check
+       both. */
     const think =
       m.reasoning ||
       (Array.isArray(m.reasoning_details)
@@ -601,10 +607,11 @@ LG.llm = (function () {
     };
   }
 
-  /* Logfare speaks the same OpenAI-shaped chat-completions dialect as
-     OpenRouter, at a different door and with one model always: "logfare/auto"
-     is pinned here rather than trusted from cfg.model, so picking Logfare as
-     the provider always means auto, whatever a stray custom model field says. */
+  /* Logfare uses the same OpenAI-shaped chat-completions request format
+     as OpenRouter, just at a different endpoint and always with one
+     model. `LOGFARE_MODEL` is hardcoded here rather than read from
+     cfg.model, so selecting Logfare as the provider always means "auto",
+     regardless of any leftover custom model value in cfg. */
   async function logfareSend(cfg, system, messages, schema) {
     const body = {
       model: LOGFARE_MODEL,
@@ -633,8 +640,8 @@ LG.llm = (function () {
     };
   }
 
-  /* A minimal round trip, so a bad key or a blocked origin is caught at the
-     door rather than halfway through a conversation. */
+  /* Minimal test request, so a bad key or blocked origin is caught up
+     front rather than mid-conversation. */
   async function validate(cfg) {
     if (!cfg.apiKey) throw new Error("Please paste an API key.");
     const msgs = [{ role: "user", content: "Say OK." }];
@@ -674,11 +681,12 @@ LG.llm = (function () {
     return true;
   }
 
-  /* Did the villager actually SAY these things? The villager's own report is
-     unreliable — it will flag a fact because it used the word, or explained it.
-     This asks a small model that has no character to play and nothing else to
-     track. It fails closed: anything unconfirmed simply does not get written
-     down. */
+  /* Checks whether the villager's line actually stated each candidate
+     fact. The in-character model's own self-reported "revealed" list is
+     unreliable — it flags facts it merely mentioned or alluded to, not
+     just ones it stated outright. This asks a separate model with no
+     character to play and nothing else to track. Fails closed: nothing
+     unconfirmed gets recorded. */
   async function judge(cfg, said, translation, candidates, opts) {
     if (!candidates.length) return [];
     const lang = (opts && opts.langName) || "the speaker\u2019s language";
@@ -754,7 +762,7 @@ LG.llm = (function () {
     candidates.forEach((c) => (valid[c.id] = true));
     const out = [];
     arr.forEach((x) => {
-      // tolerate a bare tag as well as the object form
+      // accept either a bare tag string or the {tag, note, ruby} object form
       const id = String(typeof x === "string" ? x : (x && x.tag) || "").replace(
         /[^\w]/g,
         "",
@@ -769,10 +777,11 @@ LG.llm = (function () {
     return out;
   }
 
-  /* Did the villager just close the deal? Asked only when the player physically
-     offered the right thing and the villager's own reply did not flag a trade —
-     a second reader catches the missed field without letting a wordless gesture
-     complete a bargain on its own. */
+  /* Checks whether a line of dialogue actually completed a trade. Only
+     called when the player physically offered the correct item but the
+     in-character reply didn't flag a completed trade — this second check
+     catches cases the villager missed, without letting a wordless
+     player action complete a trade on its own. */
   async function confirmTrade(cfg, said, translation, deal) {
     const ask = [
       "One line of dialogue, and a question about it.",
@@ -808,21 +817,22 @@ LG.llm = (function () {
       return /^\W*yes\b/i.test(String(raw).trim());
     } catch (e) {
       return false;
-    } // no deal on a failed check
+    } // treat a failed check as no deal
   }
 
-  /* Something arrived that may have overtaken something they already held.
+  /* Checks whether newly-learned info supersedes something the villager
+     already believed, and if so, returns that one belief rewritten to be
+     current.
 
-     Villagers are not a database with rows to expire — they are a model playing
-     a person, and a person who learns the shoes turned up does not delete "Yuri
-     is looking for shoes", they revise it to "Yuri was looking for shoes, and
-     has them now". So this does not ask what to remove. It asks whether the new
-     thing has overtaken one of the old ones, and for that one line written the
-     way it is true now.
+     Doesn't delete old beliefs outright — a villager who learns the shoes
+     turned up shouldn't lose "Yuri is looking for shoes", it should
+     become "Yuri was looking for shoes, and has them now". So this asks
+     which (if any) single existing belief the new info supersedes, and
+     for a rewritten version of just that one line.
 
-     One line at most, and nothing at all is a perfectly good answer — a villager
-     who hears something that does not bear on what they knew has nothing to
-     revise. It fails closed: no answer, no change. */
+     Returns at most one revision; "nothing to revise" is a valid and
+     common answer when the new info is unrelated to anything held.
+     Fails closed: no answer means no change. */
   async function revise(cfg, opts) {
     const o = opts || {};
     const ask = [
@@ -864,9 +874,9 @@ LG.llm = (function () {
     }
   }
 
-  /* A villager sometimes returns a line with no translation or no romanisation.
-     Rather than showing a learner a bare sentence, ask the small model for the
-     missing parts. */
+  /* Fills in a missing translation or romanization when the in-character
+     model's reply omitted one, rather than showing the player a bare
+     sentence with no gloss. */
   async function gloss(cfg, say, opts) {
     const o = opts || {};
     const want = ['  "translation": "a plain English translation of the line"'];
@@ -907,19 +917,19 @@ LG.llm = (function () {
     }
   }
 
-  /* What two villagers took away from talking to each other.
+  /* Determines what each of two villagers took away from a conversation
+     they just had.
 
-     Gossip is not a mechanic here. Nothing is "shared" as a token: Ilya knows he
-     has a dog, and if he happens to mention the dog then whoever he was talking
-     to now knows about the dog. He might just as easily talk about his back, or
-     the weather, or how much he likes chocolate, and that is worth remembering
-     too if the other one found it interesting. So this is asked afterwards, of
-     the conversation that actually happened, rather than decided in advance.
+     There's no separate "gossip" mechanic that decides in advance what
+     gets shared — this just asks, after the fact, what each villager
+     would remember from the conversation that actually happened,
+     whatever it was about (a fact, small talk, an opinion).
 
-     `said` exists only because the errand chain needs to know when one of its
-     facts has genuinely travelled — the notebook is built on those ids. It is a
-     record of what was said, not a licence: a fact nobody mentioned does not
-     move, however convenient that would be. */
+     The `said` field in the response matters specifically because the
+     errand chain tracks facts by id, and the notebook depends on knowing
+     exactly when a chain fact was actually spoken aloud — a fact that
+     wasn't mentioned doesn't get marked as having spread, no matter how
+     convenient that would be for the errand. */
   async function recall(cfg, opts) {
     const o = opts || {};
     const side = (who, other) =>
@@ -993,17 +1003,18 @@ LG.llm = (function () {
     }
   }
 
-  /* Where a villager goes next, and why.
+  /* Decides where a villager goes next and why.
 
-     This used to be a probability table — morning meant a 60% chance of work —
-     which made everyone a dumb NPC in a game whose whole premise is that they
-     are not. A villager who wants a saw more than anything never went looking
-     for one; a villager who had just been told the baker has bread did not walk
-     to the bakery. They have a goal, a memory and a helper model already; there
-     is no reason for the one decision they make all day to be a dice roll.
+     Previously this was purely a probability table (e.g. 60% chance of
+     going to work in the morning), independent of what the villager
+     actually knew or wanted — a villager looking for a saw would never
+     actually go looking for one, and one just told the bakery has bread
+     wouldn't walk there. Since villagers already have a goal, memory, and
+     a helper model available, this uses that instead of a dice roll.
 
-     Asked only when something has changed — they arrived, the hour turned, the
-     weather broke, they learned something — so a settled villager costs nothing. */
+     Only called when something relevant has changed (arrival, hour
+     change, weather change, new fact learned) — an already-settled
+     villager isn't re-asked. */
   async function intent(cfg, opts) {
     const o = opts || {};
     const lines = [
@@ -1013,24 +1024,25 @@ LG.llm = (function () {
       o.when || null,
       "You are " + o.here + ".",
       "",
-      // one list, dated and attributed — the same one the player-facing prompt shows
+      // dated, attributed list of facts — same content the player-facing prompt shows
       o.held && o.held.length
         ? "What you know, and how you came by it:\n" +
           o.held.map((k) => "- " + k).join("\n")
         : null,
       "",
-      /* Who is where, so that knowing Sanna has the cards is something you can
-         act on. Without it a villager can want a thing, know exactly who has it,
-         and have no way to express going to find them. */
+      /* Locations of nearby villagers, so a fact like "Sanna has the
+         cards" can actually be acted on — otherwise a villager could know
+         exactly who has something with no way to express going to them. */
       o.folk && o.folk.length
         ? "Who you have seen about the village:\n" +
           o.folk.map((f) => "- " + f.name + ", " + f.where).join("\n")
         : null,
       "",
-      /* The options as a JSON array of the exact strings that will be accepted.
-         A bulleted list reads as prose and gets answered in prose — "village
-         green" for "the village green" — which then matches nothing and the
-         villager quietly does not move. */
+      /* Places are given as a literal JSON array of accepted strings,
+         not a bulleted list — a bulleted list gets answered in loose
+         prose (e.g. "village green" for "the village green"), which then
+         fails to match any option and silently leaves the villager
+         stuck. */
       'Places you could go. "go" must be one of these strings exactly:',
       JSON.stringify(o.places.map((p) => p.name)),
       o.places.some((p) => p.note)
@@ -1040,10 +1052,11 @@ LG.llm = (function () {
             .join("\n")
         : null,
       "",
-      /* The old version ended "even if the reason is only that it is your own bed
-         and it is late", which was meant to license a dull answer and was instead
-         picked over as a rule — one villager spent her reasoning establishing that
-         it was only the afternoon so the bed clause did not apply. */
+      /* Bug history: an earlier version of this prompt ended "even if the
+         reason is only that it is your own bed and it is late," meant as
+         permission to give a mundane answer. A model instead treated it
+         as a literal precondition — one villager's reasoning concluded
+         the "bed" clause didn't apply because it wasn't actually late. */
       "Decide where to be for the next while, and why.",
       "",
       "Reply with only a JSON object:",
@@ -1070,15 +1083,14 @@ LG.llm = (function () {
     }
   }
 
-  /* A villager who has come to the noticeboard, deciding whether they have
-     anything worth pinning up.
+  /* Decides whether a villager at the noticeboard has anything worth
+     posting, and writes it if so.
 
-     Nothing is chosen for them to post, the same as nothing is chosen for two
-     villagers to gossip about — see LG.llm.recall. It does not have to be
-     their own errand, or an errand at all: a complaint, a warning, an offer,
-     news, whatever a person standing at a public board might actually write
-     up. Having nothing to say is a perfectly good answer, the same latitude
-     "remember" gets in a player conversation, and nothing forces them past it. */
+     Nothing is pre-selected as postable content, same as recall() doesn't
+     pre-select what gets remembered from a conversation — this can be
+     about their own errand, or unrelated (a complaint, a warning, news,
+     an offer). Declining to post is a valid, expected answer; nothing
+     forces a post to happen. */
   async function notice(cfg, opts) {
     const o = opts || {};
     const lines = [
@@ -1140,31 +1152,31 @@ LG.llm = (function () {
     }
   }
 
-  /* One villager's next line in a conversation with another villager.
-
-     This is deliberately one call per turn rather than one call that writes the
-     whole exchange. Two actors improvising at each other produce a conversation;
-     one actor writing both halves produces a script, and it shows — the halves
-     agree too neatly, nobody misunderstands anybody, and the second speaker never
-     says anything the first did not set up. It runs on the small model precisely
-     so that this is affordable: a six-turn conversation is six cheap calls. */
+  /* Generates one villager's next line in a conversation with another
+     villager — one call per turn, deliberately, rather than one call
+     writing the whole exchange. Two models improvising independently
+     produce a real back-and-forth; one model writing both sides tends to
+     produce something that reads as scripted (both sides agree too
+     neatly, nobody misunderstands, nothing is said that wasn't already
+     set up). Using the cheap helper model per-turn keeps a multi-turn
+     conversation affordable. */
   async function converse(cfg, opts) {
     const o = opts || {};
     const said = (o.transcript || []).map((t) => t.who + ": " + t.say);
     const lines = [
       "You are " + o.me.name + " — " + o.me.job + ". " + o.me.persona,
-      /* Where they are and why they are there. This used to say "you have run
-         into X" and, further down, that they were both on their way somewhere —
-         asserted of everyone, always, including two people who had each walked
-         somewhere on purpose and arrived. It made every conversation an
-         interruption, and the village spent its days telling each other to go
-         home. They are where they chose to be, for the reason they chose it. */
+      /* Bug history: this used to unconditionally say "you have run into
+         X" and that both parties were on their way elsewhere — even for
+         two villagers who had each deliberately walked somewhere and
+         arrived. Every conversation read as an interruption, and
+         villagers kept telling each other to go home. Now states where
+         they actually are and why, based on their real decision. */
       o.here ? "You are " + o.here + "." : null,
-      /* Not a stranger arriving with a job title pinned on: the two of you
-         have lived in this village for years, so whatever o.them is like is
-         already known going in, the same as their name and trade — see the
-         roster note below. Only o.them's business today (`errand`, whatever
-         it turns out to be) is actually news. */
+      /* `o.them`'s persona is included here (not just name/job) since
+         two villagers who've lived here for years already know what
+         each other is like — see the roster note below for the same
+         reasoning applied to the rest of the village. Only `o.errand`
+         (what brought them here today) is actually new information. */
       o.sought
         ? "You came looking for " +
           o.them.name +
@@ -1182,28 +1194,29 @@ LG.llm = (function () {
           (o.them.persona ? " " + o.them.persona : ""),
       o.when || null,
       "",
-      /* Everyone else in the village is somebody both of you already know by
-         name, trade, and character — that is the same background a villager
-         gets talking to the traveller, and here it is what lets a third
-         party come up by name ("Tomas has one of those, he never lends a
-         thing out") without it reading as a name pulled from nowhere. */
+      /* Roster of everyone else in the village by name/job/persona —
+         same background info a villager gets when talking to the player.
+         Lets a third party get mentioned naturally ("Tomas has one of
+         those, he never lends it out") instead of the name seeming to
+         come from nowhere. */
       o.me.roster && o.me.roster.length
         ? "Everyone else in the village:\n" +
           o.me.roster.map((r) => "- " + r.name + " — " + r.job + ". " + r.persona).join("\n")
         : null,
       "",
-      // the same one dated list the other two calls get
+      // same dated fact list the other prompts (intent, notice) get
       o.held && o.held.length
         ? "What you know, and how you came by it — say any of it if it comes up:\n" +
           o.held.map((k) => "- " + k).join("\n")
         : null,
       "",
-      /* There was a purse, a stock list and a wants list here, meant to let two
-         villagers deal with each other. Nothing ever passed them, and nothing
-         downstream could have executed a deal if they had struck one — a villager
-         handing something over is not a thing the game can do. Describing goods
-         they cannot exchange is how they ended up agreeing to deals that never
-         happened. They come back when there is an exchange behind them. */
+      /* Removed: this prompt used to include a purse, stock, and wants
+         list so two villagers could trade with each other. Nothing
+         downstream actually executes villager-to-villager trades — the
+         game has no code path for one villager handing an item to
+         another — so describing tradeable goods just led to villagers
+         "agreeing" to deals that never actually happened. This will come
+         back if/when that mechanic is implemented. */
       said.length
         ? "So far:\n" + said.join("\n")
         : "Neither of you has said anything yet.",
@@ -1214,42 +1227,48 @@ LG.llm = (function () {
       "Say your next line. A line or two.",
       "",
       ("In " + o.langName + ". " + (o.register || "")).trim(),
-      /* The player reads these too, so they have to be worth reading. This rule
-         lives in the villager's own prompt and was missing here, which is how a
-         laconic character ended up producing telegraphese: "\u9ec4\u660f\u51b7\uff1f" is not a
-         sentence anyone says.
+      /* The player reads these lines too, so they need to actually be
+         sentences. This rule exists in the player-facing prompt but was
+         previously missing here, which let a terse character produce
+         telegraphese like "\u9ec4\u660f\u51b7\uff1f" — not something
+         anyone would actually say.
 
-         It says nothing about length on purpose. The first draft ended "terse is
-         fine, ungrammatical is not", and "terse" is the most salient word in it —
-         a clause meant to permit brevity reads as an instruction to be brief. How
-         long a villager's sentences are is their character's business; whether
-         they are sentences is not. */
+         Deliberately says nothing about length. An earlier version ended
+         "terse is fine, ungrammatical is not" — and models fixated on
+         "terse" as the instruction, over-shortening replies. How long a
+         villager's lines are is a character trait; whether they're
+         grammatical sentences is not negotiable. */
       "Say it the way a real " +
         o.langName +
         " speaker would actually say it out loud.",
-      /* What a pair say to each other reaches the event log verbatim, and the
-         invariant for that channel is that there is no English anywhere in it:
-         eavesdropping is a comprehension test, and English narration prints the
-         answer. What actually leaked was not dialogue but stage business —
-         *shuffles feet*, *wipes flour off her hands*, in English, in a toki pona
-         line, on 18% of them. Suppressing the business was the other option and
-         it is the worse village; a miller who dusts off her apron mid-sentence
-         is worth keeping, so this says the gesture is spoken in the same
-         language as the rest, rather than saying not to make it.
+      /* Villager-to-villager dialogue is logged verbatim, and that log
+         is supposed to contain no English at all — overhearing it is a
+         comprehension exercise, and English narration would leak the
+         answer. The actual leak observed wasn't translated dialogue but
+         English stage directions (e.g. *shuffles feet*) embedded inside
+         otherwise-toki-pona lines, in 18% of sampled lines. Suppressing
+         stage directions entirely was the alternative fix, but a
+         character description action mid-sentence is worth keeping, so
+         this instructs writing the gesture in-language instead of
+         removing it.
 
-         Positively phrased on purpose, and this is the case DESIGN.md's rule is
-         about — naming the failure mode here would put English stage directions
-         in the model's context. Measured on toki pona chatter, 298 prompts,
-         haiku, two runs against two baselines: English words inside asterisks
-         349/313 -> 128/98, while the asterisks themselves went up by half.
+         Phrased positively (what to do, not what to avoid) per
+         DESIGN.md's general guidance against naming failure modes in a
+         prompt — naming "English stage directions" as the thing to avoid
+         would put that English text in the model's own context. Measured
+         on 298 toki pona chatter prompts (Haiku, two runs vs. two
+         baselines): English words inside asterisks dropped from 349/313
+         to 128/98, while total asterisk usage (i.e. gestures overall)
+         rose by about half.
 
-         That measurement is the whole warrant for the line, and it is a toki
-         pona measurement — so `stageInLang` carries it only there (see
-         data.js), and the other eight languages are told nothing about their
-         stage business rather than handed a rule on evidence nobody has
-         gathered for them. A line in a prompt is never free: it spends context
-         and it steers, and steering a language nobody has counted the leak in
-         is a guess. Count it there and set the flag if it earns one. */
+         Since this fix was only measured for toki pona, `stageInLang`
+         (data.js) gates it to that language only — the other supported
+         languages get no instruction about this, since there's no
+         measured evidence they have the same leak. Every prompt line
+         costs context and can bias output, so adding this rule
+         everywhere without evidence it's needed elsewhere would be a
+         guess; add the flag for another language once it's been measured
+         there too. */
       o.stageInLang
         ? "Whatever you are doing while you speak — a glance, a shrug, flour wiped off your hands — belongs in " +
           o.langName +
@@ -1293,9 +1312,9 @@ LG.llm = (function () {
     }
   }
 
-  /* Add furigana to a Japanese line. The villager often forgets the ruby field,
-     or returns it without markup — it is busy being a person. The small model
-     has nothing else to do. Returns null if anything looks off. */
+  /* Adds furigana to a Japanese line when the in-character model's reply
+     omitted the ruby field or left it unmarked. Returns null on anything
+     unexpected. */
   async function furigana(cfg, say, attempt) {
     const ask = [
       "Add furigana to this Japanese sentence.",
@@ -1341,19 +1360,20 @@ LG.llm = (function () {
   const FIELDS =
     "say|translation|roman|ruby|understood|remember|action|revealed";
 
-  /* Models drop the odd quote or leave a trailing comma. These repairs are all
-     shape-level — none of them invents content. */
+  /* Fixes common small JSON malformations from model output (missing/
+     curly quotes, trailing commas). Purely structural fixes — none of
+     these invent or alter content. */
   function repairJSON(t) {
     return (
       t
-        // curly quotes first, or the missing-quote rule below fires on them and
-        // leaves the curly one stranded inside the value
+        // Handle curly quotes first -- otherwise the missing-quote rule
+        // below fires on them, leaving the curly quote stranded inside the value.
         .replace(
           new RegExp('("(?:' + FIELDS + ')"\\s*:\\s*)[\u201c\u201d]', "g"),
           '$1"',
         )
         .replace(/[\u201c\u201d](\s*[,}])/g, '"$1')
-        // "say":值..."   — the opening quote of a string value went missing
+        // Handles a value's opening quote being missing entirely (e.g. "say":值...").
         .replace(
           new RegExp(
             '("(?:' + FIELDS + ')"\\s*:\\s*)(?=[^"\\[{\\s\\dtfn-])',
@@ -1361,13 +1381,14 @@ LG.llm = (function () {
           ),
           '$1"',
         )
-        // a trailing comma before the close
+        // Removes a trailing comma before a closing brace/bracket.
         .replace(/,(\s*[}\]])/g, "$1")
     );
   }
 
-  /* Last resort: lift the fields out by hand. Anything is better than showing a
-     player a brace. */
+  /* Last-resort fallback: extracts fields by regex when the reply isn't
+     valid JSON at all. Used to avoid ever showing the player a raw brace
+     or malformed JSON. */
   function salvage(text) {
     const out = {};
     ["say", "translation", "roman", "ruby", "understood", "action"].forEach(
@@ -1386,8 +1407,10 @@ LG.llm = (function () {
     return out.say ? out : null;
   }
 
-  /* Find the first balanced {...}. A missing quote throws the string-state
-     tracking off, which is why repair runs before this, not after. */
+  /* Extracts the first balanced {...} substring, tracking string state to
+     avoid matching braces inside string values. Run after repairJSON, not
+     before — an unrepaired missing quote would throw off the in-string
+     tracking here. */
   function extractObject(t) {
     const start = t.indexOf("{");
     if (start === -1) return null;
@@ -1418,8 +1441,8 @@ LG.llm = (function () {
     return null;
   }
 
-  /* Pull the reply object out, tolerating ```json fences, prose around it, and
-     the small breakages models produce. */
+  /* Extracts the reply object, tolerating ```json code fences, surrounding
+     prose, and the small malformations models tend to produce. */
   function parseJSON(text) {
     if (!text) return null;
     let t = String(text).trim();
@@ -1445,7 +1468,7 @@ LG.llm = (function () {
     const raw = await providerCall(cfg, system, messages, schema);
     const obj = parseJSON(raw);
     if (!obj || !obj.say) {
-      // Never put a brace in a villager's mouth — let the caller report a failure.
+      // Never show the player raw/malformed JSON -- let the caller report a failure instead.
       if (typeof console !== "undefined" && console.warn) {
         console.warn(
           "[dialogue] could not read this reply:\n" + String(raw).slice(0, 600),

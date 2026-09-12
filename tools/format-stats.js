@@ -1,27 +1,27 @@
 #!/usr/bin/env node
-/* format-stats.js — how often each model misses the happy path.
+/* format-stats.js — reports how often each model's replies need
+   correction ("miss the happy path").
 
-   Every call the game makes is already on the record in logs/*.jsonl (see
-   js/llm.js's `record` and DESIGN.md's "Every call is on the record") — the
-   system prompt, the messages, and the raw reply before any parsing or
-   repair. This script never talks to a model itself; it re-derives, from
-   that raw text, the same checks the game already makes at runtime —
-   `parseJSON`'s repair ladder, `looksEnglish`, `needsFurigana`, the
-   forgiving place-name match in `decideWhereToGo` — and counts how often
-   each one had to do anything at all.
+   Every API call the game makes is logged to logs/*.jsonl (see
+   js/llm.js's `record`), including the system prompt, messages, and the
+   raw reply before any parsing/repair. This script doesn't call any
+   model itself; it re-runs the same checks the game applies at runtime
+   against that logged raw text — `parseJSON`'s repair ladder,
+   `looksEnglish`, `needsFurigana`, the fuzzy place-name matching in
+   `decideWhereToGo` — and counts how often each one actually had to
+   correct something.
 
-   "Happy path" means: the JSON parsed on the very first plain attempt, and
-   every field the prompt actually asked for showed up looking the way it
-   was asked to look. Anything else — a repaired quote, an empty roman
-   field, a kanji left unglossed, a "go" that named no real place — is a
-   turn the game had to compensate for, which is exactly the set of turns
-   that would otherwise cost a second call to the small model, or show the
-   player something broken.
+   "Happy path" means: the JSON parsed correctly on the first plain
+   attempt, with every field the prompt requested present and
+   correctly formatted. Anything else (a repaired quote, an empty roman
+   field, unglossed kanji, a "go" naming no real place) is a case the
+   game had to work around — the same cases that would otherwise
+   require a second helper-model call, or show the player a broken reply.
 
        node tools/format-stats.js                  # every logs/*.jsonl
        node tools/format-stats.js logs/foo.jsonl    # just this one (or several)
 
-   Nothing here decides anything about the game; it only reads. */
+   This script is read-only -- it doesn't affect game behavior. */
 'use strict';
 const fs = require('fs'), path = require('path');
 
@@ -29,11 +29,13 @@ const ROOT = path.resolve(__dirname, '..');
 
 /* ------------------------------------------------------- ported checks
 
-   These are copies, not requires — the game's own files assume a browser
-   (window.LG, DOM globals) and loading them under Node for one regex each
-   is not worth the vm gymnastics tests/smoke.js already pays for elsewhere.
-   Keep these in step with js/llm.js and js/dialogue.js by eye; a mismatch
-   here only miscounts a report, it does not touch the game. */
+   These functions are copied here, not imported — the game's own
+   source files assume a browser environment (window.LG, DOM globals),
+   and setting up a `vm` context under Node just to reuse a few regexes
+   isn't worth the overhead tests/smoke.js already pays for elsewhere.
+   Keep these manually in sync with js/llm.js and js/dialogue.js — if
+   they drift, this report becomes inaccurate, but the game itself is
+   unaffected either way. */
 
 const FIELDS = 'say|translation|roman|ruby|understood|remember|action|revealed';
 
@@ -72,9 +74,9 @@ function salvage(text) {
   return out.say ? out : null;
 }
 
-/* Unlike LG.llm.parseJSON, this reports *which* rung of the ladder it took —
-   that is the whole point of the exercise. `happy` mirrors what parseJSON
-   returns on its very first, unrepaired attempt. */
+/* Unlike LG.llm.parseJSON, this reports *which* repair step succeeded
+   — that's the whole point of this script. `happy` corresponds to what
+   parseJSON returns on its first, unrepaired attempt. */
 function classifyReply(rawText) {
   if (!rawText) return { level: 'empty', obj: null };
   let t = String(rawText).trim();
@@ -183,42 +185,42 @@ function readCalls(files) {
   return out;
 }
 
-/* Both `system` and the messages carry prompt text, and which one holds a
-   given fragment differs by call — the player-facing prompt is all system,
-   the villager-to-villager and helper calls put the substance in the first
-   message and keep a one-line system. Search both, joined, the same way
-   js/llm.js's own `subjectOf` does. */
+/* Prompt text can be in either `system` or the messages, depending on
+   the call — the player-facing prompt puts everything in `system`,
+   while villager-to-villager and helper calls put the substance in the
+   first message and keep `system` to one line. Searches both, joined
+   together, matching how js/llm.js's own `subjectOf` does it. */
 function fullText(e) {
   return String(e.system || '') + '\n' + (e.messages || []).map(m => m.content || '').join('\n');
 }
 
 /* -------------------------------------------------------------- grouping
 
-   `kindOf` here is deliberately independent of the `kind` field the log
-   already carries: that field is matched off a fixed system-prompt prefix
-   list in js/llm.js's own KINDS, and it does not (yet) have an entry for
-   the noticeboard call — those fall into its catch-all "call" bucket. Since
-   this script needs the actual role to know which checks apply, it matches
-   the same way js/llm.js does but with one more row, rather than trusting
-   a bucket that is known to miss one caller. */
+   `roleOf` is deliberately independent of the log's own `kind` field.
+   That field is matched from a fixed system-prompt prefix list in
+   js/llm.js's `KINDS`, which doesn't (yet) have an entry for the
+   noticeboard call, so those fall into its catch-all "call" bucket.
+   Since this script needs the actual role to know which checks to
+   apply, it re-implements the same prefix matching with one extra row,
+   rather than relying on a categorization known to miss a caller. */
 function roleOf(e) {
   const sys = String(e.system || '');
   if (sys.indexOf('You decide what a villager does next') === 0) return 'intent';
   if (sys.indexOf('You play one villager') === 0) return 'chatter';
   if (sys.indexOf('You decide whether a villager posts a notice') === 0) return 'notice';
   if (fullText(e).indexOf('# Your character') !== -1) return 'villager';
-  return null;                          // notebook / gloss / trade / recall / revise — out of scope here
+  return null;                          // notebook / gloss / trade / recall / revise -- out of scope here
 }
 
-/* Every logged call already carries a `kind` field (js/llm.js's own
-   `kindOf`), but that field is matched off the same fixed prefix list
-   `roleOf` above works around — it has no row for the noticeboard call, and
-   none either for belief-revision (`revise`) or the after-conversation
-   takeaway (`recall`), so all three land in its catch-all "call" bucket.
-   A cost breakdown wants every call to land somewhere legible, so this is a
-   fuller copy of the same idea, not a reuse of `roleOf` (which deliberately
-   ignores anything that isn't reply-shaped). Keep in step with js/llm.js by
-   eye, same as everything else ported up top. */
+/* Every logged call carries a `kind` field (from js/llm.js's own
+   `kindOf`), matched against the same fixed prefix list `roleOf` above
+   works around — it has no row for the noticeboard call, belief-
+   revision (`revise`), or the after-conversation takeaway (`recall`),
+   so all three land in its catch-all "call" bucket. A cost breakdown
+   needs every call categorized legibly, so this is a fuller version of
+   the same prefix-matching idea (not a reuse of `roleOf`, which
+   deliberately skips anything that isn't reply-shaped). Keep in sync
+   with js/llm.js manually, same as the other ported checks above. */
 const COST_KINDS = [
   ['You decide what a villager does next', 'intent'],
   ['You play one villager', 'chatter'],
@@ -237,27 +239,28 @@ function costKindOf(e) {
   return 'other';
 }
 
-/* The one split DESIGN.md itself measures cost by (see "And the log is where
-   the cost shows up"): the in-character model that plays the player-facing
-   villager — `cfg.model`, the "villager" kind — against the helper model
-   (`helperModel(cfg)`) doing every other kind of bookkeeping call. `chatter`
-   (villager-to-villager) is dispatched with helperModel too (js/llm.js's own
-   villager-to-villager call site sets `model: helperModel(cfg)`), so it
-   belongs on the helper side despite reading like dialogue — the split
-   follows which model answered, not what the prompt sounds like. That
-   passage found the helper leg 3.5x the call volume and the bill nobody was
-   watching, which is exactly the kind of thing a kind-by-kind table alone
-   does not say — so this grand split gets its own line, above the detail. */
+/* The primary cost split, as also tracked in DESIGN.md: the in-character
+   model playing the player-facing villager (`cfg.model`, the "villager"
+   kind) versus the helper model (`helperModel(cfg)`) handling every
+   other kind of bookkeeping call. `chatter` (villager-to-villager
+   dialogue) is dispatched via helperModel too (see js/llm.js's
+   villager-to-villager call site, which sets `model: helperModel(cfg)`),
+   so it counts as helper-side cost despite being dialogue — the split
+   is by which model actually answered, not by what the prompt content
+   looks like. This split matters because the helper side can carry a
+   much larger share of total call volume and cost than a kind-by-kind
+   table alone would suggest, so it gets its own summary line above the
+   detailed breakdown. */
 const VILLAGER_KINDS = new Set(['villager']);
 function grandKindOf(kind) { return VILLAGER_KINDS.has(kind) ? 'villager' : 'helper'; }
 
-/* Token fields differ by provider's own dialect — Anthropic's `usage` says
-   input_tokens/output_tokens, the OpenAI-shaped ones (OpenRouter, Logfare)
-   say prompt_tokens/completion_tokens. `cost` is OpenRouter-only: it is the
-   one provider that prices every reply for you (see DESIGN.md's "the log is
-   where the cost shows up"), so a bucket with no OpenRouter calls in it has
-   no cost to report, not a cost of zero — the two are kept apart rather
-   than conflated. */
+/* Token field names differ per provider's API shape — Anthropic's
+   `usage` uses input_tokens/output_tokens, while the OpenAI-shaped APIs
+   (OpenRouter, Logfare) use prompt_tokens/completion_tokens. `cost` is
+   OpenRouter-specific: it's the only provider that reports per-reply
+   pricing directly. A bucket with no OpenRouter calls therefore has *no
+   cost data*, not a cost of zero -- these two states are tracked
+   separately (see `costSeen`) rather than conflated. */
 function tokensOf(usage) {
   if (!usage) return { in: 0, out: 0 };
   const inTok = usage.input_tokens != null ? usage.input_tokens : usage.prompt_tokens;
@@ -268,9 +271,9 @@ function money(n) { return '$' + n.toFixed(4); }
 
 /* -------------------------------------------------------------- checking
 
-   One entry's worth of "did the game have to do anything about this". Every
-   flag is independent, so a single reply can trip several — a repaired JSON
-   object that also came back with no roman field is both. */
+   Checks one log entry for anything the game had to correct. Flags are
+   independent, so a single reply can trigger several at once (e.g. a
+   repaired JSON object that's also missing its roman field). */
 function check(e, role) {
   const flags = [];
   if (e.error) { flags.push('call-failed'); return { flags, obj: null }; }
@@ -291,8 +294,8 @@ function check(e, role) {
     return { flags, obj };
   }
 
-  // villager / chatter / notice all reply in the language being learned, with
-  // translation (and, for languages that romanise, roman) alongside it.
+  // villager/chatter/notice all reply in the target language, with a
+  // translation (and, for languages that romanize, a roman field) alongside it.
   const posting = role !== 'notice' || obj.post === true;
   if (posting) {
     if (!looksEnglish(obj.translation)) flags.push('translation-missing');
@@ -345,9 +348,10 @@ function main() {
   }
   const calls = readCalls(files);
 
-  // one bucket per (role, model) — chatter and villager can share a model in
-  // principle, but almost never the same one in practice (see js/llm.js's
-  // HELPERS), and keeping them apart says which job the number is about.
+  // One bucket per (role, model) pair. Chatter and villager calls can
+  // in principle use the same model, but rarely do in practice (see
+  // js/llm.js's HELPERS list) -- keeping role and model separate makes
+  // clear which job each number describes.
   const buckets = new Map();
   function bucket(role, model) {
     const key = role + ' ' + model;
@@ -368,9 +372,9 @@ function main() {
     const b = bucket(role, e.model || '(unknown)');
     b.total++;
     const { flags, obj } = check(e, role);
-    // "any" counts the call once no matter how many of these it trips —
-    // summing the per-reason counts instead would over-count a reply that
-    // is, say, both missing its roman and its translation.
+    // "any" counts a call once regardless of how many flags it triggers
+    // -- summing the per-reason counts instead would over-count a reply
+    // that's e.g. missing both its roman and translation fields.
     const happyPathFlags = ['call-failed', 'truncated', 'json-repaired', 'json-salvaged',
       'json-unreadable', 'translation-missing', 'roman-missing', 'furigana-missing'];
     if (happyPathFlags.some(f => flags.includes(f))) b.any++;

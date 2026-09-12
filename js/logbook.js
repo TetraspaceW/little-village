@@ -1,13 +1,14 @@
-/* logbook.js — ships everything the village does to a log file.
+/* logbook.js — sends game events to a log file for later inspection
+   (the console only shows them live).
 
-   The console shows you what happened while you are watching; this keeps it. It
-   posts to `tools/logserver.js`, which is also what serves the page, so there is
-   no CORS to arrange and nothing to switch on. If that server is not running —
-   the page opened from a plain file server, say — the first post fails, logging
-   switches itself off, and the game carries on exactly as before.
+   Posts to `tools/logserver.js`, which also serves the page itself, so
+   there's no CORS to configure and nothing to enable manually. If that
+   server isn't running (e.g. the page was opened from a plain file
+   server), the first POST fails, logging turns itself off, and the game
+   continues normally.
 
-   Entries are batched rather than posted one at a time, because a busy village
-   makes several calls a second and each one carries a whole prompt. */
+   Entries are batched rather than sent one at a time: a busy village can
+   fire several LLM calls a second, and each entry carries a full prompt. */
 window.LG = window.LG || {};
 
 LG.logbook = (function () {
@@ -16,7 +17,7 @@ LG.logbook = (function () {
   const MAX_BATCH = 24;
 
   let queue = [];
-  let on = true;                 // until the server tells us otherwise
+  let on = true;                 // flips false permanently after a failed POST
   let timer = null;
   let sent = 0, dropped = 0;
 
@@ -42,13 +43,13 @@ LG.logbook = (function () {
                       body: JSON.stringify(batch) })
       .then(res => {
         if (res.ok || res.status === 204) { sent += batch.length; return; }
-        // a server that is there but will not take logs is not worth pestering
+        // server responded but rejected the batch — stop retrying
         on = false; dropped += batch.length;
       })
       .catch(() => { on = false; dropped += batch.length; });
   }
 
-  /* One API call, whole: the prompt, the raw reply, the model's own reasoning. */
+  /* Logs one full LLM API call: prompt, raw reply, and reasoning trace. */
   function call(e) {
     add({ type: 'call', n: e.n, kind: e.kind, who: e.who, model: e.model,
           provider: e.provider, ms: e.ms, usage: e.usage, stop: e.stop,
@@ -57,7 +58,7 @@ LG.logbook = (function () {
           reasoning: e.reasoning, raw: e.raw });
   }
 
-  /* Anything a villager did that is worth reading back later. */
+  /* Logs a miscellaneous game event for later review. */
   function note(type, who, what, extra) {
     const e = { type: type, who: who, what: what };
     if (extra) for (const k in extra) e[k] = extra[k];

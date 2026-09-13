@@ -1,12 +1,19 @@
 # Flag rendering: matching the local flag-emoji style
 
-Two of the languages here have no country behind them, so they have no
+Three of the languages here have no country behind them, so they have no
 Unicode regional flag sequence and no glyph in any emoji font: the Arab
-League (`LG.LANGUAGES.ar`) and toki pona (`LG.LANGUAGES.tok`). This
-directory renders their flags by hand, in the same waving-cloth style
-the rest of the flags already get from the system's Noto Color Emoji
-font, and packages each as a tiny custom font glyph so it can drop into
-`#setLang`'s plain `<option>` text exactly like a real flag emoji does.
+League (`LG.LANGUAGES.ar`), toki pona (`LG.LANGUAGES.tok`), and Esperanto
+(`LG.LANGUAGES.eo`). This directory renders their flags by hand, in the
+same waving-cloth style the rest of the flags already get from the
+system's Noto Color Emoji font, and packages each as a tiny custom font
+glyph so it can drop into `#setLang`'s plain `<option>` text exactly like
+a real flag emoji does.
+
+Esperanto is the odd one of the three: unlike the Arab League and toki
+pona, it has a real, standard flag (green field, white canton, green
+five-pointed star) — the gap is a missing country to hang a
+regional-indicator sequence on, not a missing design to improvise one
+for. Rendered from the actual flag artwork, same as the other two.
 
 ## Why this isn't a guess
 
@@ -79,6 +86,11 @@ here.
   the waved render and font glyph derived from it — `fonts/TokiPonaFlag.ttf`
   is a derivative work of a CC BY-SA 4.0 image and inherits that license,
   which is worth knowing before it is copied anywhere else.
+- `sources/esperanto.svg`: Wikimedia Commons, by **Gabriel Ehrnst Grundin**
+  (Commons User:Gabbe), **Public Domain**
+  (https://commons.wikimedia.org/wiki/File:Flag_of_Esperanto.svg).
+  Like the Arab League file, no attribution condition attached — the
+  Commons credit above is a courtesy, not a license requirement.
 - Note the *font/glyph data* Noto Color Emoji itself ships under is a
   **different** license (SIL OFL 1.1) from the Apache 2.0 code above —
   nothing here copies that font or its artwork, only the (separately,
@@ -102,17 +114,20 @@ pip install nanoemoji resvg-cli   # resvg-cli must end up on $PATH
 python3 build_font.py output.png ../../fonts/ArabLeagueFlag.ttf
 python3 build_font.py waved.png ../../fonts/TokiPonaFlag.ttf \
         --codepoint 0xF0001 --family "Toki Pona Flag"
+python3 build_font.py waved.png ../../fonts/EsperantoFlag.ttf \
+        --codepoint 0xF0002 --family "Esperanto Flag"
 ```
 
-`../../fonts/ArabLeagueFlag.ttf` and `../../fonts/TokiPonaFlag.ttf` were
-built this way — one font per flag, each defining a single glyph, rather
-than one font carrying both. nanoemoji will happily build a multi-glyph
-font and that would be the tidier artefact, but the packaging here is the
-part that took three passes to get right in two engines (below), and a
-merged rebuild would put the already-working Arab League glyph back
-through that. A second `@font-face` and a second name in `#setLang`'s
-font stack cost a comma. Give each new flag the next codepoint along
-regardless, so the numbering stays unambiguous if they are ever merged.
+`../../fonts/ArabLeagueFlag.ttf`, `../../fonts/TokiPonaFlag.ttf`, and
+`../../fonts/EsperantoFlag.ttf` were built this way — one font per flag,
+each defining a single glyph, rather than one font carrying both.
+nanoemoji will happily build a multi-glyph font and that would be the
+tidier artefact, but the packaging here is the part that took three
+passes to get right in two engines (below), and a merged rebuild would
+put the already-working glyphs back through that. A second `@font-face`
+and a second name in `#setLang`'s font stack cost a comma. Give each new
+flag the next codepoint along regardless, so the numbering stays
+unambiguous if they are ever merged.
 
 The render step is the awkward one to set up on macOS: `pycairo` has no
 wheel there, so it compiles, and its meson build wants `pkg-config` plus
@@ -193,3 +208,10 @@ be made to work at all.
 flag anywhere that means toki pona, so it falls back to U+1F31E, the
 sun — not the banner, but the half of it a speaker would recognise, and
 an ordinary emoji the popup can draw.
+
+`eo` is in the same position as `tok`, not `ar`: Esperanto has a real
+flag, but — like toki pona, and unlike Saudi Arabia standing in for the
+Arab League — no *country*, so there's no Unicode flag sequence to
+substitute in its place either. Falls back to U+2B50, a plain star: not
+green, not the actual flag, but the one element of it a speaker would
+recognise.

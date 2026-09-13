@@ -9,7 +9,11 @@
    against that logged raw text — `parseJSON`'s repair ladder,
    `looksEnglish`, `needsFurigana`, the fuzzy place-name matching in
    `decideWhereToGo` — and counts how often each one actually had to
-   correct something.
+   correct something. One check has no runtime equivalent: `roman-
+   mismatched` (see `syllableCount` below) catches pinyin that's
+   well-formed but for the wrong sentence -- e.g. left over, unnoticed,
+   from a previous line -- which is invisible to every other check here
+   since the JSON parses fine and the roman field isn't empty.
 
    "Happy path" means: the JSON parsed correctly on the first plain
    attempt, with every field the prompt requested present and
@@ -138,6 +142,51 @@ function usableRuby(raw, say) {
   return null;
 }
 function needsFurigana(say) { return KANJI.test(String(say)); }
+
+/* Pinyin sanity check: does `roman` look like it's actually the
+   romanization of `say`, or something else entirely (stale text left
+   over from a previous line, a translation instead of a romanization,
+   garbage)? Getting this right requires knowing Mandarin -- this instead
+   checks a much cheaper proxy that a wrong-sentence roman field reliably
+   blows: syllable count. Standard Mandarin is (almost) one syllable per
+   character, so hanzi count and pinyin syllable count should track each
+   other closely; a huge gap is the same kind of tell as a word count off
+   by 10x would be between a sentence and its English translation.
+
+   Doesn't need to know a single pinyin rule -- it only counts. Tone
+   marks are stripped, then syllables are counted as maximal runs of
+   vowel letters (a run like "iao" or an accented "P\u00e8i" is one syllable,
+   however many vowel letters it contains, and however it's spaced --
+   this counts fine whether or not multi-syllable words are joined
+   without spaces, e.g. a name written "P\u00e8it\u00e8l\u0101"). */
+const HANZI = /[\u4e00-\u9fff]/g;
+function hanziCount(say) {
+  const m = String(say).match(HANZI);
+  return m ? m.length : 0;
+}
+/* Erhua (\u513f\u5316) contracts onto the preceding syllable instead of getting
+   one of its own -- "\u54ea\u513f" is two characters but one syllable, "n\u01cer".
+   This only accounts for \u513f written as a suffix; it's occasionally its
+   own word ("\u513f\u5b50", \u00e9rzi, "son") with a syllable of its own instead, which
+   this can't tell apart from suffix use -- a source of slight
+   undercounting on `expected` below, not worth resolving for a stats
+   report. */
+function erhuaCount(say) {
+  const m = String(say).match(/\u513f/g);
+  return m ? m.length : 0;
+}
+function syllableCount(roman) {
+  const toneless = String(roman)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/\u00fc/g, 'v');
+  const m = toneless.match(/[aeiouv]+/g);
+  return m ? m.length : 0;
+}
+// How far expected and actual syllable counts may drift before it's
+// flagged rather than shrugged off as erhua-as-its-own-word, a stray
+// interjection, or similar noise -- chosen from the gap between the two
+// good replies (0 and 1) and the one bad one (54) seen while building this.
+const ROMAN_SYLLABLE_TOLERANCE = 3;
 
 const NOT_LATIN = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\u0400-\u04ff\u0600-\u06ff]/;
 function looksEnglish(str) {
@@ -302,6 +351,14 @@ function check(e, role) {
     if (/"roman":/.test(text)) {
       const roman = String(obj.roman || '').trim();
       if (!roman || NOT_LATIN.test(roman)) flags.push('roman-missing');
+      // Only meaningful for Chinese -- the only language that both
+      // requests a roman field and writes `say` in hanzi (Japanese
+      // furigana annotates the kanji in place rather than adding one).
+      else if (typeof obj.say === 'string' && hanziCount(obj.say) > 0) {
+        const expected = hanziCount(obj.say) - erhuaCount(obj.say);
+        const actual = syllableCount(roman);
+        if (Math.abs(expected - actual) > ROMAN_SYLLABLE_TOLERANCE) flags.push('roman-mismatched');
+      }
     }
   }
 
@@ -359,7 +416,7 @@ function main() {
       role, model, total: 0,
       any: 0,
       callFailed: 0, truncated: 0, jsonRepaired: 0, jsonSalvaged: 0, jsonUnreadable: 0,
-      translationMissing: 0, romanMissing: 0, furiganaMissing: 0,
+      translationMissing: 0, romanMissing: 0, romanMismatched: 0, furiganaMissing: 0,
       buysellAttempts: 0, buysellMalformed: 0,
       badLocation: 0
     });
@@ -376,7 +433,8 @@ function main() {
     // -- summing the per-reason counts instead would over-count a reply
     // that's e.g. missing both its roman and translation fields.
     const happyPathFlags = ['call-failed', 'truncated', 'json-repaired', 'json-salvaged',
-      'json-unreadable', 'translation-missing', 'roman-missing', 'furigana-missing'];
+      'json-unreadable', 'translation-missing', 'roman-missing', 'roman-mismatched',
+      'furigana-missing'];
     if (happyPathFlags.some(f => flags.includes(f))) b.any++;
     if (flags.includes('call-failed')) { b.callFailed++; continue; }
     if (flags.includes('truncated')) b.truncated++;
@@ -385,6 +443,7 @@ function main() {
     if (flags.includes('json-unreadable')) { b.jsonUnreadable++; continue; }
     if (flags.includes('translation-missing')) b.translationMissing++;
     if (flags.includes('roman-missing')) b.romanMissing++;
+    if (flags.includes('roman-mismatched')) b.romanMismatched++;
     if (flags.includes('furigana-missing')) b.furiganaMissing++;
     if (flags.includes('bad-location')) b.badLocation++;
     if (role === 'villager') {
@@ -477,7 +536,9 @@ function main() {
   console.log('\n# Not perfectly happy-path formatted');
   console.log('every reply-shaped call — villager (player-facing), chatter (villager-to-');
   console.log('villager), notice (noticeboard) — checked against what its own prompt asked');
-  console.log('for. "any" is any flag below; the rest break out why.\n');
+  console.log('for. "any" is any flag below; the rest break out why. "roman-mismatched" is');
+  console.log('Chinese only — pinyin whose syllable count doesn\'t track the hanzi count in');
+  console.log('`say`, the tell for pinyin left over from a previous line rather than this one.\n');
   const glossRows = rows.filter(r => r.role !== 'intent');
   table(glossRows, [
     { label: 'role', get: r => r.role },
@@ -488,6 +549,7 @@ function main() {
     { label: 'json-repaired', get: r => pct(r.jsonRepaired, r.total) },
     { label: 'json-unreadable', get: r => pct(r.jsonUnreadable, r.total) },
     { label: 'roman-missing', get: r => pct(r.romanMissing, r.total) },
+    { label: 'roman-mismatched', get: r => pct(r.romanMismatched, r.total) },
     { label: 'translation-missing', get: r => pct(r.translationMissing, r.total) },
     { label: 'furigana-missing', get: r => pct(r.furiganaMissing, r.total) }
   ]);

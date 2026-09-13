@@ -356,7 +356,13 @@ LG.llm = (function () {
       n: ++seq,
       kind: kindOf(system),
       who: subjectOf(system, messages),
-      model: cfg.model,
+      // What actually answered, not what was asked for -- for the "auto"
+      // routers (OpenRouter, Logfare) those differ every call, and
+      // cfg.model would otherwise just log "openrouter/auto" forever.
+      // Falls back to cfg.model when there's no response to read it from
+      // (a thrown error) or the provider didn't say (shouldn't happen).
+      model: (res && res.model) || cfg.model,
+      requestedModel: cfg.model,
       provider: cfg.provider,
       ms: Math.round(ms),
       system: system,
@@ -539,6 +545,7 @@ LG.llm = (function () {
       usage: data.usage || null,
       stop: data.stop_reason || null,
       schema: !!schema,
+      model: data.model || null,
     };
   }
 
@@ -604,6 +611,9 @@ LG.llm = (function () {
       usage: data.usage || null,
       stop: choice.finish_reason || null,
       schema: !!schema,
+      // What actually served the request -- for AUTO_MODEL, OpenRouter picks
+      // this per call, so it's the only way to tell which model answered.
+      model: data.model || null,
     };
   }
 
@@ -637,6 +647,9 @@ LG.llm = (function () {
       usage: data.usage || null,
       stop: choice.finish_reason || null,
       schema: !!schema,
+      // Logfare always routes LOGFARE_MODEL to whatever it actually picks --
+      // this is the only way to tell which model answered.
+      model: data.model || null,
     };
   }
 

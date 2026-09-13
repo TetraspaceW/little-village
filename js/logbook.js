@@ -52,6 +52,7 @@ LG.logbook = (function () {
   /* Logs one full LLM API call: prompt, raw reply, and reasoning trace. */
   function call(e) {
     add({ type: 'call', n: e.n, kind: e.kind, who: e.who, model: e.model,
+          requestedModel: e.requestedModel,
           provider: e.provider, ms: e.ms, usage: e.usage, stop: e.stop,
           truncated: e.truncated, error: e.error,
           system: e.system, messages: e.messages,

@@ -21,6 +21,7 @@ LG.dialogue = (function () {
      escaped except the ruby tag family (ruby/rb/rt/rtc/rp), which is let
      back through with attributes stripped. */
   const KANJI = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
+  const KANJI_G = new RegExp(KANJI.source, 'g');  // same ranges, for counting rather than testing
   // <rb> and <rtc> are part of the ruby family and models do emit them
   const RUBY_TAG = /^(?:ruby|rb|rt|rtc|rp)$/;
 
@@ -106,6 +107,41 @@ LG.dialogue = (function () {
     if (!t) return false;
     if (NOT_LATIN.test(t)) return false;
     return /[a-z]{2}/i.test(t);
+  }
+
+  /* Detects pinyin that's the wrong length for the hanzi it's supposed
+     to gloss. Pinyin is genuinely Latin text — looksEnglish alone can't
+     tell a well-formed roman field from one that's missing a syllable or
+     has two run together, which happens without the field looking broken
+     in any other way. Tone marks are stripped, then syllables are
+     counted as maximal runs of vowel letters (a run like "iao" is one
+     syllable, however many vowel letters it contains) — this counts
+     fine whether or not multi-syllable words are joined without spaces,
+     which is the normal way to write most disyllabic Mandarin words
+     (e.g. "xièxie", "shénme"). Splitting on non-letters instead, so a
+     word boundary counted as a syllable boundary, would misfire on
+     exactly those. Mirrors tools/format-stats.js's syllableCount /
+     hanziCount / erhuaCount.
+
+     Not exact — erhua ("一点儿" -> "yìdiǎnr", one fewer syllable than
+     characters, corrected for below) that's actually its own word
+     ("儿子" -> "érzi", a syllable of its own instead) and reduplicated
+     measure words can legitimately come out uneven — but those are rare
+     enough that an occasional unnecessary repair call costs less than
+     leaving a genuinely wrong count on screen. Only meaningful for a
+     language pinyin actually gets checked against; callers gate on
+     L.romanize (Chinese is the only one). */
+  const ERHUA = /儿/g;
+  function pinyinWrongLength(spoken, roman) {
+    const say = String(spoken);
+    const hanzi = (say.match(KANJI_G) || []).length;
+    if (!hanzi) return false;
+    const erhua = (say.match(ERHUA) || []).length;
+    const toneless = String(roman || '')
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .toLowerCase().replace(/ü/g, 'v');
+    const syllables = (toneless.match(/[aeiouv]+/g) || []).length;
+    return Math.abs((hanzi - erhua) - syllables) > 1;
   }
   function rubyHTML(str) {
     return String(str)
@@ -776,7 +812,8 @@ LG.dialogue = (function () {
       pending.push(repairFurigana(npc, spoken, row));               // ask the small model for it
     }
     const missingTrans = !looksEnglish(reply.translation);
-    const missingRoman = L.romanize && !looksEnglish(reply.roman);
+    const missingRoman = L.romanize &&
+      (!looksEnglish(reply.roman) || pinyinWrongLength(spoken, reply.roman));
     if (reply.translation && missingTrans) {
       // Don't show the player a "translation" that's actually still in the language they're learning.
       reply.translation = '';
@@ -1200,6 +1237,6 @@ LG.dialogue = (function () {
            _debugPrompt: systemPrompt, _debugReply: buildReply, _reviseHeld: reviseHeld,
            _rubyHTML: rubyHTML,
            _stripRuby: stripRuby, _rubyMatches: rubyMatches, _needsFurigana: needsFurigana,
-           _looksEnglish: looksEnglish,
+           _looksEnglish: looksEnglish, _pinyinWrongLength: pinyinWrongLength,
            rubyHTML: rubyHTML, _usableRuby: usableRuby };
 })();

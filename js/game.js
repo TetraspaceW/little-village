@@ -1985,9 +1985,14 @@ LG.game = (function () {
 
   function update(dt) {
     if (saving()) LG.save.tick(dt);
-    // Game time is paused while a dialogue is open, so a long
-    // conversation doesn't burn in-game hours or change the weather mid-chat.
-    if (!LG.dialogue.isOpen() && LG.time.tick(dt))
+    // Time keeps passing while a dialogue is open, but at a villager's own
+    // pace -- a real second per game second -- rather than the sped-up
+    // rate the player moves through the rest of the village at. That
+    // still leaves an ordinary conversation too short to visibly change
+    // the weather or the hour, same as the old full pause, but honestly:
+    // a conversation that really runs long really does cost the village
+    // that much time.
+    if (LG.time.tick(dt, LG.dialogue.isOpen()))
       log('🗓 ' + LG.time.season().name + ', day ' + LG.time.dayOfSeason() + '.');
     const el = document.getElementById('clock');
     if (el) el.textContent = LG.time.label();

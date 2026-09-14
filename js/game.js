@@ -1884,19 +1884,20 @@ LG.game = (function () {
   function renderAlphabet() {
     const L = LG.LANGUAGES[settings.lang];
     const list = LG.ALPHABET[settings.lang] || [];
+    const head = document.getElementById('alphabetHead');
+    head.lang = L.tag;
+    head.textContent = LG.ALPHABET_NAME[settings.lang] || '';
     const box = document.getElementById('alphabetGrid');
-    const hide = settings.showTranslation ? '' : ' hidden-tr';
+    // No English gloss here, unlike the bookshelf or the noticeboard --
+    // each cell already carries a picture, and the point of the board is
+    // to read it the way the village's own children would, not to
+    // translate it.
     box.innerHTML = list.map(e =>
       '<div class="abc-cell">' +
         '<div class="abc-emoji">' + e.emoji + '</div>' +
         '<div class="abc-ch" lang="' + L.tag + '">' + escapeHTML(e.ch) + '</div>' +
         '<div class="abc-word" lang="' + L.tag + '">' + escapeHTML(e.word) + '</div>' +
-        (e.en ? '<div class="abc-gloss' + hide + '" lang="en" title="click to read">' +
-          escapeHTML(e.en) + '</div>' : '') +
       '</div>').join('');
-    Array.prototype.forEach.call(box.querySelectorAll('.abc-gloss.hidden-tr'), el => {
-      el.onclick = () => el.classList.remove('hidden-tr');
-    });
   }
 
   /* ---------------------------------------------------------------- loop */

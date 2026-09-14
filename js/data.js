@@ -1395,6 +1395,18 @@ LG.BOOKS = {
    ą/ę/ń/ó/y, Japanese を/ん) -- real children's primers handle this by
    showing a word that *contains* or *ends with* the letter instead, and
    these entries do the same, noted in `en`. */
+
+/* The board's own title, shown on the panel itself instead of an English
+   UI label -- the village's own word for "alphabet", or the nearest real
+   equivalent for the two languages that don't have one: 部首表 ("radical
+   table") for Chinese, 五十音表 ("the fifty-sound table") for Japanese --
+   both the actual names of the real charts these boards are modeled on,
+   not translations of "alphabet". */
+LG.ALPHABET_NAME = {
+  en: 'The Alphabet', fr: 'L’alphabet', es: 'El alfabeto', pl: 'Alfabet',
+  ru: 'Алфавит', ar: 'الأبجدية', tok: 'sitelen', zh: '部首表', ja: '五十音表'
+};
+
 LG.ALPHABET = {
   en: [
     { ch: 'A', word: 'apple', emoji: '🍎' }, { ch: 'B', word: 'ball', emoji: '⚽' },

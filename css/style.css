@@ -409,6 +409,11 @@ ruby rb{font-size:1em}
 /* Wider than the default panel-card -- a grid of cells needs the room a
    single column of notices doesn't. */
 .panel-card.wide{width:min(760px,100%)}
+/* The panel's own heading is the board's diegetic title -- the village's
+   own word for "alphabet" (or its nearest equivalent), not an English UI
+   label -- so it's centered and set larger than a normal panel-card h2
+   rather than sharing its left-aligned, chrome-ish styling. */
+h2.centered{margin:0 0 14px;text-align:center;font-size:26px}
 .abc-grid{
   display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));
   gap:8px;max-height:52vh;overflow-y:auto;margin:8px 0 14px;
@@ -420,9 +425,6 @@ ruby rb{font-size:1em}
 .abc-emoji{font-size:26px;line-height:1}
 .abc-ch{font-size:19px;font-weight:700;color:#4a3b2a;margin-top:3px}
 .abc-word{font-size:12px;color:#6d5b45;margin-top:1px}
-.abc-gloss{font-size:11px;color:#8a7355;margin-top:2px}
-.abc-gloss.hidden-tr{filter:blur(3.5px);cursor:pointer;user-select:none}
-.abc-gloss.hidden-tr:hover{filter:blur(2px)}
 .lede{font-size:16px;color:#4a3b2a;margin:0 0 8px}
 #setLede p{font-size:13.5px;color:#6d5b45}
 #ttsResult:empty{display:none}

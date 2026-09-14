@@ -1061,6 +1061,10 @@ LG.game = (function () {
       document.getElementById('help').classList.remove('open');
     document.getElementById('boardClose').onclick = () =>
       document.getElementById('board').classList.remove('open');
+    document.getElementById('libraryClose').onclick = () =>
+      document.getElementById('library').classList.remove('open');
+    document.getElementById('alphabetClose').onclick = () =>
+      document.getElementById('alphabet').classList.remove('open');
     document.getElementById('endingClose').onclick = () =>
       document.getElementById('ending').classList.remove('open');
     document.getElementById('endingAgain').onclick = () => {
@@ -1310,6 +1314,8 @@ LG.game = (function () {
     if (beast && !beast.caught && dist(player, beast) < TILE * 1.4) catchBeast();
     else if (worldItem && !worldItem.taken && dist(player, worldItem) < TILE * 1.4) pickUp();
     else if (nearBoard()) openBoard();
+    else if (nearShelf()) openLibrary();
+    else if (nearAlphaBoard()) openAlphabet();
   }
 
   /* ------------------------------------------------------------------ a tap */
@@ -1372,13 +1378,25 @@ LG.game = (function () {
       return;
     }
 
-    /* The noticeboard is a ground area, not a drawn sprite, so it's hit
-       by checking the tapped tile directly rather than a bounding box
-       around an image. */
+    /* The noticeboard, bookshelf and alphabet board are all ground areas
+       rather than drawn sprites, so each is hit by checking the tapped
+       tile directly rather than a bounding box around an image. */
     const spot = { tx: (wx / TILE) | 0, ty: (wy / TILE) | 0 };
     if (nearRect(spot, LG.BOARD_SPOT, 0)) {
       if (nearBoard()) openBoard();
       else aside('Walk over to the noticeboard to read it.');
+      return;
+    }
+    const shelf = W.furnitureSpot('School', 'shelf');
+    if (nearRect(spot, shelf, 0)) {
+      if (nearShelf()) openLibrary();
+      else aside('Walk over to the bookshelf to read it.');
+      return;
+    }
+    const abcBoard = W.furnitureSpot('School', 'board');
+    if (nearRect(spot, abcBoard, 0)) {
+      if (nearAlphaBoard()) openAlphabet();
+      else aside('Walk over to the alphabet board to read it.');
     }
   }
 
@@ -1435,6 +1453,19 @@ LG.game = (function () {
   /* The noticeboard has no NPC/actor to measure distance from -- just a
      ground rectangle, the same one villagers are sent to. */
   function nearBoard() { return nearRect(player, LG.BOARD_SPOT, 1); }
+
+  /* The school's bookshelf and alphabet board work the same way, standing
+     in for the shelf and board furniture already drawn there. Building
+     layout is fixed, so the spot never changes; a missing School (there
+     isn't one, currently) just means neither ever reads as "near". */
+  function nearShelf() {
+    const r = W.furnitureSpot('School', 'shelf');
+    return !!r && nearRect(player, r, 1);
+  }
+  function nearAlphaBoard() {
+    const r = W.furnitureSpot('School', 'board');
+    return !!r && nearRect(player, r, 1);
+  }
 
   /* Reuses world.js's rectangle-proximity check. */
   const nearRect = W.nearRect;
@@ -1803,6 +1834,71 @@ LG.game = (function () {
     });
   }
 
+  /* Called when the player opens the school's bookshelf: a real book in
+     the village's own language, at a level a beginner could plausibly be
+     handed -- a children's classic or a folktale's traditional opening,
+     not invented sample text. Same click-to-reveal gloss convention as
+     the noticeboard; English itself just shows the passage once, since
+     there's nothing to gloss it into. */
+  function openLibrary() {
+    renderLibrary();
+    document.getElementById('library').classList.add('open');
+  }
+
+  function renderLibrary() {
+    const L = LG.LANGUAGES[settings.lang];
+    const book = LG.BOOKS[settings.lang];
+    const head = document.getElementById('libraryHead');
+    const box = document.getElementById('libraryList');
+    if (!book) {
+      head.textContent = '';
+      box.innerHTML = '<div class="notice muted">Nothing on the shelf yet.</div>';
+      return;
+    }
+    head.innerHTML = '<b lang="' + L.tag + '">' + escapeHTML(book.title) + '</b>' +
+      (book.titleEn && book.titleEn !== book.title
+        ? ' <span class="muted">(' + escapeHTML(book.titleEn) + ')</span>' : '') +
+      (book.author ? '<br><span class="muted">' + escapeHTML(book.author) + '</span>' : '');
+    const hide = settings.showTranslation ? '' : ' hidden-tr';
+    const rows = book.lines.map(line =>
+      '<div class="notice"><span class="heard" lang="' + L.tag + '">' +
+        escapeHTML(line.text) + '</span>' +
+      (settings.lang !== 'en' ? '<span class="gloss' + hide + '" lang="en" title="click to read">' +
+        escapeHTML(line.en) + '</span>' : '') +
+      '</div>');
+    box.innerHTML = rows.join('');
+    Array.prototype.forEach.call(box.querySelectorAll('.gloss.hidden-tr'), el => {
+      el.onclick = () => el.classList.remove('hidden-tr');
+    });
+  }
+
+  /* Called when the player opens the school's alphabet board: one letter
+     (or, for Chinese and Japanese, one character/kana -- neither has an
+     "alphabet" as such) per object, the way a real classroom picture
+     chart works. */
+  function openAlphabet() {
+    renderAlphabet();
+    document.getElementById('alphabet').classList.add('open');
+  }
+
+  function renderAlphabet() {
+    const L = LG.LANGUAGES[settings.lang];
+    const list = LG.ALPHABET[settings.lang] || [];
+    const box = document.getElementById('alphabetGrid');
+    const hide = settings.showTranslation ? '' : ' hidden-tr';
+    box.innerHTML = list.map(e =>
+      '<div class="abc-cell">' +
+        '<div class="abc-emoji">' + e.emoji + '</div>' +
+        '<div class="abc-ch" lang="' + L.tag + '">' + escapeHTML(e.ch) + '</div>' +
+        '<div class="abc-word" lang="' + L.tag + '">' + escapeHTML(e.word) + '</div>' +
+        (e.en ? '<div class="abc-gloss' + hide + '" lang="en" title="click to read">' +
+          escapeHTML(e.en) + '</div>' : '') +
+      '</div>').join('');
+    Array.prototype.forEach.call(box.querySelectorAll('.abc-gloss.hidden-tr'), el => {
+      el.onclick = () => el.classList.remove('hidden-tr');
+    });
+  }
+
   /* ---------------------------------------------------------------- loop */
   const WALK_SPEED = 132, RUN_SPEED = 210;
   /* Keyboard and joystick input add into the same dx/dy pair, so both
@@ -1967,6 +2063,14 @@ LG.game = (function () {
     } else if (nearBoard()) {
       hint.textContent = tap ? 'Tap the noticeboard to read it'
                              : 'Press E to read the noticeboard';
+      hint.classList.add('show');
+    } else if (nearShelf()) {
+      hint.textContent = tap ? 'Tap the bookshelf to read it'
+                             : 'Press E to read the bookshelf';
+      hint.classList.add('show');
+    } else if (nearAlphaBoard()) {
+      hint.textContent = tap ? 'Tap the alphabet board to read it'
+                             : 'Press E to read the alphabet board';
       hint.classList.add('show');
     } else {
       hint.classList.remove('show');

@@ -252,6 +252,9 @@
         <li>Shops and the hall have a <b>sign</b> out front — tap or click it to check the English
             underneath. The <b>noticeboard</b> near the hall is whatever the village felt like
             pinning up; stand beside it and press <b>E</b> (or tap it) to read.</li>
+        <li>The <b>school</b> has a <b>bookshelf</b> and an <b>alphabet board</b> — stand beside
+            either and press <b>E</b> (or tap it) for a real book and a picture-alphabet in the
+            village's language.</li>
         <li>North of the village is <b>forest</b>, with tracks through it and clearings that
             have names. Things get lost up there.</li>
       </ul>
@@ -271,6 +274,26 @@
       <p class="lede">Whatever anyone in the village felt was worth pinning up.</p>
       <div id="boardList"></div>
       <button id="boardClose" class="primary">Close</button>
+    </div>
+  </div>
+
+  <!-- --------------------------------------------------- school bookshelf -->
+  <div id="library" class="panel">
+    <div class="panel-card">
+      <h2>📚 The Bookshelf</h2>
+      <p class="lede" id="libraryHead"></p>
+      <div id="libraryList"></div>
+      <button id="libraryClose" class="primary">Close</button>
+    </div>
+  </div>
+
+  <!-- ----------------------------------------------- school alphabet board -->
+  <div id="alphabet" class="panel">
+    <div class="panel-card wide">
+      <h2>🔤 The Alphabet Board</h2>
+      <p class="lede">One letter, one picture, the way the village's own children learn it.</p>
+      <div id="alphabetGrid" class="abc-grid"></div>
+      <button id="alphabetClose" class="primary">Close</button>
     </div>
   </div>
 

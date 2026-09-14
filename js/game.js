@@ -1871,13 +1871,22 @@ LG.game = (function () {
     document.getElementById('libraryStatus').hidden = true;
   }
 
-  /* Fetches the full book from the local server (tools/logserver.js —
-     see /book/:lang there) and switches the panel into reading view.
-     Nothing here works without that server: a plain file:// open, or a
-     village language with no full book configured (tools/books.js),
-     both fail the fetch — reported inline via #libraryStatus rather
-     than left to hang, since the panel is open and the usual world hint
-     banner is hidden while any panel is (see uiBlocked()). */
+  /* Fetches the full book and switches the panel into reading view. The
+     book itself is a plain static file, books/<lang>.json, built ahead
+     of time by tools/build-books.js (see that file and tools/books.js
+     for where each language's book actually comes from) rather than
+     fetched live from Gutenberg/Wikisource/Aozora on demand — those
+     sites mostly don't send a browser the CORS headers it'd need, and a
+     live fetch-and-cache would only ever work under tools/logserver.js
+     anyway, not on the game's actual static deploy. Being an ordinary
+     file means this works identically there, under logserver.js, or
+     under any other static server — the one thing it still can't do is
+     load over a bare file:// origin, since fetch() of local files is
+     blocked there regardless of what's being fetched. A missing file
+     (a language with no book built) 404s; that and a genuine fetch
+     failure are reported inline via #libraryStatus rather than left to
+     hang, since the panel is open and the usual world hint banner is
+     hidden while any panel is (see uiBlocked()). */
   async function openFullBook() {
     const lang = settings.lang;
     const status = document.getElementById('libraryStatus');
@@ -1887,18 +1896,17 @@ LG.game = (function () {
     btn.disabled = true;
     let res, data;
     try {
-      res = await fetch('/book/' + encodeURIComponent(lang));
+      res = await fetch('books/' + encodeURIComponent(lang) + '.json');
+      if (res.status === 404) {
+        status.textContent = "This village's language doesn't have a full book on file yet.";
+        btn.disabled = false;
+        return;
+      }
+      if (!res.ok) throw new Error('HTTP ' + res.status);
       data = await res.json();
     } catch (e) {
-      status.textContent = "Couldn't reach the local server for this — " +
-        'the full text only loads when the game is run via node tools/logserver.js.';
-      btn.disabled = false;
-      return;
-    }
-    if (!res.ok) {
-      status.textContent = data.error === 'not configured'
-        ? "This village's language doesn't have a full book on file yet."
-        : "Couldn't fetch the book right now (" + (data.error || res.status) + ').';
+      status.textContent = "Couldn't load the book file — this needs the game served " +
+        'over http:// or https://, not opened directly as a file.';
       btn.disabled = false;
       return;
     }

@@ -305,6 +305,9 @@ js/dialogue.js       prompt building, conversation UI, trades
 js/save.js           save format: snapshot/restore, both storage locations
 js/game.js           game state, main loop, input, notebook, settings
 tools/logserver.js   serves the game, exposes .env, collects logs, keeps the save
+tools/books.js        where each language's school-bookshelf full book comes from
+tools/build-books.js  fetches them (run by hand; writes books/<lang>.json)
+books/<lang>.json    the built full books themselves -- static, checked in
 tests/smoke.js       headless test of the full game
 ```
 

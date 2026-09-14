@@ -1,5 +1,4 @@
 .env
 logs/session-*.jsonl
 saves/village.json
-books-cache/
 .claude

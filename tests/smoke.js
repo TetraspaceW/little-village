@@ -1242,7 +1242,22 @@ async function touchControls() {
   /* --------------------------------------------------------------- the tap */
   // Picks a villager standing outdoors -- a villager behind a wall isn't
   // drawn (see buildingUnder), and something not drawn can't be tapped.
-  const npc = g.npcs.find(n => !W.buildingUnder(n)) || g.npcs[0];
+  // The village is unseeded, so at this simulated tick every villager can
+  // happen to be indoors; rather than fall back to an arbitrary one (which
+  // the later out-of-reach tap could then miss entirely, since tapPick only
+  // sees an indoor target from within its own room), teleport one outdoors
+  // to a tile known to be clear of buildings.
+  let npc = g.npcs.find(n => !W.buildingUnder(n));
+  if (!npc) {
+    npc = g.npcs[0];
+    outer:
+    for (let ty = 1; ty < W.H - 1; ty++)
+      for (let tx = 1; tx < W.W - 1; tx++) {
+        if (W.isSolid(tx, ty)) continue;
+        const pos = { px: tx * TILE + 16, py: ty * TILE + 16 };
+        if (!W.buildingUnder(pos)) { npc.px = pos.px; npc.py = pos.py; break outer; }
+      }
+  }
   const screen = a => ({ x: a.px - g.cam.x, y: a.py - g.cam.y });
 
   g._debugPlayerAt(npc.px + 20, npc.py);

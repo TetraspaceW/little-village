@@ -186,16 +186,35 @@ LG.dialogue = (function () {
     const v = LG.view.of(npc, 'player');
     const inv = LG.game.inventoryList(v.companion && v.companion.item);
     const trade = v.trade.deal;
+    // What they have to sell, when they are standing where they work —
+    // computed here since both halves below need it (the trade section
+    // itself is volatile; whether the reply schema needs item/price
+    // fields is decided in the stable half).
+    const working = v.trade.open && v.trade.sells.length;
 
-    const lines = [];
+    /* Two lists instead of one flat one: `stable` is everything that
+       stays byte-identical across an entire conversation with this
+       villager in this language — character, roster, language rules,
+       the reply-format spec — and `volatile` is everything derived from
+       live game state that can change turn to turn: the clock, held
+       facts, inventory, trade and till. Prompt caching is a prefix
+       match — one changed byte invalidates everything after it — so
+       putting what never changes first and what changes every turn last
+       is what makes a cache breakpoint at the seam worth anything. The
+       breakpoint itself is placed in llm.js (see systemParts). */
+    const stable = [], volatile = [];
+    // Pushes a blank separator line, but never two in a row — lets each
+    // section just say "sep(arr); arr.push('# Header')" without having
+    // to track whether whatever came before it already left one.
+    const sep = arr => { if (arr.length && arr[arr.length - 1] !== '') arr.push(''); };
     const coins = n => n + (n === 1 ? ' coin' : ' coins');
-    lines.push('You are ' + v.name + ', who lives in this village and speaks ' + L.name + '.');
-    lines.push('');
-    lines.push('# Your character');
-    lines.push('Name: ' + v.name + ' — ' + v.job + '.');
-    lines.push('Personality: ' + v.persona);
-    lines.push('Your current concern: ' + v.goal);
-    lines.push('');
+
+    stable.push('You are ' + v.name + ', who lives in this village and speaks ' + L.name + '.');
+    sep(stable);
+    stable.push('# Your character');
+    stable.push('Name: ' + v.name + ' — ' + v.job + '.');
+    stable.push('Personality: ' + v.persona);
+    stable.push('Your current concern: ' + v.goal);
     /* In a village this size, everyone knows everyone else by name,
        trade, and general personality — that's background knowledge, not
        something anyone had to be told, and it's separate from the
@@ -209,10 +228,10 @@ LG.dialogue = (function () {
        character, and news still has to actually reach a villager through
        normal means before they can know it. */
     if (v.roster.length) {
-      lines.push('# Everyone else in the village');
-      lines.push('You have lived here for years; you know everyone in the village, whether or not you have any news of them today:');
-      v.roster.forEach(r => lines.push('- ' + r.name + ' — ' + r.job + '. ' + r.persona));
-      lines.push('');
+      sep(stable);
+      stable.push('# Everyone else in the village');
+      stable.push('You have lived here for years; you know everyone in the village, whether or not you have any news of them today:');
+      v.roster.forEach(r => stable.push('- ' + r.name + ' — ' + r.job + '. ' + r.persona));
     }
     /* One combined, dated list of everything the villager knows.
 
@@ -234,28 +253,30 @@ LG.dialogue = (function () {
        saying newer overrides older — a model playing a person with a
        dated pair of claims can reason about which is current on its own,
        the same way a person would. */
-    lines.push('# What you know');
-    lines.push('Everything you have picked up, with when you came by it and who from.');
+    sep(volatile);
+    volatile.push('# What you know');
+    volatile.push('Everything you have picked up, with when you came by it and who from.');
     const held = LG.view.held(v);
-    if (held.length) held.forEach(l => lines.push('- ' + l));
-    else lines.push('- (nothing much, beyond your own business)');
-    lines.push('');
-    lines.push('# Where you are right now');
-    lines.push(v.when);
-    lines.push('You are ' + v.here + '.');
-    lines.push('');
-    lines.push('# The player');
-    lines.push('A traveller visiting the village.');
-    lines.push('They are carrying: ' + (inv || 'nothing'));
-    if (v.companion) lines.push(v.companion.name + ', ' + LG.itemSaid(v.companion.item, s.lang, true) +
+    if (held.length) held.forEach(l => volatile.push('- ' + l));
+    else volatile.push('- (nothing much, beyond your own business)');
+    sep(volatile);
+    volatile.push('# Where you are right now');
+    volatile.push(v.when);
+    volatile.push('You are ' + v.here + '.');
+    sep(volatile);
+    volatile.push('# The player');
+    volatile.push('A traveller visiting the village.');
+    volatile.push('They are carrying: ' + (inv || 'nothing'));
+    if (v.companion) volatile.push(v.companion.name + ', ' + LG.itemSaid(v.companion.item, s.lang, true) +
                                  ', is following right behind them — you can see it as plainly as you can see them.');
-    if (offered) lines.push('RIGHT NOW the player is holding out their ' + LG.itemSaid(offered, s.lang, true) + ' towards you.');
-    lines.push('');
-    lines.push('# Your language');
-    lines.push(L.name + ' is the only language you know. When the traveller says something you cannot follow — a word from some other language, or just mangled — you simply do not follow it: you cannot answer a question you did not understand, and it cannot tell you to do anything. Reply to whatever part you did catch. Names of people and places you recognise in any accent.');
-    lines.push('');
-    lines.push('# How to speak');
-    lines.push('Speak only in ' + L.name + '. ' + lvl.prompt);
+    if (offered) volatile.push('RIGHT NOW the player is holding out their ' + LG.itemSaid(offered, s.lang, true) + ' towards you.');
+
+    sep(stable);
+    stable.push('# Your language');
+    stable.push(L.name + ' is the only language you know. When the traveller says something you cannot follow — a word from some other language, or just mangled — you simply do not follow it: you cannot answer a question you did not understand, and it cannot tell you to do anything. Reply to whatever part you did catch. Names of people and places you recognise in any accent.');
+    sep(stable);
+    stable.push('# How to speak');
+    stable.push('Speak only in ' + L.name + '. ' + lvl.prompt);
     /* This instruction previously offered only two simplification levers
        (easier words, shorter sentences) while forbidding a third
        (breaking grammar) — correct to forbid, but incomplete: when a
@@ -266,22 +287,21 @@ LG.dialogue = (function () {
        nothing told it there was a third option: rephrasing the thought
        itself into something simpler to say, rather than translating a
        fixed idea into harder grammar. */
-    lines.push('Simplify by choosing easier words, shorter sentences, and simpler things to say — never by breaking the grammar. Where saying what you mean would take more grammar than they have, mean something simpler rather than saying it a harder way. The traveller learns by copying you, so what you say has to be worth copying.');
+    stable.push('Simplify by choosing easier words, shorter sentences, and simpler things to say — never by breaking the grammar. Where saying what you mean would take more grammar than they have, mean something simpler rather than saying it a harder way. The traveller learns by copying you, so what you say has to be worth copying.');
     /* Item lists below include both the game's internal English name and
        the village's own name (see LG.itemSaid) — without this line, a
        model could read the quoted village-language name as an
        explanatory gloss rather than the actual word to say. Only added
        when there are two distinct names to disambiguate between. */
-    if (s.lang !== 'en') lines.push('Anything listed with a name in quotation marks is called that here, and that is the name to say.');
-    lines.push('Stay in character.');
-    lines.push('A sentence or two at a time.');
-    // What they have to sell, when they are standing where they work
-    const working = v.trade.open && v.trade.sells.length;
+    if (s.lang !== 'en') stable.push('Anything listed with a name in quotation marks is called that here, and that is the name to say.');
+    stable.push('Stay in character.');
+    stable.push('A sentence or two at a time.');
+
     if (working) {
       const counter = v.trade.atCounter;
-      lines.push('');
-      lines.push('# Your trade');
-      lines.push(counter
+      sep(volatile);
+      volatile.push('# Your trade');
+      volatile.push(counter
         ? 'You are at your own place of work, with your whole stock to hand.'
         : 'You are out and about, but your trade goes with you.');
       /* Items just bought from the traveller need to be listed explicitly
@@ -289,29 +309,29 @@ LG.dialogue = (function () {
          apple had no way to know they now had one, and would (truthfully,
          from their own state) keep saying they had none. */
       if (v.trade.stock.length) {
-        lines.push('In your hands right now, bought off the traveller: ' +
+        volatile.push('In your hands right now, bought off the traveller: ' +
           v.trade.stock.map(it => LG.itemSaid(it.id, s.lang) + (it.n > 1 ? ' \u00d7' + it.n : '')).join(', ') +
           '. You have these; you can say so, and sell them on if you like.');
       }
-      lines.push('These are yours to sell. The price is what you usually ask, not a rule:');
-      v.trade.sells.forEach(w => lines.push('- ' + LG.itemSaid(w.i, s.lang) + ' — ' + coins(w.p) + ' [' + w.i + ']'));
+      volatile.push('These are yours to sell. The price is what you usually ask, not a rule:');
+      v.trade.sells.forEach(w => volatile.push('- ' + LG.itemSaid(w.i, s.lang) + ' — ' + coins(w.p) + ' [' + w.i + ']'));
       if (v.trade.sellsTags.length) {
         const more = Object.keys(LG.ITEMS)
           .filter(k => k !== 'coins' && !v.trade.sells.some(w => w.i === k) &&
                        v.trade.sellsTags.some(t => (LG.ITEMS[k].tags || []).indexOf(t) !== -1));
-        lines.push('You also keep the ordinary run of shop goods, about ' +
+        volatile.push('You also keep the ordinary run of shop goods, about ' +
           coins(Math.max(1, Math.round(LG.priceOf(more[0] || 'salt')))) + ' apiece — among them ' +
           more.slice(0, 14).map(k => LG.itemSaid(k, s.lang, true) + ' [' + k + ']').join(', ') +
           ', and plenty besides. If the traveller asks for something a village shop would stock, you have it.');
       }
       if (v.trade.buys.length) {
-        lines.push('You would also buy, if the traveller happens to have one:');
-        v.trade.buys.forEach(w => lines.push('- ' + LG.itemSaid(w.i, s.lang) + ' — you would pay about ' +
+        volatile.push('You would also buy, if the traveller happens to have one:');
+        v.trade.buys.forEach(w => volatile.push('- ' + LG.itemSaid(w.i, s.lang) + ' — you would pay about ' +
           coins(w.p) + ' [' + w.i + ']'));
       }
-      lines.push('The traveller has ' + coins(LG.game.count('coins')) + ' on them.');
+      volatile.push('The traveller has ' + coins(LG.game.count('coins')) + ' on them.');
 
-      lines.push('Offer your goods the way you would to any customer, and haggle if it suits you.');
+      volatile.push('Offer your goods the way you would to any customer, and haggle if it suits you.');
       /* Previously this instruction unconditionally said "that is them
          paying you," with no check for whether a sale was actually
          outstanding. That let a villager who'd already been paid (and
@@ -319,8 +339,8 @@ LG.dialogue = (function () {
          the player held out coins again for an unrelated reason — the
          rule as written told them to treat any offered coins as payment
          for something. */
-      lines.push('If the traveller holds out their coins, that is them paying you for something you have not handed over yet — take the money and hand the goods over in the same breath. Something the record already shows you were paid for is not being bought a second time.');
-      lines.push('Two things at once is still one sale: put both tags in "item" and the total in "price". Only list what you are actually handing over this turn.');
+      volatile.push('If the traveller holds out their coins, that is them paying you for something you have not handed over yet — take the money and hand the goods over in the same breath. Something the record already shows you were paid for is not being bought a second time.');
+      volatile.push('Two things at once is still one sale: put both tags in "item" and the total in "price". Only list what you are actually handing over this turn.');
     } else if (v.trade.sells.length) {
       /* Villagers need to be told explicitly when their trade is
          closed (nighttime only) — without it, a villager would agree to
@@ -333,9 +353,9 @@ LG.dialogue = (function () {
          about it ("you'd like the custom") — over-specifying what should
          just follow from the villager's own character and the one fact
          that matters: they're shut. */
-      lines.push('');
-      lines.push('# Your trade');
-      lines.push('It is the middle of the night. Your trade is shut until morning.');
+      sep(volatile);
+      volatile.push('# Your trade');
+      volatile.push('It is the middle of the night. Your trade is shut until morning.');
     }
 
     {
@@ -348,16 +368,16 @@ LG.dialogue = (function () {
          in the till whether or not their shop happens to be open. */
       const till = v.trade.till;
       if (till.length) {
-        lines.push('');
-        lines.push('# The till');
-        lines.push('What has actually changed hands between you and this traveller:');
+        sep(volatile);
+        volatile.push('# The till');
+        volatile.push('What has actually changed hands between you and this traveller:');
         till.forEach(t => {
-          if (t.failed) { lines.push('- (nothing happened: ' + t.note + ')'); return; }
+          if (t.failed) { volatile.push('- (nothing happened: ' + t.note + ')'); return; }
           const line = t.act === 'sell'
             ? 'you handed over ' + t.names + ' and took ' + coins(t.coins)
             : t.refund ? 'they gave back ' + t.names + ' and you refunded ' + coins(t.coins)
                        : 'you took ' + t.names + ' off them for ' + coins(t.coins);
-          lines.push('- ' + t.at + ' \u2014 ' + line +
+          volatile.push('- ' + t.at + ' \u2014 ' + line +
             (t.asked !== t.coins ? ' (you said ' + t.asked + ', the till took ' + t.coins + ')' : ''));
         });
         /* Must include the count. When this line named the item without
@@ -366,23 +386,23 @@ LG.dialogue = (function () {
            reason from a summary that implied only one, missing that they
            held that quantity and reasoning incorrectly about what they
            had access to. */
-        if (v.trade.sold.length) lines.push('Still in their hands, from you: ' +
+        if (v.trade.sold.length) volatile.push('Still in their hands, from you: ' +
           v.trade.sold.map(it => { const nm = LG.itemSaid(it.id, s.lang, true);
                                    return it.n > 1 ? it.n + ' \u00d7 ' + nm : nm; }).join(', ') + '.');
-        lines.push('This is the record. If it does not match what you thought, the record is right.');
+        volatile.push('This is the record. If it does not match what you thought, the record is right.');
       }
     }
 
     if (trade) {
-      lines.push('');
-      lines.push('# Your deal');
-      lines.push('You want: ' + (trade.wants === 'coins'
+      sep(volatile);
+      volatile.push('# Your deal');
+      volatile.push('You want: ' + (trade.wants === 'coins'
         ? coins(trade.wantsCount)
         : LG.itemSaid(trade.wants, s.lang)) + '.');
-      lines.push('You will give in return: ' + (trade.gives === 'coins'
+      volatile.push('You will give in return: ' + (trade.gives === 'coins'
         ? coins(trade.givesCount)
         : LG.itemSaid(trade.gives, s.lang)) + '.');
-      lines.push(trade.hint);
+      volatile.push(trade.hint);
     }
     /* A completed deal must be stated explicitly. It used to simply
        disappear from the prompt the instant it completed, leaving no
@@ -391,9 +411,9 @@ LG.dialogue = (function () {
        transaction. Omission doesn't communicate "this is done." */
     if (v.trade.done) {
       const r = v.trade.done;
-      lines.push('');
-      lines.push('# Your deal');
-      lines.push('Done, earlier today: the traveller gave you ' +
+      sep(volatile);
+      volatile.push('# Your deal');
+      volatile.push('Done, earlier today: the traveller gave you ' +
         (r.wants === 'coins' ? coins(r.wantsCount) : LG.itemSaid(r.wants, s.lang)) +
         ' and you handed over ' +
         (r.gives === 'coins' ? coins(r.givesCount) : LG.itemSaid(r.gives, s.lang)) +
@@ -406,16 +426,16 @@ LG.dialogue = (function () {
        easy for a model to reproduce incorrectly. A worked example outside
        the schema specifies the format far more reliably than a rule. */
     if (L.furigana) {
-      lines.push('');
-      lines.push('# Furigana');
-      lines.push('What you say goes in "say" with the readings already in it.');
-      lines.push(LG.FURIGANA);
+      sep(stable);
+      stable.push('# Furigana');
+      stable.push('What you say goes in "say" with the readings already in it.');
+      stable.push(LG.FURIGANA);
     }
     if (L.diacritics) {
-      lines.push('');
-      lines.push('# Diacritics');
-      lines.push('What you say goes in "say" fully vocalised, tashkeel and all.');
-      lines.push(LG.TASHKEEL);
+      sep(stable);
+      stable.push('# Diacritics');
+      stable.push('What you say goes in "say" fully vocalised, tashkeel and all.');
+      stable.push(LG.TASHKEEL);
     }
     const acts = ['none'];
     if (trade) acts.push('trade');
@@ -470,15 +490,22 @@ LG.dialogue = (function () {
     fields.push({ k: 'action', type: { type: 'string', enum: acts },
       desc: acts.join(' | ') });
 
-    lines.push('');
-    lines.push('# Reply format');
-    lines.push('Reply with a single JSON object and nothing else:');
-    lines.push('{');
+    /* Everything in `stable` up to here is the same for this villager
+       whatever their shop and deal are doing; the reply format below
+       isn't (the item/price fields, the action list, the sell and trade
+       rules). A second cache breakpoint here means a shop opening or a
+       deal finishing only rewrites the reply format, not the character
+       sheet and roster above it. */
+    const coreText = stable.join('\n');
+    sep(stable);
+    stable.push('# Reply format');
+    stable.push('Reply with a single JSON object and nothing else:');
+    stable.push('{');
     fields.forEach((f, i) => {
       const val = f.arr ? '["' + f.desc + '"]' : '"' + f.desc + '"';
-      lines.push('  "' + f.k + '": ' + val + (i < fields.length - 1 ? ',' : ''));
+      stable.push('  "' + f.k + '": ' + val + (i < fields.length - 1 ? ',' : ''));
     });
-    lines.push('}');
+    stable.push('}');
     // (the word-reading rule lives in LG.FURIGANA now, with the rest of the spec)
     /* States explicitly which fields are never omitted. Every field but
        "say" used to carry a hedge (OPTIONAL, only with sell or buy, [] if
@@ -495,11 +522,11 @@ LG.dialogue = (function () {
        name which fields are always present, and give "nothing happened"
        its own explicit value rather than expressing it via absence. */
     const always = fields.filter(f => f.always).map(f => '"' + f.k + '"');
-    lines.push('Every reply carries ' + always.slice(0, -1).join(', ') + ' and ' +
+    stable.push('Every reply carries ' + always.slice(0, -1).join(', ') + ' and ' +
                always[always.length - 1] + '. A one-word answer, a greeting, or ' +
                'explaining what a word means carries them just the same as a long ' +
                'reply — there is no short form of this object.');
-    lines.push('Where nothing happened, say so in the field rather than dropping it: ' +
+    stable.push('Where nothing happened, say so in the field rather than dropping it: ' +
                '"revealed" is [], "remember" is null, "action" is "none".' +
                (working ? ' Only "item" and "price" are ever absent.'
                         : ' No field is ever absent.'));
@@ -514,18 +541,18 @@ LG.dialogue = (function () {
                     understood: '"full"' };
     const ex = fields.filter(f => f.always).map(f => '"' + f.k + '": ' + shown[f.k]);
     ex.push('"revealed": []', '"remember": null, "action": "none"');
-    lines.push('A turn where nothing at all happened — a greeting, a thank-you, ' +
+    stable.push('A turn where nothing at all happened — a greeting, a thank-you, ' +
                'telling them what a word means — still looks like this:');
-    lines.push('{' + ex.join(', ') + '}');
-    lines.push('"translation" and "remember" are notes for the game, not speech — writing English there does not mean you understand any.');
-    lines.push('"revealed" is about what you asserted, not what you talked about: using the word, explaining what it means, or asking after it does not count. When in doubt, leave the tag out of the list.');
-    lines.push('"remember" is about what they told you — what they want, who they are, what they are carrying, what they are like. Not everything said is worth remembering: a greeting, a thank-you, or a word they were asking after tells you nothing, and that is null. Write down what they said, never what you assumed.');
+    stable.push('{' + ex.join(', ') + '}');
+    stable.push('"translation" and "remember" are notes for the game, not speech — writing English there does not mean you understand any.');
+    stable.push('"revealed" is about what you asserted, not what you talked about: using the word, explaining what it means, or asking after it does not count. When in doubt, leave the tag out of the list.');
+    stable.push('"remember" is about what they told you — what they want, who they are, what they are carrying, what they are like. Not everything said is worth remembering: a greeting, a thank-you, or a word they were asking after tells you nothing, and that is null. Write down what they said, never what you assumed.');
     if (working) {
-      lines.push('Use "sell" at the moment you actually hand goods over and take the money, and "buy" when you take something off the traveller and pay for it — not while the two of you are still discussing it.');
+      stable.push('Use "sell" at the moment you actually hand goods over and take the money, and "buy" when you take something off the traveller and pay for it — not while the two of you are still discussing it.');
     }
     if (trade) {
-      lines.push('Set "action" to "trade" at the moment you actually hand over ' + (trade.gives === 'coins' ? 'the coins' : LG.itemSaid(trade.gives, s.lang)) + ', and not before.');
-      lines.push('Someone holding an object out to you is a gesture you understand without words — but a gesture is not yet a bargain. If it is not clear what the two of you are exchanging, ask them before you take it. Once the exchange is plain to you both, take it and hand yours over in the same breath.');
+      stable.push('Set "action" to "trade" at the moment you actually hand over ' + (trade.gives === 'coins' ? 'the coins' : LG.itemSaid(trade.gives, s.lang)) + ', and not before.');
+      stable.push('Someone holding an object out to you is a gesture you understand without words — but a gesture is not yet a bargain. If it is not clear what the two of you are exchanging, ask them before you take it. Once the exchange is plain to you both, take it and hand yours over in the same breath.');
     }
     /* Every field is marked JSON-Schema `required`, with the truly
        optional ones typed nullable instead of just omitted from
@@ -534,7 +561,15 @@ LG.dialogue = (function () {
        to report" is spelled out as null, [], or "none". */
     const props = {}, required = [];
     fields.forEach(f => { props[f.k] = f.type; required.push(f.k); });
-    return { text: lines.join('\n'),
+
+    /* `core` and `stable` are returned alongside the combined `text` so
+       the caller can hand them to llm.js as cache prefixes — breakpoints
+       go before the reply format and at the seam, not after the whole
+       system prompt. */
+    const stableText = stable.join('\n');
+    const volatileText = volatile.join('\n');
+    return { text: stableText + '\n\n' + volatileText,
+             core: coreText, stable: stableText,
              schema: { type: 'object', properties: props, required: required,
                        additionalProperties: false } };
   }
@@ -743,7 +778,10 @@ LG.dialogue = (function () {
       const msgs = historyMessages(npc);
       msgs.push({ role: 'user', content: shown || '[says nothing, just holds out the item]' });
       const built = buildReply(npc, offered);
-      reply = await LG.llm.speak(cfg, built.text, msgs, built.schema);
+      // One session per villager: each has their own stable prefix, so
+      // it's each villager's turns that are worth keeping on one provider.
+      reply = await LG.llm.speak(cfg, built.text, msgs, built.schema,
+                                 { cachePrefixes: [built.core, built.stable], session: 'npc-' + npc.id });
     } catch (err) {
       status('⚠ ' + err.message, 'error');
       busy = false; el.dlgSend.disabled = false;

@@ -112,8 +112,46 @@ LG.llm = (function () {
     return res.json();
   }
 
-  function anthropicBody(cfg, system, messages, maxTokens, schema) {
-    const body = { model: cfg.model, max_tokens: maxTokens, system, messages };
+  /* The system prompt as text blocks, cut where each of `prefixes` ends,
+     with a cache breakpoint at every cut. Caching matches exact leading
+     bytes, and a read can only land where an earlier request put a
+     breakpoint -- so a cut after each stretch that stays the same turn
+     to turn (see buildReply in dialogue.js) lets a later turn read back
+     as much as is still unchanged, instead of all or nothing. Prefixes
+     that don't lead `system` are skipped. The blocks concatenate to the
+     original string, so a backend that flattens them sees the same text.
+     Returns null when there's nothing to cut, and callers send the plain
+     string as before. Below a model's minimum cacheable length a
+     breakpoint is simply ignored -- no error, no extra cost. */
+  function systemParts(system, prefixes) {
+    if (typeof system !== "string") return null;
+    const cuts = [].concat(prefixes || [])
+      .filter((p) => p && system.indexOf(p) === 0)
+      .map((p) => p.length)
+      .sort((x, y) => x - y);
+    const parts = [];
+    let at = 0;
+    cuts.forEach((end) => {
+      if (end <= at) return; // the same cut twice
+      parts.push({
+        type: "text",
+        text: system.slice(at, end),
+        cache_control: { type: "ephemeral" },
+      });
+      at = end;
+    });
+    if (!parts.length) return null;
+    if (at < system.length) parts.push({ type: "text", text: system.slice(at) });
+    return parts;
+  }
+
+  function anthropicBody(cfg, system, messages, maxTokens, schema, cachePrefixes) {
+    const body = {
+      model: cfg.model,
+      max_tokens: maxTokens,
+      system: systemParts(system, cachePrefixes) || system,
+      messages,
+    };
     if (SUPPORTS_EFFORT.test(cfg.model)) {
       // Response speed matters more than reasoning depth for in-character
       // dialogue. Disabling thinking is only permitted at effort "high" or below.
@@ -395,6 +433,13 @@ LG.llm = (function () {
             (u.output_tokens || u.completion_tokens || 0) +
             " tok"
           : "";
+      // With caching on, Anthropic's input_tokens counts only what wasn't
+      // served from cache, so the cached share is shown alongside it.
+      const pd = u.prompt_tokens_details || {};
+      const hit = u.cache_read_input_tokens || pd.cached_tokens || 0;
+      const wrote = u.cache_creation_input_tokens || pd.cache_write_tokens || 0;
+      const cache =
+        hit || wrote ? "  cache " + hit + " read, " + wrote + " written" : "";
       const head =
         "%c " +
         entry.kind +
@@ -406,6 +451,7 @@ LG.llm = (function () {
         entry.ms +
         "ms" +
         tok +
+        cache +
         (entry.truncated ? "  CUT OFF (max_tokens)" : "") +
         (err ? "  FAILED" : "");
       const tag =
@@ -459,17 +505,17 @@ LG.llm = (function () {
   /* Callers pass the schema they want without needing to know whether the
      target model actually supports structured outputs — that check
      (schemaOK) happens centrally here. */
-  async function anthropicCall(cfg, system, messages, schema) {
+  async function anthropicCall(cfg, system, messages, schema, opts) {
     const s = schema && schemaOK(cfg, cfg.model) ? schema : null;
     return audited(cfg, system, messages, () =>
-      anthropicSend(cfg, system, messages, s),
+      anthropicSend(cfg, system, messages, s, opts),
     );
   }
 
-  async function openrouterCall(cfg, system, messages, schema) {
+  async function openrouterCall(cfg, system, messages, schema, opts) {
     const s = schema && schemaOK(cfg, cfg.model) ? schema : null;
     return audited(cfg, system, messages, () =>
-      openrouterSend(cfg, system, messages, s),
+      openrouterSend(cfg, system, messages, s, opts),
     );
   }
 
@@ -484,12 +530,12 @@ LG.llm = (function () {
      (two-way before Logfare, three-way now). Centralizing it here means
      adding a provider only requires one line in each model table plus
      one branch here, not a branch at every call site. */
-  function providerCall(cfg, system, messages, schema) {
+  function providerCall(cfg, system, messages, schema, opts) {
     if (cfg.provider === "anthropic")
-      return anthropicCall(cfg, system, messages, schema);
+      return anthropicCall(cfg, system, messages, schema, opts);
     if (cfg.provider === "logfare")
       return logfareCall(cfg, system, messages, schema);
-    return openrouterCall(cfg, system, messages, schema);
+    return openrouterCall(cfg, system, messages, schema, opts);
   }
 
   function dump() {
@@ -520,11 +566,11 @@ LG.llm = (function () {
       .join("\n\n");
   }
 
-  async function anthropicSend(cfg, system, messages, schema) {
+  async function anthropicSend(cfg, system, messages, schema, opts) {
     const data = await post(
       "https://api.anthropic.com/v1/messages",
       anthropicHeaders(cfg),
-      anthropicBody(cfg, system, messages, 700, schema),
+      anthropicBody(cfg, system, messages, 700, schema, opts && opts.cachePrefixes),
     );
     if (data.stop_reason === "refusal")
       throw new Error("The model declined to answer that.");
@@ -560,11 +606,23 @@ LG.llm = (function () {
      OpenRouter's own 1024-token floor up to 1024. */
   const FAST_REASONING_TOKENS = 160;
 
-  async function openrouterSend(cfg, system, messages, schema) {
+  async function openrouterSend(cfg, system, messages, schema, opts) {
+    const o = opts || {};
     const body = {
       model: cfg.model,
-      messages: [{ role: "system", content: system }].concat(messages),
+      /* Same split as the Anthropic path (see systemParts). OpenRouter
+         passes the breakpoint on to backends that need one (Claude),
+         translates it for those that take a different marker, and the
+         ones that cache any repeated prefix on their own just see text. */
+      messages: [
+        { role: "system", content: systemParts(system, o.cachePrefixes) || system },
+      ].concat(messages),
     };
+    /* OpenRouter can serve one model from several providers, each with
+       its own cache, so a turn routed somewhere new starts cold. A
+       session id asks it to keep this conversation on one provider --
+       best effort, and it lapses after 10 minutes idle. */
+    if (o.session) body.session_id = o.session;
     /* The "auto" router has no fixed reasoning budget to cap via
        max_tokens -- `effort` is the parameter it actually respects -- so
        it gets "high" for the main villager-facing model and "medium" for
@@ -1476,9 +1534,13 @@ LG.llm = (function () {
     return salvage(repaired) || salvage(t);
   }
 
-  /* Returns the parsed JSON object the character replied with. */
-  async function speak(cfg, system, messages, schema) {
-    const raw = await providerCall(cfg, system, messages, schema);
+  /* Returns the parsed JSON object the character replied with. `opts`
+     may carry `cachePrefixes`, leading parts of `system` that stay the
+     same turn to turn (each cached -- see systemParts), and `session`, an id
+     for the conversation (OpenRouter's sticky routing). Logfare's API
+     isn't known to take either, so it's sent neither. */
+  async function speak(cfg, system, messages, schema, opts) {
+    const raw = await providerCall(cfg, system, messages, schema, opts);
     const obj = parseJSON(raw);
     if (!obj || !obj.say) {
       // Never show the player raw/malformed JSON -- let the caller report a failure instead.

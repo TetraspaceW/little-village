@@ -423,6 +423,16 @@ h2.centered{margin:0 0 14px;text-align:center;font-size:26px}
   padding:8px 6px;text-align:center;
 }
 .abc-emoji{font-size:26px;line-height:1}
+
+/* --------------------------------------------------------- reading a book */
+/* The full text a real book is fetched and cached by tools/logserver.js
+   (see /book/:lang) and shown here, scrollable, in place of the excerpt
+   -- see openFullBook()/backToShelf() in game.js. */
+.book-full{margin:8px 0 14px}
+#libraryFullText{
+  max-height:52vh;overflow-y:auto;margin-top:10px;padding-right:4px;
+  font-size:15px;line-height:1.7;color:#4a3b2a;white-space:pre-wrap;
+}
 .abc-ch{font-size:19px;font-weight:700;color:#4a3b2a;margin-top:3px}
 .abc-word{font-size:12px;color:#6d5b45;margin-top:1px}
 .lede{font-size:16px;color:#4a3b2a;margin:0 0 8px}

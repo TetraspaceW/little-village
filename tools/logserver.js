@@ -20,14 +20,26 @@
    machine, or loadable into a browser that's never seen it. The server
    has no independent model of what a village is: it just stores
    whatever the game posts (after checking it looks like a save) and
-   returns it unchanged. */
-const http = require('http'), fs = require('fs'), path = require('path');
+   returns it unchanged.
+
+   Also fetches full books for the school bookshelf's "read the whole
+   book" button (see BOOKS below and the /book/:lang route) -- the one
+   thing here that reaches beyond localhost. A browser can't do this
+   fetch itself: the source sites generally don't send the CORS headers
+   a cross-origin page would need, and it wouldn't work at all from a
+   file:// origin. A same-machine Node process has neither restriction,
+   and caches what it fetches to disk so a book is only ever downloaded
+   once. */
+const http = require('http'), https = require('https'), fs = require('fs'), path = require('path');
+const { URL } = require('url');
 
 const ROOT = path.resolve(__dirname, '..');
 const LOGS = path.join(ROOT, 'logs');
 const SAVES = path.join(ROOT, 'saves');
 const SAVEFILE = path.join(SAVES, 'village.json');
 const ENVFILE = path.join(ROOT, '.env');
+const BOOKS_CACHE = path.join(ROOT, 'books-cache');
+const BOOKS = require('./books.js');
 
 /* ---------------------------------------------------------------- .env
 
@@ -91,8 +103,41 @@ function isLocal(req) {
   return a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1';
 }
 
+/* Fetches a book's source url and hands back its full text, following up
+   to 5 redirects (Gutenberg's own links commonly redirect once) and
+   capped at 8MB (generous for a novel's plain text -- a runaway or
+   wrong url shouldn't be able to fill the disk). `cb(err)` on any
+   failure: a bad host, a non-200 status, or the size cap. */
+function fetchBook(url, cb, redirectsLeft) {
+  redirectsLeft = redirectsLeft === undefined ? 5 : redirectsLeft;
+  let parsed;
+  try { parsed = new URL(url); } catch (e) { cb(e); return; }
+  const mod = parsed.protocol === 'http:' ? http : https;
+  const req = mod.get(url, { headers: { 'user-agent': 'little-village/1.0 (local dev server; +https://github.com)' } }, res => {
+    if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+      res.resume();
+      if (redirectsLeft <= 0) { cb(new Error('too many redirects')); return; }
+      fetchBook(new URL(res.headers.location, url).toString(), cb, redirectsLeft - 1);
+      return;
+    }
+    if (res.statusCode !== 200) { res.resume(); cb(new Error('HTTP ' + res.statusCode)); return; }
+    let data = '', tooBig = false;
+    res.setEncoding('utf8');
+    res.on('data', c => {
+      data += c;
+      if (data.length > 8e6) { tooBig = true; res.destroy(); }
+    });
+    res.on('end', () => { if (!tooBig) cb(null, data); });
+    res.on('error', cb);
+    res.on('close', () => { if (tooBig) cb(new Error('too large')); });
+  });
+  req.on('error', cb);
+  req.setTimeout(15000, () => req.destroy(new Error('timed out')));
+}
+
 fs.mkdirSync(LOGS, { recursive: true });
 fs.mkdirSync(SAVES, { recursive: true });
+fs.mkdirSync(BOOKS_CACHE, { recursive: true });
 const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 const LOGFILE = path.join(LOGS, 'session-' + stamp + '.jsonl');
 let lines = 0;
@@ -113,11 +158,12 @@ function serve(req, res) {
   if (!file.startsWith(ROOT)) { res.writeHead(403).end('no'); return; }
   /* Block static serving of dotfiles (.env lives in this directory —
      serving it directly would leak keys even though /env itself is
-     access-controlled), logs/ (full of prompts), and saves/ (has its own
-     dedicated routes below, so there should be exactly one way to reach it). */
+     access-controlled), logs/ (full of prompts), saves/ and books-cache/
+     (each has its own dedicated route below, so there should be exactly
+     one way to reach either). */
   const parts = path.relative(ROOT, file).split(path.sep);
   if (parts.some(p => p[0] === '.') || parts[0] === 'logs' || parts[0] === 'saves' ||
-      parts[0] === 'node_modules') {
+      parts[0] === 'books-cache' || parts[0] === 'node_modules') {
     res.writeHead(404).end('not found');
     return;
   }
@@ -218,6 +264,49 @@ const server = http.createServer((req, res) => {
     if (!isLocal(req)) { res.writeHead(403).end('local connections only'); return; }
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
     res.end(JSON.stringify(settingsFromEnv()));
+    return;
+  }
+  /* GET /book/<lang> — the school bookshelf's "read the whole book"
+     button (see openFullBook() in js/game.js). Serves from books-cache/
+     if this book has already been fetched once; otherwise fetches it
+     from BOOKS[lang].url (tools/books.js), writes the cache, and serves
+     it. Every failure mode is a plain JSON {error} with a 4xx/5xx status
+     — no configured book, a bad or dead source url, or the fetch itself
+     failing — so the client can show *something* rather than hang. */
+  if (req.method === 'GET' && req.url.indexOf('/book/') === 0) {
+    const lang = decodeURIComponent(req.url.slice('/book/'.length).split('?')[0]);
+    const entry = BOOKS[lang];
+    if (!entry || !entry.url) {
+      res.writeHead(404, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({
+        error: 'not configured',
+        title: entry && entry.title, author: entry && entry.author
+      }));
+      return;
+    }
+    const cacheFile = path.join(BOOKS_CACHE, lang + '.txt');
+    fs.readFile(cacheFile, 'utf8', (err, cached) => {
+      if (!err && cached) {
+        res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+        res.end(JSON.stringify({ title: entry.title, author: entry.author, text: cached, cached: true }));
+        return;
+      }
+      fetchBook(entry.url, (fetchErr, text) => {
+        if (fetchErr) {
+          console.log('  book      ' + lang + ' fetch failed: ' + fetchErr.message);
+          res.writeHead(502, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ error: 'fetch failed: ' + fetchErr.message }));
+          return;
+        }
+        fs.mkdir(BOOKS_CACHE, { recursive: true }, () => {
+          fs.writeFile(cacheFile, text, () => {});
+        });
+        console.log('  book      ' + lang + ' fetched (' + text.length + ' chars) → ' +
+                    path.relative(process.cwd(), cacheFile));
+        res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+        res.end(JSON.stringify({ title: entry.title, author: entry.author, text }));
+      });
+    });
     return;
   }
   if (req.method === 'GET') return serve(req, res);

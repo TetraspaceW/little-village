@@ -1063,6 +1063,12 @@ LG.game = (function () {
       document.getElementById('board').classList.remove('open');
     document.getElementById('libraryClose').onclick = () =>
       document.getElementById('library').classList.remove('open');
+    document.getElementById('libraryReadFull').onclick = () => openFullBook();
+    document.getElementById('libraryBack').onclick = () => { saveBookScroll(); backToShelf(); };
+    document.getElementById('libraryFullText').onscroll = () => {
+      clearTimeout(bookScrollSaveT);
+      bookScrollSaveT = setTimeout(saveBookScroll, 400);
+    };
     document.getElementById('alphabetClose').onclick = () =>
       document.getElementById('alphabet').classList.remove('open');
     document.getElementById('endingClose').onclick = () =>
@@ -1842,7 +1848,87 @@ LG.game = (function () {
      there's nothing to gloss it into. */
   function openLibrary() {
     renderLibrary();
+    backToShelf();               // always opens on the excerpt, never mid-book
     document.getElementById('library').classList.add('open');
+  }
+
+  /* Whether the player is currently sat reading the full book -- i.e.
+     the full-text view is the visible one inside an open library panel.
+     No separate state flag: this is just read off the DOM, so however
+     the panel ends up closed (its own Close button, Escape, opening a
+     conversation over it) reading state can't get left stuck on. Used
+     by update() to slow the clock to real time the same way a
+     conversation does -- see LG.time's DAY_MS_REALTIME. */
+  function isReading() {
+    const full = document.getElementById('libraryFull');
+    return !!full && !full.hidden && document.getElementById('library').classList.contains('open');
+  }
+
+  function backToShelf() {
+    document.getElementById('libraryFull').hidden = true;
+    document.getElementById('libraryList').hidden = false;
+    document.getElementById('libraryReadFull').hidden = false;
+    document.getElementById('libraryStatus').hidden = true;
+  }
+
+  /* Fetches the full book from the local server (tools/logserver.js —
+     see /book/:lang there) and switches the panel into reading view.
+     Nothing here works without that server: a plain file:// open, or a
+     village language with no full book configured (tools/books.js),
+     both fail the fetch — reported inline via #libraryStatus rather
+     than left to hang, since the panel is open and the usual world hint
+     banner is hidden while any panel is (see uiBlocked()). */
+  async function openFullBook() {
+    const lang = settings.lang;
+    const status = document.getElementById('libraryStatus');
+    const btn = document.getElementById('libraryReadFull');
+    status.hidden = false;
+    status.textContent = 'Fetching the book…';
+    btn.disabled = true;
+    let res, data;
+    try {
+      res = await fetch('/book/' + encodeURIComponent(lang));
+      data = await res.json();
+    } catch (e) {
+      status.textContent = "Couldn't reach the local server for this — " +
+        'the full text only loads when the game is run via node tools/logserver.js.';
+      btn.disabled = false;
+      return;
+    }
+    if (!res.ok) {
+      status.textContent = data.error === 'not configured'
+        ? "This village's language doesn't have a full book on file yet."
+        : "Couldn't fetch the book right now (" + (data.error || res.status) + ').';
+      btn.disabled = false;
+      return;
+    }
+    btn.disabled = false;
+    const L = LG.LANGUAGES[lang];
+    document.getElementById('libraryFullHead').innerHTML =
+      '<b lang="' + L.tag + '">' + escapeHTML(data.title || '') + '</b>' +
+      (data.author ? ' <span class="muted">— ' + escapeHTML(data.author) + '</span>' : '');
+    const textEl = document.getElementById('libraryFullText');
+    textEl.lang = L.tag;
+    textEl.textContent = data.text || '';
+    document.getElementById('libraryList').hidden = true;
+    btn.hidden = true;
+    status.hidden = true;
+    document.getElementById('libraryFull').hidden = false;
+    // Resumes roughly where a previous session left off, per language --
+    // a per-viewer convenience, so a missing or blocked localStorage
+    // just means starting from the top rather than breaking anything.
+    try {
+      const saved = Number(localStorage.getItem('lv-book-scroll-' + lang));
+      if (saved > 0) textEl.scrollTop = saved;
+    } catch (e) {}
+  }
+
+  let bookScrollSaveT = 0;
+  function saveBookScroll() {
+    try {
+      const el = document.getElementById('libraryFullText');
+      localStorage.setItem('lv-book-scroll-' + settings.lang, String(el.scrollTop));
+    } catch (e) {}
   }
 
   function renderLibrary() {
@@ -1985,14 +2071,15 @@ LG.game = (function () {
 
   function update(dt) {
     if (saving()) LG.save.tick(dt);
-    // Time keeps passing while a dialogue is open, but at a villager's own
-    // pace -- a real second per game second -- rather than the sped-up
-    // rate the player moves through the rest of the village at. That
-    // still leaves an ordinary conversation too short to visibly change
-    // the weather or the hour, same as the old full pause, but honestly:
-    // a conversation that really runs long really does cost the village
-    // that much time.
-    if (LG.time.tick(dt, LG.dialogue.isOpen()))
+    // Time keeps passing while a dialogue is open, or while the player is
+    // sat reading a book (see isReading()), but at a villager's own pace
+    // -- a real second per game second -- rather than the sped-up rate
+    // the player moves through the rest of the village at. That still
+    // leaves an ordinary conversation too short to visibly change the
+    // weather or the hour, same as the old full pause, but honestly: a
+    // conversation or a chapter that really runs long really does cost
+    // the village that much time.
+    if (LG.time.tick(dt, LG.dialogue.isOpen() || isReading()))
       log('🗓 ' + LG.time.season().name + ', day ' + LG.time.dayOfSeason() + '.');
     const el = document.getElementById('clock');
     if (el) el.textContent = LG.time.label();

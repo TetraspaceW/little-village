@@ -283,6 +283,17 @@
       <h2>📚 The Bookshelf</h2>
       <p class="lede" id="libraryHead"></p>
       <div id="libraryList"></div>
+      <p class="note" id="libraryStatus" hidden></p>
+      <!-- Full text is lazy-loaded from the local server (tools/logserver.js
+           fetches and caches it) -- see openFullBook() in game.js. Hidden
+           until there's something in it, so the excerpt view and the
+           full-book view never show at once. -->
+      <div id="libraryFull" class="book-full" hidden>
+        <button id="libraryBack" class="secondary" type="button">‹ Back to the shelf</button>
+        <div id="libraryFullHead" class="lede"></div>
+        <div id="libraryFullText" lang=""></div>
+      </div>
+      <button id="libraryReadFull" class="secondary" type="button">Read the whole book</button>
       <button id="libraryClose" class="primary">Close</button>
     </div>
   </div>

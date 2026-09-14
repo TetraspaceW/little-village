@@ -1377,11 +1377,19 @@ LG.BOOKS = {
 /* LG.ALPHABET is the wall board: one letter, one everyday word that uses
    it, one picture. French, Spanish, Polish, Russian, Arabic and toki pona
    all have an actual alphabet, so those go A-to-Z (toki pona's is famously
-   tiny -- fourteen letters, all of them here). Chinese and Japanese don't:
-   Chinese instead gets a real primer's first characters (人水火山...), and
+   tiny -- fourteen letters, all of them here). Chinese and Japanese don't,
+   so each gets the nearest real equivalent instead of an invented one.
+
    Japanese gets the gojūon kana chart every Japanese classroom actually
-   hangs on the wall -- both genuine teaching material, just not
-   "alphabets" in the strict sense.
+   hangs on the wall. Chinese gets radicals (部首) that are also complete
+   characters on their own -- what a radical-indexed dictionary lists as
+   that radical's "+0 strokes" entry, when one exists. Not every radical
+   qualifies (讠 and 辶, say, are never standalone words), but a couple
+   hundred of the 214 Kangxi radicals are, and these forty are common,
+   everyday ones spread across the full index rather than clustered at
+   the pictographic low end -- systematic rather than a curated top-of-
+   the-primer list, and closer to how a real dictionary actually presents
+   the writing system's building blocks.
 
    A few letters can't start a native word at all (Russian ъ/ы, Polish
    ą/ę/ń/ó/y, Japanese を/ん) -- real children's primers handle this by
@@ -1503,22 +1511,31 @@ LG.ALPHABET = {
     { ch: 's', word: 'suno', en: 'sun', emoji: '☀️' }, { ch: 't', word: 'telo', en: 'water', emoji: '💧' },
     { ch: 'u', word: 'uta', en: 'mouth', emoji: '👄' }, { ch: 'w', word: 'waso', en: 'bird', emoji: '🐦' }
   ],
+  // Ordered by Kangxi radical number (1 through 196), not grouped by
+  // meaning -- the same "systematic, not curated" logic as an alphabet
+  // going A-to-Z. `word` is the pinyin reading, same tone-marked
+  // convention as everywhere else zh is romanized (see romanNote above).
   zh: [
-    { ch: '人', word: 'rén', en: 'person', emoji: '🧑' }, { ch: '水', word: 'shuǐ', en: 'water', emoji: '💧' },
-    { ch: '火', word: 'huǒ', en: 'fire', emoji: '🔥' }, { ch: '山', word: 'shān', en: 'mountain', emoji: '⛰️' },
-    { ch: '月', word: 'yuè', en: 'moon', emoji: '🌙' }, { ch: '日', word: 'rì', en: 'sun', emoji: '☀️' },
-    { ch: '木', word: 'mù', en: 'tree', emoji: '🌳' }, { ch: '田', word: 'tián', en: 'field', emoji: '🌾' },
-    { ch: '石', word: 'shí', en: 'stone', emoji: '🪨' }, { ch: '鸟', word: 'niǎo', en: 'bird', emoji: '🐦' },
-    { ch: '鱼', word: 'yú', en: 'fish', emoji: '🐟' }, { ch: '牛', word: 'niú', en: 'ox, cow', emoji: '🐮' },
-    { ch: '羊', word: 'yáng', en: 'sheep', emoji: '🐑' }, { ch: '马', word: 'mǎ', en: 'horse', emoji: '🐴' },
-    { ch: '狗', word: 'gǒu', en: 'dog', emoji: '🐶' }, { ch: '米', word: 'mǐ', en: 'rice', emoji: '🍚' },
-    { ch: '书', word: 'shū', en: 'book', emoji: '📖' }, { ch: '门', word: 'mén', en: 'door', emoji: '🚪' },
-    { ch: '雨', word: 'yǔ', en: 'rain', emoji: '🌧️' }, { ch: '雪', word: 'xuě', en: 'snow', emoji: '❄️' },
-    { ch: '风', word: 'fēng', en: 'wind', emoji: '💨' }, { ch: '花', word: 'huā', en: 'flower', emoji: '🌸' },
-    { ch: '草', word: 'cǎo', en: 'grass', emoji: '🌿' }, { ch: '虫', word: 'chóng', en: 'insect', emoji: '🐛' },
-    { ch: '云', word: 'yún', en: 'cloud', emoji: '☁️' }, { ch: '星', word: 'xīng', en: 'star', emoji: '⭐' },
+    { ch: '一', word: 'yī', en: 'one', emoji: '1️⃣' }, { ch: '人', word: 'rén', en: 'person', emoji: '🧑' },
+    { ch: '八', word: 'bā', en: 'eight', emoji: '8️⃣' }, { ch: '刀', word: 'dāo', en: 'knife', emoji: '🔪' },
+    { ch: '力', word: 'lì', en: 'strength', emoji: '💪' }, { ch: '十', word: 'shí', en: 'ten', emoji: '🔟' },
+    { ch: '口', word: 'kǒu', en: 'mouth', emoji: '👄' }, { ch: '土', word: 'tǔ', en: 'earth, soil', emoji: '🟫' },
+    { ch: '大', word: 'dà', en: 'big', emoji: '🦣' }, { ch: '女', word: 'nǚ', en: 'woman', emoji: '👩' },
+    { ch: '子', word: 'zǐ', en: 'child', emoji: '👶' }, { ch: '小', word: 'xiǎo', en: 'small', emoji: '🤏' },
+    { ch: '山', word: 'shān', en: 'mountain', emoji: '⛰️' }, { ch: '工', word: 'gōng', en: 'work', emoji: '🔧' },
     { ch: '心', word: 'xīn', en: 'heart', emoji: '❤️' }, { ch: '手', word: 'shǒu', en: 'hand', emoji: '✋' },
-    { ch: '口', word: 'kǒu', en: 'mouth', emoji: '👄' }, { ch: '目', word: 'mù', en: 'eye', emoji: '👁️' }
+    { ch: '日', word: 'rì', en: 'sun', emoji: '☀️' }, { ch: '月', word: 'yuè', en: 'moon', emoji: '🌙' },
+    { ch: '木', word: 'mù', en: 'tree', emoji: '🌳' }, { ch: '水', word: 'shuǐ', en: 'water', emoji: '💧' },
+    { ch: '火', word: 'huǒ', en: 'fire', emoji: '🔥' }, { ch: '父', word: 'fù', en: 'father', emoji: '👨' },
+    { ch: '牛', word: 'niú', en: 'ox, cow', emoji: '🐮' }, { ch: '犬', word: 'quǎn', en: 'dog', emoji: '🐕' },
+    { ch: '生', word: 'shēng', en: 'life, to be born', emoji: '🌱' }, { ch: '田', word: 'tián', en: 'field', emoji: '🌾' },
+    { ch: '白', word: 'bái', en: 'white', emoji: '⚪' }, { ch: '目', word: 'mù', en: 'eye', emoji: '👁️' },
+    { ch: '石', word: 'shí', en: 'stone', emoji: '🪨' }, { ch: '米', word: 'mǐ', en: 'rice', emoji: '🍚' },
+    { ch: '羊', word: 'yáng', en: 'sheep', emoji: '🐑' }, { ch: '耳', word: 'ěr', en: 'ear', emoji: '👂' },
+    { ch: '虫', word: 'chóng', en: 'insect', emoji: '🐛' }, { ch: '贝', word: 'bèi', en: 'shell', emoji: '🐚' },
+    { ch: '走', word: 'zǒu', en: 'walk', emoji: '🚶' }, { ch: '车', word: 'chē', en: 'cart, vehicle', emoji: '🚗' },
+    { ch: '门', word: 'mén', en: 'door', emoji: '🚪' }, { ch: '雨', word: 'yǔ', en: 'rain', emoji: '🌧️' },
+    { ch: '鱼', word: 'yú', en: 'fish', emoji: '🐟' }, { ch: '鸟', word: 'niǎo', en: 'bird', emoji: '🐦' }
   ],
   ja: [
     { ch: 'あ', word: 'あり', en: 'ant', emoji: '🐜' }, { ch: 'い', word: 'いぬ', en: 'dog', emoji: '🐶' },

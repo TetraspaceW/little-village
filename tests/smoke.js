@@ -593,6 +593,76 @@ section('a model nobody has looked up gets no schema');
      'Logfare has no catalogue to check, so it fails closed the same way');
 }
 
+/* The system prompt goes out cut where buildReply's core and stable half
+   end, with a cache breakpoint at each cut -- and the blocks put back
+   together are exactly the prompt the villager was always shown. fetch
+   is swapped for one that records each request body, so nothing leaves
+   the sandbox. */
+async function promptCached() {
+  section('the part of the prompt that stays put is marked for caching');
+
+  const n = npcs[0];
+  const built = LG.dialogue._debugReply(n, null);
+  const sent = [];
+  const realFetch = sandbox.fetch, audit = LG.llm.audit;
+  sandbox.fetch = async (url, init) => {
+    // no body: OpenRouter's model list, looked up for its price cap
+    if (!init || !init.body) return { ok: true, json: async () => ({ data: [] }) };
+    sent.push({ url: url, body: JSON.parse(init.body) });
+    const reply = '{"say": "Hm."}';
+    return { ok: true, status: 200, json: async () => ({
+      content: [{ type: 'text', text: reply }], stop_reason: 'end_turn',
+      choices: [{ message: { content: reply }, finish_reason: 'stop' }] }) };
+  };
+  LG.llm.audit = false;
+  const msgs = [{ role: 'user', content: 'hello' }];
+  const opts = { cachePrefixes: [built.core, built.stable], session: 'npc-' + n.id };
+  try {
+    await LG.llm.speak({ provider: 'anthropic', apiKey: 'k', model: 'claude-opus-5' },
+                       built.text, msgs, null, opts);
+    await LG.llm.speak({ provider: 'openrouter', apiKey: 'k', model: 'anthropic/claude-sonnet-5' },
+                       built.text, msgs, null, opts);
+    await LG.llm.speak({ provider: 'anthropic', apiKey: 'k', model: 'claude-opus-5' },
+                       built.text, msgs, null);
+  } finally {
+    sandbox.fetch = realFetch;
+    LG.llm.audit = audit;
+  }
+
+  const api = sent.filter(r => r.url.indexOf('api.anthropic.com') !== -1 ||
+                               r.url.indexOf('openrouter.ai/api/v1/chat') !== -1);
+  ok(api.length === 3, 'three requests went out');
+  if (api.length !== 3) return;
+  const a = api[0].body, o = api[1].body, plain = api[2].body;
+
+  ok(built.stable.indexOf(built.core) === 0 && built.core.length < built.stable.length &&
+     built.text.indexOf(built.stable) === 0 && built.stable.length < built.text.length,
+     'the core leads the stable half, which leads the prompt');
+  ok(built.core.indexOf('# Reply format') === -1 &&
+     built.stable.slice(built.core.length).indexOf('# Reply format') !== -1,
+     'and the cut between core and stable is the reply format');
+  ok(Array.isArray(a.system) && a.system.length === 3,
+     'anthropic: the system prompt goes as three blocks');
+  const marked = b => !!b.cache_control && b.cache_control.type === 'ephemeral';
+  ok(a.system[0].text === built.core && marked(a.system[0]),
+     'the first is the core, marked for caching');
+  ok(a.system[0].text + a.system[1].text === built.stable && marked(a.system[1]),
+     'the second runs on to the end of the stable half, also marked');
+  ok(!a.system[2].cache_control, 'the part that changes turn to turn is not');
+  ok(a.system.map(b => b.text).join('') === built.text,
+     'and together they are the prompt, byte for byte');
+  ok(!('session_id' in a), 'Anthropic is not sent a session id');
+
+  const sys = o.messages[0];
+  ok(sys.role === 'system' && Array.isArray(sys.content) && sys.content.length === 3 &&
+     marked(sys.content[0]) && marked(sys.content[1]) && !sys.content[2].cache_control,
+     'openrouter: the same split, in the system message');
+  ok(sys.content.map(b => b.text).join('') === built.text, 'with the same text');
+  ok(o.session_id === 'npc-' + n.id, 'and the conversation carries a session id');
+
+  ok(plain.system === built.text, 'with no prefix given, the system prompt goes as a plain string');
+}
+
 /* ------------------------------------------------------- what they believe now
    Every entry a villager holds has a timestamp and source, and when
    something new supersedes one of them, that entry gets rewritten
@@ -1139,6 +1209,7 @@ async function villagersTalking() {
        'the reader gets the facts as written, not in either villager\'s own voice');
   }
 
+  await promptCached();
   await namesUnknownUntilTold();
   await touchControls();
   await roomForTheComposer();

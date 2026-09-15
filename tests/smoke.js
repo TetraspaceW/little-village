@@ -587,10 +587,56 @@ section('a model nobody has looked up gets no schema');
 {
   ok(LG.llm.schemaOK({ provider: 'openrouter', model: 'nobody/never-heard-of-it' }) === false,
      'unknown reads as no');
-  ok(LG.llm.schemaOK({ provider: 'anthropic', model: 'claude-opus-5' }) === false,
+  ok(LG.llm.schemaOK({ provider: 'openrouter', model: 'deepseek/deepseek-v4.1-flash' }) === false,
      'and so does a real model that has not been probed in this session');
   ok(LG.llm.schemaOK({ provider: 'logfare', model: 'logfare/auto' }) === false,
      'Logfare has no catalogue to check, so it fails closed the same way');
+}
+
+/* ---------------------------------------------------------- a key per provider
+   Anthropic was once a provider; a browser that last saved with it must
+   not carry that key or its Claude model ids over to OpenRouter. And
+   each remaining provider keeps its own key, so a detour through the
+   other one and back doesn't wipe what was typed. Run in a fresh
+   sandbox so the settings panel's saves can't disturb the main village. */
+async function keysPerProvider() {
+  section('an old Anthropic setup, and a key per provider');
+  const kept = {
+    'lg-settings': JSON.stringify({ provider: 'anthropic', apiKey: 'sk-ant-not-real',
+                                    model: 'claude-sonnet-5', helper: 'claude-haiku-4-5' })
+  };
+  const s3 = makeSandbox(kept);
+  for (const f of files) {
+    vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), s3, { filename: f });
+  }
+  s3.LG.game.init();
+  s3.LG.game.thoughts = false;
+  const set = s3.LG.game.settings;
+  ok(set.provider === 'openrouter', 'a saved Anthropic setup comes back as OpenRouter');
+  ok(set.apiKey === '' && !set.keys.openrouter && !set.keys.logfare,
+     'without the Anthropic key, which OpenRouter was never meant to see');
+  ok(set.model === 'deepseek/deepseek-v4.1-flash' && set.helper === '', 'and on the default models');
+
+  const el = id => s3.document.getElementById(id);
+  const pick = prov => { el('setProvider').value = prov; el('setProvider').onchange(); };
+  s3.LG.llm.validate = async () => true;             // nothing is sent
+  s3.LG.game.openSettings(false);
+  pick('logfare');
+  el('setKey').value = 'lf-not-real';
+  pick('openrouter');
+  ok(el('setKey').value === '', 'switching provider shows that provider\u2019s key, not the one just typed');
+  el('setKey').value = 'or-not-real';
+  await el('setSave').onclick();
+  ok(set.provider === 'openrouter' && set.apiKey === 'or-not-real', 'saving uses the key for the provider picked');
+  const stored = JSON.parse(kept['lg-settings']).keys;
+  ok(stored.logfare === 'lf-not-real' && stored.openrouter === 'or-not-real',
+     'and keeps the other provider\u2019s key alongside it');
+
+  s3.LG.game.openSettings(false);
+  pick('logfare');
+  ok(el('setKey').value === 'lf-not-real', 'so switching back to Logfare finds its key still there');
+  pick('openrouter');
+  ok(el('setKey').value === 'or-not-real', 'and the OpenRouter one is there too');
 }
 
 /* ------------------------------------------------------- what they believe now
@@ -1139,6 +1185,7 @@ async function villagersTalking() {
        'the reader gets the facts as written, not in either villager\'s own voice');
   }
 
+  await keysPerProvider();
   await namesUnknownUntilTold();
   await touchControls();
   await roomForTheComposer();

@@ -6,7 +6,10 @@ LG.game = (function () {
 
   const settings = {
     lang: 'ru', level: 'beginner', autorun: false,
-    provider: 'anthropic', apiKey: '', model: 'claude-sonnet-5', helper: '',
+    provider: 'openrouter', apiKey: '', model: 'deepseek/deepseek-v4.1-flash', helper: '',
+    /* One key per provider, so switching provider and back doesn't lose
+       the other one. `apiKey` is always the current provider's entry. */
+    keys: { openrouter: '', logfare: '' },
     /* These four are no longer exposed as player-facing settings —
        villager gossip is always on, translations always start blurred
        (click to reveal), voices are always cast from the curated
@@ -22,6 +25,8 @@ LG.game = (function () {
   // `gated` blocks input until settings (incl. API key) are confirmed via the front-door panel.
   let gated = true, gateMode = false, lastValidated = '';
   let fromEnv = false;             // true if keys came from the log server's .env, not typed by the user
+  // The settings panel's unsaved key per provider, and which provider the key box is showing right now.
+  let draftKeys = {}, keyProvider = '';
 
   const state = { inv: {}, notes: [], deeds: [], won: false, board: [] };
 
@@ -93,6 +98,20 @@ LG.game = (function () {
       const raw = localStorage.getItem('lg-settings');
       if (raw) Object.assign(settings, JSON.parse(raw));
     } catch (e) { /* ignore */ }
+    /* The Anthropic provider is gone. A save still pointing at it holds
+       an Anthropic key and Claude model ids, neither of which means
+       anything to OpenRouter -- drop them rather than send that key
+       somewhere it was never meant for. */
+    if (!LG.llm.MODELS[settings.provider]) {
+      settings.provider = 'openrouter';
+      settings.apiKey = '';
+      settings.model = LG.llm.MODELS.openrouter[0].id;
+      settings.helper = '';
+    }
+    // Keys used to be one field shared by every provider; file an old one under the provider it was saved with.
+    settings.keys = Object.assign({ openrouter: '', logfare: '' }, settings.keys);
+    if (settings.apiKey && !settings.keys[settings.provider]) settings.keys[settings.provider] = settings.apiKey;
+    settings.apiKey = settings.keys[settings.provider] || '';
     // No longer configurable -- force these even if an old save has different values stored.
     settings.npcChatter = true;
     settings.showTranslation = false;
@@ -628,11 +647,11 @@ LG.game = (function () {
   function useEnv(env) {
     const was = { lang: settings.lang, level: settings.level };
     if (LG.llm.MODELS[env.provider]) settings.provider = env.provider;
-    const key = settings.provider === 'openrouter' ? env.openrouterKey
-              : settings.provider === 'logfare' ? env.logfareKey
-              : env.anthropicKey;
+    if (env.openrouterKey) settings.keys.openrouter = env.openrouterKey;
+    if (env.logfareKey) settings.keys.logfare = env.logfareKey;
+    settings.apiKey = settings.keys[settings.provider] || '';
     let got = [];
-    if (key) { settings.apiKey = key; got.push('the model key'); }
+    if ({ openrouter: env.openrouterKey, logfare: env.logfareKey }[settings.provider]) got.push('the model key');
     if (env.ttsKey) { settings.ttsKey = env.ttsKey; settings.voices = true; got.push('a voice key'); }
     if (env.model) settings.model = env.model;
     if (env.helper) settings.helper = env.helper;
@@ -1084,9 +1103,19 @@ LG.game = (function () {
       showSaveNote();
     };
     document.getElementById('setSave').onclick = submitSettings;
-    document.getElementById('setProvider').onchange = () => { refreshModelList(); refreshHelperList(); };
+    document.getElementById('setProvider').onchange = () => { swapKeyField(); refreshModelList(); refreshHelperList(); };
     document.getElementById('setModel').onchange = syncModelBox;
     document.getElementById('setHelper').onchange = syncHelperBox;
+  }
+
+  /* Tucks away whatever is in the key box under the provider it was
+     typed for, and shows the newly picked provider's key instead -- so
+     a Logfare key survives a detour through OpenRouter and back. */
+  function swapKeyField() {
+    const field = document.getElementById('setKey');
+    draftKeys[keyProvider] = field.value.trim();
+    keyProvider = document.getElementById('setProvider').value;
+    field.value = draftKeys[keyProvider] || '';
   }
 
   /* Whether there's a real playthrough worth saving. Before the
@@ -1106,12 +1135,14 @@ LG.game = (function () {
     const btn = document.getElementById('setSave');
     const newBtn = document.getElementById('setNew');
     const err = document.getElementById('setError');
+    swapKeyField();                // files the key box under its provider; a no-op swap otherwise
     const next = {
       lang: document.getElementById('setLang').value,
       level: document.getElementById('setLevel').value,
       autorun: document.getElementById('setAutorun').checked,
       provider: document.getElementById('setProvider').value,
       apiKey: document.getElementById('setKey').value.trim(),
+      keys: Object.assign({}, draftKeys),
       model: readModel() || settings.model,
       helper: readHelper(),
       // No longer player-configurable: gossip is always on, translations
@@ -1208,7 +1239,9 @@ LG.game = (function () {
     document.getElementById('setLevel').value = settings.level;
     document.getElementById('setAutorun').checked = settings.autorun;
     document.getElementById('setProvider').value = settings.provider;
-    document.getElementById('setKey').value = settings.apiKey;
+    draftKeys = Object.assign({}, settings.keys);
+    keyProvider = settings.provider;
+    document.getElementById('setKey').value = draftKeys[keyProvider] || '';
     // Shows where the key came from, so a pre-filled field isn't a mystery to the player.
     const note = document.getElementById('setKeyNote');
     if (note) {
@@ -1291,9 +1324,7 @@ LG.game = (function () {
               : settings.model && !known ? 'other' : (settings.model || (list[0] && list[0].id) || 'other');
     document.getElementById('setModelCustom').value = fixed || known ? '' : settings.model;
     syncModelBox();
-    document.getElementById('keyHint').textContent = prov === 'anthropic'
-      ? 'From console.anthropic.com. Sent straight from your browser to api.anthropic.com.'
-      : prov === 'logfare'
+    document.getElementById('keyHint').textContent = prov === 'logfare'
       ? 'From logfare.ai/register — free and instant, no email needed.'
       : 'From openrouter.ai/keys.';
   }

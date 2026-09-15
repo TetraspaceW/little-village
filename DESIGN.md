@@ -204,16 +204,15 @@ out of eighty-four in the same session.
 
 The prompt says which fields are never omitted now, and gives *nothing happened* a
 spelling of its own. But the stronger fix is to stop it being a matter of judgement:
-both providers will take a JSON Schema — Anthropic as `output_config.format`,
-OpenRouter as OpenAI's `response_format`, which the router translates to whatever
-backend it picks, so this is two branches rather than one per model.
+OpenRouter will take a JSON Schema as OpenAI's `response_format`, which the router
+translates to whatever backend it picks, so this is one branch rather than one per
+model.
 
 **It is asked once, and it fails closed.** Support is per endpoint, not per model,
 and OpenRouter *rejects* a request whose model has no structured outputs rather than
 ignoring the field — so sending one blindly would turn a reply that merely arrived
-thin into no reply at all. When the key is accepted the game looks the pair up —
-`capabilities.structured_outputs` on Anthropic, `supported_parameters` on OpenRouter
-— and remembers the answer. Anything it could not look up, could not reach, or does
+thin into no reply at all. When the key is accepted the game looks the pair up in
+OpenRouter's `supported_parameters` and remembers the answer. Anything it could not look up, could not reach, or does
 not recognise counts as no. Some listed models are exactly that case: they take
 `response_format` for plain JSON mode but are not on the structured-outputs list, so
 they get the prompt and the repair, the way everything did before.

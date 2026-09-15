@@ -1,10 +1,9 @@
 /* tools/books.js — where each language's full book comes from.
 
-   The school bookshelf (js/data.js's LG.BOOKS) always has a short, hand-
-   picked excerpt for every language -- that's static, ships with the
-   game, and needs no network. This file is the source list for the
-   *optional* extra: a real, complete, public-domain book a player can
-   actually sit down and read in full.
+   The school bookshelf has no other content: opening it (js/game.js's
+   openLibrary()) fetches the book listed here directly, in full --
+   picking it up off the shelf just opens it, rather than showing a
+   curated excerpt first. This file is the source list.
 
    This file is only ever read by tools/build-books.js, run by hand
    whenever a language's source changes -- never by the game itself and
@@ -79,7 +78,9 @@ module.exports = {
   },
   pl: {
     title: 'Pan Tadeusz', author: 'Adam Mickiewicz',
-    kind: 'gutenberg', url: 'https://www.gutenberg.org/cache/epub/31536/pg31536.txt'
+    kind: 'gutenberg', url: 'https://www.gutenberg.org/cache/epub/31536/pg31536.txt',
+    verse: true // an epic poem -- its line breaks are real, not word-wrap;
+                // see build-books.js's reflow(), which skips this flag
     // Gutenberg #31536, confirmed Polish. (#28240 is an English
     // translation of the same title -- checked and rejected.) Poland's
     // own national epic; a demanding first read, but the honest answer.

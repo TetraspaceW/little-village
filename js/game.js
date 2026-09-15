@@ -1061,11 +1061,11 @@ LG.game = (function () {
       document.getElementById('help').classList.remove('open');
     document.getElementById('boardClose').onclick = () =>
       document.getElementById('board').classList.remove('open');
-    document.getElementById('libraryClose').onclick = () =>
+    document.getElementById('libraryClose').onclick = () => {
+      saveBookScroll();
       document.getElementById('library').classList.remove('open');
-    document.getElementById('libraryReadFull').onclick = () => openFullBook();
-    document.getElementById('libraryBack').onclick = () => { saveBookScroll(); backToShelf(); };
-    document.getElementById('libraryFullText').onscroll = () => {
+    };
+    document.getElementById('libraryText').onscroll = () => {
       clearTimeout(bookScrollSaveT);
       bookScrollSaveT = setTimeout(saveBookScroll, 400);
     };
@@ -1840,66 +1840,42 @@ LG.game = (function () {
     });
   }
 
-  /* Called when the player opens the school's bookshelf: a real book in
-     the village's own language, at a level a beginner could plausibly be
-     handed -- a children's classic or a folktale's traditional opening,
-     not invented sample text. Same click-to-reveal gloss convention as
-     the noticeboard; English itself just shows the passage once, since
-     there's nothing to gloss it into. */
-  function openLibrary() {
-    renderLibrary();
-    backToShelf();               // always opens on the excerpt, never mid-book
+  /* Called when the player opens the school's bookshelf: picking up the
+     book IS opening it, the same as it would be at a real shelf -- no
+     separate "here's a short excerpt, press this other button if you
+     actually want to read it" step first. The book itself is a plain
+     static file, books/<lang>.json, built ahead of time by
+     tools/build-books.js (see that file and tools/books.js for where
+     each language's book actually comes from -- a real, complete,
+     public-domain work, not invented sample text) rather than fetched
+     live from Gutenberg/Wikisource/Aozora on demand -- those sites
+     mostly don't send a browser the CORS headers it'd need, and a live
+     fetch would only ever work under tools/logserver.js anyway, not on
+     the game's actual static deploy. Being an ordinary file means this
+     works identically there, under logserver.js, or under any other
+     static server -- the one thing it still can't do is load over a
+     bare file:// origin, since fetch() of local files is blocked there
+     regardless of what's being fetched. A missing file (a language with
+     no book built) 404s; that and a genuine fetch failure are reported
+     inline via #libraryStatus rather than left to hang, since the panel
+     is open and the usual world hint banner is hidden while any panel
+     is (see uiBlocked()). */
+  async function openLibrary() {
     document.getElementById('library').classList.add('open');
-  }
-
-  /* Whether the player is currently sat reading the full book -- i.e.
-     the full-text view is the visible one inside an open library panel.
-     No separate state flag: this is just read off the DOM, so however
-     the panel ends up closed (its own Close button, Escape, opening a
-     conversation over it) reading state can't get left stuck on. Used
-     by update() to slow the clock to real time the same way a
-     conversation does -- see LG.time's DAY_MS_REALTIME. */
-  function isReading() {
-    const full = document.getElementById('libraryFull');
-    return !!full && !full.hidden && document.getElementById('library').classList.contains('open');
-  }
-
-  function backToShelf() {
-    document.getElementById('libraryFull').hidden = true;
-    document.getElementById('libraryList').hidden = false;
-    document.getElementById('libraryReadFull').hidden = false;
-    document.getElementById('libraryStatus').hidden = true;
-  }
-
-  /* Fetches the full book and switches the panel into reading view. The
-     book itself is a plain static file, books/<lang>.json, built ahead
-     of time by tools/build-books.js (see that file and tools/books.js
-     for where each language's book actually comes from) rather than
-     fetched live from Gutenberg/Wikisource/Aozora on demand — those
-     sites mostly don't send a browser the CORS headers it'd need, and a
-     live fetch-and-cache would only ever work under tools/logserver.js
-     anyway, not on the game's actual static deploy. Being an ordinary
-     file means this works identically there, under logserver.js, or
-     under any other static server — the one thing it still can't do is
-     load over a bare file:// origin, since fetch() of local files is
-     blocked there regardless of what's being fetched. A missing file
-     (a language with no book built) 404s; that and a genuine fetch
-     failure are reported inline via #libraryStatus rather than left to
-     hang, since the panel is open and the usual world hint banner is
-     hidden while any panel is (see uiBlocked()). */
-  async function openFullBook() {
     const lang = settings.lang;
+    const L = LG.LANGUAGES[lang];
+    const head = document.getElementById('libraryHead');
     const status = document.getElementById('libraryStatus');
-    const btn = document.getElementById('libraryReadFull');
+    const textEl = document.getElementById('libraryText');
+    head.innerHTML = '';
+    textEl.textContent = '';
     status.hidden = false;
-    status.textContent = 'Fetching the book…';
-    btn.disabled = true;
+    status.textContent = 'Opening the book…';
     let res, data;
     try {
       res = await fetch('books/' + encodeURIComponent(lang) + '.json');
       if (res.status === 404) {
-        status.textContent = "This village's language doesn't have a full book on file yet.";
-        btn.disabled = false;
+        status.textContent = "This village's language doesn't have a book on the shelf yet.";
         return;
       }
       if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -1907,21 +1883,13 @@ LG.game = (function () {
     } catch (e) {
       status.textContent = "Couldn't load the book file — this needs the game served " +
         'over http:// or https://, not opened directly as a file.';
-      btn.disabled = false;
       return;
     }
-    btn.disabled = false;
-    const L = LG.LANGUAGES[lang];
-    document.getElementById('libraryFullHead').innerHTML =
-      '<b lang="' + L.tag + '">' + escapeHTML(data.title || '') + '</b>' +
+    status.hidden = true;
+    head.innerHTML = '<b lang="' + L.tag + '">' + escapeHTML(data.title || '') + '</b>' +
       (data.author ? ' <span class="muted">— ' + escapeHTML(data.author) + '</span>' : '');
-    const textEl = document.getElementById('libraryFullText');
     textEl.lang = L.tag;
     textEl.textContent = data.text || '';
-    document.getElementById('libraryList').hidden = true;
-    btn.hidden = true;
-    status.hidden = true;
-    document.getElementById('libraryFull').hidden = false;
     // Resumes roughly where a previous session left off, per language --
     // a per-viewer convenience, so a missing or blocked localStorage
     // just means starting from the top rather than breaking anything.
@@ -1931,39 +1899,22 @@ LG.game = (function () {
     } catch (e) {}
   }
 
+  /* Whether the player is currently sat with the book open. No separate
+     state flag: this is just read off the DOM, so however the panel
+     ends up closed (its own Close button, Escape, opening a conversation
+     over it) reading state can't get left stuck on. Used by update() to
+     slow the clock to real time the same way a conversation does -- see
+     LG.time's DAY_MS_REALTIME. */
+  function isReading() {
+    return document.getElementById('library').classList.contains('open');
+  }
+
   let bookScrollSaveT = 0;
   function saveBookScroll() {
     try {
-      const el = document.getElementById('libraryFullText');
+      const el = document.getElementById('libraryText');
       localStorage.setItem('lv-book-scroll-' + settings.lang, String(el.scrollTop));
     } catch (e) {}
-  }
-
-  function renderLibrary() {
-    const L = LG.LANGUAGES[settings.lang];
-    const book = LG.BOOKS[settings.lang];
-    const head = document.getElementById('libraryHead');
-    const box = document.getElementById('libraryList');
-    if (!book) {
-      head.textContent = '';
-      box.innerHTML = '<div class="notice muted">Nothing on the shelf yet.</div>';
-      return;
-    }
-    head.innerHTML = '<b lang="' + L.tag + '">' + escapeHTML(book.title) + '</b>' +
-      (book.titleEn && book.titleEn !== book.title
-        ? ' <span class="muted">(' + escapeHTML(book.titleEn) + ')</span>' : '') +
-      (book.author ? '<br><span class="muted">' + escapeHTML(book.author) + '</span>' : '');
-    const hide = settings.showTranslation ? '' : ' hidden-tr';
-    const rows = book.lines.map(line =>
-      '<div class="notice"><span class="heard" lang="' + L.tag + '">' +
-        escapeHTML(line.text) + '</span>' +
-      (settings.lang !== 'en' ? '<span class="gloss' + hide + '" lang="en" title="click to read">' +
-        escapeHTML(line.en) + '</span>' : '') +
-      '</div>');
-    box.innerHTML = rows.join('');
-    Array.prototype.forEach.call(box.querySelectorAll('.gloss.hidden-tr'), el => {
-      el.onclick = () => el.classList.remove('hidden-tr');
-    });
   }
 
   /* Called when the player opens the school's alphabet board: one letter

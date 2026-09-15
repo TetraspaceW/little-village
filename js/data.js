@@ -1286,93 +1286,21 @@ LG.PHRASES = [
 ];
 
 /* --------------------------------------------------------- the school
-   Two pieces of teaching material on the school's shelf and wall, keyed
-   by village language exactly like everything else above.
+   Teaching material on the school's shelf and wall, keyed by village
+   language exactly like everything else above.
 
-   LG.BOOKS is one real, public-domain-old excerpt per language, at a
-   level a beginner could plausibly be handed -- a children's classic or
-   a folktale's traditional opening -- rather than invented sample text,
-   the same principle behind everything else the player reads in-game
-   (see itemSaid above). Short on purpose: a line or two to read on the
-   shelf, not the whole book. `en` glosses each line, same click-to-reveal
-   convention as the noticeboard; the English entry has nothing to gloss,
-   so its lines carry no `en` at all.
+   The bookshelf itself has no data here: opening it fetches a real,
+   complete, public-domain book straight from books/<lang>.json (built
+   ahead of time by tools/build-books.js, sourced per tools/books.js) --
+   picking it up off the shelf just opens it, the same as a real book,
+   rather than showing a curated quote first. See those two files for
+   why each language's book is what it is, and js/game.js's
+   openLibrary(). toki pona has no public-domain literature to point at
+   at all, so its shelf has nothing on it yet -- there's no substitute
+   to invent.
 
-   toki pona has no novel of its own to excerpt with any confidence of
-   quoting it correctly, so its "book" is `pu` -- toki pona's own name for
-   its official source text (Sonja Lang's Toki Pona: The Language of
-   Good) -- shown as two of the first sentences a learner actually meets,
-   not a passage claimed to be copied from somewhere. */
-LG.BOOKS = {
-  ru: {
-    title: 'Сказка о рыбаке и рыбке', titleEn: 'The Tale of the Fisherman and the Fish', author: 'Александр Пушкин',
-    lines: [
-      { text: 'Жил старик со своею старухой', en: 'There lived an old man with his old wife' },
-      { text: 'У самого синего моря;', en: 'By the very edge of the blue sea;' }
-    ]
-  },
-  en: {
-    title: 'The Tale of Peter Rabbit', author: 'Beatrix Potter',
-    lines: [
-      { text: 'Once upon a time there were four little Rabbits,' },
-      { text: 'and their names were— Flopsy, Mopsy, Cotton-tail, and Peter.' }
-    ]
-  },
-  zh: {
-    title: '静夜思', titleEn: 'Quiet Night Thoughts', author: '李白',
-    lines: [
-      { text: '床前明月光，', en: 'Before my bed, the bright moonlight,' },
-      { text: '疑是地上霜。', en: 'I took it for frost on the ground.' },
-      { text: '举头望明月，', en: 'I raise my head to gaze at the bright moon,' },
-      { text: '低头思故乡。', en: 'I lower it, thinking of home.' }
-    ]
-  },
-  fr: {
-    // The user's own reference point for this feature, so it gets the
-    // most recognizable line in the book rather than the technically-first one.
-    title: 'Le Petit Prince', titleEn: 'The Little Prince', author: 'Antoine de Saint-Exupéry',
-    lines: [
-      { text: '– S’il vous plaît… dessine-moi un mouton !', en: '– Please... draw me a sheep!' },
-      { text: 'Alors j’ai fait le dessin d’un mouton.', en: 'So I made a drawing of a sheep.' }
-    ]
-  },
-  es: {
-    title: 'Don Quijote de la Mancha', titleEn: 'Don Quixote', author: 'Miguel de Cervantes',
-    lines: [
-      { text: 'En un lugar de la Mancha,', en: 'In a village of La Mancha,' },
-      { text: 'de cuyo nombre no quiero acordarme,', en: 'whose name I do not care to remember,' }
-    ]
-  },
-  pl: {
-    title: 'Pan Tadeusz', author: 'Adam Mickiewicz',
-    lines: [
-      { text: 'Litwo! Ojczyzno moja! ty jesteś jak zdrowie:', en: 'Lithuania, my homeland! You are like health:' },
-      { text: 'Ile cię trzeba cenić, ten tylko się dowie,', en: 'how much you must be valued, only he will learn' },
-      { text: 'Kto cię stracił.', en: 'who has lost you.' }
-    ]
-  },
-  ar: {
-    title: 'ألف ليلة وليلة', titleEn: 'One Thousand and One Nights',
-    lines: [
-      { text: 'كَانَ يَا مَا كَانَ فِي قَدِيمِ الزَّمَانِ...', en: 'Once upon a time, in ancient days...' },
-      { text: 'بَلَغَنِي أَيُّهَا الْمَلِكُ السَّعِيدُ أَنَّ...', en: 'It has reached me, O Happy King, that...' }
-    ]
-  },
-  ja: {
-    title: '桃太郎', titleEn: 'Momotaro (Peach Boy)',
-    lines: [
-      { text: 'むかしむかし、あるところに、', en: 'Once upon a time, in a certain place,' },
-      { text: 'おじいさんとおばあさんが いました。', en: 'there lived an old man and an old woman.' }
-    ]
-  },
-  tok: {
-    title: 'pu', titleEn: 'the official toki pona reader', author: 'jan Sonja',
-    lines: [
-      { text: 'jan lili li lon.', en: 'There is a small person.' },
-      { text: 'ona li pona.', en: 'They are good.' }
-    ]
-  }
-};
+   LG.ALPHABET below is the school's other piece of teaching material,
+   the wall board. */
 
 /* LG.ALPHABET is the wall board: one letter, one everyday word that uses
    it, one picture. French, Spanish, Polish, Russian, Arabic and toki pona

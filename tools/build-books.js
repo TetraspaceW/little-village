@@ -20,7 +20,7 @@
    all. Doing the fetch once here instead, and checking in the result,
    means the feature works identically there, under logserver.js, or
    under `python3 -m http.server`: books/<lang>.json is just a static
-   file at that point, fetched by js/game.js's openFullBook() the same
+   file at that point, fetched by js/game.js's openLibrary() the same
    way it'd fetch anything else in the repo, lazily, only for the
    language actually being played.
 
@@ -64,39 +64,95 @@ function fetchRaw(url, redirectsLeft) {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-/* Strips MediaWiki's own rendered HTML (from the `parse` API -- see
-   fetchWikisourcePage) down to plain paragraphs. Not a general HTML
-   renderer: just enough to turn one Wikisource page into readable
-   prose, dropping the chrome every page carries (the prev/next header
-   table, edit-section links, footnotes, categories -- none of it is the
-   book) rather than leaving it as visible junk text. <style>/<script>
-   are cut wholesale first because their content isn't inside a tag a
-   plain tag-strip would remove. */
+/* Finds the first element matching openTagRegex (which must match just
+   an opening tag, e.g. /<div[^>]*\bclass="main_text"[^>]*>/) and returns
+   its full extent by *balanced* nested-tag counting, not a plain regex.
+   A naive non-greedy match to "the next </div>" is wrong for a div
+   almost by definition (divs nest) -- it can close on some unrelated
+   div partway into the real content and silently discard the rest,
+   which an earlier version of this file did to most of a book before
+   this fix. Returns null if the open tag isn't found or never balances. */
+function findBalanced(html, openTagRegex, tagName) {
+  const m = openTagRegex.exec(html);
+  if (!m) return null;
+  const scan = new RegExp('<' + tagName + '\\b[^>]*>|</' + tagName + '\\s*>', 'gi');
+  scan.lastIndex = m.index + m[0].length;
+  let depth = 1, mm;
+  while ((mm = scan.exec(html))) {
+    if (mm[0][1] === '/') {
+      depth--;
+      if (depth === 0) {
+        return { outerStart: m.index, outerEnd: mm.index + mm[0].length,
+                 innerStart: m.index + m[0].length, innerEnd: mm.index };
+      }
+    } else depth++;
+  }
+  return null;
+}
+
+/* Keeps only the inside of the matched element, discarding everything
+   else in the document -- for a source where the real text lives in one
+   reliably-named container and everything outside it is chrome (see
+   prp-pages-output and main_text below). Returns null (not the original
+   html) when the container isn't found, so callers can fall back
+   explicitly rather than silently keeping unwanted chrome. */
+function extractOnly(html, openTagRegex, tagName) {
+  const r = findBalanced(html, openTagRegex, tagName);
+  return r ? html.slice(r.innerStart, r.innerEnd) : null;
+}
+
+/* The opposite: cuts the matched element out, keeping the rest -- for a
+   source with no single "just the content" container, where a specific
+   chrome element (the header nav box) has to be identified and removed
+   instead. Returns html unchanged if not found. */
+function removeBalanced(html, openTagRegex, tagName) {
+  const r = findBalanced(html, openTagRegex, tagName);
+  return r ? html.slice(0, r.outerStart) + html.slice(r.outerEnd) : html;
+}
+
+/* Same, but removes every match rather than just the first -- for chrome
+   that can appear more than once per page (a "[edit]" link sits next to
+   every heading, not just one). */
+function removeAllBalanced(html, openTagRegex, tagName) {
+  let out = html;
+  for (let guard = 0; guard < 1000; guard++) {
+    const next = removeBalanced(out, openTagRegex, tagName);
+    if (next === out) return out;
+    out = next;
+  }
+  return out;
+}
+
+/* Turns a cleaned-up HTML fragment into plain paragraphs. Not a general
+   HTML renderer: just enough to turn a Wikisource or Aozora fragment
+   into readable prose. Assumes the caller has already dealt with
+   anything that needs balanced-tag awareness (see findBalanced above);
+   what's left here -- <table>, <sup>, <span> -- doesn't nest in this
+   content, so a plain non-greedy match is safe. <style>/<script> are
+   cut wholesale first because their content isn't inside a tag a plain
+   tag-strip would remove. */
 function htmlToText(html) {
-  // <table>...</table> and <sup>...</sup> don't nest in MediaWiki's own
-  // output, so a non-greedy match to the *next* closing tag is safe for
-  // those. A <div>, on the other hand, almost always contains other
-  // <div>s -- matching "up to the next </div>" for the header/footer
-  // chrome divs below would (and, before this comment, did) close on
-  // some unrelated nested </div> partway through the actual chapter,
-  // silently eating most of the book. So this only strips div-based
-  // chrome by dropping the *opening* tag (turning it into ordinary
-  // untagged content) rather than trying to match its extent -- a
-  // little chrome text (nav arrows, a license notice) ends up mixed
-  // into the output, which is a minor cosmetic cost next to the
-  // alternative of a regex that can silently truncate the book.
-  return html
+  html = html
     .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<table[^>]*\bclass="[^"]*\bwsbox[^"]*"[^>]*>[\s\S]*?<\/table>/gi, '')
-    .replace(/<span[^>]*\bclass="mw-editsection"[^>]*>[\s\S]*?<\/span>/gi, '')
-    .replace(/<sup[^>]*\bclass="[^"]*\breference\b[^"]*"[^>]*>[\s\S]*?<\/sup>/gi, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '');
+  // <span class="mw-editsection">, the "[edit]" link next to every
+  // heading, turns out to nest further spans inside itself
+  // (mw-editsection-bracket around each bracket, another span around
+  // the link text) -- a plain non-greedy match closed on that first
+  // inner </span> and left "edit]" sitting in the output as text. Both
+  // this and the wsbox edition-list table are removed with balanced
+  // matching now rather than trusting that they don't nest.
+  html = removeAllBalanced(html, /<span[^>]*\bclass="[^"]*\bmw-editsection\b[^"]*"[^>]*>/i, 'span');
+  html = removeAllBalanced(html, /<table[^>]*\bclass="[^"]*\bwsbox\b[^"]*"[^>]*>/i, 'table');
+  html = removeAllBalanced(html, /<sup[^>]*\bclass="[^"]*\breference\b[^"]*"[^>]*>/i, 'sup');
+  return html
     .replace(/<(?:p|br|div|li|h[1-6]|tr)[^>]*>/gi, '\n')
     .replace(/<[^>]+>/g, '')
     .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(+n))
     .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
     .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, '\'')
+    .replace(/[​‎‏]/g, '') // zero-width space/LTR/RTL marks -- invisible, but not whitespace, so left short "words" glued together if not stripped
     .split('\n').map(l => l.trim()).filter(Boolean).join('\n\n');
 }
 
@@ -104,14 +160,46 @@ function htmlToText(html) {
    raw wikitext, and not the `extracts` API) because this is the only
    one of the three that actually expands a ProofreadPage transclusion
    -- a scanned book's real text lives on Page: subpages and only shows
-   up on the page you'd read once something has transcluded it in. */
+   up on the page you'd read once something has transcluded it in.
+
+   Two shapes of page turn up among our sources, and get cleaned
+   differently:
+
+   - A page transcluding a scanned book via ProofreadPage (zh's Ah Q,
+     transcluded from a scanned Complete Works volume) wraps just that
+     text in a div class="prp-pages-output" -- title, edition table,
+     license badge and categories all sit outside it. When present,
+     that div's content IS the book: keep only it and throw away
+     everything else wholesale, rather than trying to identify and
+     strip each piece of chrome one at a time.
+
+   - A plain wikitext page (ru's chapters, ar's) has no such wrapper --
+     someone typed the prose directly into the page, chrome and all, so
+     there's no single container to extract. Remove what's identifiable
+     (the title/prev-next header box) and cut the rest off at the first
+     second-level heading: real narrative prose here never has one of
+     its own, so the first `==Heading==` reliably marks a "Notes" /
+     "References" section (Cite's <div class="mw-heading">, a MediaWiki
+     class name, the same in every language) rather than more story. */
 async function fetchWikisourcePage(site, title) {
   const api = 'https://' + site + '.wikisource.org/w/api.php?action=parse&format=json&prop=text&page=' +
               encodeURIComponent(title);
   const buf = await fetchRaw(api);
   const data = JSON.parse(buf.toString('utf8'));
   if (data.error) throw new Error(site + '.wikisource.org "' + title + '": ' + data.error.info);
-  return htmlToText(data.parse.text['*']);
+  let html = data.parse.text['*'];
+  const onlyContent = extractOnly(html, /<div[^>]*\bclass="[^"]*\bprp-pages-output\b[^"]*"[^>]*>/i, 'div');
+  if (onlyContent !== null) {
+    html = onlyContent;
+  } else {
+    // The id varies by which header template a page uses ("headertemplate"
+    // for ru/ar's individual-work pages, "headerContainer" seen
+    // elsewhere) -- matched loosely rather than enumerating every one.
+    html = removeBalanced(html, /<div[^>]*\bid="[^"]*header[^"]*"[^>]*>/i, 'div');
+    const headingIdx = html.search(/<div[^>]*\bclass="[^"]*\bmw-heading\b/i);
+    if (headingIdx !== -1) html = html.slice(0, headingIdx);
+  }
+  return htmlToText(html);
 }
 
 async function fetchWikisourceBook(site, pages) {
@@ -126,12 +214,18 @@ async function fetchWikisourceBook(site, pages) {
 /* Aozora Bunko's HTML files are Shift_JIS with no charset anywhere in
    the response -- fetchRaw hands back bytes for exactly this reason, so
    this can decode them correctly (Node's TextDecoder already knows
-   Shift_JIS; no dependency needed) before stripping tags the same way
-   as a Wikisource page. */
+   Shift_JIS; no dependency needed) before stripping tags. Aozora's own
+   template wraps just the story in <div class="main_text">, with the
+   title-page metadata before it and a bibliographic/proofreading
+   colophon after -- same "keep only the real container" approach as
+   Wikisource's prp-pages-output above, and for the same reason: without
+   it, "picking up the book" would come with someone's transcription
+   credits stapled to the last page. */
 async function fetchAozora(url) {
   const buf = await fetchRaw(url);
   const html = new TextDecoder('shift_jis').decode(buf);
-  return htmlToText(html);
+  const onlyContent = extractOnly(html, /<div[^>]*\bclass="main_text"[^>]*>/i, 'div');
+  return htmlToText(onlyContent !== null ? onlyContent : html);
 }
 
 /* Every Gutenberg text is wrapped in the same boilerplate: a standard
@@ -162,10 +256,35 @@ async function fetchGutenberg(url) {
   return text.trim();
 }
 
+/* Gutenberg's plain-text files are hard-wrapped to a fixed column width
+   (~70-72 chars), with a blank line marking a real paragraph break --
+   the single newlines in between are just where the source happened to
+   wrap, not paragraph structure. The reading panel uses white-space:
+   pre-wrap so a Wikisource-derived book's real paragraph breaks show up
+   correctly; the same CSS then also honors these purely typographic
+   ones literally, rendering a wall of short, choppy lines at the
+   original fixed width instead of one flowing paragraph. Reflowing here
+   -- join the lines inside each paragraph, keep the blank-line breaks
+   between paragraphs -- makes it read like an actual page, sized to the
+   reading pane, not a dump of a fixed-width terminal.
+
+   Not run over verse (see the pl entry's `verse: true` in tools/books.js
+   -- Pan Tadeusz's line breaks are the poem's real line breaks, not
+   word-wrap, and joining them would be actively wrong, not just messy). */
+function reflow(text) {
+  return text.split(/\n{2,}/)
+    .map(para => para.split('\n').map(l => l.trim()).join(' ').trim())
+    .filter(Boolean)
+    .join('\n\n');
+}
+
 async function buildOne(lang, src) {
   process.stdout.write('  ' + lang + '  fetching ' + src.title + '... ');
   let text;
-  if (src.kind === 'gutenberg') text = await fetchGutenberg(src.url);
+  if (src.kind === 'gutenberg') {
+    text = await fetchGutenberg(src.url);
+    if (!src.verse) text = reflow(text);
+  }
   else if (src.kind === 'wikisource') text = await fetchWikisourceBook(src.site, src.pages);
   else if (src.kind === 'aozora') text = await fetchAozora(src.url);
   else throw new Error('unknown kind: ' + src.kind);

@@ -385,10 +385,7 @@ ruby rb{font-size:1em}
 .panel-card hr{border:none;border-top:1px solid var(--line);margin:16px 0}
 
 /* ---------------------------------------------------------- noticeboard */
-/* #libraryList (the school's bookshelf) reuses this same .notice markup
-   -- a book excerpt and a pinned notice both read as "an original-language
-   line with an English gloss underneath". */
-#boardList,#libraryList{max-height:340px;overflow-y:auto;margin:8px 0 14px}
+#boardList{max-height:340px;overflow-y:auto;margin:8px 0 14px}
 .notice{padding:9px 0;border-bottom:1px solid var(--line);font-size:14px;color:#4a3b2a}
 .notice:last-child{border-bottom:none}
 .notice .who{
@@ -425,12 +422,11 @@ h2.centered{margin:0 0 14px;text-align:center;font-size:26px}
 .abc-emoji{font-size:26px;line-height:1}
 
 /* --------------------------------------------------------- reading a book */
-/* The full text a real book is fetched and cached by tools/logserver.js
-   (see /book/:lang) and shown here, scrollable, in place of the excerpt
-   -- see openFullBook()/backToShelf() in game.js. */
-.book-full{margin:8px 0 14px}
-#libraryFullText{
-  max-height:52vh;overflow-y:auto;margin-top:10px;padding-right:4px;
+/* The book's text, fetched from books/<lang>.json -- see openLibrary()
+   in game.js. Reuses .wide (see the alphabet board above it) since a
+   page of prose wants the same extra width a grid of cells does. */
+#libraryText{
+  max-height:60vh;overflow-y:auto;margin-top:10px;padding-right:4px;
   font-size:15px;line-height:1.7;color:#4a3b2a;white-space:pre-wrap;
 }
 .abc-ch{font-size:19px;font-weight:700;color:#4a3b2a;margin-top:3px}

@@ -278,22 +278,16 @@
   </div>
 
   <!-- --------------------------------------------------- school bookshelf -->
+  <!-- Picking up the book IS opening it -- no excerpt-then-button step
+       first (see openLibrary() in game.js). The text itself is lazy-
+       loaded from books/<lang>.json, a static file built ahead of time
+       by tools/build-books.js. -->
   <div id="library" class="panel">
-    <div class="panel-card">
+    <div class="panel-card wide">
       <h2>📚 The Bookshelf</h2>
-      <p class="lede" id="libraryHead"></p>
-      <div id="libraryList"></div>
+      <div id="libraryHead" class="lede"></div>
       <p class="note" id="libraryStatus" hidden></p>
-      <!-- Full text is lazy-loaded from the local server (tools/logserver.js
-           fetches and caches it) -- see openFullBook() in game.js. Hidden
-           until there's something in it, so the excerpt view and the
-           full-book view never show at once. -->
-      <div id="libraryFull" class="book-full" hidden>
-        <button id="libraryBack" class="secondary" type="button">‹ Back to the shelf</button>
-        <div id="libraryFullHead" class="lede"></div>
-        <div id="libraryFullText" lang=""></div>
-      </div>
-      <button id="libraryReadFull" class="secondary" type="button">Read the whole book</button>
+      <div id="libraryText" lang=""></div>
       <button id="libraryClose" class="primary">Close</button>
     </div>
   </div>

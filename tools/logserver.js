@@ -40,7 +40,7 @@ const ENVFILE = path.join(ROOT, '.env');
    network can request them.
 
    .env is loaded once at startup, dotenv-style: values already present
-   in process.env take priority, so `ANTHROPIC_API_KEY=… node
+   in process.env take priority, so `OPENROUTER_API_KEY=… node
    tools/logserver.js` overrides the file without editing it. Changes to
    .env require a restart to take effect. */
 function loadEnvFile() {
@@ -63,9 +63,8 @@ function loadEnvFile() {
 }
 const ENV_LOADED = loadEnvFile();
 
-// read after .env, so PORT and LOGSERVER_FAKE can be set there like anything else
+// read after .env, so PORT can be set there like anything else
 const PORT = Number(process.env.PORT || 8787);
-const FAKE = process.env.LOGSERVER_FAKE === '1';
 
 
 /* Returns only the env values the game actually uses; served only over
@@ -75,7 +74,6 @@ function settingsFromEnv() {
   const pick = (...names) => { for (const n of names) if (e[n]) return e[n]; return ''; };
   return {
     provider: pick('LG_PROVIDER', 'PROVIDER'),
-    anthropicKey: pick('ANTHROPIC_API_KEY'),
     openrouterKey: pick('OPENROUTER_API_KEY'),
     logfareKey: pick('LOGFARE_API_KEY'),
     ttsKey: pick('ELEVENLABS_API_KEY'),
@@ -154,18 +152,6 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
-  // A stand-in provider for testing the loop without a key: LOGSERVER_FAKE=1
-  if (FAKE && req.method === 'POST' && req.url === '/fake') {
-    let body = ''; req.on('data', c => body += c);
-    req.on('end', () => {
-      res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ content: [
-        { type: 'thinking', thinking: 'Nadia keeps a shop and it is the afternoon. She never gives anything away for free, so the shop is where the money is.' },
-        { type: 'text', text: '{"go":"Shop","why":"no coin comes in from sitting at home"}' }],
-        stop_reason: 'end_turn', usage: { input_tokens: 812, output_tokens: 64 } }));
-    });
-    return;
-  }
   /* POST /save — write the save file.
 
      Only checks that the body looks like a save (has the right `game`
@@ -229,9 +215,8 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, '127.0.0.1', () => {
   console.log('village   http://localhost:' + PORT);
   console.log('log       ' + path.relative(process.cwd(), LOGFILE));
-  if (FAKE) console.log('fake      POST /fake is answering as a stand-in provider');
   const env = settingsFromEnv();
-  const have = ['anthropicKey', 'openrouterKey', 'logfareKey', 'ttsKey']
+  const have = ['openrouterKey','logfareKey', 'ttsKey']
     .filter(k => env[k]).map(k => k.replace('Key', ''));
   console.log('env       ' + (ENV_LOADED ? ENV_LOADED + ' values from .env' : 'no .env'));
   console.log('keys      ' + (have.length ? have.join(', ')

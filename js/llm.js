@@ -1,5 +1,5 @@
-/* llm.js — LLM provider abstraction for Anthropic, OpenRouter, and
-   Logfare, called directly from the browser. */
+/* llm.js — LLM provider abstraction for OpenRouter and Logfare, called
+   directly from the browser. */
 window.LG = window.LG || {};
 
 LG.llm = (function () {
@@ -13,20 +13,16 @@ LG.llm = (function () {
   /* OpenRouter's "auto" router picks the underlying model per-request
      rather than a fixed model being named; how much that underlying
      model reasons is set separately via `reasoning.effort` in
-     openrouterSend (high for the main model, medium for the helper). */
+     send (high for the main model, medium for the helper).
+     No longer offered in the lists below, but still honoured if typed
+     in as a custom model id. */
   const AUTO_MODEL = "openrouter/auto";
 
+  /* One offered model per role on OpenRouter; anything else goes in the
+     settings panel's "Other" box. */
   const MODELS = {
-    anthropic: [
-      { id: "claude-opus-5", label: "Claude Opus 5" },
-      { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
-      { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
-    ],
     openrouter: [
-      { id: AUTO_MODEL, label: "Auto (high)" },
-      { id: "anthropic/claude-sonnet-5", label: "Claude Sonnet 5" }, // ant
-      { id: "z-ai/glm-5.3-flash", label: "GLM-5.3 Flash" }, // z-ai
-      { id: "google/gemini-3.8-flash", label: "Gemini 3.8 Flash" }, // google
+      { id: "deepseek/deepseek-v4.1-flash", label: "DeepSeek V4.1 Flash" },
     ],
     logfare: [{ id: LOGFARE_MODEL, label: "Auto" }],
   };
@@ -35,36 +31,26 @@ LG.llm = (function () {
      in-character model handles poorly: notebook fact-checking, furigana
      repair, confirming a trade completed. Any cheap, literal model works. */
   const HELPERS = {
-    anthropic: [
-      { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
-      { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
-    ],
-    openrouter: [
-      { id: AUTO_MODEL, label: "Auto (medium)" },
-      { id: "anthropic/claude-haiku-4.5", label: "Claude Haiku 4.5" }, // ant
-      { id: "openai/gpt-5.6-luna", label: "GPT-5.6 Luna" }, // openai
-      { id: "z-ai/glm-5.3-flash", label: "GLM-5.3 Flash" }, // z-ai
-      { id: "google/gemini-3.5-flash-lite", label: "Gemini 3.5 Flash Lite" }, // google
-    ],
+    openrouter: [{ id: "z-ai/glm-5.3-flash", label: "GLM-5.3 Flash" }],
     logfare: [{ id: LOGFARE_MODEL, label: "Auto" }],
   };
-  const VERIFIER = {
-    anthropic: "claude-haiku-4-5",
-    openrouter: "anthropic/claude-haiku-4.5",
-    logfare: LOGFARE_MODEL,
-  };
-
-  /* Resolves the helper model: explicit user choice, else provider's
-     default VERIFIER, else falls back to the main villager model. */
+  /* Resolves the helper model: explicit user choice, else the first of
+     the provider's HELPERS, else falls back to the main villager model. */
   function helperModel(cfg) {
-    return (
-      (cfg && cfg.helper) || VERIFIER[cfg && cfg.provider] || (cfg && cfg.model)
-    );
+    const list = HELPERS[cfg && cfg.provider];
+    return (cfg && cfg.helper) || (list && list[0].id) || (cfg && cfg.model);
   }
 
-  // Models that accept output_config.effort. Older models (Haiku 4.5, Sonnet 4.5)
-  // reject it, so we only send it where it is supported.
-  const SUPPORTS_EFFORT = /^claude-(opus-5|sonnet-5|opus-4-8|opus-4-7|fable-5)/;
+  /* What every bookkeeping call runs under: the same provider and key,
+     the helper model, and `fast` for send's cheaper reasoning settings. */
+  function helperConfig(cfg) {
+    return {
+      provider: cfg.provider,
+      apiKey: cfg.apiKey,
+      model: helperModel(cfg),
+      fast: true,
+    };
+  }
 
   /* Wraps transport/HTTP failures into player-readable error messages. The
      most common failure is opening the page via file://, which sends
@@ -145,38 +131,6 @@ LG.llm = (function () {
     return parts;
   }
 
-  function anthropicBody(cfg, system, messages, maxTokens, schema, cachePrefixes) {
-    const body = {
-      model: cfg.model,
-      max_tokens: maxTokens,
-      system: systemParts(system, cachePrefixes) || system,
-      messages,
-    };
-    if (SUPPORTS_EFFORT.test(cfg.model)) {
-      // Response speed matters more than reasoning depth for in-character
-      // dialogue. Disabling thinking is only permitted at effort "high" or below.
-      body.thinking = { type: "disabled" };
-      body.output_config = { effort: "low" };
-    }
-    // effort and format share the one object, so merge rather than assign
-    if (schema) {
-      body.output_config = Object.assign({}, body.output_config, {
-        format: { type: "json_schema", schema: schema },
-      });
-    }
-    return body;
-  }
-
-  function anthropicHeaders(cfg) {
-    return {
-      "content-type": "application/json",
-      "x-api-key": cfg.apiKey,
-      "anthropic-version": "2023-06-01",
-      // Required opt-in for calling the API straight from a browser page.
-      "anthropic-dangerous-direct-browser-access": "true",
-    };
-  }
-
   /* OpenRouter attributes calls to an "app" keyed by this URL (viewable
      at openrouter.ai/apps?url=<this>). Previously this was derived from
      `location.origin`, which is the literal string "null" when opened via
@@ -189,31 +143,47 @@ LG.llm = (function () {
   const APP_URL = "https://github.com/TetraspaceW/little-village";
   const APP_TITLE = "Little Village (Beta)";
 
-  function openrouterHeaders(cfg) {
-    return {
-      "content-type": "application/json",
-      authorization: "Bearer " + cfg.apiKey,
-      "HTTP-Referer": APP_URL,
-      "X-Title": APP_TITLE,
-    };
+  /* Both providers speak OpenAI-shaped chat completions, so a request
+     differs only in where it goes, OpenRouter's attribution headers, and
+     the OpenRouter-only extras send adds. Logfare has exactly one model
+     and always gets it, regardless of any leftover custom model value in
+     cfg. */
+  function modelFor(cfg) {
+    return cfg.provider === "logfare" ? LOGFARE_MODEL : cfg.model;
   }
 
-  function logfareHeaders(cfg) {
-    return {
+  async function chatPost(cfg, body) {
+    const logfare = cfg.provider === "logfare";
+    const headers = {
       "content-type": "application/json",
       authorization: "Bearer " + cfg.apiKey,
     };
+    if (!logfare) {
+      headers["HTTP-Referer"] = APP_URL;
+      headers["X-Title"] = APP_TITLE;
+    }
+    const data = await post(
+      logfare
+        ? "https://logfare.ai/v1/chat/completions"
+        : "https://openrouter.ai/api/v1/chat/completions",
+      headers,
+      body,
+    );
+    if (data.error)
+      throw new Error(
+        data.error.message || (logfare ? "Logfare" : "OpenRouter") + " error",
+      );
+    return data;
   }
 
   /* ------------------------------------------------------- can it take a schema
 
      Previously every call just asked for JSON in the prompt and hoped;
      logging showed roughly a third of player-facing replies came back
-     missing fields (English translation, romanization). Both providers
-     support telling the model the exact expected shape — Anthropic via
-     `output_config.format`, OpenRouter via OpenAI-style `response_format`
-     (which it translates to whatever its backend actually speaks) — so
-     this only needs two branches, not one per model.
+     missing fields (English translation, romanization). OpenRouter
+     supports telling the model the exact expected shape via OpenAI-style
+     `response_format` (which it translates to whatever its backend
+     actually speaks) — so this only needs one branch, not one per model.
 
      Support isn't universal, though, and it's per-endpoint rather than
      per-model: OpenRouter rejects the whole request if the target model
@@ -250,25 +220,14 @@ LG.llm = (function () {
     SCHEMA_OK[key] = false; // cached as false unless the lookup below proves otherwise
     // Logfare picks its own backing model, so there's no catalogue to
     // query -- fails closed the same as any other unresolvable lookup.
-    if (cfg.provider !== "anthropic" && cfg.provider !== "openrouter")
-      return false;
+    if (cfg.provider !== "openrouter") return false;
     try {
-      if (cfg.provider === "anthropic") {
-        const m = await getJSON(
-          "https://api.anthropic.com/v1/models/" + encodeURIComponent(model),
-          anthropicHeaders(cfg),
-        );
-        const c = m && m.capabilities && m.capabilities.structured_outputs;
-        SCHEMA_OK[key] = !!(c && c.supported);
-      } else {
-        if (!orModels)
-          orModels = getJSON("https://openrouter.ai/api/v1/models");
-        const d = await orModels;
-        const m = (d.data || []).find((x) => x.id === model);
-        SCHEMA_OK[key] =
-          !!m &&
-          (m.supported_parameters || []).indexOf("structured_outputs") !== -1;
-      }
+      if (!orModels) orModels = getJSON("https://openrouter.ai/api/v1/models");
+      const d = await orModels;
+      const m = (d.data || []).find((x) => x.id === model);
+      SCHEMA_OK[key] =
+        !!m &&
+        (m.supported_parameters || []).indexOf("structured_outputs") !== -1;
     } catch (e) {
       orModels = null; // don't cache a failed fetch -- allow retrying later
     }
@@ -302,13 +261,15 @@ LG.llm = (function () {
 
      The price ceiling is read from Anthropic's current OpenRouter
      listing rather than hardcoded (which would drift out of date) —
-     Sonnet's price for the main villager-facing model, Haiku's (the
-     helper's reference model per VERIFIER above) for cheap bookkeeping
-     calls, whichever OpenRouter model the player actually selected for
-     either role. Resolved once and cached, same pattern as SCHEMA_OK. */
+     Sonnet's price for the main villager-facing model, Haiku's for cheap
+     bookkeeping calls, whichever OpenRouter model the player actually
+     selected for either role. Deliberately not the default models' own
+     prices: a ceiling equal to a model's cheapest listing would filter
+     out most of its providers. Resolved once and cached, same pattern as
+     SCHEMA_OK. */
   const PRICE_REF = {
     big: "anthropic/claude-sonnet-5",
-    fast: VERIFIER.openrouter,
+    fast: "anthropic/claude-haiku-4.5",
   };
   const maxPriceCache = {}; // 'big' | 'fast' -> {prompt, completion} in $/M tokens, or null
 
@@ -337,7 +298,7 @@ LG.llm = (function () {
 
   /* ---------------------------------------------------------------- audit
 
-     Every API call goes through anthropicCall/openrouterCall/logfareCall
+     Every API call goes through providerCall
      below, which is why this is centralized here rather than at each
      call site. Each call is recorded in full — system prompt, messages,
      the *raw* reply before any parsing/repair, timing, and usage — and
@@ -425,19 +386,14 @@ LG.llm = (function () {
     if (LG.logbook) LG.logbook.call(entry); // also persist to disk, if logging is active
     if (audit && typeof console !== "undefined" && console.log) {
       const u = entry.usage || {};
-      const tok =
-        u.input_tokens || u.prompt_tokens
-          ? "  " +
-            (u.input_tokens || u.prompt_tokens) +
-            "\u2192" +
-            (u.output_tokens || u.completion_tokens || 0) +
-            " tok"
-          : "";
-      // With caching on, Anthropic's input_tokens counts only what wasn't
-      // served from cache, so the cached share is shown alongside it.
+      const tok = u.prompt_tokens
+        ? "  " + u.prompt_tokens + "\u2192" + (u.completion_tokens || 0) + " tok"
+        : "";
+      // Cache reads and writes, where the backend reports them, shown
+      // alongside the token count.
       const pd = u.prompt_tokens_details || {};
-      const hit = u.cache_read_input_tokens || pd.cached_tokens || 0;
-      const wrote = u.cache_creation_input_tokens || pd.cache_write_tokens || 0;
+      const hit = pd.cached_tokens || 0;
+      const wrote = pd.cache_write_tokens || 0;
       const cache =
         hit || wrote ? "  cache " + hit + " read, " + wrote + " written" : "";
       const head =
@@ -502,40 +458,14 @@ LG.llm = (function () {
     }
   }
 
-  /* Callers pass the schema they want without needing to know whether the
-     target model actually supports structured outputs — that check
-     (schemaOK) happens centrally here. */
-  async function anthropicCall(cfg, system, messages, schema, opts) {
-    const s = schema && schemaOK(cfg, cfg.model) ? schema : null;
-    return audited(cfg, system, messages, () =>
-      anthropicSend(cfg, system, messages, s, opts),
-    );
-  }
-
-  async function openrouterCall(cfg, system, messages, schema, opts) {
-    const s = schema && schemaOK(cfg, cfg.model) ? schema : null;
-    return audited(cfg, system, messages, () =>
-      openrouterSend(cfg, system, messages, s, opts),
-    );
-  }
-
-  async function logfareCall(cfg, system, messages, schema) {
-    const s = schema && schemaOK(cfg, cfg.model) ? schema : null;
-    return audited(cfg, system, messages, () =>
-      logfareSend(cfg, system, messages, s),
-    );
-  }
-
-  /* Every call site used to repeat its own branch on cfg.provider
-     (two-way before Logfare, three-way now). Centralizing it here means
-     adding a provider only requires one line in each model table plus
-     one branch here, not a branch at every call site. */
+  /* Every API call goes through here. Callers pass the schema they want
+     without needing to know whether the target model actually supports
+     structured outputs — that check (schemaOK) happens centrally. */
   function providerCall(cfg, system, messages, schema, opts) {
-    if (cfg.provider === "anthropic")
-      return anthropicCall(cfg, system, messages, schema, opts);
-    if (cfg.provider === "logfare")
-      return logfareCall(cfg, system, messages, schema);
-    return openrouterCall(cfg, system, messages, schema, opts);
+    const s = schema && schemaOK(cfg, cfg.model) ? schema : null;
+    return audited(cfg, system, messages, () =>
+      send(cfg, system, messages, s, opts),
+    );
   }
 
   function dump() {
@@ -566,35 +496,6 @@ LG.llm = (function () {
       .join("\n\n");
   }
 
-  async function anthropicSend(cfg, system, messages, schema, opts) {
-    const data = await post(
-      "https://api.anthropic.com/v1/messages",
-      anthropicHeaders(cfg),
-      anthropicBody(cfg, system, messages, 700, schema, opts && opts.cachePrefixes),
-    );
-    if (data.stop_reason === "refusal")
-      throw new Error("The model declined to answer that.");
-    const blocks = data.content || [];
-    return {
-      text: blocks
-        .filter((b) => b.type === "text")
-        .map((b) => b.text)
-        .join(""),
-      // the model's reasoning trace, when present
-      reasoning:
-        blocks
-          .filter(
-            (b) => b.type === "thinking" || b.type === "redacted_thinking",
-          )
-          .map((b) => b.thinking || "[redacted]")
-          .join("\n") || null,
-      usage: data.usage || null,
-      stop: data.stop_reason || null,
-      schema: !!schema,
-      model: data.model || null,
-    };
-  }
-
   /* Cap on reasoning tokens for helper-model calls (intent decisions,
      claim checks, trade confirmations) — small, simple judgments that
      don't need extended thinking, but a reasoning model given no cap will
@@ -606,55 +507,52 @@ LG.llm = (function () {
      OpenRouter's own 1024-token floor up to 1024. */
   const FAST_REASONING_TOKENS = 160;
 
-  async function openrouterSend(cfg, system, messages, schema, opts) {
+  async function send(cfg, system, messages, schema, opts) {
     const o = opts || {};
     const body = {
-      model: cfg.model,
-      /* Same split as the Anthropic path (see systemParts). OpenRouter
+      model: modelFor(cfg),
+      messages: [{ role: "system", content: system }].concat(messages),
+    };
+    /* Everything in this block is OpenRouter's alone. Logfare's API
+       documents none of it, so Logfare gets the bare request. */
+    if (cfg.provider !== "logfare") {
+      /* Split at the cache breakpoints (see systemParts). OpenRouter
          passes the breakpoint on to backends that need one (Claude),
          translates it for those that take a different marker, and the
          ones that cache any repeated prefix on their own just see text. */
-      messages: [
-        { role: "system", content: systemParts(system, o.cachePrefixes) || system },
-      ].concat(messages),
-    };
-    /* OpenRouter can serve one model from several providers, each with
-       its own cache, so a turn routed somewhere new starts cold. A
-       session id asks it to keep this conversation on one provider --
-       best effort, and it lapses after 10 minutes idle. */
-    if (o.session) body.session_id = o.session;
-    /* The "auto" router has no fixed reasoning budget to cap via
-       max_tokens -- `effort` is the parameter it actually respects -- so
-       it gets "high" for the main villager-facing model and "medium" for
-       helper/bookkeeping calls (still identified via cfg.fast), instead
-       of the max_tokens cap used below for non-auto models. */
-    if (cfg.model === AUTO_MODEL) body.reasoning = { effort: cfg.fast ? "medium" : "high" };
-    else if (cfg.fast) body.reasoning = { max_tokens: FAST_REASONING_TOKENS };
-    /* Nitro routing with a price cap -- see the comment on maxPriceFor
-       above. If no cap could be resolved (lookup failed, or the
-       reference model isn't in OpenRouter's list), no `sort` is sent
-       either -- falls back to OpenRouter's normal price-aware default
-       rather than optimizing for throughput with no price ceiling. */
-    const price = await maxPriceFor(cfg.fast ? "fast" : "big");
-    if (price) body.provider = { sort: "throughput", max_price: price };
+      body.messages[0].content = systemParts(system, o.cachePrefixes) || system;
+      /* OpenRouter can serve one model from several providers, each with
+         its own cache, so a turn routed somewhere new starts cold. A
+         session id asks it to keep this conversation on one provider --
+         best effort, and it lapses after 10 minutes idle. */
+      if (o.session) body.session_id = o.session;
+      /* The "auto" router has no fixed reasoning budget to cap via
+         max_tokens -- `effort` is the parameter it actually respects -- so
+         it gets "high" for the main villager-facing model and "medium" for
+         helper/bookkeeping calls (still identified via cfg.fast), instead
+         of the max_tokens cap used below for non-auto models. */
+      if (cfg.model === AUTO_MODEL) body.reasoning = { effort: cfg.fast ? "medium" : "high" };
+      else if (cfg.fast) body.reasoning = { max_tokens: FAST_REASONING_TOKENS };
+      /* Nitro routing with a price cap -- see the comment on maxPriceFor
+         above. If no cap could be resolved (lookup failed, or the
+         reference model isn't in OpenRouter's list), no `sort` is sent
+         either -- falls back to OpenRouter's normal price-aware default
+         rather than optimizing for throughput with no price ceiling. */
+      const price = await maxPriceFor(cfg.fast ? "fast" : "big");
+      if (price) body.provider = { sort: "throughput", max_price: price };
+    }
     if (schema) {
       body.response_format = {
         type: "json_schema",
         json_schema: { name: "reply", strict: true, schema: schema },
       };
     }
-    const data = await post(
-      "https://openrouter.ai/api/v1/chat/completions",
-      openrouterHeaders(cfg),
-      body,
-    );
-    if (data.error) throw new Error(data.error.message || "OpenRouter error");
+    const data = await chatPost(cfg, body);
     const choice = (data.choices || [])[0] || {};
     const m = choice.message || {};
     /* Reasoning models return their trace in a separate field, previously
        discarded here (it's useful for debugging odd model decisions).
-       Different OpenRouter backends name the field differently, so check
-       both. */
+       Different backends name the field differently, so check both. */
     const think =
       m.reasoning ||
       (Array.isArray(m.reasoning_details)
@@ -669,44 +567,8 @@ LG.llm = (function () {
       usage: data.usage || null,
       stop: choice.finish_reason || null,
       schema: !!schema,
-      // What actually served the request -- for AUTO_MODEL, OpenRouter picks
-      // this per call, so it's the only way to tell which model answered.
-      model: data.model || null,
-    };
-  }
-
-  /* Logfare uses the same OpenAI-shaped chat-completions request format
-     as OpenRouter, just at a different endpoint and always with one
-     model. `LOGFARE_MODEL` is hardcoded here rather than read from
-     cfg.model, so selecting Logfare as the provider always means "auto",
-     regardless of any leftover custom model value in cfg. */
-  async function logfareSend(cfg, system, messages, schema) {
-    const body = {
-      model: LOGFARE_MODEL,
-      messages: [{ role: "system", content: system }].concat(messages),
-    };
-    if (schema) {
-      body.response_format = {
-        type: "json_schema",
-        json_schema: { name: "reply", strict: true, schema: schema },
-      };
-    }
-    const data = await post(
-      "https://logfare.ai/v1/chat/completions",
-      logfareHeaders(cfg),
-      body,
-    );
-    if (data.error) throw new Error(data.error.message || "Logfare error");
-    const choice = (data.choices || [])[0] || {};
-    const m = choice.message || {};
-    return {
-      text: m.content || "",
-      reasoning: m.reasoning || null,
-      usage: data.usage || null,
-      stop: choice.finish_reason || null,
-      schema: !!schema,
-      // Logfare always routes LOGFARE_MODEL to whatever it actually picks --
-      // this is the only way to tell which model answered.
+      // What actually served the request -- the "auto" routers pick this
+      // per call, so it's the only way to tell which model answered.
       model: data.model || null,
     };
   }
@@ -715,40 +577,14 @@ LG.llm = (function () {
      front rather than mid-conversation. */
   async function validate(cfg) {
     if (!cfg.apiKey) throw new Error("Please paste an API key.");
-    const msgs = [{ role: "user", content: "Say OK." }];
-    if (cfg.provider === "anthropic") {
-      await post(
-        "https://api.anthropic.com/v1/messages",
-        anthropicHeaders(cfg),
-        anthropicBody(cfg, "Reply with one word.", msgs, 8),
-      );
-    } else if (cfg.provider === "logfare") {
-      const data = await post(
-        "https://logfare.ai/v1/chat/completions",
-        logfareHeaders(cfg),
-        {
-          model: LOGFARE_MODEL,
-          max_tokens: 8,
-          messages: [
-            { role: "system", content: "Reply with one word." },
-          ].concat(msgs),
-        },
-      );
-      if (data.error) throw new Error(data.error.message || "Logfare error");
-    } else {
-      const data = await post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        openrouterHeaders(cfg),
-        {
-          model: cfg.model,
-          max_tokens: 8,
-          messages: [
-            { role: "system", content: "Reply with one word." },
-          ].concat(msgs),
-        },
-      );
-      if (data.error) throw new Error(data.error.message || "OpenRouter error");
-    }
+    await chatPost(cfg, {
+      model: modelFor(cfg),
+      max_tokens: 8,
+      messages: [
+        { role: "system", content: "Reply with one word." },
+        { role: "user", content: "Say OK." },
+      ],
+    });
     return true;
   }
 
@@ -804,12 +640,7 @@ LG.llm = (function () {
       "Leave out anything that was not told. Reply [] if none of them were.",
     );
 
-    const vcfg = {
-      provider: cfg.provider,
-      apiKey: cfg.apiKey,
-      model: helperModel(cfg),
-      fast: true,
-    };
+    const vcfg = helperConfig(cfg);
     let raw;
     try {
       raw = await providerCall(
@@ -873,12 +704,7 @@ LG.llm = (function () {
       "",
       "Answer with one word: yes or no.",
     ].join("\n");
-    const vcfg = {
-      provider: cfg.provider,
-      apiKey: cfg.apiKey,
-      model: helperModel(cfg),
-      fast: true,
-    };
+    const vcfg = helperConfig(cfg);
     try {
       const raw = await providerCall(
         vcfg,
@@ -922,12 +748,7 @@ LG.llm = (function () {
       "Reply with only a JSON object:",
       '{"n": <the number, or 0 if nothing is out of date>, "line": "<the rewritten line, or an empty string>"}',
     ].join("\n");
-    const vcfg = {
-      provider: cfg.provider,
-      apiKey: cfg.apiKey,
-      model: helperModel(cfg),
-      fast: true,
-    };
+    const vcfg = helperConfig(cfg);
     try {
       const raw = await providerCall(
         vcfg,
@@ -969,12 +790,7 @@ LG.llm = (function () {
       want.join(",\n"),
       "}",
     ].join("\n");
-    const vcfg = {
-      provider: cfg.provider,
-      apiKey: cfg.apiKey,
-      model: helperModel(cfg),
-      fast: true,
-    };
+    const vcfg = helperConfig(cfg);
     try {
       const raw = await providerCall(
         vcfg,
@@ -1045,12 +861,7 @@ LG.llm = (function () {
         ' actually said, [] if none"]}',
       "}",
     ].join("\n");
-    const vcfg = {
-      provider: cfg.provider,
-      apiKey: cfg.apiKey,
-      model: helperModel(cfg),
-      fast: true,
-    };
+    const vcfg = helperConfig(cfg);
     const sys =
       "You note what people took away from a conversation. Answer with JSON only.";
     try {
@@ -1135,12 +946,7 @@ LG.llm = (function () {
     ]
       .filter((x) => x !== null && x !== undefined)
       .join("\n");
-    const vcfg = {
-      provider: cfg.provider,
-      apiKey: cfg.apiKey,
-      model: helperModel(cfg),
-      fast: true,
-    };
+    const vcfg = helperConfig(cfg);
     const sys = "You decide what a villager does next. Answer with JSON only.";
     try {
       const raw = await providerCall(vcfg, sys, [
@@ -1203,12 +1009,7 @@ LG.llm = (function () {
     ]
       .filter((x) => x !== null && x !== undefined)
       .join("\n");
-    const vcfg = {
-      provider: cfg.provider,
-      apiKey: cfg.apiKey,
-      model: helperModel(cfg),
-      fast: true,
-    };
+    const vcfg = helperConfig(cfg);
     const sys =
       "You decide whether a villager posts a notice, and write it if so. Answer with JSON only.";
     try {
@@ -1363,12 +1164,7 @@ LG.llm = (function () {
     ]
       .filter((x) => x !== null && x !== undefined)
       .join("\n");
-    const vcfg = {
-      provider: cfg.provider,
-      apiKey: cfg.apiKey,
-      model: helperModel(cfg),
-      fast: true,
-    };
+    const vcfg = helperConfig(cfg);
     const sys =
       "You play one villager in a two-person conversation. Answer with JSON only.";
     try {
@@ -1410,12 +1206,7 @@ LG.llm = (function () {
           : [],
       )
       .join("\n");
-    const vcfg = {
-      provider: cfg.provider,
-      apiKey: cfg.apiKey,
-      model: helperModel(cfg),
-      fast: true,
-    };
+    const vcfg = helperConfig(cfg);
     try {
       const raw = await providerCall(
         vcfg,
@@ -1557,7 +1348,6 @@ LG.llm = (function () {
   return {
     MODELS,
     HELPERS,
-    VERIFIER,
     helperModel,
     speak,
     judge,

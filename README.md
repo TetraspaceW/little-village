@@ -7,8 +7,8 @@ way through a chain of favours and trades.
 Villagers are played by a language model: they remember what you tell them and
 pass it on to each other.
 
-**Requires an API key** from [Anthropic](https://console.anthropic.com),
-[OpenRouter](https://openrouter.ai/keys) (recommended), or [Logfare](https://logfare.ai) (free).
+**Requires an API key** from [OpenRouter](https://openrouter.ai/keys) (recommended)
+or [Logfare](https://logfare.ai) (free).
 
 <!-- TODO: screenshot or GIF here -->
 
@@ -23,7 +23,7 @@ This one process serves the game, hands your `.env` keys to the page, keeps a
 save file, and writes a log — no separate setup needed. It binds to
 `127.0.0.1` and won't serve `.env` or `logs/` to non-local requests. `.env` is
 read once at startup; restart after editing it. `PORT` is also read from
-`.env`, and an exported `ANTHROPIC_API_KEY` overrides the file.
+`.env`, and an exported `OPENROUTER_API_KEY` overrides the file.
 
 ### Without Node
 
@@ -107,7 +107,6 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
 
 | Provider | What you need |
 |---|---|
-| **Anthropic** | A key from [console.anthropic.com](https://console.anthropic.com). Calls `api.anthropic.com` directly from the browser. |
 | **OpenRouter** | A key from [openrouter.ai/keys](https://openrouter.ai/keys). |
 | **Logfare** | A free key from [logfare.ai/register](https://logfare.ai/register) — no email, instant. Always routes through `logfare/auto`, which picks the best available model itself and falls through to another on failure; there is no model to choose. |
 
@@ -124,15 +123,18 @@ client-side either way.
 - **Helper model** — smaller/cheaper, runs everything else: confirming which
   facts a villager actually revealed, deciding what two villagers took away
   from a conversation, filling in missing furigana, confirming trades, and
-  choosing where each villager goes. Defaults to Haiku 4.5 on Anthropic;
-  also selectable on OpenRouter: MiMo-V2.5, MiMo-V2.5 Pro, Gemma 4
-  31B, Gemini 2.5 Flash, GPT-4.1 mini, GLM-5.2, or any other model
-  ID via the **Other** field. Both models are `logfare/auto` on Logfare —
-  there is nothing to pick.
+  choosing where each villager goes.
 
-  Both OpenRouter lists also offer **Auto** (`openrouter/auto`), which lets
-  OpenRouter pick the underlying model per request; the main model sends it
-  at `reasoning.effort: "high"`, the helper at `"medium"`.
+On OpenRouter the main model is DeepSeek V4.1 Flash
+(`deepseek/deepseek-v4.1-flash`) and the helper is GLM-5.3 Flash
+(`z-ai/glm-5.3-flash`); any other OpenRouter model ID can be typed into the
+**Other** field for either. Typing `openrouter/auto` lets OpenRouter pick the
+underlying model per request, sent at `reasoning.effort: "high"` for the main
+model and `"medium"` for the helper. Both models are `logfare/auto` on
+Logfare — there is nothing to pick.
+
+Each provider's key is kept separately, so switching provider and back
+doesn't lose the other one.
 
 Use a fast, non-reasoning model for the helper if you can — see below.
 
@@ -164,14 +166,12 @@ comes back on every call and is already in your session log, so:
 jq -s 'map(.usage.cost // 0) | add' logs/session-*.jsonl
 ```
 
-gives you the real figure for a real session. Anthropic's API returns token
-counts only, not a cost figure.
+gives you the real figure for a real session.
 
 ### Structured output
 
-Where a provider supports it, replies are constrained with a JSON Schema
-(`output_config.format` on Anthropic, `response_format` on OpenRouter) rather
-than just requested in the prompt. Support is checked per model when the key
+Where the model supports it, replies are constrained with a JSON Schema
+(`response_format` on OpenRouter) rather than just requested in the prompt. Support is checked per model when the key
 connects; anything unrecognised falls back to prompt-based JSON with repair.
 
 ## Languages and difficulty

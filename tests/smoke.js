@@ -587,7 +587,7 @@ section('a model nobody has looked up gets no schema');
 {
   ok(LG.llm.schemaOK({ provider: 'openrouter', model: 'nobody/never-heard-of-it' }) === false,
      'unknown reads as no');
-  ok(LG.llm.schemaOK({ provider: 'anthropic', model: 'claude-opus-5' }) === false,
+  ok(LG.llm.schemaOK({ provider: 'openrouter', model: 'deepseek/deepseek-v4.1-flash' }) === false,
      'and so does a real model that has not been probed in this session');
   ok(LG.llm.schemaOK({ provider: 'logfare', model: 'logfare/auto' }) === false,
      'Logfare has no catalogue to check, so it fails closed the same way');
@@ -611,29 +611,24 @@ async function promptCached() {
     sent.push({ url: url, body: JSON.parse(init.body) });
     const reply = '{"say": "Hm."}';
     return { ok: true, status: 200, json: async () => ({
-      content: [{ type: 'text', text: reply }], stop_reason: 'end_turn',
       choices: [{ message: { content: reply }, finish_reason: 'stop' }] }) };
   };
   LG.llm.audit = false;
   const msgs = [{ role: 'user', content: 'hello' }];
   const opts = { cachePrefixes: [built.core, built.stable], session: 'npc-' + n.id };
+  const model = { provider: 'openrouter', apiKey: 'k', model: 'deepseek/deepseek-v4.1-flash' };
   try {
-    await LG.llm.speak({ provider: 'anthropic', apiKey: 'k', model: 'claude-opus-5' },
-                       built.text, msgs, null, opts);
-    await LG.llm.speak({ provider: 'openrouter', apiKey: 'k', model: 'anthropic/claude-sonnet-5' },
-                       built.text, msgs, null, opts);
-    await LG.llm.speak({ provider: 'anthropic', apiKey: 'k', model: 'claude-opus-5' },
-                       built.text, msgs, null);
+    await LG.llm.speak(model, built.text, msgs, null, opts);
+    await LG.llm.speak(model, built.text, msgs, null);
   } finally {
     sandbox.fetch = realFetch;
     LG.llm.audit = audit;
   }
 
-  const api = sent.filter(r => r.url.indexOf('api.anthropic.com') !== -1 ||
-                               r.url.indexOf('openrouter.ai/api/v1/chat') !== -1);
-  ok(api.length === 3, 'three requests went out');
-  if (api.length !== 3) return;
-  const a = api[0].body, o = api[1].body, plain = api[2].body;
+  const api = sent.filter(r => r.url.indexOf('openrouter.ai/api/v1/chat') !== -1);
+  ok(api.length === 2, 'two requests went out');
+  if (api.length !== 2) return;
+  const o = api[0].body, plain = api[1].body;
 
   ok(built.stable.indexOf(built.core) === 0 && built.core.length < built.stable.length &&
      built.text.indexOf(built.stable) === 0 && built.stable.length < built.text.length,
@@ -641,26 +636,67 @@ async function promptCached() {
   ok(built.core.indexOf('# Reply format') === -1 &&
      built.stable.slice(built.core.length).indexOf('# Reply format') !== -1,
      'and the cut between core and stable is the reply format');
-  ok(Array.isArray(a.system) && a.system.length === 3,
-     'anthropic: the system prompt goes as three blocks');
   const marked = b => !!b.cache_control && b.cache_control.type === 'ephemeral';
-  ok(a.system[0].text === built.core && marked(a.system[0]),
-     'the first is the core, marked for caching');
-  ok(a.system[0].text + a.system[1].text === built.stable && marked(a.system[1]),
-     'the second runs on to the end of the stable half, also marked');
-  ok(!a.system[2].cache_control, 'the part that changes turn to turn is not');
-  ok(a.system.map(b => b.text).join('') === built.text,
-     'and together they are the prompt, byte for byte');
-  ok(!('session_id' in a), 'Anthropic is not sent a session id');
-
   const sys = o.messages[0];
-  ok(sys.role === 'system' && Array.isArray(sys.content) && sys.content.length === 3 &&
-     marked(sys.content[0]) && marked(sys.content[1]) && !sys.content[2].cache_control,
-     'openrouter: the same split, in the system message');
-  ok(sys.content.map(b => b.text).join('') === built.text, 'with the same text');
+  ok(sys.role === 'system' && Array.isArray(sys.content) && sys.content.length === 3,
+     'the system prompt goes as three blocks in the system message');
+  ok(sys.content[0].text === built.core && marked(sys.content[0]),
+     'the first is the core, marked for caching');
+  ok(sys.content[0].text + sys.content[1].text === built.stable && marked(sys.content[1]),
+     'the second runs on to the end of the stable half, also marked');
+  ok(!sys.content[2].cache_control, 'the part that changes turn to turn is not');
+  ok(sys.content.map(b => b.text).join('') === built.text,
+     'and together they are the prompt, byte for byte');
   ok(o.session_id === 'npc-' + n.id, 'and the conversation carries a session id');
 
-  ok(plain.system === built.text, 'with no prefix given, the system prompt goes as a plain string');
+  ok(plain.messages[0].content === built.text && !('session_id' in plain),
+     'with no prefix given, the system prompt goes as a plain string');
+}
+
+/* ---------------------------------------------------------- a key per provider
+   Anthropic was once a provider; a browser that last saved with it must
+   not carry that key or its Claude model ids over to OpenRouter. And
+   each remaining provider keeps its own key, so a detour through the
+   other one and back doesn't wipe what was typed. Run in a fresh
+   sandbox so the settings panel's saves can't disturb the main village. */
+async function keysPerProvider() {
+  section('an old Anthropic setup, and a key per provider');
+  const kept = {
+    'lg-settings': JSON.stringify({ provider: 'anthropic', apiKey: 'sk-ant-not-real',
+                                    model: 'claude-sonnet-5', helper: 'claude-haiku-4-5' })
+  };
+  const s3 = makeSandbox(kept);
+  for (const f of files) {
+    vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), s3, { filename: f });
+  }
+  s3.LG.game.init();
+  s3.LG.game.thoughts = false;
+  const set = s3.LG.game.settings;
+  ok(set.provider === 'openrouter', 'a saved Anthropic setup comes back as OpenRouter');
+  ok(set.apiKey === '' && !set.keys.openrouter && !set.keys.logfare,
+     'without the Anthropic key, which OpenRouter was never meant to see');
+  ok(set.model === 'deepseek/deepseek-v4.1-flash' && set.helper === '', 'and on the default models');
+
+  const el = id => s3.document.getElementById(id);
+  const pick = prov => { el('setProvider').value = prov; el('setProvider').onchange(); };
+  s3.LG.llm.validate = async () => true;             // nothing is sent
+  s3.LG.game.openSettings(false);
+  pick('logfare');
+  el('setKey').value = 'lf-not-real';
+  pick('openrouter');
+  ok(el('setKey').value === '', 'switching provider shows that provider\u2019s key, not the one just typed');
+  el('setKey').value = 'or-not-real';
+  await el('setSave').onclick();
+  ok(set.provider === 'openrouter' && set.apiKey === 'or-not-real', 'saving uses the key for the provider picked');
+  const stored = JSON.parse(kept['lg-settings']).keys;
+  ok(stored.logfare === 'lf-not-real' && stored.openrouter === 'or-not-real',
+     'and keeps the other provider\u2019s key alongside it');
+
+  s3.LG.game.openSettings(false);
+  pick('logfare');
+  ok(el('setKey').value === 'lf-not-real', 'so switching back to Logfare finds its key still there');
+  pick('openrouter');
+  ok(el('setKey').value === 'or-not-real', 'and the OpenRouter one is there too');
 }
 
 /* ------------------------------------------------------- what they believe now
@@ -1210,6 +1246,7 @@ async function villagersTalking() {
   }
 
   await promptCached();
+  await keysPerProvider();
   await namesUnknownUntilTold();
   await touchControls();
   await roomForTheComposer();

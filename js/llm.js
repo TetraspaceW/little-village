@@ -13,7 +13,7 @@ LG.llm = (function () {
   /* OpenRouter's "auto" router picks the underlying model per-request
      rather than a fixed model being named; how much that underlying
      model reasons is set separately via `reasoning.effort` in
-     openrouterSend (high for the main model, medium for the helper).
+     send (high for the main model, medium for the helper).
      No longer offered in the lists below, but still honoured if typed
      in as a custom model id. */
   const AUTO_MODEL = "openrouter/auto";
@@ -34,17 +34,22 @@ LG.llm = (function () {
     openrouter: [{ id: "z-ai/glm-5.3-flash", label: "GLM-5.3 Flash" }],
     logfare: [{ id: LOGFARE_MODEL, label: "Auto" }],
   };
-  const VERIFIER = {
-    openrouter: "z-ai/glm-5.3-flash",
-    logfare: LOGFARE_MODEL,
-  };
-
-  /* Resolves the helper model: explicit user choice, else provider's
-     default VERIFIER, else falls back to the main villager model. */
+  /* Resolves the helper model: explicit user choice, else the first of
+     the provider's HELPERS, else falls back to the main villager model. */
   function helperModel(cfg) {
-    return (
-      (cfg && cfg.helper) || VERIFIER[cfg && cfg.provider] || (cfg && cfg.model)
-    );
+    const list = HELPERS[cfg && cfg.provider];
+    return (cfg && cfg.helper) || (list && list[0].id) || (cfg && cfg.model);
+  }
+
+  /* What every bookkeeping call runs under: the same provider and key,
+     the helper model, and `fast` for send's cheaper reasoning settings. */
+  function helperConfig(cfg) {
+    return {
+      provider: cfg.provider,
+      apiKey: cfg.apiKey,
+      model: helperModel(cfg),
+      fast: true,
+    };
   }
 
   /* Wraps transport/HTTP failures into player-readable error messages. The
@@ -138,20 +143,37 @@ LG.llm = (function () {
   const APP_URL = "https://github.com/TetraspaceW/little-village";
   const APP_TITLE = "Little Village (Beta)";
 
-  function openrouterHeaders(cfg) {
-    return {
-      "content-type": "application/json",
-      authorization: "Bearer " + cfg.apiKey,
-      "HTTP-Referer": APP_URL,
-      "X-Title": APP_TITLE,
-    };
+  /* Both providers speak OpenAI-shaped chat completions, so a request
+     differs only in where it goes, OpenRouter's attribution headers, and
+     the OpenRouter-only extras send adds. Logfare has exactly one model
+     and always gets it, regardless of any leftover custom model value in
+     cfg. */
+  function modelFor(cfg) {
+    return cfg.provider === "logfare" ? LOGFARE_MODEL : cfg.model;
   }
 
-  function logfareHeaders(cfg) {
-    return {
+  async function chatPost(cfg, body) {
+    const logfare = cfg.provider === "logfare";
+    const headers = {
       "content-type": "application/json",
       authorization: "Bearer " + cfg.apiKey,
     };
+    if (!logfare) {
+      headers["HTTP-Referer"] = APP_URL;
+      headers["X-Title"] = APP_TITLE;
+    }
+    const data = await post(
+      logfare
+        ? "https://logfare.ai/v1/chat/completions"
+        : "https://openrouter.ai/api/v1/chat/completions",
+      headers,
+      body,
+    );
+    if (data.error)
+      throw new Error(
+        data.error.message || (logfare ? "Logfare" : "OpenRouter") + " error",
+      );
+    return data;
   }
 
   /* ------------------------------------------------------- can it take a schema
@@ -276,7 +298,7 @@ LG.llm = (function () {
 
   /* ---------------------------------------------------------------- audit
 
-     Every API call goes through openrouterCall/logfareCall
+     Every API call goes through providerCall
      below, which is why this is centralized here rather than at each
      call site. Each call is recorded in full — system prompt, messages,
      the *raw* reply before any parsing/repair, timing, and usage — and
@@ -364,19 +386,14 @@ LG.llm = (function () {
     if (LG.logbook) LG.logbook.call(entry); // also persist to disk, if logging is active
     if (audit && typeof console !== "undefined" && console.log) {
       const u = entry.usage || {};
-      const tok =
-        u.input_tokens || u.prompt_tokens
-          ? "  " +
-            (u.input_tokens || u.prompt_tokens) +
-            "\u2192" +
-            (u.output_tokens || u.completion_tokens || 0) +
-            " tok"
-          : "";
+      const tok = u.prompt_tokens
+        ? "  " + u.prompt_tokens + "\u2192" + (u.completion_tokens || 0) + " tok"
+        : "";
       // Cache reads and writes, where the backend reports them, shown
       // alongside the token count.
       const pd = u.prompt_tokens_details || {};
-      const hit = u.cache_read_input_tokens || pd.cached_tokens || 0;
-      const wrote = u.cache_creation_input_tokens || pd.cache_write_tokens || 0;
+      const hit = pd.cached_tokens || 0;
+      const wrote = pd.cache_write_tokens || 0;
       const cache =
         hit || wrote ? "  cache " + hit + " read, " + wrote + " written" : "";
       const head =
@@ -441,31 +458,14 @@ LG.llm = (function () {
     }
   }
 
-  /* Callers pass the schema they want without needing to know whether the
-     target model actually supports structured outputs — that check
-     (schemaOK) happens centrally here. */
-  async function openrouterCall(cfg, system, messages, schema, opts) {
-    const s = schema && schemaOK(cfg, cfg.model) ? schema : null;
-    return audited(cfg, system, messages, () =>
-      openrouterSend(cfg, system, messages, s, opts),
-    );
-  }
-
-  async function logfareCall(cfg, system, messages, schema) {
-    const s = schema && schemaOK(cfg, cfg.model) ? schema : null;
-    return audited(cfg, system, messages, () =>
-      logfareSend(cfg, system, messages, s),
-    );
-  }
-
-  /* Every call site used to repeat its own branch on cfg.provider.
-     Centralizing it here means adding a provider only requires one line
-     in each model table plus one branch here, not a branch at every call
-     site. */
+  /* Every API call goes through here. Callers pass the schema they want
+     without needing to know whether the target model actually supports
+     structured outputs — that check (schemaOK) happens centrally. */
   function providerCall(cfg, system, messages, schema, opts) {
-    if (cfg.provider === "logfare")
-      return logfareCall(cfg, system, messages, schema);
-    return openrouterCall(cfg, system, messages, schema, opts);
+    const s = schema && schemaOK(cfg, cfg.model) ? schema : null;
+    return audited(cfg, system, messages, () =>
+      send(cfg, system, messages, s, opts),
+    );
   }
 
   function dump() {
@@ -507,55 +507,52 @@ LG.llm = (function () {
      OpenRouter's own 1024-token floor up to 1024. */
   const FAST_REASONING_TOKENS = 160;
 
-  async function openrouterSend(cfg, system, messages, schema, opts) {
+  async function send(cfg, system, messages, schema, opts) {
     const o = opts || {};
     const body = {
-      model: cfg.model,
+      model: modelFor(cfg),
+      messages: [{ role: "system", content: system }].concat(messages),
+    };
+    /* Everything in this block is OpenRouter's alone. Logfare's API
+       documents none of it, so Logfare gets the bare request. */
+    if (cfg.provider !== "logfare") {
       /* Split at the cache breakpoints (see systemParts). OpenRouter
          passes the breakpoint on to backends that need one (Claude),
          translates it for those that take a different marker, and the
          ones that cache any repeated prefix on their own just see text. */
-      messages: [
-        { role: "system", content: systemParts(system, o.cachePrefixes) || system },
-      ].concat(messages),
-    };
-    /* OpenRouter can serve one model from several providers, each with
-       its own cache, so a turn routed somewhere new starts cold. A
-       session id asks it to keep this conversation on one provider --
-       best effort, and it lapses after 10 minutes idle. */
-    if (o.session) body.session_id = o.session;
-    /* The "auto" router has no fixed reasoning budget to cap via
-       max_tokens -- `effort` is the parameter it actually respects -- so
-       it gets "high" for the main villager-facing model and "medium" for
-       helper/bookkeeping calls (still identified via cfg.fast), instead
-       of the max_tokens cap used below for non-auto models. */
-    if (cfg.model === AUTO_MODEL) body.reasoning = { effort: cfg.fast ? "medium" : "high" };
-    else if (cfg.fast) body.reasoning = { max_tokens: FAST_REASONING_TOKENS };
-    /* Nitro routing with a price cap -- see the comment on maxPriceFor
-       above. If no cap could be resolved (lookup failed, or the
-       reference model isn't in OpenRouter's list), no `sort` is sent
-       either -- falls back to OpenRouter's normal price-aware default
-       rather than optimizing for throughput with no price ceiling. */
-    const price = await maxPriceFor(cfg.fast ? "fast" : "big");
-    if (price) body.provider = { sort: "throughput", max_price: price };
+      body.messages[0].content = systemParts(system, o.cachePrefixes) || system;
+      /* OpenRouter can serve one model from several providers, each with
+         its own cache, so a turn routed somewhere new starts cold. A
+         session id asks it to keep this conversation on one provider --
+         best effort, and it lapses after 10 minutes idle. */
+      if (o.session) body.session_id = o.session;
+      /* The "auto" router has no fixed reasoning budget to cap via
+         max_tokens -- `effort` is the parameter it actually respects -- so
+         it gets "high" for the main villager-facing model and "medium" for
+         helper/bookkeeping calls (still identified via cfg.fast), instead
+         of the max_tokens cap used below for non-auto models. */
+      if (cfg.model === AUTO_MODEL) body.reasoning = { effort: cfg.fast ? "medium" : "high" };
+      else if (cfg.fast) body.reasoning = { max_tokens: FAST_REASONING_TOKENS };
+      /* Nitro routing with a price cap -- see the comment on maxPriceFor
+         above. If no cap could be resolved (lookup failed, or the
+         reference model isn't in OpenRouter's list), no `sort` is sent
+         either -- falls back to OpenRouter's normal price-aware default
+         rather than optimizing for throughput with no price ceiling. */
+      const price = await maxPriceFor(cfg.fast ? "fast" : "big");
+      if (price) body.provider = { sort: "throughput", max_price: price };
+    }
     if (schema) {
       body.response_format = {
         type: "json_schema",
         json_schema: { name: "reply", strict: true, schema: schema },
       };
     }
-    const data = await post(
-      "https://openrouter.ai/api/v1/chat/completions",
-      openrouterHeaders(cfg),
-      body,
-    );
-    if (data.error) throw new Error(data.error.message || "OpenRouter error");
+    const data = await chatPost(cfg, body);
     const choice = (data.choices || [])[0] || {};
     const m = choice.message || {};
     /* Reasoning models return their trace in a separate field, previously
        discarded here (it's useful for debugging odd model decisions).
-       Different OpenRouter backends name the field differently, so check
-       both. */
+       Different backends name the field differently, so check both. */
     const think =
       m.reasoning ||
       (Array.isArray(m.reasoning_details)
@@ -570,44 +567,8 @@ LG.llm = (function () {
       usage: data.usage || null,
       stop: choice.finish_reason || null,
       schema: !!schema,
-      // What actually served the request -- for AUTO_MODEL, OpenRouter picks
-      // this per call, so it's the only way to tell which model answered.
-      model: data.model || null,
-    };
-  }
-
-  /* Logfare uses the same OpenAI-shaped chat-completions request format
-     as OpenRouter, just at a different endpoint and always with one
-     model. `LOGFARE_MODEL` is hardcoded here rather than read from
-     cfg.model, so selecting Logfare as the provider always means "auto",
-     regardless of any leftover custom model value in cfg. */
-  async function logfareSend(cfg, system, messages, schema) {
-    const body = {
-      model: LOGFARE_MODEL,
-      messages: [{ role: "system", content: system }].concat(messages),
-    };
-    if (schema) {
-      body.response_format = {
-        type: "json_schema",
-        json_schema: { name: "reply", strict: true, schema: schema },
-      };
-    }
-    const data = await post(
-      "https://logfare.ai/v1/chat/completions",
-      logfareHeaders(cfg),
-      body,
-    );
-    if (data.error) throw new Error(data.error.message || "Logfare error");
-    const choice = (data.choices || [])[0] || {};
-    const m = choice.message || {};
-    return {
-      text: m.content || "",
-      reasoning: m.reasoning || null,
-      usage: data.usage || null,
-      stop: choice.finish_reason || null,
-      schema: !!schema,
-      // Logfare always routes LOGFARE_MODEL to whatever it actually picks --
-      // this is the only way to tell which model answered.
+      // What actually served the request -- the "auto" routers pick this
+      // per call, so it's the only way to tell which model answered.
       model: data.model || null,
     };
   }
@@ -616,34 +577,14 @@ LG.llm = (function () {
      front rather than mid-conversation. */
   async function validate(cfg) {
     if (!cfg.apiKey) throw new Error("Please paste an API key.");
-    const msgs = [{ role: "user", content: "Say OK." }];
-    if (cfg.provider === "logfare") {
-      const data = await post(
-        "https://logfare.ai/v1/chat/completions",
-        logfareHeaders(cfg),
-        {
-          model: LOGFARE_MODEL,
-          max_tokens: 8,
-          messages: [
-            { role: "system", content: "Reply with one word." },
-          ].concat(msgs),
-        },
-      );
-      if (data.error) throw new Error(data.error.message || "Logfare error");
-    } else {
-      const data = await post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        openrouterHeaders(cfg),
-        {
-          model: cfg.model,
-          max_tokens: 8,
-          messages: [
-            { role: "system", content: "Reply with one word." },
-          ].concat(msgs),
-        },
-      );
-      if (data.error) throw new Error(data.error.message || "OpenRouter error");
-    }
+    await chatPost(cfg, {
+      model: modelFor(cfg),
+      max_tokens: 8,
+      messages: [
+        { role: "system", content: "Reply with one word." },
+        { role: "user", content: "Say OK." },
+      ],
+    });
     return true;
   }
 
@@ -699,12 +640,7 @@ LG.llm = (function () {
       "Leave out anything that was not told. Reply [] if none of them were.",
     );
 
-    const vcfg = {
-      provider: cfg.provider,
-      apiKey: cfg.apiKey,
-      model: helperModel(cfg),
-      fast: true,
-    };
+    const vcfg = helperConfig(cfg);
     let raw;
     try {
       raw = await providerCall(
@@ -768,12 +704,7 @@ LG.llm = (function () {
       "",
       "Answer with one word: yes or no.",
     ].join("\n");
-    const vcfg = {
-      provider: cfg.provider,
-      apiKey: cfg.apiKey,
-      model: helperModel(cfg),
-      fast: true,
-    };
+    const vcfg = helperConfig(cfg);
     try {
       const raw = await providerCall(
         vcfg,
@@ -817,12 +748,7 @@ LG.llm = (function () {
       "Reply with only a JSON object:",
       '{"n": <the number, or 0 if nothing is out of date>, "line": "<the rewritten line, or an empty string>"}',
     ].join("\n");
-    const vcfg = {
-      provider: cfg.provider,
-      apiKey: cfg.apiKey,
-      model: helperModel(cfg),
-      fast: true,
-    };
+    const vcfg = helperConfig(cfg);
     try {
       const raw = await providerCall(
         vcfg,
@@ -864,12 +790,7 @@ LG.llm = (function () {
       want.join(",\n"),
       "}",
     ].join("\n");
-    const vcfg = {
-      provider: cfg.provider,
-      apiKey: cfg.apiKey,
-      model: helperModel(cfg),
-      fast: true,
-    };
+    const vcfg = helperConfig(cfg);
     try {
       const raw = await providerCall(
         vcfg,
@@ -940,12 +861,7 @@ LG.llm = (function () {
         ' actually said, [] if none"]}',
       "}",
     ].join("\n");
-    const vcfg = {
-      provider: cfg.provider,
-      apiKey: cfg.apiKey,
-      model: helperModel(cfg),
-      fast: true,
-    };
+    const vcfg = helperConfig(cfg);
     const sys =
       "You note what people took away from a conversation. Answer with JSON only.";
     try {
@@ -1030,12 +946,7 @@ LG.llm = (function () {
     ]
       .filter((x) => x !== null && x !== undefined)
       .join("\n");
-    const vcfg = {
-      provider: cfg.provider,
-      apiKey: cfg.apiKey,
-      model: helperModel(cfg),
-      fast: true,
-    };
+    const vcfg = helperConfig(cfg);
     const sys = "You decide what a villager does next. Answer with JSON only.";
     try {
       const raw = await providerCall(vcfg, sys, [
@@ -1098,12 +1009,7 @@ LG.llm = (function () {
     ]
       .filter((x) => x !== null && x !== undefined)
       .join("\n");
-    const vcfg = {
-      provider: cfg.provider,
-      apiKey: cfg.apiKey,
-      model: helperModel(cfg),
-      fast: true,
-    };
+    const vcfg = helperConfig(cfg);
     const sys =
       "You decide whether a villager posts a notice, and write it if so. Answer with JSON only.";
     try {
@@ -1258,12 +1164,7 @@ LG.llm = (function () {
     ]
       .filter((x) => x !== null && x !== undefined)
       .join("\n");
-    const vcfg = {
-      provider: cfg.provider,
-      apiKey: cfg.apiKey,
-      model: helperModel(cfg),
-      fast: true,
-    };
+    const vcfg = helperConfig(cfg);
     const sys =
       "You play one villager in a two-person conversation. Answer with JSON only.";
     try {
@@ -1305,12 +1206,7 @@ LG.llm = (function () {
           : [],
       )
       .join("\n");
-    const vcfg = {
-      provider: cfg.provider,
-      apiKey: cfg.apiKey,
-      model: helperModel(cfg),
-      fast: true,
-    };
+    const vcfg = helperConfig(cfg);
     try {
       const raw = await providerCall(
         vcfg,
@@ -1452,7 +1348,6 @@ LG.llm = (function () {
   return {
     MODELS,
     HELPERS,
-    VERIFIER,
     helperModel,
     speak,
     judge,

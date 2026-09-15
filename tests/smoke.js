@@ -611,7 +611,6 @@ async function promptCached() {
     sent.push({ url: url, body: JSON.parse(init.body) });
     const reply = '{"say": "Hm."}';
     return { ok: true, status: 200, json: async () => ({
-      content: [{ type: 'text', text: reply }], stop_reason: 'end_turn',
       choices: [{ message: { content: reply }, finish_reason: 'stop' }] }) };
   };
   LG.llm.audit = false;

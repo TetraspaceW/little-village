@@ -446,7 +446,8 @@ LG.world = (function () {
     put('Mill',         [['sack', 0, 0], ['sack', 1, 0], ['sack', 0, 2], ['barrel', 5, 0],
                          ['counter', 2, 2, 3], ['shelf', 3, 0, 2]]);
     put('School',       [['desk', 0, 1], ['desk', 2, 1], ['desk', 4, 1], ['desk', 0, 2],
-                         ['desk', 2, 2], ['desk', 4, 2], ['shelf', 0, 0, 3], ['table', 5, 0]]);
+                         ['desk', 2, 2], ['desk', 4, 2], ['shelf', 0, 0, 3], ['board', 3, 0, 2],
+                         ['table', 5, 0]]);
     put('Chapel',       [['pew', 0, 1, 4], ['pew', 0, 2, 4], ['table', 2, 0]]);
     put('Smithy',       [['forge', 0, 0], ['anvil', 2, 1], ['barrel', 4, 0], ['shelf', 2, 0, 2],
                          ['counter', 3, 2, 2]]);
@@ -1216,9 +1217,32 @@ LG.world = (function () {
           ctx.fillStyle = '#8a6a45'; ctx.fillRect(x + 2, y + 4, TILE - 4, TILE * 1.6);
           ctx.fillStyle = '#dfe6ee'; ctx.fillRect(x + 4, y + 6, TILE - 8, 14);
           break;
+        case 'board':
+          // The school's picture-alphabet board: a wall-mounted frame,
+          // drawn wide (spans f.w tiles) rather than as a piece of floor
+          // furniture like the shelf beside it.
+          ctx.fillStyle = '#6f563a'; ctx.fillRect(x, y + 2, TILE * (f.w || 1), 20);
+          ctx.fillStyle = '#eef3e6'; ctx.fillRect(x + 3, y + 5, TILE * (f.w || 1) - 6, 14);
+          ctx.strokeStyle = 'rgba(0,0,0,.12)'; ctx.lineWidth = 1;
+          for (let i = 1; i < (f.w || 1) * 2; i++) {
+            const gx = x + 3 + i * (TILE * (f.w || 1) - 6) / ((f.w || 1) * 2);
+            ctx.beginPath(); ctx.moveTo(gx, y + 5); ctx.lineTo(gx, y + 19); ctx.stroke();
+          }
+          break;
       }
     }
     ctx.globalAlpha = 1;
+  }
+
+  /* A named furniture piece's tile rect, for interactions that need to
+     stand next to a specific object rather than just be inside the
+     building (see the school's bookshelf and alphabet board in game.js).
+     Building layout is fixed, not randomized per village, so this rect
+     is the same every time -- callers don't need to cache it themselves. */
+  function furnitureSpot(label, type) {
+    const b = buildingByLabel(label);
+    const f = b && b.furniture.find(x => x.type === type);
+    return f ? { x: f.x, y: f.y, w: f.w || 1, h: 1 } : null;
   }
 
   /* ------------------------------------------------------------------ signs
@@ -1355,7 +1379,7 @@ LG.world = (function () {
 
   return { TILE, W, H, T, build, get, isSolid, isWalkable, nearestOpen, pathTo,
            buildingAt, buildingUnder, roofRects, buildingByLabel, inRect, nearRect,
-           drawGround, drawBuildings, drawSigns, hitSign, overSign, buildings,
+           drawGround, drawBuildings, drawSigns, hitSign, overSign, buildings, furnitureSpot,
            // for the tests: what got placed, and where you can get to from here
            _props: () => props, _signs: () => signSpots(), _flood: flood,
            _signBoxes: () => signBoxes };

@@ -1061,6 +1061,16 @@ LG.game = (function () {
       document.getElementById('help').classList.remove('open');
     document.getElementById('boardClose').onclick = () =>
       document.getElementById('board').classList.remove('open');
+    document.getElementById('libraryClose').onclick = () => {
+      saveBookScroll();
+      document.getElementById('library').classList.remove('open');
+    };
+    document.getElementById('libraryText').onscroll = () => {
+      clearTimeout(bookScrollSaveT);
+      bookScrollSaveT = setTimeout(saveBookScroll, 400);
+    };
+    document.getElementById('alphabetClose').onclick = () =>
+      document.getElementById('alphabet').classList.remove('open');
     document.getElementById('endingClose').onclick = () =>
       document.getElementById('ending').classList.remove('open');
     document.getElementById('endingAgain').onclick = () => {
@@ -1310,6 +1320,8 @@ LG.game = (function () {
     if (beast && !beast.caught && dist(player, beast) < TILE * 1.4) catchBeast();
     else if (worldItem && !worldItem.taken && dist(player, worldItem) < TILE * 1.4) pickUp();
     else if (nearBoard()) openBoard();
+    else if (nearShelf()) openLibrary();
+    else if (nearAlphaBoard()) openAlphabet();
   }
 
   /* ------------------------------------------------------------------ a tap */
@@ -1372,13 +1384,25 @@ LG.game = (function () {
       return;
     }
 
-    /* The noticeboard is a ground area, not a drawn sprite, so it's hit
-       by checking the tapped tile directly rather than a bounding box
-       around an image. */
+    /* The noticeboard, bookshelf and alphabet board are all ground areas
+       rather than drawn sprites, so each is hit by checking the tapped
+       tile directly rather than a bounding box around an image. */
     const spot = { tx: (wx / TILE) | 0, ty: (wy / TILE) | 0 };
     if (nearRect(spot, LG.BOARD_SPOT, 0)) {
       if (nearBoard()) openBoard();
       else aside('Walk over to the noticeboard to read it.');
+      return;
+    }
+    const shelf = W.furnitureSpot('School', 'shelf');
+    if (nearRect(spot, shelf, 0)) {
+      if (nearShelf()) openLibrary();
+      else aside('Walk over to the bookshelf to read it.');
+      return;
+    }
+    const abcBoard = W.furnitureSpot('School', 'board');
+    if (nearRect(spot, abcBoard, 0)) {
+      if (nearAlphaBoard()) openAlphabet();
+      else aside('Walk over to the alphabet board to read it.');
     }
   }
 
@@ -1435,6 +1459,19 @@ LG.game = (function () {
   /* The noticeboard has no NPC/actor to measure distance from -- just a
      ground rectangle, the same one villagers are sent to. */
   function nearBoard() { return nearRect(player, LG.BOARD_SPOT, 1); }
+
+  /* The school's bookshelf and alphabet board work the same way, standing
+     in for the shelf and board furniture already drawn there. Building
+     layout is fixed, so the spot never changes; a missing School (there
+     isn't one, currently) just means neither ever reads as "near". */
+  function nearShelf() {
+    const r = W.furnitureSpot('School', 'shelf');
+    return !!r && nearRect(player, r, 1);
+  }
+  function nearAlphaBoard() {
+    const r = W.furnitureSpot('School', 'board');
+    return !!r && nearRect(player, r, 1);
+  }
 
   /* Reuses world.js's rectangle-proximity check. */
   const nearRect = W.nearRect;
@@ -1803,6 +1840,111 @@ LG.game = (function () {
     });
   }
 
+  /* Called when the player opens the school's bookshelf: picking up the
+     book IS opening it, the same as it would be at a real shelf -- no
+     separate "here's a short excerpt, press this other button if you
+     actually want to read it" step first. The book itself is a plain
+     static file, books/<lang>.json, built ahead of time by
+     tools/build-books.js (see that file and tools/books.js for where
+     each language's book actually comes from -- a real, complete,
+     public-domain work, not invented sample text) rather than fetched
+     live from Gutenberg/Wikisource/Aozora on demand -- those sites
+     mostly don't send a browser the CORS headers it'd need, and a live
+     fetch would only ever work under tools/logserver.js anyway, not on
+     the game's actual static deploy. Being an ordinary file means this
+     works identically there, under logserver.js, or under any other
+     static server -- the one thing it still can't do is load over a
+     bare file:// origin, since fetch() of local files is blocked there
+     regardless of what's being fetched. A missing file (a language with
+     no book built) 404s; that and a genuine fetch failure are reported
+     inline via #libraryStatus rather than left to hang, since the panel
+     is open and the usual world hint banner is hidden while any panel
+     is (see uiBlocked()). */
+  async function openLibrary() {
+    document.getElementById('library').classList.add('open');
+    const lang = settings.lang;
+    const L = LG.LANGUAGES[lang];
+    const head = document.getElementById('libraryHead');
+    const status = document.getElementById('libraryStatus');
+    const textEl = document.getElementById('libraryText');
+    head.innerHTML = '';
+    textEl.textContent = '';
+    status.hidden = false;
+    status.textContent = 'Opening the book…';
+    let res, data;
+    try {
+      res = await fetch('books/' + encodeURIComponent(lang) + '.json');
+      if (res.status === 404) {
+        status.textContent = "This village's language doesn't have a book on the shelf yet.";
+        return;
+      }
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      data = await res.json();
+    } catch (e) {
+      status.textContent = "Couldn't load the book file — this needs the game served " +
+        'over http:// or https://, not opened directly as a file.';
+      return;
+    }
+    status.hidden = true;
+    head.innerHTML = '<b lang="' + L.tag + '">' + escapeHTML(data.title || '') + '</b>' +
+      (data.author ? ' <span class="muted">— ' + escapeHTML(data.author) + '</span>' : '');
+    textEl.lang = L.tag;
+    textEl.textContent = data.text || '';
+    // Resumes roughly where a previous session left off, per language --
+    // a per-viewer convenience, so a missing or blocked localStorage
+    // just means starting from the top rather than breaking anything.
+    try {
+      const saved = Number(localStorage.getItem('lv-book-scroll-' + lang));
+      if (saved > 0) textEl.scrollTop = saved;
+    } catch (e) {}
+  }
+
+  /* Whether the player is currently sat with the book open. No separate
+     state flag: this is just read off the DOM, so however the panel
+     ends up closed (its own Close button, Escape, opening a conversation
+     over it) reading state can't get left stuck on. Used by update() to
+     slow the clock to real time the same way a conversation does -- see
+     LG.time's DAY_MS_REALTIME. */
+  function isReading() {
+    return document.getElementById('library').classList.contains('open');
+  }
+
+  let bookScrollSaveT = 0;
+  function saveBookScroll() {
+    try {
+      const el = document.getElementById('libraryText');
+      localStorage.setItem('lv-book-scroll-' + settings.lang, String(el.scrollTop));
+    } catch (e) {}
+  }
+
+  /* Called when the player opens the school's alphabet board: one letter
+     (or, for Chinese and Japanese, one character/kana -- neither has an
+     "alphabet" as such) per object, the way a real classroom picture
+     chart works. */
+  function openAlphabet() {
+    renderAlphabet();
+    document.getElementById('alphabet').classList.add('open');
+  }
+
+  function renderAlphabet() {
+    const L = LG.LANGUAGES[settings.lang];
+    const list = LG.ALPHABET[settings.lang] || [];
+    const head = document.getElementById('alphabetHead');
+    head.lang = L.tag;
+    head.textContent = LG.ALPHABET_NAME[settings.lang] || '';
+    const box = document.getElementById('alphabetGrid');
+    // No English gloss here, unlike the bookshelf or the noticeboard --
+    // each cell already carries a picture, and the point of the board is
+    // to read it the way the village's own children would, not to
+    // translate it.
+    box.innerHTML = list.map(e =>
+      '<div class="abc-cell">' +
+        '<div class="abc-emoji">' + e.emoji + '</div>' +
+        '<div class="abc-ch" lang="' + L.tag + '">' + escapeHTML(e.ch) + '</div>' +
+        '<div class="abc-word" lang="' + L.tag + '">' + escapeHTML(e.word) + '</div>' +
+      '</div>').join('');
+  }
+
   /* ---------------------------------------------------------------- loop */
   const WALK_SPEED = 132, RUN_SPEED = 210;
   /* Keyboard and joystick input add into the same dx/dy pair, so both
@@ -1888,9 +2030,15 @@ LG.game = (function () {
 
   function update(dt) {
     if (saving()) LG.save.tick(dt);
-    // Game time is paused while a dialogue is open, so a long
-    // conversation doesn't burn in-game hours or change the weather mid-chat.
-    if (!LG.dialogue.isOpen() && LG.time.tick(dt))
+    // Time keeps passing while a dialogue is open, or while the player is
+    // sat reading a book (see isReading()), but at a villager's own pace
+    // -- a real second per game second -- rather than the sped-up rate
+    // the player moves through the rest of the village at. That still
+    // leaves an ordinary conversation too short to visibly change the
+    // weather or the hour, same as the old full pause, but honestly: a
+    // conversation or a chapter that really runs long really does cost
+    // the village that much time.
+    if (LG.time.tick(dt, LG.dialogue.isOpen() || isReading()))
       log('🗓 ' + LG.time.season().name + ', day ' + LG.time.dayOfSeason() + '.');
     const el = document.getElementById('clock');
     if (el) el.textContent = LG.time.label();
@@ -1967,6 +2115,14 @@ LG.game = (function () {
     } else if (nearBoard()) {
       hint.textContent = tap ? 'Tap the noticeboard to read it'
                              : 'Press E to read the noticeboard';
+      hint.classList.add('show');
+    } else if (nearShelf()) {
+      hint.textContent = tap ? 'Tap the bookshelf to read it'
+                             : 'Press E to read the bookshelf';
+      hint.classList.add('show');
+    } else if (nearAlphaBoard()) {
+      hint.textContent = tap ? 'Tap the alphabet board to read it'
+                             : 'Press E to read the alphabet board';
       hint.classList.add('show');
     } else {
       hint.classList.remove('show');

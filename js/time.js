@@ -11,6 +11,15 @@ LG.time = (function () {
   const SEASON_DAYS = 30;
   const YEAR_DAYS = SEASON_DAYS * 4;
   const DAY_MS = 12 * 60 * 1000;      // real milliseconds per village day
+  /* Used instead of DAY_MS while the player is sat down in something long
+     -- a conversation, a book -- rather than out walking the village: a
+     village day really is 24 real hours then, the same rate a villager
+     standing in front of you actually lives at. At that rate an ordinary
+     few-minute conversation moves the clock by only a few real minutes'
+     worth of a day, so weather and the hour barely shift mid-chat -- the
+     same effect the old full pause was for, reached honestly instead of
+     by stopping the world. */
+  const DAY_MS_REALTIME = 24 * 60 * 60 * 1000;
 
   /* Seasons do NOT tint the screen — an always-on wash becomes invisible
      with use, and it would wash out the village's actual colors all day.
@@ -120,10 +129,12 @@ LG.time = (function () {
     weatherLeft = (typeof hold === 'number') ? hold : 0.22 + Math.random() * 0.4;
   }
 
-  /* dt in seconds */
-  function tick(dt) {
+  /* dt in seconds. `realtime` switches to DAY_MS_REALTIME -- see its
+     comment above -- for a conversation or a book instead of ordinary
+     walking-around time. */
+  function tick(dt, realtime) {
     const before = day;
-    const days = (dt * 1000) / DAY_MS;            // how much of a village day passed
+    const days = (dt * 1000) / (realtime ? DAY_MS_REALTIME : DAY_MS);  // how much of a village day passed
     frac += days;
     while (frac >= 1) { frac -= 1; day++; }
     weatherLeft -= days;

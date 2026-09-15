@@ -1284,3 +1284,224 @@ LG.PHRASES = [
     ar: 'قل ذلك مرة أخرى، ببطء.', pl: 'Powtórz to, powoli.', tok: 'o toki sin kepeken tenpo suli.'
   }
 ];
+
+/* --------------------------------------------------------- the school
+   Teaching material on the school's shelf and wall, keyed by village
+   language exactly like everything else above.
+
+   The bookshelf itself has no data here: opening it fetches a real,
+   complete, public-domain book straight from books/<lang>.json (built
+   ahead of time by tools/build-books.js, sourced per tools/books.js) --
+   picking it up off the shelf just opens it, the same as a real book,
+   rather than showing a curated quote first. See those two files for
+   why each language's book is what it is, and js/game.js's
+   openLibrary(). toki pona has no public-domain literature to point at
+   at all, so its shelf has nothing on it yet -- there's no substitute
+   to invent.
+
+   LG.ALPHABET below is the school's other piece of teaching material,
+   the wall board. */
+
+/* LG.ALPHABET is the wall board: one letter, one everyday word that uses
+   it, one picture. French, Spanish, Polish, Russian, Arabic and toki pona
+   all have an actual alphabet, so those go A-to-Z (toki pona's is famously
+   tiny -- fourteen letters, all of them here). Chinese and Japanese don't,
+   so each gets the nearest real equivalent instead of an invented one.
+
+   Japanese gets the gojūon kana chart every Japanese classroom actually
+   hangs on the wall. Chinese gets radicals (部首) that are also complete
+   characters on their own -- what a radical-indexed dictionary lists as
+   that radical's "+0 strokes" entry, when one exists. Not every radical
+   qualifies (讠 and 辶, say, are never standalone words), but a couple
+   hundred of the 214 Kangxi radicals are, and these forty are common,
+   everyday ones spread across the full index rather than clustered at
+   the pictographic low end -- systematic rather than a curated top-of-
+   the-primer list, and closer to how a real dictionary actually presents
+   the writing system's building blocks.
+
+   A few letters can't start a native word at all (Russian ъ/ы, Polish
+   ą/ę/ń/ó/y, Japanese を/ん) -- real children's primers handle this by
+   showing a word that *contains* or *ends with* the letter instead, and
+   these entries do the same, noted in `en`. */
+
+/* The board's own title, shown on the panel itself instead of an English
+   UI label -- the village's own word for "alphabet", or the nearest real
+   equivalent for the two languages that don't have one: 部首表 ("radical
+   table") for Chinese, 五十音表 ("the fifty-sound table") for Japanese --
+   both the actual names of the real charts these boards are modeled on,
+   not translations of "alphabet". */
+LG.ALPHABET_NAME = {
+  en: 'The Alphabet', fr: 'L’alphabet', es: 'El alfabeto', pl: 'Alfabet',
+  ru: 'Алфавит', ar: 'الأبجدية', tok: 'sitelen', zh: '部首表', ja: '五十音表'
+};
+
+LG.ALPHABET = {
+  en: [
+    { ch: 'A', word: 'apple', emoji: '🍎' }, { ch: 'B', word: 'ball', emoji: '⚽' },
+    { ch: 'C', word: 'cat', emoji: '🐱' }, { ch: 'D', word: 'dog', emoji: '🐶' },
+    { ch: 'E', word: 'elephant', emoji: '🐘' }, { ch: 'F', word: 'fish', emoji: '🐟' },
+    { ch: 'G', word: 'giraffe', emoji: '🦒' }, { ch: 'H', word: 'house', emoji: '🏠' },
+    { ch: 'I', word: 'ice cream', emoji: '🍦' }, { ch: 'J', word: 'jam', emoji: '🍯' },
+    { ch: 'K', word: 'kite', emoji: '🪁' }, { ch: 'L', word: 'lion', emoji: '🦁' },
+    { ch: 'M', word: 'moon', emoji: '🌙' }, { ch: 'N', word: 'nest', emoji: '🪺' },
+    { ch: 'O', word: 'owl', emoji: '🦉' }, { ch: 'P', word: 'pig', emoji: '🐷' },
+    { ch: 'Q', word: 'queen', emoji: '👑' }, { ch: 'R', word: 'rainbow', emoji: '🌈' },
+    { ch: 'S', word: 'sun', emoji: '☀️' }, { ch: 'T', word: 'tree', emoji: '🌳' },
+    { ch: 'U', word: 'umbrella', emoji: '☂️' }, { ch: 'V', word: 'violin', emoji: '🎻' },
+    { ch: 'W', word: 'whale', emoji: '🐳' }, { ch: 'X', word: 'xylophone', emoji: '🎵' },
+    { ch: 'Y', word: 'yo-yo', emoji: '🪀' }, { ch: 'Z', word: 'zebra', emoji: '🦓' }
+  ],
+  fr: [
+    { ch: 'A', word: 'avion', en: 'airplane', emoji: '✈️' }, { ch: 'B', word: 'ballon', en: 'ball', emoji: '⚽' },
+    { ch: 'C', word: 'chat', en: 'cat', emoji: '🐱' }, { ch: 'D', word: 'dauphin', en: 'dolphin', emoji: '🐬' },
+    { ch: 'E', word: 'éléphant', en: 'elephant', emoji: '🐘' }, { ch: 'F', word: 'fleur', en: 'flower', emoji: '🌸' },
+    { ch: 'G', word: 'girafe', en: 'giraffe', emoji: '🦒' }, { ch: 'H', word: 'hibou', en: 'owl', emoji: '🦉' },
+    { ch: 'I', word: 'île', en: 'island', emoji: '🏝️' }, { ch: 'J', word: 'jardin', en: 'garden', emoji: '🏡' },
+    { ch: 'K', word: 'kangourou', en: 'kangaroo', emoji: '🦘' }, { ch: 'L', word: 'lune', en: 'moon', emoji: '🌙' },
+    { ch: 'M', word: 'maison', en: 'house', emoji: '🏠' }, { ch: 'N', word: 'nuage', en: 'cloud', emoji: '☁️' },
+    { ch: 'O', word: 'oiseau', en: 'bird', emoji: '🐦' }, { ch: 'P', word: 'poisson', en: 'fish', emoji: '🐟' },
+    { ch: 'Q', word: 'quatre', en: 'four', emoji: '4️⃣' }, { ch: 'R', word: 'renard', en: 'fox', emoji: '🦊' },
+    { ch: 'S', word: 'soleil', en: 'sun', emoji: '☀️' }, { ch: 'T', word: 'tortue', en: 'turtle', emoji: '🐢' },
+    { ch: 'U', word: 'usine', en: 'factory', emoji: '🏭' }, { ch: 'V', word: 'vélo', en: 'bicycle', emoji: '🚲' },
+    { ch: 'W', word: 'wagon', en: 'train car', emoji: '🚃' }, { ch: 'X', word: 'xylophone', en: 'xylophone', emoji: '🎵' },
+    { ch: 'Y', word: 'yaourt', en: 'yogurt', emoji: '🍦' }, { ch: 'Z', word: 'zèbre', en: 'zebra', emoji: '🦓' }
+  ],
+  es: [
+    { ch: 'A', word: 'araña', en: 'spider', emoji: '🕷️' }, { ch: 'B', word: 'barco', en: 'boat', emoji: '⛵' },
+    { ch: 'C', word: 'casa', en: 'house', emoji: '🏠' }, { ch: 'D', word: 'delfín', en: 'dolphin', emoji: '🐬' },
+    { ch: 'E', word: 'elefante', en: 'elephant', emoji: '🐘' }, { ch: 'F', word: 'flor', en: 'flower', emoji: '🌸' },
+    { ch: 'G', word: 'gato', en: 'cat', emoji: '🐱' }, { ch: 'H', word: 'helado', en: 'ice cream', emoji: '🍦' },
+    { ch: 'I', word: 'isla', en: 'island', emoji: '🏝️' }, { ch: 'J', word: 'jirafa', en: 'giraffe', emoji: '🦒' },
+    { ch: 'K', word: 'koala', en: 'koala', emoji: '🐨' }, { ch: 'L', word: 'luna', en: 'moon', emoji: '🌙' },
+    { ch: 'M', word: 'mono', en: 'monkey', emoji: '🐒' }, { ch: 'N', word: 'nube', en: 'cloud', emoji: '☁️' },
+    { ch: 'Ñ', word: 'ñu', en: 'wildebeest', emoji: '🐃' }, { ch: 'O', word: 'oso', en: 'bear', emoji: '🐻' },
+    { ch: 'P', word: 'pez', en: 'fish', emoji: '🐟' }, { ch: 'Q', word: 'queso', en: 'cheese', emoji: '🧀' },
+    { ch: 'R', word: 'ratón', en: 'mouse', emoji: '🐭' }, { ch: 'S', word: 'sol', en: 'sun', emoji: '☀️' },
+    { ch: 'T', word: 'tigre', en: 'tiger', emoji: '🐯' }, { ch: 'U', word: 'uva', en: 'grape', emoji: '🍇' },
+    { ch: 'V', word: 'vaca', en: 'cow', emoji: '🐮' }, { ch: 'W', word: 'waterpolo', en: 'water polo', emoji: '🤽' },
+    { ch: 'X', word: 'xilófono', en: 'xylophone', emoji: '🎵' }, { ch: 'Y', word: 'yoyó', en: 'yo-yo', emoji: '🪀' },
+    { ch: 'Z', word: 'zorro', en: 'fox', emoji: '🦊' }
+  ],
+  pl: [
+    { ch: 'A', word: 'auto', en: 'car', emoji: '🚗' },
+    { ch: 'Ą', word: 'wąż', en: 'snake (contains ą -- almost nothing starts with it)', emoji: '🐍' },
+    { ch: 'B', word: 'banan', en: 'banana', emoji: '🍌' }, { ch: 'C', word: 'cebula', en: 'onion', emoji: '🧅' },
+    { ch: 'Ć', word: 'ćma', en: 'moth', emoji: '🦋' }, { ch: 'D', word: 'dom', en: 'house', emoji: '🏠' },
+    { ch: 'E', word: 'ekran', en: 'screen', emoji: '🖥️' },
+    { ch: 'Ę', word: 'ręka', en: 'hand (contains ę -- it almost never starts a word)', emoji: '✋' },
+    { ch: 'F', word: 'fasola', en: 'bean', emoji: '🫘' }, { ch: 'G', word: 'gwiazda', en: 'star', emoji: '⭐' },
+    { ch: 'H', word: 'helikopter', en: 'helicopter', emoji: '🚁' }, { ch: 'I', word: 'igła', en: 'needle', emoji: '🪡' },
+    { ch: 'J', word: 'jabłko', en: 'apple', emoji: '🍎' }, { ch: 'K', word: 'kot', en: 'cat', emoji: '🐱' },
+    { ch: 'L', word: 'lampa', en: 'lamp', emoji: '💡' }, { ch: 'Ł', word: 'łódź', en: 'boat', emoji: '⛵' },
+    { ch: 'M', word: 'mysz', en: 'mouse', emoji: '🐭' }, { ch: 'N', word: 'noc', en: 'night', emoji: '🌃' },
+    { ch: 'Ń', word: 'koń', en: 'horse (ends in ń -- it never starts a word)', emoji: '🐴' },
+    { ch: 'O', word: 'okno', en: 'window', emoji: '🪟' },
+    { ch: 'Ó', word: 'ósmy', en: 'eighth', emoji: '8️⃣' },
+    { ch: 'P', word: 'pies', en: 'dog', emoji: '🐶' }, { ch: 'R', word: 'ryba', en: 'fish', emoji: '🐟' },
+    { ch: 'S', word: 'słońce', en: 'sun', emoji: '☀️' }, { ch: 'Ś', word: 'śnieg', en: 'snow', emoji: '❄️' },
+    { ch: 'T', word: 'tygrys', en: 'tiger', emoji: '🐯' }, { ch: 'U', word: 'ucho', en: 'ear', emoji: '👂' },
+    { ch: 'W', word: 'woda', en: 'water', emoji: '💧' },
+    { ch: 'Y', word: 'syn', en: 'son (contains y -- nothing in Polish starts with it)', emoji: '👦' },
+    { ch: 'Z', word: 'zebra', en: 'zebra', emoji: '🦓' }, { ch: 'Ź', word: 'źrebię', en: 'foal', emoji: '🐎' },
+    { ch: 'Ż', word: 'żaba', en: 'frog', emoji: '🐸' }
+  ],
+  ru: [
+    { ch: 'А', word: 'арбуз', en: 'watermelon', emoji: '🍉' }, { ch: 'Б', word: 'банан', en: 'banana', emoji: '🍌' },
+    { ch: 'В', word: 'вода', en: 'water', emoji: '💧' }, { ch: 'Г', word: 'гриб', en: 'mushroom', emoji: '🍄' },
+    { ch: 'Д', word: 'дом', en: 'house', emoji: '🏠' }, { ch: 'Е', word: 'ель', en: 'fir tree', emoji: '🌲' },
+    { ch: 'Ё', word: 'ёж', en: 'hedgehog', emoji: '🦔' }, { ch: 'Ж', word: 'жираф', en: 'giraffe', emoji: '🦒' },
+    { ch: 'З', word: 'змея', en: 'snake', emoji: '🐍' }, { ch: 'И', word: 'игрушка', en: 'toy', emoji: '🧸' },
+    { ch: 'Й', word: 'йогурт', en: 'yogurt', emoji: '🍦' }, { ch: 'К', word: 'кот', en: 'cat', emoji: '🐱' },
+    { ch: 'Л', word: 'лиса', en: 'fox', emoji: '🦊' }, { ch: 'М', word: 'мяч', en: 'ball', emoji: '⚽' },
+    { ch: 'Н', word: 'нос', en: 'nose', emoji: '👃' }, { ch: 'О', word: 'облако', en: 'cloud', emoji: '☁️' },
+    { ch: 'П', word: 'пчела', en: 'bee', emoji: '🐝' }, { ch: 'Р', word: 'рыба', en: 'fish', emoji: '🐟' },
+    { ch: 'С', word: 'слон', en: 'elephant', emoji: '🐘' }, { ch: 'Т', word: 'тигр', en: 'tiger', emoji: '🐯' },
+    { ch: 'У', word: 'утка', en: 'duck', emoji: '🦆' }, { ch: 'Ф', word: 'флаг', en: 'flag', emoji: '🚩' },
+    { ch: 'Х', word: 'хлеб', en: 'bread', emoji: '🍞' }, { ch: 'Ц', word: 'цветок', en: 'flower', emoji: '🌸' },
+    { ch: 'Ч', word: 'чашка', en: 'cup', emoji: '☕' }, { ch: 'Ш', word: 'шар', en: 'balloon', emoji: '🎈' },
+    { ch: 'Щ', word: 'щенок', en: 'puppy', emoji: '🐶' },
+    { ch: 'Ъ', word: 'объект', en: 'object (contains ъ -- nothing starts with it)', emoji: '📦' },
+    { ch: 'Ы', word: 'мыло', en: 'soap (contains ы -- nothing starts with it either)', emoji: '🧼' },
+    { ch: 'Ь', word: 'мышь', en: 'mouse (ends in ь -- it never starts a word)', emoji: '🐭' },
+    { ch: 'Э', word: 'экскаватор', en: 'excavator', emoji: '🚜' }, { ch: 'Ю', word: 'юла', en: 'spinning top', emoji: '🪀' },
+    { ch: 'Я', word: 'яблоко', en: 'apple', emoji: '🍎' }
+  ],
+  ar: [
+    { ch: 'ا', word: 'أَسَد', en: 'lion', emoji: '🦁' }, { ch: 'ب', word: 'بَطَّة', en: 'duck', emoji: '🦆' },
+    { ch: 'ت', word: 'تُفَّاحَة', en: 'apple', emoji: '🍎' }, { ch: 'ث', word: 'ثَعْلَب', en: 'fox', emoji: '🦊' },
+    { ch: 'ج', word: 'جَمَل', en: 'camel', emoji: '🐫' }, { ch: 'ح', word: 'حِصَان', en: 'horse', emoji: '🐴' },
+    { ch: 'خ', word: 'خَرُوف', en: 'sheep', emoji: '🐑' }, { ch: 'د', word: 'دَجَاجَة', en: 'hen', emoji: '🐔' },
+    { ch: 'ذ', word: 'ذِئْب', en: 'wolf', emoji: '🐺' }, { ch: 'ر', word: 'رَجُل', en: 'man', emoji: '🧑' },
+    { ch: 'ز', word: 'زَرَافَة', en: 'giraffe', emoji: '🦒' }, { ch: 'س', word: 'سَمَكَة', en: 'fish', emoji: '🐟' },
+    { ch: 'ش', word: 'شَمْس', en: 'sun', emoji: '☀️' }, { ch: 'ص', word: 'صَقْر', en: 'falcon', emoji: '🦅' },
+    { ch: 'ض', word: 'ضِفْدَع', en: 'frog', emoji: '🐸' }, { ch: 'ط', word: 'طَائِر', en: 'bird', emoji: '🐦' },
+    { ch: 'ظ', word: 'ظَرْف', en: 'envelope', emoji: '✉️' }, { ch: 'ع', word: 'عَيْن', en: 'eye', emoji: '👁️' },
+    { ch: 'غ', word: 'غَزَال', en: 'gazelle', emoji: '🦌' }, { ch: 'ف', word: 'فِيل', en: 'elephant', emoji: '🐘' },
+    { ch: 'ق', word: 'قِطَّة', en: 'cat', emoji: '🐱' }, { ch: 'ك', word: 'كَلْب', en: 'dog', emoji: '🐶' },
+    { ch: 'ل', word: 'لَيْمُون', en: 'lemon', emoji: '🍋' }, { ch: 'م', word: 'مَوْز', en: 'banana', emoji: '🍌' },
+    { ch: 'ن', word: 'نَجْمَة', en: 'star', emoji: '⭐' }, { ch: 'ه', word: 'هِلَال', en: 'crescent moon', emoji: '🌙' },
+    { ch: 'و', word: 'وَرْدَة', en: 'rose', emoji: '🌹' }, { ch: 'ي', word: 'يَد', en: 'hand', emoji: '✋' }
+  ],
+  tok: [
+    { ch: 'a', word: 'akesi', en: 'reptile', emoji: '🦎' }, { ch: 'e', word: 'esun', en: 'market', emoji: '🏪' },
+    { ch: 'i', word: 'ijo', en: 'thing', emoji: '📦' }, { ch: 'j', word: 'jan', en: 'person', emoji: '🧑' },
+    { ch: 'k', word: 'kili', en: 'fruit', emoji: '🍎' }, { ch: 'l', word: 'lipu', en: 'paper, book', emoji: '📄' },
+    { ch: 'm', word: 'moku', en: 'food', emoji: '🍽️' }, { ch: 'n', word: 'nasin', en: 'path, way', emoji: '🛤️' },
+    { ch: 'o', word: 'oko', en: 'eye', emoji: '👁️' }, { ch: 'p', word: 'pipi', en: 'bug', emoji: '🐛' },
+    { ch: 's', word: 'suno', en: 'sun', emoji: '☀️' }, { ch: 't', word: 'telo', en: 'water', emoji: '💧' },
+    { ch: 'u', word: 'uta', en: 'mouth', emoji: '👄' }, { ch: 'w', word: 'waso', en: 'bird', emoji: '🐦' }
+  ],
+  // Ordered by Kangxi radical number (1 through 196), not grouped by
+  // meaning -- the same "systematic, not curated" logic as an alphabet
+  // going A-to-Z. `word` is the pinyin reading, same tone-marked
+  // convention as everywhere else zh is romanized (see romanNote above).
+  zh: [
+    { ch: '一', word: 'yī', en: 'one', emoji: '1️⃣' }, { ch: '人', word: 'rén', en: 'person', emoji: '🧑' },
+    { ch: '八', word: 'bā', en: 'eight', emoji: '8️⃣' }, { ch: '刀', word: 'dāo', en: 'knife', emoji: '🔪' },
+    { ch: '力', word: 'lì', en: 'strength', emoji: '💪' }, { ch: '十', word: 'shí', en: 'ten', emoji: '🔟' },
+    { ch: '口', word: 'kǒu', en: 'mouth', emoji: '👄' }, { ch: '土', word: 'tǔ', en: 'earth, soil', emoji: '🟫' },
+    { ch: '大', word: 'dà', en: 'big', emoji: '🦣' }, { ch: '女', word: 'nǚ', en: 'woman', emoji: '👩' },
+    { ch: '子', word: 'zǐ', en: 'child', emoji: '👶' }, { ch: '小', word: 'xiǎo', en: 'small', emoji: '🤏' },
+    { ch: '山', word: 'shān', en: 'mountain', emoji: '⛰️' }, { ch: '工', word: 'gōng', en: 'work', emoji: '🔧' },
+    { ch: '心', word: 'xīn', en: 'heart', emoji: '❤️' }, { ch: '手', word: 'shǒu', en: 'hand', emoji: '✋' },
+    { ch: '日', word: 'rì', en: 'sun', emoji: '☀️' }, { ch: '月', word: 'yuè', en: 'moon', emoji: '🌙' },
+    { ch: '木', word: 'mù', en: 'tree', emoji: '🌳' }, { ch: '水', word: 'shuǐ', en: 'water', emoji: '💧' },
+    { ch: '火', word: 'huǒ', en: 'fire', emoji: '🔥' }, { ch: '父', word: 'fù', en: 'father', emoji: '👨' },
+    { ch: '牛', word: 'niú', en: 'ox, cow', emoji: '🐮' }, { ch: '犬', word: 'quǎn', en: 'dog', emoji: '🐕' },
+    { ch: '生', word: 'shēng', en: 'life, to be born', emoji: '🌱' }, { ch: '田', word: 'tián', en: 'field', emoji: '🌾' },
+    { ch: '白', word: 'bái', en: 'white', emoji: '⚪' }, { ch: '目', word: 'mù', en: 'eye', emoji: '👁️' },
+    { ch: '石', word: 'shí', en: 'stone', emoji: '🪨' }, { ch: '米', word: 'mǐ', en: 'rice', emoji: '🍚' },
+    { ch: '羊', word: 'yáng', en: 'sheep', emoji: '🐑' }, { ch: '耳', word: 'ěr', en: 'ear', emoji: '👂' },
+    { ch: '虫', word: 'chóng', en: 'insect', emoji: '🐛' }, { ch: '贝', word: 'bèi', en: 'shell', emoji: '🐚' },
+    { ch: '走', word: 'zǒu', en: 'walk', emoji: '🚶' }, { ch: '车', word: 'chē', en: 'cart, vehicle', emoji: '🚗' },
+    { ch: '门', word: 'mén', en: 'door', emoji: '🚪' }, { ch: '雨', word: 'yǔ', en: 'rain', emoji: '🌧️' },
+    { ch: '鱼', word: 'yú', en: 'fish', emoji: '🐟' }, { ch: '鸟', word: 'niǎo', en: 'bird', emoji: '🐦' }
+  ],
+  ja: [
+    { ch: 'あ', word: 'あり', en: 'ant', emoji: '🐜' }, { ch: 'い', word: 'いぬ', en: 'dog', emoji: '🐶' },
+    { ch: 'う', word: 'うま', en: 'horse', emoji: '🐴' }, { ch: 'え', word: 'えき', en: 'station', emoji: '🚉' },
+    { ch: 'お', word: 'おかし', en: 'sweets', emoji: '🍬' }, { ch: 'か', word: 'かさ', en: 'umbrella', emoji: '☂️' },
+    { ch: 'き', word: 'き', en: 'tree', emoji: '🌳' }, { ch: 'く', word: 'くも', en: 'cloud', emoji: '☁️' },
+    { ch: 'け', word: 'けむり', en: 'smoke', emoji: '💨' }, { ch: 'こ', word: 'こおり', en: 'ice', emoji: '🧊' },
+    { ch: 'さ', word: 'さかな', en: 'fish', emoji: '🐟' }, { ch: 'し', word: 'しま', en: 'island', emoji: '🏝️' },
+    { ch: 'す', word: 'すいか', en: 'watermelon', emoji: '🍉' }, { ch: 'せ', word: 'せかい', en: 'world', emoji: '🌍' },
+    { ch: 'そ', word: 'そら', en: 'sky', emoji: '🌤️' }, { ch: 'た', word: 'たいよう', en: 'sun', emoji: '☀️' },
+    { ch: 'ち', word: 'ちず', en: 'map', emoji: '🗺️' }, { ch: 'つ', word: 'つき', en: 'moon', emoji: '🌙' },
+    { ch: 'て', word: 'て', en: 'hand', emoji: '✋' }, { ch: 'と', word: 'とり', en: 'bird', emoji: '🐦' },
+    { ch: 'な', word: 'なつ', en: 'summer', emoji: '🏖️' }, { ch: 'に', word: 'にじ', en: 'rainbow', emoji: '🌈' },
+    { ch: 'ぬ', word: 'ぬの', en: 'cloth', emoji: '🧵' }, { ch: 'ね', word: 'ねこ', en: 'cat', emoji: '🐱' },
+    { ch: 'の', word: 'のはら', en: 'meadow', emoji: '🌾' }, { ch: 'は', word: 'はな', en: 'flower', emoji: '🌸' },
+    { ch: 'ひ', word: 'ひ', en: 'fire', emoji: '🔥' }, { ch: 'ふ', word: 'ふね', en: 'boat', emoji: '🚢' },
+    { ch: 'へ', word: 'へび', en: 'snake', emoji: '🐍' }, { ch: 'ほ', word: 'ほし', en: 'star', emoji: '⭐' },
+    { ch: 'ま', word: 'まど', en: 'window', emoji: '🪟' }, { ch: 'み', word: 'みず', en: 'water', emoji: '💧' },
+    { ch: 'む', word: 'むし', en: 'bug', emoji: '🐛' }, { ch: 'め', word: 'め', en: 'eye', emoji: '👁️' },
+    { ch: 'も', word: 'もり', en: 'forest', emoji: '🌲' }, { ch: 'や', word: 'やま', en: 'mountain', emoji: '⛰️' },
+    { ch: 'ゆ', word: 'ゆき', en: 'snow', emoji: '❄️' }, { ch: 'よ', word: 'よる', en: 'night', emoji: '🌃' },
+    { ch: 'ら', word: 'らくだ', en: 'camel', emoji: '🐫' }, { ch: 'り', word: 'りんご', en: 'apple', emoji: '🍎' },
+    { ch: 'る', word: 'るすばん', en: 'looking after the house while others are out', emoji: '🏠' },
+    { ch: 'れ', word: 'れもん', en: 'lemon', emoji: '🍋' }, { ch: 'ろ', word: 'ろうそく', en: 'candle', emoji: '🕯️' },
+    { ch: 'わ', word: 'わに', en: 'crocodile', emoji: '🐊' },
+    { ch: 'を', word: 'を', en: '(marks the object of a verb -- a grammar particle, not a picture word)', emoji: '👉' },
+    { ch: 'ん', word: 'ほん', en: 'book (ん never starts a word, only ends one)', emoji: '📕' }
+  ]
+};

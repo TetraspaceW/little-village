@@ -1,5 +1,5 @@
-/* llm.js — LLM provider abstraction for Anthropic, OpenRouter, and
-   Logfare, called directly from the browser. */
+/* llm.js — LLM provider abstraction for OpenRouter and Logfare, called
+   directly from the browser. */
 window.LG = window.LG || {};
 
 LG.llm = (function () {
@@ -13,20 +13,16 @@ LG.llm = (function () {
   /* OpenRouter's "auto" router picks the underlying model per-request
      rather than a fixed model being named; how much that underlying
      model reasons is set separately via `reasoning.effort` in
-     openrouterSend (high for the main model, medium for the helper). */
+     openrouterSend (high for the main model, medium for the helper).
+     No longer offered in the lists below, but still honoured if typed
+     in as a custom model id. */
   const AUTO_MODEL = "openrouter/auto";
 
+  /* One offered model per role on OpenRouter; anything else goes in the
+     settings panel's "Other" box. */
   const MODELS = {
-    anthropic: [
-      { id: "claude-opus-5", label: "Claude Opus 5" },
-      { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
-      { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
-    ],
     openrouter: [
-      { id: AUTO_MODEL, label: "Auto (high)" },
-      { id: "anthropic/claude-sonnet-5", label: "Claude Sonnet 5" }, // ant
-      { id: "z-ai/glm-5.3-flash", label: "GLM-5.3 Flash" }, // z-ai
-      { id: "google/gemini-3.8-flash", label: "Gemini 3.8 Flash" }, // google
+      { id: "deepseek/deepseek-v4.1-flash", label: "DeepSeek V4.1 Flash" },
     ],
     logfare: [{ id: LOGFARE_MODEL, label: "Auto" }],
   };
@@ -35,22 +31,11 @@ LG.llm = (function () {
      in-character model handles poorly: notebook fact-checking, furigana
      repair, confirming a trade completed. Any cheap, literal model works. */
   const HELPERS = {
-    anthropic: [
-      { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
-      { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
-    ],
-    openrouter: [
-      { id: AUTO_MODEL, label: "Auto (medium)" },
-      { id: "anthropic/claude-haiku-4.5", label: "Claude Haiku 4.5" }, // ant
-      { id: "openai/gpt-5.6-luna", label: "GPT-5.6 Luna" }, // openai
-      { id: "z-ai/glm-5.3-flash", label: "GLM-5.3 Flash" }, // z-ai
-      { id: "google/gemini-3.5-flash-lite", label: "Gemini 3.5 Flash Lite" }, // google
-    ],
+    openrouter: [{ id: "z-ai/glm-5.3-flash", label: "GLM-5.3 Flash" }],
     logfare: [{ id: LOGFARE_MODEL, label: "Auto" }],
   };
   const VERIFIER = {
-    anthropic: "claude-haiku-4-5",
-    openrouter: "anthropic/claude-haiku-4.5",
+    openrouter: "z-ai/glm-5.3-flash",
     logfare: LOGFARE_MODEL,
   };
 
@@ -61,10 +46,6 @@ LG.llm = (function () {
       (cfg && cfg.helper) || VERIFIER[cfg && cfg.provider] || (cfg && cfg.model)
     );
   }
-
-  // Models that accept output_config.effort. Older models (Haiku 4.5, Sonnet 4.5)
-  // reject it, so we only send it where it is supported.
-  const SUPPORTS_EFFORT = /^claude-(opus-5|sonnet-5|opus-4-8|opus-4-7|fable-5)/;
 
   /* Wraps transport/HTTP failures into player-readable error messages. The
      most common failure is opening the page via file://, which sends
@@ -145,38 +126,6 @@ LG.llm = (function () {
     return parts;
   }
 
-  function anthropicBody(cfg, system, messages, maxTokens, schema, cachePrefixes) {
-    const body = {
-      model: cfg.model,
-      max_tokens: maxTokens,
-      system: systemParts(system, cachePrefixes) || system,
-      messages,
-    };
-    if (SUPPORTS_EFFORT.test(cfg.model)) {
-      // Response speed matters more than reasoning depth for in-character
-      // dialogue. Disabling thinking is only permitted at effort "high" or below.
-      body.thinking = { type: "disabled" };
-      body.output_config = { effort: "low" };
-    }
-    // effort and format share the one object, so merge rather than assign
-    if (schema) {
-      body.output_config = Object.assign({}, body.output_config, {
-        format: { type: "json_schema", schema: schema },
-      });
-    }
-    return body;
-  }
-
-  function anthropicHeaders(cfg) {
-    return {
-      "content-type": "application/json",
-      "x-api-key": cfg.apiKey,
-      "anthropic-version": "2023-06-01",
-      // Required opt-in for calling the API straight from a browser page.
-      "anthropic-dangerous-direct-browser-access": "true",
-    };
-  }
-
   /* OpenRouter attributes calls to an "app" keyed by this URL (viewable
      at openrouter.ai/apps?url=<this>). Previously this was derived from
      `location.origin`, which is the literal string "null" when opened via
@@ -209,11 +158,10 @@ LG.llm = (function () {
 
      Previously every call just asked for JSON in the prompt and hoped;
      logging showed roughly a third of player-facing replies came back
-     missing fields (English translation, romanization). Both providers
-     support telling the model the exact expected shape — Anthropic via
-     `output_config.format`, OpenRouter via OpenAI-style `response_format`
-     (which it translates to whatever its backend actually speaks) — so
-     this only needs two branches, not one per model.
+     missing fields (English translation, romanization). OpenRouter
+     supports telling the model the exact expected shape via OpenAI-style
+     `response_format` (which it translates to whatever its backend
+     actually speaks) — so this only needs one branch, not one per model.
 
      Support isn't universal, though, and it's per-endpoint rather than
      per-model: OpenRouter rejects the whole request if the target model
@@ -250,25 +198,14 @@ LG.llm = (function () {
     SCHEMA_OK[key] = false; // cached as false unless the lookup below proves otherwise
     // Logfare picks its own backing model, so there's no catalogue to
     // query -- fails closed the same as any other unresolvable lookup.
-    if (cfg.provider !== "anthropic" && cfg.provider !== "openrouter")
-      return false;
+    if (cfg.provider !== "openrouter") return false;
     try {
-      if (cfg.provider === "anthropic") {
-        const m = await getJSON(
-          "https://api.anthropic.com/v1/models/" + encodeURIComponent(model),
-          anthropicHeaders(cfg),
-        );
-        const c = m && m.capabilities && m.capabilities.structured_outputs;
-        SCHEMA_OK[key] = !!(c && c.supported);
-      } else {
-        if (!orModels)
-          orModels = getJSON("https://openrouter.ai/api/v1/models");
-        const d = await orModels;
-        const m = (d.data || []).find((x) => x.id === model);
-        SCHEMA_OK[key] =
-          !!m &&
-          (m.supported_parameters || []).indexOf("structured_outputs") !== -1;
-      }
+      if (!orModels) orModels = getJSON("https://openrouter.ai/api/v1/models");
+      const d = await orModels;
+      const m = (d.data || []).find((x) => x.id === model);
+      SCHEMA_OK[key] =
+        !!m &&
+        (m.supported_parameters || []).indexOf("structured_outputs") !== -1;
     } catch (e) {
       orModels = null; // don't cache a failed fetch -- allow retrying later
     }
@@ -302,13 +239,15 @@ LG.llm = (function () {
 
      The price ceiling is read from Anthropic's current OpenRouter
      listing rather than hardcoded (which would drift out of date) —
-     Sonnet's price for the main villager-facing model, Haiku's (the
-     helper's reference model per VERIFIER above) for cheap bookkeeping
-     calls, whichever OpenRouter model the player actually selected for
-     either role. Resolved once and cached, same pattern as SCHEMA_OK. */
+     Sonnet's price for the main villager-facing model, Haiku's for cheap
+     bookkeeping calls, whichever OpenRouter model the player actually
+     selected for either role. Deliberately not the default models' own
+     prices: a ceiling equal to a model's cheapest listing would filter
+     out most of its providers. Resolved once and cached, same pattern as
+     SCHEMA_OK. */
   const PRICE_REF = {
     big: "anthropic/claude-sonnet-5",
-    fast: VERIFIER.openrouter,
+    fast: "anthropic/claude-haiku-4.5",
   };
   const maxPriceCache = {}; // 'big' | 'fast' -> {prompt, completion} in $/M tokens, or null
 
@@ -337,7 +276,7 @@ LG.llm = (function () {
 
   /* ---------------------------------------------------------------- audit
 
-     Every API call goes through anthropicCall/openrouterCall/logfareCall
+     Every API call goes through openrouterCall/logfareCall
      below, which is why this is centralized here rather than at each
      call site. Each call is recorded in full — system prompt, messages,
      the *raw* reply before any parsing/repair, timing, and usage — and
@@ -433,8 +372,8 @@ LG.llm = (function () {
             (u.output_tokens || u.completion_tokens || 0) +
             " tok"
           : "";
-      // With caching on, Anthropic's input_tokens counts only what wasn't
-      // served from cache, so the cached share is shown alongside it.
+      // Cache reads and writes, where the backend reports them, shown
+      // alongside the token count.
       const pd = u.prompt_tokens_details || {};
       const hit = u.cache_read_input_tokens || pd.cached_tokens || 0;
       const wrote = u.cache_creation_input_tokens || pd.cache_write_tokens || 0;
@@ -505,13 +444,6 @@ LG.llm = (function () {
   /* Callers pass the schema they want without needing to know whether the
      target model actually supports structured outputs — that check
      (schemaOK) happens centrally here. */
-  async function anthropicCall(cfg, system, messages, schema, opts) {
-    const s = schema && schemaOK(cfg, cfg.model) ? schema : null;
-    return audited(cfg, system, messages, () =>
-      anthropicSend(cfg, system, messages, s, opts),
-    );
-  }
-
   async function openrouterCall(cfg, system, messages, schema, opts) {
     const s = schema && schemaOK(cfg, cfg.model) ? schema : null;
     return audited(cfg, system, messages, () =>
@@ -526,13 +458,11 @@ LG.llm = (function () {
     );
   }
 
-  /* Every call site used to repeat its own branch on cfg.provider
-     (two-way before Logfare, three-way now). Centralizing it here means
-     adding a provider only requires one line in each model table plus
-     one branch here, not a branch at every call site. */
+  /* Every call site used to repeat its own branch on cfg.provider.
+     Centralizing it here means adding a provider only requires one line
+     in each model table plus one branch here, not a branch at every call
+     site. */
   function providerCall(cfg, system, messages, schema, opts) {
-    if (cfg.provider === "anthropic")
-      return anthropicCall(cfg, system, messages, schema, opts);
     if (cfg.provider === "logfare")
       return logfareCall(cfg, system, messages, schema);
     return openrouterCall(cfg, system, messages, schema, opts);
@@ -566,35 +496,6 @@ LG.llm = (function () {
       .join("\n\n");
   }
 
-  async function anthropicSend(cfg, system, messages, schema, opts) {
-    const data = await post(
-      "https://api.anthropic.com/v1/messages",
-      anthropicHeaders(cfg),
-      anthropicBody(cfg, system, messages, 700, schema, opts && opts.cachePrefixes),
-    );
-    if (data.stop_reason === "refusal")
-      throw new Error("The model declined to answer that.");
-    const blocks = data.content || [];
-    return {
-      text: blocks
-        .filter((b) => b.type === "text")
-        .map((b) => b.text)
-        .join(""),
-      // the model's reasoning trace, when present
-      reasoning:
-        blocks
-          .filter(
-            (b) => b.type === "thinking" || b.type === "redacted_thinking",
-          )
-          .map((b) => b.thinking || "[redacted]")
-          .join("\n") || null,
-      usage: data.usage || null,
-      stop: data.stop_reason || null,
-      schema: !!schema,
-      model: data.model || null,
-    };
-  }
-
   /* Cap on reasoning tokens for helper-model calls (intent decisions,
      claim checks, trade confirmations) — small, simple judgments that
      don't need extended thinking, but a reasoning model given no cap will
@@ -610,7 +511,7 @@ LG.llm = (function () {
     const o = opts || {};
     const body = {
       model: cfg.model,
-      /* Same split as the Anthropic path (see systemParts). OpenRouter
+      /* Split at the cache breakpoints (see systemParts). OpenRouter
          passes the breakpoint on to backends that need one (Claude),
          translates it for those that take a different marker, and the
          ones that cache any repeated prefix on their own just see text. */
@@ -716,13 +617,7 @@ LG.llm = (function () {
   async function validate(cfg) {
     if (!cfg.apiKey) throw new Error("Please paste an API key.");
     const msgs = [{ role: "user", content: "Say OK." }];
-    if (cfg.provider === "anthropic") {
-      await post(
-        "https://api.anthropic.com/v1/messages",
-        anthropicHeaders(cfg),
-        anthropicBody(cfg, "Reply with one word.", msgs, 8),
-      );
-    } else if (cfg.provider === "logfare") {
+    if (cfg.provider === "logfare") {
       const data = await post(
         "https://logfare.ai/v1/chat/completions",
         logfareHeaders(cfg),

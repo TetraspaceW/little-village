@@ -40,7 +40,7 @@ const ENVFILE = path.join(ROOT, '.env');
    network can request them.
 
    .env is loaded once at startup, dotenv-style: values already present
-   in process.env take priority, so `ANTHROPIC_API_KEY=… node
+   in process.env take priority, so `OPENROUTER_API_KEY=… node
    tools/logserver.js` overrides the file without editing it. Changes to
    .env require a restart to take effect. */
 function loadEnvFile() {
@@ -75,7 +75,6 @@ function settingsFromEnv() {
   const pick = (...names) => { for (const n of names) if (e[n]) return e[n]; return ''; };
   return {
     provider: pick('LG_PROVIDER', 'PROVIDER'),
-    anthropicKey: pick('ANTHROPIC_API_KEY'),
     openrouterKey: pick('OPENROUTER_API_KEY'),
     logfareKey: pick('LOGFARE_API_KEY'),
     ttsKey: pick('ELEVENLABS_API_KEY'),
@@ -231,7 +230,7 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log('log       ' + path.relative(process.cwd(), LOGFILE));
   if (FAKE) console.log('fake      POST /fake is answering as a stand-in provider');
   const env = settingsFromEnv();
-  const have = ['anthropicKey', 'openrouterKey', 'logfareKey', 'ttsKey']
+  const have = ['openrouterKey','logfareKey', 'ttsKey']
     .filter(k => env[k]).map(k => k.replace('Key', ''));
   console.log('env       ' + (ENV_LOADED ? ENV_LOADED + ' values from .env' : 'no .env'));
   console.log('keys      ' + (have.length ? have.join(', ')

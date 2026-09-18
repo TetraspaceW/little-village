@@ -102,6 +102,37 @@ think*, above) and this trades it away on purpose, in exchange for a call priced
 input tokens alone, with nothing charged for the answer. A villager who moves by way of
 Jev just moves; a villager whose move still runs through the helper model still says why.
 
+## Needle picks the same way, but locally
+
+Cactus Needle 3 answers the same "go" decision as Jev — a typed top-1 choice from a
+fixed list of places, no reason attached — but it is not a network call at all. It is a
+14-29MB tool-calling model, distributed as WebAssembly on Hugging Face
+(`Cactus-Compute/needle3`), that runs entirely in the player's browser once fetched. That
+makes it the only movement-decision path with no provider and no API key: `decideByCactusNeedle`
+doesn't touch `cfg.provider`/`cfg.apiKey` at all, and `intent()` gates it on
+`cfg.needleMovement` alone.
+
+It is given a single `go` tool whose `destination` parameter is a JSON-schema enum of the
+villager's visible place names — the model can only answer with one of them, or decline to
+call the tool, which is treated the same as Jev's fail-closed null. The state text handed to
+it is the same `movementState(o)` both paths share; only how each is asked (typed questions
+over an HTTP endpoint for Jev, a tool call over a local WebAssembly instance for Needle)
+differs.
+
+**It runs in a Worker, not the main thread.** A decode is the better part of a second on
+ordinary hardware — long enough to freeze rendering and input if run inline, since
+`needle_complete` is a synchronous, blocking C call once inside the WebAssembly instance.
+`needle-worker.js` owns the one process-global model instance (loading its engine, `.wasm`,
+and weights from Hugging Face the first time it's asked, then relying on the browser's own
+HTTP cache); `needle.js` is only the postMessage bridge, mirroring the split between
+`decisionPost` and `decideByJev` for the Jev path. Requests are chained through a single
+promise queue in the worker, since the model is explicitly documented as non-thread-safe —
+two villagers deciding on the same tick must never interleave one's `needle_init`/`needle_reset`/
+`needle_complete` calls against the other's.
+
+The settings panel keeps Jev and Needle mutually exclusive — checking one unchecks the
+other — since they answer the identical question and there is no reason to run both.
+
 ## Two villagers talking
 
 **Each line is its own call, and each villager only writes their own.** The alternative

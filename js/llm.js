@@ -31,7 +31,7 @@ LG.llm = (function () {
      the player has turned it on for movement decisions specifically
      (see DESIGN.md). */
   const JEV_MODEL = "typesafe/jev-1.13";
-  const DECISIONS_URL = "https://openrouter.ai/api/v1/api/alpha/decisions";
+  const DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions";
 
   /* One offered model per role on OpenRouter; anything else goes in the
      settings panel's "Other" box. */

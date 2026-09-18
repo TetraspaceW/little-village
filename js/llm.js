@@ -18,6 +18,21 @@ LG.llm = (function () {
      in as a custom model id. */
   const AUTO_MODEL = "openrouter/auto";
 
+  /* Jev (TypeSafe AI) is a "System One" model: given free-text `state`
+     and a set of typed `questions`, it returns a typed choice with a
+     probability attached -- no generated prose, no JSON-in-a-chat-reply
+     to parse. That's a different shape from every other call in this
+     file (system + messages in, text out), so it isn't offered in
+     MODELS/HELPERS below and can't be typed into the "Other" box --
+     picking it as a chat or helper model would leave dialogue with a
+     model that cannot write dialogue. It gets its own request path
+     (decisionPost/decideByJev, near intent() below), reachable only
+     over OpenRouter -- there's no Logfare equivalent -- and only when
+     the player has turned it on for movement decisions specifically
+     (see DESIGN.md). */
+  const JEV_MODEL = "typesafe/jev-1.13";
+  const DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions";
+
   /* One offered model per role on OpenRouter; anything else goes in the
      settings panel's "Other" box. */
   const MODELS = {
@@ -173,6 +188,21 @@ LG.llm = (function () {
       throw new Error(
         data.error.message || (logfare ? "Logfare" : "OpenRouter") + " error",
       );
+    return data;
+  }
+
+  /* Jev's decisions endpoint, not chat completions -- see JEV_MODEL
+     above. OpenRouter-only: there's no Logfare equivalent, and
+     decideByJev checks the provider before ever calling this. */
+  async function decisionPost(cfg, body) {
+    const headers = {
+      "content-type": "application/json",
+      authorization: "Bearer " + cfg.apiKey,
+      "HTTP-Referer": APP_URL,
+      "X-Title": APP_TITLE,
+    };
+    const data = await post(DECISIONS_URL, headers, body);
+    if (data.error) throw new Error(data.error.message || "OpenRouter error");
     return data;
   }
 
@@ -885,6 +915,98 @@ LG.llm = (function () {
     }
   }
 
+  /* Asks Jev to pick a destination, in place of the free-text call
+     below. Jev only takes typed questions over a fixed set of options,
+     so this builds `state` from the same view data the chat prompt
+     uses, minus the places list and closing instructions -- those
+     become the Choice question's criteria/instructions instead -- and
+     it returns only `{go}`, never `{go, why}`: a System One model
+     returns a probability-weighted choice, not a reason for it, and
+     decideWhereToGo (game.js) already treats a missing `why` as
+     "nothing to report". Fails closed, same as intent() below. */
+  async function decideByJev(cfg, o) {
+    const state = [
+      "You are " + o.me.name + " — " + o.me.job + ". " + o.me.persona,
+      o.goal ? "What you are about: " + o.goal : null,
+      "",
+      o.when || null,
+      "You are " + o.here + ".",
+      "",
+      o.held && o.held.length
+        ? "What you know, and how you came by it:\n" +
+          o.held.map((k) => "- " + k).join("\n")
+        : null,
+      "",
+      o.folk && o.folk.length
+        ? "Who you have seen about the village:\n" +
+          o.folk.map((f) => "- " + f.name + ", " + f.where).join("\n")
+        : null,
+    ]
+      .filter((x) => x !== null && x !== undefined)
+      .join("\n");
+
+    const criteria = {};
+    (o.places || []).forEach((p) => {
+      criteria[p.name] = p.note || "";
+    });
+
+    const body = {
+      model: JEV_MODEL,
+      state,
+      questions: {
+        go: {
+          type: "choice",
+          instructions:
+            "Decide where " + o.me.name + " should be for the next while.",
+          criteria,
+        },
+      },
+    };
+    // A trimmed-down cfg just for logging -- the real request always
+    // targets JEV_MODEL regardless of what cfg.model/helper name.
+    const lcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: JEV_MODEL };
+    const sys =
+      "You decide what a villager does next. Answer with a typed choice, not text.";
+    const msg = [
+      {
+        role: "user",
+        content:
+          "state:\n" +
+          state +
+          "\n\nquestions:\n" +
+          JSON.stringify(body.questions, null, 2),
+      },
+    ];
+    try {
+      const raw = await audited(lcfg, sys, msg, async () => {
+        const data = await decisionPost(lcfg, body);
+        const u = data.usage;
+        return {
+          text: JSON.stringify(data),
+          reasoning: null,
+          // Jev's usage names its fields input_tokens/output_tokens;
+          // aliased here too so the console log's token count (which
+          // reads the OpenAI-shaped names) still shows one.
+          usage: u
+            ? Object.assign({}, u, {
+                prompt_tokens: u.input_tokens,
+                completion_tokens: u.output_tokens,
+              })
+            : null,
+          stop: null,
+          schema: true,
+          model: data.model || JEV_MODEL,
+        };
+      });
+      const data = JSON.parse(raw);
+      const ans = data.answers && data.answers.go;
+      const choice = ans && typeof ans.choice === "string" ? ans.choice : null;
+      return choice ? { go: choice } : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   /* Decides where a villager goes next and why.
 
      Previously this was purely a probability table (e.g. 60% chance of
@@ -899,6 +1021,12 @@ LG.llm = (function () {
      villager isn't re-asked. */
   async function intent(cfg, opts) {
     const o = opts || {};
+    /* Movement only, and only when the player has turned it on -- Jev
+       has no route through Logfare and nothing to say for dialogue or
+       chatter, which need generated text (see JEV_MODEL above). */
+    if (cfg.provider === "openrouter" && cfg.apiKey && cfg.jevMovement) {
+      return decideByJev(cfg, o);
+    }
     const lines = [
       "You are " + o.me.name + " — " + o.me.job + ". " + o.me.persona,
       o.goal ? "What you are about: " + o.goal : null,

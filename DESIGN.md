@@ -76,6 +76,32 @@ when it landed in a clearing the path failed and they stood in the trees until t
 think. They try a handful of spots now before giving up on the idea, and a test checks that
 every villager can reach every patch they can be sent to.
 
+## Jev picks a place, not a reason
+
+TypeSafe's Jev answers a different kind of question than every other model this game
+calls: given a fixed list of options, it returns which one and a probability, not
+generated text. That is exactly the shape of the "go" decision above — one of a named
+list of places — and nothing else here, so it is wired into `LG.llm.intent` alone,
+behind its own setting, and no other call (dialogue, chatter, the notebook's checks)
+can reach it.
+
+It is asked over OpenRouter's decisions endpoint, not `/chat/completions` — genuinely a
+different request, `{state, questions}` rather than a system prompt and messages — so it
+could not simply join the model lists the way a new chat model would; picking it as the
+main or helper model would leave dialogue with a model that cannot write dialogue.
+Logfare has no equivalent endpoint, so the setting only does anything on OpenRouter, and
+is disabled in the settings panel otherwise — `decideByJev` also checks the provider
+itself before ever calling out, rather than trusting the checkbox alone.
+
+**It does not answer "why."** A villager walking to the bakery because they are hungry
+and one walking there because they heard bread was for sale look the same to Jev — it
+was given a place to choose from, not a reason to have wanted one, and a System One
+model returns a probability over the options it was handed, not prose about them. The
+existing call's `why` was worth having (see *Open the console and you can watch them
+think*, above) and this trades it away on purpose, in exchange for a call priced by
+input tokens alone, with nothing charged for the answer. A villager who moves by way of
+Jev just moves; a villager whose move still runs through the helper model still says why.
+
 ## Two villagers talking
 
 **Each line is its own call, and each villager only writes their own.** The alternative

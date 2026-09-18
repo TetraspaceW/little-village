@@ -33,6 +33,14 @@ LG.llm = (function () {
   const JEV_MODEL = "typesafe/jev-1.13";
   const DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions";
 
+  /* Cactus Needle 3 does the same job as Jev -- a typed top-1 choice, no
+     generated prose -- but runs locally as WebAssembly instead of over the
+     network (decideByCactusNeedle/needle.js, near intent() below), so
+     unlike Jev it needs no provider and no API key. Also gated behind its
+     own movement-decision setting (see DESIGN.md), mutually exclusive with
+     Jev's in the settings panel. */
+  const NEEDLE_MODEL = "cactus-needle-3";
+
   /* One offered model per role on OpenRouter; anything else goes in the
      settings panel's "Other" box. */
   const MODELS = {
@@ -915,17 +923,12 @@ LG.llm = (function () {
     }
   }
 
-  /* Asks Jev to pick a destination, in place of the free-text call
-     below. Jev only takes typed questions over a fixed set of options,
-     so this builds `state` from the same view data the chat prompt
-     uses, minus the places list and closing instructions -- those
-     become the Choice question's criteria/instructions instead -- and
-     it returns only `{go}`, never `{go, why}`: a System One model
-     returns a probability-weighted choice, not a reason for it, and
-     decideWhereToGo (game.js) already treats a missing `why` as
-     "nothing to report". Fails closed, same as intent() below. */
-  async function decideByJev(cfg, o) {
-    const state = [
+  /* Shared by decideByJev and decideByCactusNeedle below: both hand a
+     typed-choice model the same view data the chat prompt uses, minus the
+     places list and closing instructions -- those become each model's own
+     tool/question shape instead. */
+  function movementState(o) {
+    return [
       "You are " + o.me.name + " — " + o.me.job + ". " + o.me.persona,
       o.goal ? "What you are about: " + o.goal : null,
       "",
@@ -944,6 +947,16 @@ LG.llm = (function () {
     ]
       .filter((x) => x !== null && x !== undefined)
       .join("\n");
+  }
+
+  /* Asks Jev to pick a destination, in place of the free-text call
+     below. Jev only takes typed questions over a fixed set of options,
+     and it returns only `{go}`, never `{go, why}`: a System One model
+     returns a probability-weighted choice, not a reason for it, and
+     decideWhereToGo (game.js) already treats a missing `why` as
+     "nothing to report". Fails closed, same as intent() below. */
+  async function decideByJev(cfg, o) {
+    const state = movementState(o);
 
     const criteria = {};
     (o.places || []).forEach((p) => {
@@ -1007,6 +1020,64 @@ LG.llm = (function () {
     }
   }
 
+  /* Same job as decideByJev -- a typed top-1 choice over the villager's
+     visible places, no generated prose -- but asks Cactus Needle 3, a
+     small tool-calling model running locally in the browser (see
+     needle.js/needle-worker.js) instead of a network endpoint. It gets a
+     single `go` tool whose `destination` parameter is an enum of the
+     place names, so the model can only ever answer with one of them, or
+     decline to call the tool at all -- treated the same as decideByJev's
+     fail-closed null. Needs no provider or API key: intent() below is
+     what gates this on cfg.needleMovement alone. */
+  async function decideByCactusNeedle(o) {
+    const state = movementState(o);
+    const places = o.places || [];
+    const toolsJson = JSON.stringify([
+      {
+        type: "function",
+        function: {
+          name: "go",
+          description:
+            "Decide where " + o.me.name + " should be for the next while.",
+          parameters: {
+            type: "object",
+            properties: {
+              destination: {
+                type: "string",
+                enum: places.map((p) => p.name),
+                description: places
+                  .map((p) => p.name + (p.note ? ": " + p.note : ""))
+                  .join(". "),
+              },
+            },
+            required: ["destination"],
+          },
+        },
+      },
+    ]);
+    const sys =
+      "You decide what a villager does next. Answer with a typed choice, not text.";
+    const lcfg = { provider: "needle", apiKey: "", model: NEEDLE_MODEL };
+    const msg = [{ role: "user", content: state }];
+    try {
+      const raw = await audited(lcfg, sys, msg, async () => {
+        const destination = await LG.needle.ask(sys, toolsJson, state);
+        return {
+          text: JSON.stringify({ go: destination }),
+          reasoning: null,
+          usage: null,
+          stop: null,
+          schema: true,
+          model: NEEDLE_MODEL,
+        };
+      });
+      const data = JSON.parse(raw);
+      return data.go ? { go: data.go } : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   /* Decides where a villager goes next and why.
 
      Previously this was purely a probability table (e.g. 60% chance of
@@ -1026,6 +1097,12 @@ LG.llm = (function () {
        chatter, which need generated text (see JEV_MODEL above). */
     if (cfg.provider === "openrouter" && cfg.apiKey && cfg.jevMovement) {
       return decideByJev(cfg, o);
+    }
+    /* Same idea, but local -- no provider or API key needed at all. The
+       settings panel keeps the two mutually exclusive; this order only
+       matters if a saved village somehow has both flags set. */
+    if (cfg.needleMovement) {
+      return decideByCactusNeedle(o);
     }
     const lines = [
       "You are " + o.me.name + " — " + o.me.job + ". " + o.me.persona,

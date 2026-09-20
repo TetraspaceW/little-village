@@ -7,6 +7,7 @@ LG.game = (function () {
   const settings = {
     lang: 'ru', level: 'beginner', autorun: false,
     provider: 'openrouter', apiKey: '', model: 'deepseek/deepseek-v4.1-flash', helper: '',
+    needleMovement: false,
     /* One key per provider, so switching provider and back doesn't lose
        the other one. `apiKey` is always the current provider's entry. */
     keys: { openrouter: '', logfare: '' },
@@ -129,7 +130,8 @@ LG.game = (function () {
   }
   function llmConfig() {
     return { provider: settings.provider, apiKey: settings.apiKey.trim(),
-             model: settings.model, helper: settings.helper };
+             model: settings.model, helper: settings.helper,
+             needleMovement: settings.needleMovement };
   }
 
   /* ---------------------------------------------------------- inventory */
@@ -1135,6 +1137,7 @@ LG.game = (function () {
       keys: Object.assign({}, draftKeys),
       model: readModel() || settings.model,
       helper: readHelper(),
+      needleMovement: document.getElementById('setNeedleMovement').checked,
       // No longer player-configurable: gossip is always on, translations
       // always start blurred, voices are always curated, and speech
       // speed always matches difficulty.
@@ -1240,6 +1243,7 @@ LG.game = (function () {
     }
     document.getElementById('setVoices').checked = settings.voices;
     document.getElementById('setTtsKey').value = settings.ttsKey;
+    document.getElementById('setNeedleMovement').checked = settings.needleMovement;
     refreshModelList();
     refreshHelperList();
     showSaveNote();

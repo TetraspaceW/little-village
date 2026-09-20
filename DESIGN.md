@@ -88,8 +88,8 @@ different request, `{state, questions}` rather than a system prompt and messages
 could not simply join the model lists the way a new chat model would; picking it as the
 main or helper model would leave dialogue with a model that cannot write dialogue.
 Logfare has no equivalent endpoint, so `LG.llm.intent` only reaches Jev on OpenRouter —
-it checks the provider itself before ever calling out. There is no setting for this: it
-is used whenever it is reachable at all, the same as the two checks below.
+it checks the provider itself before ever calling out. Jev handles movement by default
+unless local Needle is selected; it also handles the two checks below whenever reachable.
 
 **It does not answer "why."** A villager walking to the bakery because they are hungry
 and one walking there because they heard bread was for sale look the same to Jev — it
@@ -109,8 +109,7 @@ bargain*, above), and it checks which of a villager's self-reported `revealed` f
 line actually stated outright (`judge`, see *One list, and it does not lie to them*).
 Both of those are a fixed question against a fixed answer, not free text — did this
 happen, yes or no — which is exactly the shape Jev answers, so they go to Jev instead
-whenever it's reachable (OpenRouter, with a key), the same as the movement decision
-above.
+whenever it's reachable (OpenRouter, with a key), regardless of the movement setting.
 
 **A confirmed fact gets no note.** `judge`'s helper-model version writes back a line in
 the player's language for each fact it confirms — "how the listener would jot that down"
@@ -125,13 +124,39 @@ single line at once. Jev's `questions` object takes more than one named question
 same request, so every candidate gets its own yes/no question, answered together — one
 call priced by input tokens, not one per candidate.
 
-**No opt-out, short of Logfare.** These started as settings-panel toggles, each off by
-default so a player could keep the helper model's richer answers (a reason for the move,
-a note in their own language for a confirmed fact) without losing anything else. In
-practice that just meant most players never saw Jev at all, on a call that is cheaper and
-no less correct at the one thing it does. What is actually worth keeping configurable is
-the provider — Logfare has no Jev, so its villagers still get the helper model's version
-of all three checks, reasons and all.
+**Jev remains automatic for bookkeeping.** Earlier Jev opt-in toggles left most players
+using the helper model for these fixed-choice checks. The provider still determines
+whether Jev can handle trades and facts: Logfare uses the helper model for both.
+Movement has a separate opt-in local Needle override.
+
+## Needle picks the same way, but locally
+
+Cactus Needle 3 answers the same "go" decision as Jev — a typed top-1 choice from a
+fixed list of places, no reason attached. The browser downloads roughly 35MB of weights
+plus its WebAssembly engine from Hugging Face (`Cactus-Compute/needle3`) on first use.
+Inference then runs locally. `decideByCactusNeedle` needs no provider key, although the
+game still requires one for dialogue and other features; `intent()` selects Needle with
+`cfg.needleMovement` alone.
+
+It is given a single `go` tool whose `destination` parameter is a JSON-schema enum of the
+villager's visible place names. The current Worker uses the first call if Needle emits
+several; an absent call returns null and the villager falls back to habit. The state text
+handed to it is the same `movementState(o)` both paths share; only how each is asked
+(typed questions over an HTTP endpoint for Jev, a tool call over a local WebAssembly
+instance for Needle) differs.
+
+**It runs in a Worker, not the main thread.** `needle_complete` blocks until decoding
+finishes; keeping it in a Worker protects rendering and input during that time.
+`needle-worker.js` owns the one process-global model instance (loading its engine, `.wasm`,
+and weights from Hugging Face the first time it's asked); `needle.js` is only the
+postMessage bridge, mirroring the split between
+`decisionPost` and `decideByJev` for the Jev path. Requests are chained through a single
+promise queue in the worker, since the model is explicitly documented as non-thread-safe —
+two villagers deciding on the same tick must never interleave one's `needle_init`/`needle_reset`/
+`needle_complete` calls against the other's.
+
+Selecting Needle overrides automatic Jev for movement only; Jev still handles trade
+confirmation and fact checks on OpenRouter.
 
 ## Two villagers talking
 

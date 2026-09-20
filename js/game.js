@@ -7,8 +7,8 @@ LG.game = (function () {
   const settings = {
     lang: 'ru', level: 'beginner', autorun: false,
     provider: 'openrouter', apiKey: '', model: 'deepseek/deepseek-v4.1-flash', helper: '',
-    // Only ever true under provider 'openrouter' -- see refreshJevRow.
-    jevMovement: false,
+    // Only ever true under provider 'openrouter' -- see refreshJevRows.
+    jevMovement: false, jevValidation: false,
     /* One key per provider, so switching provider and back doesn't lose
        the other one. `apiKey` is always the current provider's entry. */
     keys: { openrouter: '', logfare: '' },
@@ -132,7 +132,7 @@ LG.game = (function () {
   function llmConfig() {
     return { provider: settings.provider, apiKey: settings.apiKey.trim(),
              model: settings.model, helper: settings.helper,
-             jevMovement: settings.jevMovement };
+             jevMovement: settings.jevMovement, jevValidation: settings.jevValidation };
   }
 
   /* ---------------------------------------------------------- inventory */
@@ -1096,7 +1096,7 @@ LG.game = (function () {
       showSaveNote();
     };
     document.getElementById('setSave').onclick = submitSettings;
-    document.getElementById('setProvider').onchange = () => { swapKeyField(); refreshModelList(); refreshHelperList(); refreshJevRow(); };
+    document.getElementById('setProvider').onchange = () => { swapKeyField(); refreshModelList(); refreshHelperList(); refreshJevRows(); };
     document.getElementById('setModel').onchange = syncModelBox;
     document.getElementById('setHelper').onchange = syncHelperBox;
   }
@@ -1139,6 +1139,7 @@ LG.game = (function () {
       model: readModel() || settings.model,
       helper: readHelper(),
       jevMovement: document.getElementById('setJevMovement').checked,
+      jevValidation: document.getElementById('setJevValidation').checked,
       // No longer player-configurable: gossip is always on, translations
       // always start blurred, voices are always curated, and speech
       // speed always matches difficulty.
@@ -1245,9 +1246,10 @@ LG.game = (function () {
     document.getElementById('setVoices').checked = settings.voices;
     document.getElementById('setTtsKey').value = settings.ttsKey;
     document.getElementById('setJevMovement').checked = settings.jevMovement;
+    document.getElementById('setJevValidation').checked = settings.jevValidation;
     refreshModelList();
     refreshHelperList();
-    refreshJevRow();
+    refreshJevRows();
     showSaveNote();
     s.classList.add('open');
   }
@@ -1331,13 +1333,16 @@ LG.game = (function () {
   }
 
   /* Jev is only reachable over OpenRouter (see JEV_MODEL in llm.js), so
-     the checkbox is disabled -- and forced off -- under any other
+     both checkboxes are disabled -- and forced off -- under any other
      provider, the same way setModel/setHelper get force-fixed under
      Logfare above. */
-  function refreshJevRow() {
-    const box = document.getElementById('setJevMovement');
-    box.disabled = document.getElementById('setProvider').value !== 'openrouter';
-    if (box.disabled) box.checked = false;
+  function refreshJevRows() {
+    const openrouter = document.getElementById('setProvider').value === 'openrouter';
+    ['setJevMovement', 'setJevValidation'].forEach(id => {
+      const box = document.getElementById(id);
+      box.disabled = !openrouter;
+      if (box.disabled) box.checked = false;
+    });
   }
 
   /* A villager who sought out the player speaks first when the

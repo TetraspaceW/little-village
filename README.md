@@ -138,15 +138,25 @@ doesn't lose the other one.
 
 Use a fast, non-reasoning model for the helper if you can — see below.
 
-### Jev, for movement only
+### Jev, for what has a fixed set of answers
 
-An optional third option, OpenRouter only: **Use Jev for movement decisions** hands
-"where does this villager go next" to [TypeSafe's Jev](https://openrouter.ai/typesafe/jev-1.13)
-instead of the helper model. Jev doesn't generate text — given the same places a
-villager could go, it returns which one, with a probability, for $0.042 per million
-input tokens and nothing charged for the answer. What it can't do is say why: the helper
-model's version of this decision comes back with a line of reasoning, logged to the
-console; Jev's doesn't, because there's no text to write one in. Off by default.
+Two optional toggles, OpenRouter only, built on [TypeSafe's Jev](https://openrouter.ai/typesafe/jev-1.13)
+in place of the helper model. Jev doesn't generate text — given a fixed set of typed
+questions, it answers each with one of a named list of options and a probability, for
+$0.042 per million input tokens and nothing charged for the answer.
+
+**Use Jev for movement decisions** hands "where does this villager go next" to Jev.
+What it can't do is say why: the helper model's version of this decision comes back with
+a line of reasoning, logged to the console; Jev's doesn't, because there's no text to
+write one in.
+
+**Use Jev for validation** hands the helper model's bookkeeping checks to Jev instead —
+did a trade actually complete, did a line actually state a fact outright — as a yes/no
+choice rather than a written answer. The helper model's version writes a note in the
+player's language when it confirms a fact; Jev can't, so a fact it confirms is recorded
+under the line as spoken instead.
+
+Both are off by default.
 
 ### Cost
 

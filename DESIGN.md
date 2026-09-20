@@ -102,6 +102,35 @@ think*, above) and this trades it away on purpose, in exchange for a call priced
 input tokens alone, with nothing charged for the answer. A villager who moves by way of
 Jev just moves; a villager whose move still runs through the helper model still says why.
 
+## Jev checks, not writes
+
+The helper model does two more jobs besides deciding where a villager goes: it checks
+whether a line of dialogue actually completed a trade (`confirmTrade`, called when the
+player held out the right item but the reply didn't flag a deal — see *A gesture is not a
+bargain*, above), and it checks which of a villager's self-reported `revealed` facts the
+line actually stated outright (`judge`, see *One list, and it does not lie to them*).
+Both of those are a fixed question against a fixed answer, not free text — did this
+happen, yes or no — which is exactly the shape Jev answers, so a second setting,
+independent of the movement one, sends them to Jev instead.
+
+**A confirmed fact gets no note.** `judge`'s helper-model version writes back a line in
+the player's language for each fact it confirms — "how the listener would jot that down"
+— because the model doing the confirming is also the one asked to write prose. Jev never
+writes prose (see above), so a fact Jev confirms comes back with none. That is not a new
+failure mode: `verifyRevealed` already falls back to the line as spoken whenever a note
+is missing, since the helper model sometimes leaves one out too. Jev just takes that path
+every time rather than occasionally.
+
+**One call, many questions.** `judge` can be checking several candidate facts from a
+single line at once. Jev's `questions` object takes more than one named question in the
+same request, so every candidate gets its own yes/no question, answered together — one
+call priced by input tokens, not one per candidate.
+
+**Off by its own switch.** A player who wants the cheaper, reason-free movement checks
+does not necessarily want fact-checking that can't leave a note in their language, and a
+player who wants richer bookkeeping might still want the helper model doing the moving.
+Tying the two together would have made that choice for them.
+
 ## Two villagers talking
 
 **Each line is its own call, and each villager only writes their own.** The alternative

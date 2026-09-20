@@ -81,17 +81,15 @@ every villager can reach every patch they can be sent to.
 TypeSafe's Jev answers a different kind of question than every other model this game
 calls: given a fixed list of options, it returns which one and a probability, not
 generated text. That is exactly the shape of the "go" decision above — one of a named
-list of places — and nothing else here, so it is wired into `LG.llm.intent` alone,
-behind its own setting, and no other call (dialogue, chatter, the notebook's checks)
-can reach it.
+list of places.
 
 It is asked over OpenRouter's decisions endpoint, not `/chat/completions` — genuinely a
 different request, `{state, questions}` rather than a system prompt and messages — so it
 could not simply join the model lists the way a new chat model would; picking it as the
 main or helper model would leave dialogue with a model that cannot write dialogue.
-Logfare has no equivalent endpoint, so the setting only does anything on OpenRouter, and
-is disabled in the settings panel otherwise — `decideByJev` also checks the provider
-itself before ever calling out, rather than trusting the checkbox alone.
+Logfare has no equivalent endpoint, so `LG.llm.intent` only reaches Jev on OpenRouter —
+it checks the provider itself before ever calling out. There is no setting for this: it
+is used whenever it is reachable at all, the same as the two checks below.
 
 **It does not answer "why."** A villager walking to the bakery because they are hungry
 and one walking there because they heard bread was for sale look the same to Jev — it
@@ -110,8 +108,9 @@ player held out the right item but the reply didn't flag a deal — see *A gestu
 bargain*, above), and it checks which of a villager's self-reported `revealed` facts the
 line actually stated outright (`judge`, see *One list, and it does not lie to them*).
 Both of those are a fixed question against a fixed answer, not free text — did this
-happen, yes or no — which is exactly the shape Jev answers, so a second setting,
-independent of the movement one, sends them to Jev instead.
+happen, yes or no — which is exactly the shape Jev answers, so they go to Jev instead
+whenever it's reachable (OpenRouter, with a key), the same as the movement decision
+above.
 
 **A confirmed fact gets no note.** `judge`'s helper-model version writes back a line in
 the player's language for each fact it confirms — "how the listener would jot that down"
@@ -126,10 +125,13 @@ single line at once. Jev's `questions` object takes more than one named question
 same request, so every candidate gets its own yes/no question, answered together — one
 call priced by input tokens, not one per candidate.
 
-**Off by its own switch.** A player who wants the cheaper, reason-free movement checks
-does not necessarily want fact-checking that can't leave a note in their language, and a
-player who wants richer bookkeeping might still want the helper model doing the moving.
-Tying the two together would have made that choice for them.
+**No opt-out, short of Logfare.** These started as settings-panel toggles, each off by
+default so a player could keep the helper model's richer answers (a reason for the move,
+a note in their own language for a confirmed fact) without losing anything else. In
+practice that just meant most players never saw Jev at all, on a call that is cheaper and
+no less correct at the one thing it does. What is actually worth keeping configurable is
+the provider — Logfare has no Jev, so its villagers still get the helper model's version
+of all three checks, reasons and all.
 
 ## Two villagers talking
 

@@ -27,10 +27,10 @@ LG.llm = (function () {
      picking it as a chat or helper model would leave dialogue with a
      model that cannot write dialogue. It gets its own request path
      (decisionPost/askJev, below), reachable only over OpenRouter --
-     there's no Logfare equivalent -- and only when the player has
-     turned it on, separately for movement decisions and for the
-     bookkeeping checks (a trade completing, a fact actually stated)
-     the helper model otherwise makes (see DESIGN.md). */
+     there's no Logfare equivalent -- and used automatically whenever it
+     is: movement decisions, and the bookkeeping checks (a trade
+     completing, a fact actually stated) the helper model otherwise makes
+     (see DESIGN.md). No setting turns it off. */
   const JEV_MODEL = "typesafe/jev-1.13";
   const DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions";
 
@@ -627,11 +627,9 @@ LG.llm = (function () {
      unconfirmed gets recorded. */
   async function judge(cfg, said, translation, candidates, opts) {
     if (!candidates.length) return [];
-    /* Jev only when the player turned it on for validation specifically
-       (see DESIGN.md) -- movement's jevMovement is a separate setting,
-       since a player might want the cheaper, reason-free checks here
-       without handing movement over too, or vice versa. */
-    if (cfg.provider === "openrouter" && cfg.apiKey && cfg.jevValidation) {
+    /* Jev whenever it's reachable, same as intent() and confirmTrade()
+       below -- see DESIGN.md. */
+    if (cfg.provider === "openrouter" && cfg.apiKey) {
       return judgeByJev(cfg, said, translation, candidates);
     }
     const lang = (opts && opts.langName) || "the speaker\u2019s language";
@@ -723,7 +721,7 @@ LG.llm = (function () {
      catches cases the villager missed, without letting a wordless
      player action complete a trade on its own. */
   async function confirmTrade(cfg, said, translation, deal) {
-    if (cfg.provider === "openrouter" && cfg.apiKey && cfg.jevValidation) {
+    if (cfg.provider === "openrouter" && cfg.apiKey) {
       return confirmTradeByJev(cfg, said, translation, deal);
     }
     const ask = [
@@ -1029,9 +1027,9 @@ LG.llm = (function () {
   /* Asks Jev whether a line of dialogue actually completed a trade, in
      place of the free-text yes/no call confirmTrade makes below -- same
      fixed-choice shape as decideByJev, just two named options instead
-     of a place list. confirmTrade only reaches this when the player has
-     turned on Jev for validation (see DESIGN.md); it checks that itself
-     before ever calling here. */
+     of a place list. confirmTrade reaches this whenever Jev is reachable
+     at all (see DESIGN.md); it checks that itself before ever calling
+     here. */
   async function confirmTradeByJev(cfg, said, translation, deal) {
     const state = [
       deal.npcName + " said: " + JSON.stringify(said),
@@ -1116,10 +1114,11 @@ LG.llm = (function () {
      villager isn't re-asked. */
   async function intent(cfg, opts) {
     const o = opts || {};
-    /* Movement only, and only when the player has turned it on -- Jev
-       has no route through Logfare and nothing to say for dialogue or
-       chatter, which need generated text (see JEV_MODEL above). */
-    if (cfg.provider === "openrouter" && cfg.apiKey && cfg.jevMovement) {
+    /* Movement only -- Jev has no route through Logfare and nothing to
+       say for dialogue or chatter, which need generated text (see
+       JEV_MODEL above). Used whenever it's reachable at all; there's no
+       setting to turn it off. */
+    if (cfg.provider === "openrouter" && cfg.apiKey) {
       return decideByJev(cfg, o);
     }
     const lines = [

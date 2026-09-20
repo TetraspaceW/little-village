@@ -26,10 +26,11 @@ LG.llm = (function () {
      MODELS/HELPERS below and can't be typed into the "Other" box --
      picking it as a chat or helper model would leave dialogue with a
      model that cannot write dialogue. It gets its own request path
-     (decisionPost/decideByJev, near intent() below), reachable only
-     over OpenRouter -- there's no Logfare equivalent -- and only when
-     the player has turned it on for movement decisions specifically
-     (see DESIGN.md). */
+     (decisionPost/askJev, below), reachable only over OpenRouter --
+     there's no Logfare equivalent -- and used automatically whenever it
+     is: movement decisions, and the bookkeeping checks (a trade
+     completing, a fact actually stated) the helper model otherwise makes
+     (see DESIGN.md). No setting turns it off. */
   const JEV_MODEL = "typesafe/jev-1.13";
   const DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions";
 
@@ -626,6 +627,11 @@ LG.llm = (function () {
      unconfirmed gets recorded. */
   async function judge(cfg, said, translation, candidates, opts) {
     if (!candidates.length) return [];
+    /* Jev whenever it's reachable, same as intent() and confirmTrade()
+       below -- see DESIGN.md. */
+    if (cfg.provider === "openrouter" && cfg.apiKey) {
+      return judgeByJev(cfg, said, translation, candidates);
+    }
     const lang = (opts && opts.langName) || "the speaker\u2019s language";
     const lines = [
       "You are checking one line of dialogue against a list of statements.",
@@ -715,6 +721,9 @@ LG.llm = (function () {
      catches cases the villager missed, without letting a wordless
      player action complete a trade on its own. */
   async function confirmTrade(cfg, said, translation, deal) {
+    if (cfg.provider === "openrouter" && cfg.apiKey) {
+      return confirmTradeByJev(cfg, said, translation, deal);
+    }
     const ask = [
       "One line of dialogue, and a question about it.",
       "",
@@ -915,6 +924,52 @@ LG.llm = (function () {
     }
   }
 
+  /* Shared plumbing for every Jev decisions-endpoint call: sends
+     `{state, questions}`, logs it to the console the same way as any
+     other call, and hands back `data.answers` (or null on failure).
+     Every caller builds its own state text and typed questions and
+     reads back whichever `answers[key].choice` it asked for -- this
+     only owns the request/response/logging shape they all share. */
+  async function askJev(cfg, sys, state, questions) {
+    const body = { model: JEV_MODEL, state, questions };
+    // A trimmed-down cfg just for logging -- the real request always
+    // targets JEV_MODEL regardless of what cfg.model/helper name.
+    const lcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: JEV_MODEL };
+    const msg = [
+      {
+        role: "user",
+        content:
+          "state:\n" + state + "\n\nquestions:\n" + JSON.stringify(questions, null, 2),
+      },
+    ];
+    try {
+      const raw = await audited(lcfg, sys, msg, async () => {
+        const data = await decisionPost(lcfg, body);
+        const u = data.usage;
+        return {
+          text: JSON.stringify(data),
+          reasoning: null,
+          // Jev's usage names its fields input_tokens/output_tokens;
+          // aliased here too so the console log's token count (which
+          // reads the OpenAI-shaped names) still shows one.
+          usage: u
+            ? Object.assign({}, u, {
+                prompt_tokens: u.input_tokens,
+                completion_tokens: u.output_tokens,
+              })
+            : null,
+          stop: null,
+          schema: true,
+          model: data.model || JEV_MODEL,
+        };
+      });
+      const data = JSON.parse(raw);
+      return data.answers || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   /* Asks Jev to pick a destination, in place of the free-text call
      below. Jev only takes typed questions over a fixed set of options,
      so this builds `state` from the same view data the chat prompt
@@ -950,61 +1005,99 @@ LG.llm = (function () {
       criteria[p.name] = p.note || "";
     });
 
-    const body = {
-      model: JEV_MODEL,
+    const questions = {
+      go: {
+        type: "choice",
+        instructions:
+          "Decide where " + o.me.name + " should be for the next while.",
+        criteria,
+      },
+    };
+    const answers = await askJev(
+      cfg,
+      "You decide what a villager does next. Answer with a typed choice, not text.",
       state,
-      questions: {
-        go: {
-          type: "choice",
-          instructions:
-            "Decide where " + o.me.name + " should be for the next while.",
-          criteria,
+      questions,
+    );
+    const ans = answers && answers.go;
+    const choice = ans && typeof ans.choice === "string" ? ans.choice : null;
+    return choice ? { go: choice } : null;
+  }
+
+  /* Asks Jev whether a line of dialogue actually completed a trade, in
+     place of the free-text yes/no call confirmTrade makes below -- same
+     fixed-choice shape as decideByJev, just two named options instead
+     of a place list. confirmTrade reaches this whenever Jev is reachable
+     at all (see DESIGN.md); it checks that itself before ever calling
+     here. */
+  async function confirmTradeByJev(cfg, said, translation, deal) {
+    const state = [
+      deal.npcName + " said: " + JSON.stringify(said),
+      translation ? "In English, that is: " + JSON.stringify(translation) : null,
+      "",
+      "The traveller is holding out " + deal.wants + ".",
+    ]
+      .filter((x) => x !== null)
+      .join("\n");
+    const questions = {
+      deal: {
+        type: "choice",
+        instructions:
+          "Did " + deal.npcName + " accept it and hand over " + deal.gives +
+          ", in that line?",
+        criteria: {
+          yes: "completing the exchange now",
+          no: "interested, asking about it, agreeing to trade later, or declining -- not completing it now",
         },
       },
     };
-    // A trimmed-down cfg just for logging -- the real request always
-    // targets JEV_MODEL regardless of what cfg.model/helper name.
-    const lcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: JEV_MODEL };
-    const sys =
-      "You decide what a villager does next. Answer with a typed choice, not text.";
-    const msg = [
-      {
-        role: "user",
-        content:
-          "state:\n" +
-          state +
-          "\n\nquestions:\n" +
-          JSON.stringify(body.questions, null, 2),
-      },
-    ];
-    try {
-      const raw = await audited(lcfg, sys, msg, async () => {
-        const data = await decisionPost(lcfg, body);
-        const u = data.usage;
-        return {
-          text: JSON.stringify(data),
-          reasoning: null,
-          // Jev's usage names its fields input_tokens/output_tokens;
-          // aliased here too so the console log's token count (which
-          // reads the OpenAI-shaped names) still shows one.
-          usage: u
-            ? Object.assign({}, u, {
-                prompt_tokens: u.input_tokens,
-                completion_tokens: u.output_tokens,
-              })
-            : null,
-          stop: null,
-          schema: true,
-          model: data.model || JEV_MODEL,
-        };
-      });
-      const data = JSON.parse(raw);
-      const ans = data.answers && data.answers.go;
-      const choice = ans && typeof ans.choice === "string" ? ans.choice : null;
-      return choice ? { go: choice } : null;
-    } catch (e) {
-      return null;
-    }
+    const answers = await askJev(
+      cfg,
+      "You decide whether a line of dialogue completed a trade. Answer with a typed choice, not text.",
+      state,
+      questions,
+    );
+    return !!(answers && answers.deal && answers.deal.choice === "yes");
+  }
+
+  /* Asks Jev which of several candidate facts a line of dialogue
+     actually stated outright, one choice question per candidate settled
+     in a single call -- cheaper than the helper-model call judge() makes
+     below, since Jev is priced by input tokens alone. It cannot write
+     the note in the player's language the way the helper model does --
+     no generated prose, see JEV_MODEL above -- so a confirmed fact comes
+     back with no note, the same shape judge() itself returns when the
+     model left one out; verifyRevealed already falls back to the line
+     as spoken in that case. */
+  async function judgeByJev(cfg, said, translation, candidates) {
+    const state = [
+      "The speaker said: " + JSON.stringify(said),
+      translation ? "In English, that is: " + JSON.stringify(translation) : null,
+    ]
+      .filter((x) => x !== null)
+      .join("\n");
+    const questions = {};
+    candidates.forEach((c) => {
+      questions[c.id] = {
+        type: "choice",
+        instructions:
+          "Did that line state outright, plainly enough to act on, that: " + c.text,
+        criteria: {
+          yes: "asserted, not merely mentioned, hinted at, or asked about",
+          no: "not stated outright",
+        },
+      };
+    });
+    const answers = await askJev(
+      cfg,
+      "You check whether a line of dialogue stated each fact outright. Answer with typed choices, not text.",
+      state,
+      questions,
+    );
+    if (!answers) return [];
+    return candidates
+      .filter((c) => answers[c.id] && answers[c.id].choice === "yes")
+      .map((c) => ({ id: c.id, note: null, ruby: null }));
   }
 
   /* Decides where a villager goes next and why.
@@ -1021,10 +1114,11 @@ LG.llm = (function () {
      villager isn't re-asked. */
   async function intent(cfg, opts) {
     const o = opts || {};
-    /* Movement only, and only when the player has turned it on -- Jev
-       has no route through Logfare and nothing to say for dialogue or
-       chatter, which need generated text (see JEV_MODEL above). */
-    if (cfg.provider === "openrouter" && cfg.apiKey && cfg.jevMovement) {
+    /* Movement only -- Jev has no route through Logfare and nothing to
+       say for dialogue or chatter, which need generated text (see
+       JEV_MODEL above). Used whenever it's reachable at all; there's no
+       setting to turn it off. */
+    if (cfg.provider === "openrouter" && cfg.apiKey) {
       return decideByJev(cfg, o);
     }
     const lines = [

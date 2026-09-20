@@ -7,9 +7,6 @@ LG.game = (function () {
   const settings = {
     lang: 'ru', level: 'beginner', autorun: false,
     provider: 'openrouter', apiKey: '', model: 'deepseek/deepseek-v4.1-flash', helper: '',
-    // Only ever true under provider 'openrouter' -- see refreshJevRow.
-    jevMovement: false,
-    // Local, no provider needed -- kept mutually exclusive with jevMovement in the settings panel.
     needleMovement: false,
     /* One key per provider, so switching provider and back doesn't lose
        the other one. `apiKey` is always the current provider's entry. */
@@ -134,7 +131,7 @@ LG.game = (function () {
   function llmConfig() {
     return { provider: settings.provider, apiKey: settings.apiKey.trim(),
              model: settings.model, helper: settings.helper,
-             jevMovement: settings.jevMovement, needleMovement: settings.needleMovement };
+             needleMovement: settings.needleMovement };
   }
 
   /* ---------------------------------------------------------- inventory */
@@ -1098,14 +1095,7 @@ LG.game = (function () {
       showSaveNote();
     };
     document.getElementById('setSave').onclick = submitSettings;
-    document.getElementById('setProvider').onchange = () => { swapKeyField(); refreshModelList(); refreshHelperList(); refreshJevRow(); };
-    // Jev and Needle both answer the same movement decision -- picking one turns the other off.
-    document.getElementById('setJevMovement').onchange = (e) => {
-      if (e.target.checked) document.getElementById('setNeedleMovement').checked = false;
-    };
-    document.getElementById('setNeedleMovement').onchange = (e) => {
-      if (e.target.checked) document.getElementById('setJevMovement').checked = false;
-    };
+    document.getElementById('setProvider').onchange = () => { swapKeyField(); refreshModelList(); refreshHelperList(); };
     document.getElementById('setModel').onchange = syncModelBox;
     document.getElementById('setHelper').onchange = syncHelperBox;
   }
@@ -1147,7 +1137,6 @@ LG.game = (function () {
       keys: Object.assign({}, draftKeys),
       model: readModel() || settings.model,
       helper: readHelper(),
-      jevMovement: document.getElementById('setJevMovement').checked,
       needleMovement: document.getElementById('setNeedleMovement').checked,
       // No longer player-configurable: gossip is always on, translations
       // always start blurred, voices are always curated, and speech
@@ -1254,11 +1243,9 @@ LG.game = (function () {
     }
     document.getElementById('setVoices').checked = settings.voices;
     document.getElementById('setTtsKey').value = settings.ttsKey;
-    document.getElementById('setJevMovement').checked = settings.jevMovement;
     document.getElementById('setNeedleMovement').checked = settings.needleMovement;
     refreshModelList();
     refreshHelperList();
-    refreshJevRow();
     showSaveNote();
     s.classList.add('open');
   }
@@ -1339,16 +1326,6 @@ LG.game = (function () {
   function syncModelBox() {
     const other = document.getElementById('setModel').value === 'other';
     document.getElementById('setModelCustom').style.display = other ? '' : 'none';
-  }
-
-  /* Jev is only reachable over OpenRouter (see JEV_MODEL in llm.js), so
-     the checkbox is disabled -- and forced off -- under any other
-     provider, the same way setModel/setHelper get force-fixed under
-     Logfare above. */
-  function refreshJevRow() {
-    const box = document.getElementById('setJevMovement');
-    box.disabled = document.getElementById('setProvider').value !== 'openrouter';
-    if (box.disabled) box.checked = false;
   }
 
   /* A villager who sought out the player speaks first when the

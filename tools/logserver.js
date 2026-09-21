@@ -20,7 +20,13 @@
    machine, or loadable into a browser that's never seen it. The server
    has no independent model of what a village is: it just stores
    whatever the game posts (after checking it looks like a save) and
-   returns it unchanged. */
+   returns it unchanged.
+
+   The school bookshelf's "read the whole book" button does NOT go
+   through this server: books/<lang>.json is an ordinary static file,
+   built ahead of time by tools/build-books.js (see that file and
+   tools/books.js), so it's just served like any other file below and
+   works the same on the game's actual static deploy as it does here. */
 const http = require('http'), fs = require('fs'), path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -112,7 +118,9 @@ function serve(req, res) {
   /* Block static serving of dotfiles (.env lives in this directory —
      serving it directly would leak keys even though /env itself is
      access-controlled), logs/ (full of prompts), and saves/ (has its own
-     dedicated routes below, so there should be exactly one way to reach it). */
+     dedicated route below, so there should be exactly one way to reach
+     it). books/ (the school bookshelf's full-text files) has no such
+     route and no reason to be blocked — it's just static content. */
   const parts = path.relative(ROOT, file).split(path.sep);
   if (parts.some(p => p[0] === '.') || parts[0] === 'logs' || parts[0] === 'saves' ||
       parts[0] === 'node_modules') {

@@ -109,7 +109,7 @@ LG.world = (function () {
   function build() {
     tiles = new Uint8Array(W * H).fill(T.GRASS);
     buildings.length = 0; props.length = 0;
-    signposts.length = 0; signBoxes = []; signRevealed = {};
+    signposts.length = 0; signBoxes = [];
 
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const edge = Math.min(x, y, W - 1 - x, H - 1 - y);
@@ -1341,6 +1341,20 @@ LG.world = (function () {
     ctx.drawImage(snowLayer, x0 * TILE, y0 * TILE);
   }
 
+  /* Is anything that moves on its own (water's glint, the fountain's
+     ripples) within view? The ground layer is cached and otherwise only
+     repainted when the camera moves -- see refreshGroundLayer in game.js. */
+  function animatedIn(cam, vw, vh) {
+    const x0 = Math.max(0, (cam.x / TILE) | 0) - 1, y0 = Math.max(0, (cam.y / TILE) | 0) - 1;
+    const x1 = Math.min(W - 1, ((cam.x + vw) / TILE) | 0) + 1, y1 = Math.min(H - 1, ((cam.y + vh) / TILE) | 0) + 1;
+    for (let y = Math.max(0, y0); y <= y1; y++)
+      for (let x = Math.max(0, x0); x <= x1; x++) {
+        const t = tiles[idx(x, y)];
+        if (t === T.WATER || t === T.FOUNTAIN) return true;
+      }
+    return false;
+  }
+
   function drawGround(ctx, cam, vw, vh, dpr) {
     readSnow();
     const x0 = Math.max(0, (cam.x / TILE) | 0), y0 = Math.max(0, (cam.y / TILE) | 0);
@@ -1355,7 +1369,7 @@ LG.world = (function () {
 
   return { TILE, W, H, T, build, get, isSolid, isWalkable, nearestOpen, pathTo,
            buildingAt, buildingUnder, roofRects, buildingByLabel, inRect, nearRect,
-           drawGround, drawBuildings, drawSigns, hitSign, overSign, buildings,
+           drawGround, drawBuildings, drawSigns, hitSign, overSign, buildings, animatedIn,
            // for the tests: what got placed, and where you can get to from here
            _props: () => props, _signs: () => signSpots(), _flood: flood,
            _signBoxes: () => signBoxes };

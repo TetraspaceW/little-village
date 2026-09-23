@@ -354,6 +354,9 @@ LG.llm = (function () {
     ["You add furigana", "furigana"],
     ["You translate and romanise", "gloss"],
     ["You answer yes or no", "trade"],
+    ["You keep one person", "revise"],
+    ["You note what people took away", "recall"],
+    ["You decide whether a villager posts", "notice"],
   ];
   const transcript = [];
   let audit = true,

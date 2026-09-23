@@ -302,6 +302,14 @@ for (const p of LG.PLACES) {
    a runtime error when a player happens to walk far enough to see it.
    Renders the entire map, in every language, with and without snow,
    with a viewport wide enough that nothing gets culled from the draw call. */
+section('the cached ground knows when it has water in it');
+{
+  const T = LG.world.TILE, view = 10 * T;
+  ok(LG.world.animatedIn({ x: 6 * T, y: 68 * T }, view, view), 'the pond keeps the ground layer moving');
+  ok(LG.world.animatedIn({ x: 36 * T, y: 66 * T }, view, view), 'and so does the fountain');
+  ok(!LG.world.animatedIn({ x: 30 * T, y: 4 * T }, view, view), 'the deep woods can sit still');
+}
+
 section('the whole map draws');
 {
   const cam = { x: 0, y: 0 };
@@ -436,6 +444,11 @@ if (shop) {
   ok(sold, shop.def.name + ' sold a ' + LG.ITEMS[ware.i].en);
   ok(LG.game.count(ware.i) === 1, 'and the traveller is holding it');
   ok(LG.game.commerce(shop, 'buy', ware.i, ware.p), 'and took it back when asked');
+  // The reply schema says "no price given" with null, which is not the same as a price of nothing.
+  shop.turns = (shop.turns || 0) + 5;
+  const purse = LG.game.count('coins');
+  ok(LG.game.commerce(shop, 'sell', ware.i, null), 'a sale with no price named still goes through');
+  ok(purse - LG.game.count('coins') === ware.p, 'at the usual price');
 }
 
 /* What a villager buys they hold, know they hold, and can say so. */
@@ -686,7 +699,9 @@ async function keysPerProvider() {
   pick('openrouter');
   ok(el('setKey').value === '', 'switching provider shows that provider\u2019s key, not the one just typed');
   el('setKey').value = 'or-not-real';
-  await el('setSave').onclick();
+  const seedBefore = s3.LG.game.plan.seed;
+  await el('setSave').onclick({ type: 'click' });    // a real click hands the handler its event
+  ok(s3.LG.game.plan.seed === seedBefore, 'and Save keeps the village you are in');
   ok(set.provider === 'openrouter' && set.apiKey === 'or-not-real', 'saving uses the key for the provider picked');
   const stored = JSON.parse(kept['lg-settings']).keys;
   ok(stored.logfare === 'lf-not-real' && stored.openrouter === 'or-not-real',
@@ -1083,6 +1098,9 @@ section('a village, written down and read back');
   ok(LG.save.has(), 'so there is a village to come back to');
   LG.save.forget();
   ok(!LG.save.has(), 'and a way to be rid of it');
+  LG.save.tick(60);
+  ok(!LG.save.has(), 'and the autosave does not quietly put it back');
+  LG.save.keep();                                  // as starting a new village would
 }
 
 /* --------------------------------------------------- closing the tab

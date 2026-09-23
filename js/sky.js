@@ -60,7 +60,7 @@ LG.sky = (function () {
 
     const wind = (info.wind || 0.3);
     for (const p of parts) {
-      if (kind === 'rain')      { p.x += (60 + 40 * wind) * dt * 10 * 0.1; p.y += (900 * p.v * rate) * dt; }
+      if (kind === 'rain')      { p.x += (60 + 40 * wind) * dt; p.y += (900 * p.v * rate) * dt; }
       else if (kind === 'snow') { p.x += (40 * wind + Math.sin(p.y / 40 + p.s * 6) * 30) * dt; p.y += (90 + 70 * p.v) * rate * dt; }
       else if (kind === 'sand') { p.x += (420 + 260 * p.v) * wind * dt; p.y += Math.sin(p.x / 60 + p.s * 6) * 24 * dt; }
       else if (kind === 'fog')  { p.x += (16 + 10 * p.v) * dt; }
@@ -147,7 +147,8 @@ LG.sky = (function () {
     if (kind === 'rain') {
       ctx.strokeStyle = 'rgba(190,215,240,.55)'; ctx.lineWidth = 1.4;
       ctx.beginPath();
-      for (const p of parts) { ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - 4, p.y + 16 + p.v * 10); }
+      // Slanted the way the drops are actually blowing (rightward, see step()).
+      for (const p of parts) { ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + 4, p.y + 16 + p.v * 10); }
       ctx.stroke();
     } else if (kind === 'snow') {
       ctx.fillStyle = 'rgba(255,255,255,.85)';

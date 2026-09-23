@@ -51,14 +51,10 @@ function readCalls(files) {
 
 /* -------------------------------------------------------------- grouping
 
-   The `kind` field already on each log entry is matched from a fixed
-   system-prompt prefix list in js/llm.js's `KINDS`, which (as noted in
-   format-stats.js) has no entry for the noticeboard call, belief-
-   revision, or the after-conversation takeaway — those three land in
-   its catch-all "call" bucket. A latency breakdown needs every call
-   categorized legibly, so this reuses the same fuller table
-   format-stats.js defines as `COST_KINDS`, duplicated here for the same
-   reason as the log-reading functions above. */
+   The same system-prompt prefix table as js/llm.js's `KINDS`, applied
+   again here rather than trusting each entry's `kind` field: logs
+   written before llm.js knew the noticeboard, belief-revision and
+   after-conversation calls filed all three under a catch-all "call". */
 const KINDS = [
   ['You decide what a villager does next', 'intent'],
   ['You play one villager', 'chatter'],

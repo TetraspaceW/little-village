@@ -116,9 +116,10 @@ LG.actors = (function () {
     if (want) { a.wantsGo = null; a.thought = now; }
     else if (a.deciding) {
       // An async decide() call may never resolve — don't let that freeze the
-      // villager in place indefinitely; give up on it after 12s.
-      a.deciding += dt;
-      if (a.deciding < 12) return;
+      // villager in place indefinitely; give up on it after 12s. Timed off
+      // `lived`, which runs every tick: this branch only runs every
+      // routeCool seconds, so adding `dt` here would take hours to get there.
+      if (a.lived - (a.decideSince || 0) < 12) return;
       a.deciding = false;
     }
     else {
@@ -127,7 +128,7 @@ LG.actors = (function () {
       // is picked up next tick. If decide() declines (rate-limited, no key,
       // etc.), fall back to the PHASE_TABLE dice roll immediately instead
       // of leaving the villager standing still.
-      if (decide && decide(a, green)) { a.deciding = 0.0001; return; }
+      if (decide && decide(a, green)) { a.deciding = true; a.decideSince = a.lived; return; }
       want = byDice(a, green);
     }
     if (!want || want === a.patch) return;

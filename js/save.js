@@ -58,6 +58,10 @@ LG.save = (function () {
   let lastAt = '';                       // timestamp of the last write, for the settings panel
   let resumed = false;                   // true if this session was restored from a save
   let writes = 0;                        // count of saves written this session
+  /* Set by `forget`: the village being played goes on unsaved -- the
+     autosave would otherwise put back what was just thrown away within
+     EVERY seconds. The next village (or a loaded one) is saved as usual. */
+  let off = false;
 
   function http() {
     return typeof fetch === 'function' &&
@@ -230,7 +234,8 @@ LG.save = (function () {
        to remember anything about it itself. */
     g.settings.lang = data.village.lang;
     g.settings.level = data.village.level;
-    withPlaces(() => g.newVillage(data.village.seed, true));
+    // `restoring`: newVillage must not save the bare village before the save is laid over it.
+    withPlaces(() => g.newVillage(data.village.seed, true, true));
 
     const tm = data.time || {};
     LG.time.start(tm.day, tm.frac);
@@ -312,6 +317,7 @@ LG.save = (function () {
     }
 
     resumed = true;
+    off = false;
     since = 0;
     g.renderHUD();
     return null;
@@ -371,6 +377,7 @@ LG.save = (function () {
 
   /* ----------------------------------------------------------- the writing */
   function write(leaving) {
+    if (off) return null;
     const shot = snapshot();
     if (!shot) return null;
     const text = JSON.stringify(shot);
@@ -433,7 +440,11 @@ LG.save = (function () {
     if (server && http()) fetch(ENDPOINT, { method: 'DELETE' }).catch(() => {});
     resumed = false;
     lastAt = '';
+    off = true;
   }
+
+  // A new village is worth saving again, even after `forget`.
+  function keep() { off = false; }
 
   /* Save on tab close. `pagehide` is included because `beforeunload`
      doesn't reliably fire on mobile browsers. */
@@ -443,8 +454,9 @@ LG.save = (function () {
     window.addEventListener('pagehide', bye);
   }
 
-  return { VERSION, snapshot, restore, check, write, tick, resume, forget, digestOf,
+  return { VERSION, snapshot, restore, check, write, tick, resume, forget, keep, digestOf,
            has: () => !!fromLocal(),
+           get forgotten() { return off; },
            get lastAt() { return lastAt; },
            get onServer() { return serverOk; },
            get resumed() { return resumed; },

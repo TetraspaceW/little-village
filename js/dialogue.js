@@ -772,6 +772,12 @@ LG.dialogue = (function () {
     if (!prompt) { addLine('player', shown); el.dlgInput.value = ''; }
     status(LG.game.displayName(npc) + ' is thinking…', 'thinking');
 
+    /* The reply is awaited, and by the time it lands the player may have
+       walked off -- or be talking to someone else, whose card must not
+       get this villager's line. The turn is still recorded either way. */
+    const here = () => current === npc;
+    const say = (msg, kind) => { if (here()) status(msg, kind); };
+
     let reply;
     try {
       const cfg = LG.game.llmConfig();
@@ -783,14 +789,14 @@ LG.dialogue = (function () {
       reply = await LG.llm.speak(cfg, built.text, msgs, built.schema,
                                  { cachePrefixes: [built.core, built.stable], session: 'npc-' + npc.id });
     } catch (err) {
-      status('⚠ ' + err.message, 'error');
+      say('⚠ ' + err.message, 'error');
       busy = false; el.dlgSend.disabled = false;
       return;
     }
 
     if (!reply || !reply.say) {
-      if (!prompt) status('⚠ ' + LG.game.displayName(npc) + ' said something the game could not read. Try again.', 'error');
-      else status('Say hello — or click a phrase below.');
+      if (!prompt) say('⚠ ' + LG.game.displayName(npc) + ' said something the game could not read. Try again.', 'error');
+      else say(LG.touch.on ? 'Say hello — or tap a phrase below.' : 'Say hello — or click a phrase below.');
       busy = false; el.dlgSend.disabled = false;
       return;
     }
@@ -827,7 +833,7 @@ LG.dialogue = (function () {
         new RegExp('\\b' + npc.def.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i')
           .test(reply.translation)) {
       npc.nameKnown = true;
-      el.dlgName.textContent = npc.def.name;
+      if (here()) el.dlgName.textContent = npc.def.name;
       LG.game.log('You learn their name — ' + npc.def.name + '.');
     }
 
@@ -844,8 +850,8 @@ LG.dialogue = (function () {
       }
     }
 
-    const row = addLine('npc', spoken, reply.translation, reply.roman, ruby, npc);
-    speakLine(npc, spoken);
+    const row = here() ? addLine('npc', spoken, reply.translation, reply.roman, ruby, npc) : null;
+    if (here()) speakLine(npc, spoken);
     if (L.furigana && !ruby && needsFurigana(spoken)) {
       pending.push(repairFurigana(npc, spoken, row));               // ask the small model for it
     }
@@ -865,9 +871,9 @@ LG.dialogue = (function () {
     npc.bubble = spoken; npc.bubbleT = 6;   // the canvas bubble stays plain text
 
     const u = String(reply.understood || '').toLowerCase();
-    if (u === 'none') status(LG.game.displayName(npc) + ' did not understand you at all.', 'miss');
-    else if (u === 'partial') status(LG.game.displayName(npc) + ' only caught part of that.', 'miss');
-    else status('');
+    if (u === 'none') say(LG.game.displayName(npc) + ' did not understand you at all.', 'miss');
+    else if (u === 'partial') say(LG.game.displayName(npc) + ' only caught part of that.', 'miss');
+    else say('');
 
     /* Shopkeeping: the villager's reply claims a sale happened; the
        game verifies and applies it, or reports why not. This check used
@@ -877,7 +883,7 @@ LG.dialogue = (function () {
     const act = gotIt ? String(reply.action || '').toLowerCase() : '';
     if (act === 'sell' || act === 'buy') {
       if (LG.game.commerce(npc, act, reply.item, reply.price)) renderItems();
-      else status('That sale could not be squared up.', 'miss');
+      else say('That sale could not be squared up.', 'miss');
     }
 
     /* A refund request is also communicated as a gesture: holding out
@@ -908,16 +914,16 @@ LG.dialogue = (function () {
       } else if (offered === trade.wants && haveEnough) {
         pending.push(confirmOffer(npc, trade, spoken, reply.translation));
       } else if (offered) {
-        status(LG.game.displayName(npc) + ' does not want your ' + LG.ITEMS[offered].en + '.');
+        say(LG.game.displayName(npc) + ' does not want your ' + LG.ITEMS[offered].en + '.');
       }
     } else if (offered) {
-      status(LG.game.displayName(npc) + ' has no use for that.');
+      say(LG.game.displayName(npc) + ' has no use for that.');
     }
 
     busy = false;
     el.dlgSend.disabled = false;
     // A reply should not take focus back after a touch user dismissed the input.
-    if (!LG.touch.on) el.dlgInput.focus();
+    if (!LG.touch.on && here()) el.dlgInput.focus();
   }
 
   /* The in-character model self-reports which facts it thinks it
@@ -1035,7 +1041,7 @@ LG.dialogue = (function () {
       console.warn('[furigana] gave up on this line.\n  said:     ' + spoken +
                    '\n  returned: ' + last);
     }
-    status('No furigana for that line — ' + (last ? 'the reading did not match.' : 'the request failed.'), 'miss');
+    if (current === npc) status('No furigana for that line — ' + (last ? 'the reading did not match.' : 'the request failed.'), 'miss');
     return false;
   }
 

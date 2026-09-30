@@ -1,1366 +1,455 @@
 # Design notes
 
-Little Village is a game whose characters are played by a language model, which
-means most of its bugs have not been in the code. They have been in the space
-between what the model returned and what the game made of it, or in a sentence of
-a prompt that was doing something other than what it said. This file is the
-record of those: what the system does now, what it used to do, and what went
-wrong in between.
+Why the game works the way it does: the decisions and invariants that aren't obvious from
+the code, and the bug behind each one. The README covers what the game is and how to run
+it. Read the relevant section before you change a prompt or a mechanic. Most of these
+rules exist because the obvious version was tried first and broke.
 
-The README says what the game is. This says why it is that.
+Most bugs in this project have been in the gap between what the model returned and what
+the game made of it, or in a prompt sentence that did something other than what it said.
 
-A few rules keep falling out of the stories below, so they are worth stating once:
+## General rules
 
-- **One source of truth, or it drifts.** Three copies of a villager's prompt, five
-  places asking for furigana, two answers to "has this already happened" — every
-  one of them diverged, and every divergence was a bug nobody chose.
-- **Log the raw thing.** Whatever the model returned, before any parsing or
-  repair. Almost every bug here was invisible in the tidied-up version.
-- **Fail loudly.** A refused sale nobody was told about is worse than a bad sale.
-  Silence is not closure.
-- **Records beat rules.** Give a villager the ledger and they can work out that
-  they were paid for two drinks and handed over one. Give them another rule and
-  they have one more thing to weigh.
-- **Do not name a failure mode in a prompt.** Naming it is a good way to get it —
-  "do not force it into every reply", "terse is fine". The salient word wins.
-- **The world may write on a villager only what they saw.** Everything that
-  reaches them by report goes through them.
+- **One source of truth.** Every duplicated thing has drifted: three copies of a
+  villager's prompt, five furigana instructions, three answers to "is this lead spent".
+  If two callers want different amounts of something, put the numbers side by side in
+  one table.
+- **Log the raw reply**, before parsing or repair. The tidied version hides the bug.
+- **Fail loudly.** A refusal that nobody is told about is worse than the bad action it
+  prevented. The villager and the player should both be able to see what the game did.
+- **Records beat rules.** Give a villager the ledger or the dated fact, and let them
+  reason from it. Don't add another instruction to weigh.
+- **Don't name a failure mode in a prompt.** The model fixates on the salient word
+  ("do not force it into every reply", "terse is fine"). State the positive behaviour
+  instead. Exceptions exist where it was measured to help (the toki pona `grammarNote`
+  in `js/data.js`), and they are documented at the call site.
+- **The world may write on a villager only what they saw first-hand.** Anything they
+  learn by report goes through their own reasoning.
+- **Don't put answers in the villager's mouth.** No scripted lines, no mandated
+  feelings, no conclusions they didn't reach themselves. The model will pass a supplied
+  conclusion on as fact. `OLD-LI.md` has the rice-merchant incident, where one invented
+  answer spread to three villagers.
 
----
+## Movement: villagers decide where to go
 
-## The hut at the east end was a hallucination first
+- A model picks each villager's destination from a named list of places. It sees their
+  goal, what they know, their recent memories, the hour and weather, where they are, and
+  **who they've seen and where**, so "go find Sanna" is expressible. The decision goes to
+  Jev on OpenRouter and to the helper model on Logfare (see below).
+- It's asked only when something changes (arrival, hour, weather, new information), with
+  a cooldown (`DECIDE_COOL` in `js/game.js`). If there's no key or the call fails, it
+  falls back to the old probability table (`PHASE_TABLE` in `js/npc.js`), so the village
+  never freezes.
+- Recent memories are included on purpose. Without them, six villagers heard that rice
+  was for sale nearby and none acted on it.
+- **Open is not reachable.** Some of Ilya's woods patch is walled-in clearings, so a
+  villager tries several random spots in the target patch before giving up. A test
+  checks that every villager can reach every patch they can be sent to, and every
+  generated village is flood-filled to check each door has a path to it.
+- Mikhalych's rice hut exists because a villager once hallucinated it (`OLD-LI.md`).
 
-Mira the baker, asked where you could buy rice and having no idea, invented a rice
-merchant at the east end of the village on the spot — and within twenty seconds two
-other villagers believed in him and one of them was setting off. Nobody could go: the
-place did not exist, and a villager walks to a named place or nowhere. `OLD-LI.md` is
-the whole account.
+## Jev: fixed-choice questions (OpenRouter only)
 
-The village now has a hut out past the farmhouse with Mikhalych in it, who sells rice,
-so the answer she gave is the true one. He keeps the habit that produced him: he does
-not say "I don't know".
+TypeSafe's Jev (`typesafe/jev-1.13`) takes `{state, questions}` and returns one named
+option per question, with a probability. It's billed on input tokens only. It uses
+OpenRouter's decisions endpoint (`decisionPost`/`askJev` in `js/llm.js`), not
+`/chat/completions`, so it can't be offered as a main or helper model.
 
-## Villagers decide where to go
+- It handles three jobs: where a villager goes (`intent` → `decideByJev`), whether a
+  trade completed (`confirmTrade` → `confirmTradeByJev`), and which self-reported facts
+  a line actually stated (`judge` → `judgeByJev`). All three are fixed questions with a
+  fixed set of answers.
+- It's used automatically whenever `provider === "openrouter"` and a key is present.
+  There's deliberately no setting. Opt-in toggles meant almost nobody used it. Each
+  function checks the provider itself, and Logfare gets the helper-model version.
+- Tradeoffs accepted: Jev returns no text. Movement loses its "why" (the console prints
+  only the destination), and confirmed facts get no player-language note.
+  `verifyRevealed` already falls back to the line as spoken when a note is missing.
+- `judge` sends one question per candidate fact in a single request.
 
-This was a probability table — morning meant a 60% chance of work, a 30% chance of the
-green — which made everyone a dumb NPC in a game whose whole premise is that they are
-not. A villager who wanted a saw more than anything never went looking for one. A
-villager who had just been told the baker has bread did not walk to the bakery. The fact
-graph and the movement system did not know each other existed.
+## Villager-to-villager conversation
 
-The decision goes to a model now — Jev on OpenRouter (see *Jev picks a place, not a
-reason*, below), the helper model on Logfare — and it gets what a person would have: their
-own goal, what they know, the hour and the weather, where they are, **who they have seen
-about the village and where**, and the places they could go. That last one matters more
-than it looks — knowing Sanna has the pack of cards is worth nothing if there is no way
-to express going to find Sanna. They answer with somewhere to be, and, when the helper
-model is the one asked, a few words of why.
+- **One call per line, and each villager writes only their own lines.** When one call
+  wrote both halves, it read like a script. Each turn gets that villager's persona,
+  their news, and the transcript so far.
+- It runs everywhere, not just on screen, on the helper model: two conversations at a
+  time (`CHAT_PARALLEL`), about 2.8 s per line (`turnHold`), and a queue so a busy green
+  doesn't burst. A meeting goes stale after `CHAT_STALE` if the pair walks apart, and is
+  dropped (`js/dialogue.js`).
+- Each villager is told where they are, why they came, and whether they came looking
+  for this person. The old prompt told everyone they were "on their way somewhere", and
+  seven of 22 lines in one session were people telling each other to go home.
+- The prompt states the situation and stops. It has no instructions on how conversation
+  works ("react to what they said"), which read as stiff.
 
-They are asked only when something has changed — they arrived, the hour turned, the
-weather broke, they learned something — so a settled villager costs nothing, and there is
-a cooldown so a busy village cannot spin. With no key, or when a call fails, the old
-table is still there as a fallback, so the village never stands still.
+## Prompt wording
 
-**What they hear reaches what they do.** A villager deciding where to go used to be
-given the facts the errand generator dealt them and nothing else — not what they had
-picked up by talking. So six villagers could learn that rice was for sale two minutes'
-walk away and none of them could act on it, and the village spent an entire afternoon
-discussing a bowl of rice that was on offer the whole time. Their recent memories go into
-the decision now, alongside their own business.
+- **Removed and not to be re-added:** "do not force it into every reply", "you are not
+  reading from a list", "this is a conversation, not a monologue", "never sound like a
+  telegram", "be patient with broken grammar" (now it just states that the traveller's
+  grammar is rough), and mandated feelings ("accept it joyfully"). A persona supplies
+  its own feelings.
+- **Removed: "If you do not know, suggest who might."** Villagers can't know who else
+  knows, so this invited made-up referrals.
+- **`prompt` vs `register`** (per difficulty). `prompt` is *accommodation*, how a kind
+  native talks to a learner, and it's only for talking to the player. `register` is for
+  villager-to-villager talk. It names only vocabulary and sentence complexity, never who
+  is being addressed, and it's empty at advanced. The beginner register once ended "the
+  way you talk when you are not thinking about it", which beat the plain-words clause
+  and produced idiom-heavy gossip.
+- **Villagers may say something simpler.** The player-facing rule allowed easier words
+  and shorter sentences, and forbade broken grammar. Without permission to change what
+  they're saying, beginner villages produced constructions like 把…带回来. The rule
+  now explicitly allows that.
+- No "use whatever tense" (Chinese has no tense). No named levels like A1 or HSK 1, which
+  would put a syllabus in the villager's mouth.
+- Villager-to-villager lines must be "the way a real speaker would actually say it out
+  loud". The rule says nothing about length. "terse is fine, ungrammatical is not" made
+  them terse and produced 黄昏冷？.
 
-Doors are cut so that every one of them has a path to it, which is checked by a
-flood-fill on every generated village rather than trusted.
+## Villager prompt assembly
 
-**Open is not the same as reachable.** The woods hold small clearings walled in by trees,
-and Ilya the woodcutter lives among them — a third of the tiles in his own home patch have
-no way into them. A villager aimed one dart at a random spot in the patch they wanted, and
-when it landed in a clearing the path failed and they stood in the trees until their next
-think. They try a handful of spots now before giving up on the idea, and a test checks that
-every villager can reach every patch they can be sent to.
+- `js/view.js` is the **single** assembly of "who this villager is and what they know".
+  All three callers (player dialogue, villager chatter, movement) render parts of it.
+  Deliberate differences in how much each caller includes sit together in one table.
+  Separate copies drifted before, and a villager read their own opinion in the third
+  person.
+- The player-facing reply is JSON: `say`, translation, romanisation, `understood`,
+  `revealed`, `remember`, and an optional trade `action`.
+- **Stock is a prior, not a manifest.** A baker plausibly has a pain au chocolat. The
+  only hard inventory is what the villager actually took from the player.
 
-## Jev picks a place, not a reason
+## Structured output and reply parsing
 
-TypeSafe's Jev answers a different kind of question than every other model this game
-calls: given a fixed list of options, it returns which one and a probability, not
-generated text. That is exactly the shape of the "go" decision above — one of a named
-list of places.
-
-It is asked over OpenRouter's decisions endpoint, not `/chat/completions` — genuinely a
-different request, `{state, questions}` rather than a system prompt and messages — so it
-could not simply join the model lists the way a new chat model would; picking it as the
-main or helper model would leave dialogue with a model that cannot write dialogue.
-Logfare has no equivalent endpoint, so `LG.llm.intent` only reaches Jev on OpenRouter —
-it checks the provider itself before ever calling out. There is no setting for this: it
-is used whenever it is reachable at all, the same as the two checks below.
-
-**It does not answer "why."** A villager walking to the bakery because they are hungry
-and one walking there because they heard bread was for sale look the same to Jev — it
-was given a place to choose from, not a reason to have wanted one, and a System One
-model returns a probability over the options it was handed, not prose about them. The
-existing call's `why` was worth having (see *Open the console and you can watch them
-think*, below) and this trades it away on purpose, in exchange for a call priced by
-input tokens alone, with nothing charged for the answer. On OpenRouter a villager just
-moves; only on Logfare, where the helper model still decides, do they say why.
-
-## Jev checks, not writes
-
-The helper model does two more jobs besides deciding where a villager goes: it checks
-whether a line of dialogue actually completed a trade (`confirmTrade`, called when the
-player held out the right item but the reply didn't flag a deal — see *A gesture is not a
-bargain*, above), and it checks which of a villager's self-reported `revealed` facts the
-line actually stated outright (`judge`, see *One list, and it does not lie to them*).
-Both of those are a fixed question against a fixed answer, not free text — did this
-happen, yes or no — which is exactly the shape Jev answers, so they go to Jev instead
-whenever it's reachable (OpenRouter, with a key), the same as the movement decision
-above.
-
-**A confirmed fact gets no note.** `judge`'s helper-model version writes back a line in
-the player's language for each fact it confirms — "how the listener would jot that down"
-— because the model doing the confirming is also the one asked to write prose. Jev never
-writes prose (see above), so a fact Jev confirms comes back with none. That is not a new
-failure mode: `verifyRevealed` already falls back to the line as spoken whenever a note
-is missing, since the helper model sometimes leaves one out too. Jev just takes that path
-every time rather than occasionally.
-
-**One call, many questions.** `judge` can be checking several candidate facts from a
-single line at once. Jev's `questions` object takes more than one named question in the
-same request, so every candidate gets its own yes/no question, answered together — one
-call priced by input tokens, not one per candidate.
-
-**No opt-out, short of Logfare.** These started as settings-panel toggles, each off by
-default so a player could keep the helper model's richer answers (a reason for the move,
-a note in their own language for a confirmed fact) without losing anything else. In
-practice that just meant most players never saw Jev at all, on a call that is cheaper and
-no less correct at the one thing it does. What is actually worth keeping configurable is
-the provider — Logfare has no Jev, so its villagers still get the helper model's version
-of all three checks, reasons and all.
-
-## Two villagers talking
-
-**Each line is its own call, and each villager only writes their own.** The alternative
-is one call that writes both halves, which is what this used to do, and it reads like a
-script: the halves agree too neatly, nobody misunderstands anybody, and the second
-speaker never says anything the first did not set up. Now each turn goes to the small
-model with that villager's persona, whatever news they are carrying, and the transcript
-so far, and they answer what was actually just said. Both of them bring their own news,
-so it is a conversation with two people's business in it rather than one delivery and an
-acknowledgement.
-
-This happens wherever they are, not only where you can see it — running it on the small
-model is what makes that affordable, and a village that only talks when watched is not a
-village. It costs four to six small-model calls per meeting instead of one, which is the
-whole reason it runs on the helper model — two conversations at a time, paced at a line
-every 2.8 seconds, so a busy green is a handful of cheap calls a minute rather than a
-flood. A queue smooths bursts (a dozen villagers meeting on the green at midday start
-their conversations a beat apart rather than all at once), and a meeting that goes stale
-because the pair wandered off is dropped rather than generated late.
-
-**They are where they chose to be.** The conversation prompt used to say "you have run
-into X" and, further down, that they were both on their way somewhere — asserted of
-everyone, always, including two people who had each walked somewhere on purpose and
-arrived. Reading a real session's log, the cost was plain: seven of twenty-two lines were
-people telling each other to go home. Now a villager is told where they are, what brought
-them there, and whether they came looking for this particular person — so Boris, who
-chose to go after Mira about the pie, opens like someone who did that.
-
-The prompt otherwise gives the villager their situation and gets out of the way. It says
-who they are, who they have run into, what they have been meaning to mention, what has
-been said so far — and then stops. It does not tell them to react to what the other one
-said rather than talk past them, which is instructing a competent actor in how
-conversation works and reads exactly as stiffly as it sounds.
-
-## What the prompts stopped saying
-
-The player-facing prompt got the same pass. Gone from it: *"do not force it into every
-reply"* after an instruction to remark on the weather (naming a failure mode is a good
-way to get it), *"you are not reading from a list"*, *"this is a conversation, not a
-monologue"*, *"never sound like a telegram"*, and *"be patient with broken grammar"* —
-replaced by simply stating that the traveller's grammar is rough, which lets a warm
-villager be warm about it and a brisk one be brisk. Mandated feelings went too: a chain
-role used to say *"accept it joyfully and press a compass on them"*, which fights the
-persona of a shopkeeper written as never giving anything away.
-
-One of those was a correctness fix rather than a stylistic one. The prompt used to end
-*"If you do not know, say so and suggest who might"* — but a villager has no way of
-knowing who else knows, so that is an invitation to invent a name. With facts now
-concentrated by difficulty, an invented signpost sends you across the village to
-somebody who genuinely cannot help.
-
-**Accommodation is not register.** The one that mattered most was the level. Each
-difficulty carries a `prompt` written as *accommodation* — "speak the way a kind native
-speaker speaks to someone on their first day" — which is right when a villager is talking
-to you and absurd between two villagers, where it has Mira addressing Boris as though he
-were learning his own language. Villager-to-villager talk uses a separate `register` line
-instead, which describes how plainly they speak rather than who they are speaking down
-to. At advanced it is empty: two natives with nobody to accommodate simply talk.
-
-**But overhearing is a mechanic, not scenery.** The beginner `register` ended *"— the
-way you talk when you are not thinking about it"*, which is an instruction to be
-unguarded, and it beat the plain-words clause in front of it every time: a beginner
-village gossiped in 蔫了, 白拿人家东西 and 回头再聊. What a register constrains is the
-words and the sentences, so that is all it names now. Who they are speaking to stays
-out of it, which is the whole reason it is not `prompt`.
-
-**A third way to simplify.** The player-facing rule offered two — easier words, shorter
-sentences — and then forbade the only other thing a model might try, breaking the
-grammar. That is the right thing to forbid and the wrong place to stop: where the
-natural phrasing of a thought needs a construction a beginner has no chance with, both
-permitted moves fail, and a beginner village asked for a pig back with 把…带回来 and
-offered a reward with 谁…就谁 — correct, short, and nowhere near a first day. What was
-never said is that the villager may simply say something else. They are not translating
-a fixed sentence; they are a person with something to get across, and choosing an easier
-thing to say is what a kind speaker actually does.
-
-Gone with it: *"use whatever tense the sentence actually needs"*. Tense is an
-Indo-European frame — Chinese has aspect and complements and no tense at all — so the
-clause constrained nothing and left *"simple grammar"* to be satisfied by a short
-sentence. No level is named in any of this on purpose: naming A1 or HSK 1 would put a
-syllabus in the villager's mouth, and they are not teachers.
-
-**A rule about grammar, not about length.** Villager-to-villager lines had no equivalent
-of the rule that keeps the player-facing ones from turning into telegrams, so a character
-written as *deliberate* produced 黄昏冷？ — which is not a sentence anyone says. The rule
-now reads *"say it the way a real Chinese (Mandarin) speaker would actually say it out
-loud"*, and says nothing about length on purpose: the first attempt ended *"terse is fine,
-ungrammatical is not"*, where "terse" is the most salient word in the sentence and a clause
-meant to permit brevity reads as an instruction to be brief. How long a villager's
-sentences are belongs to their character; whether they are sentences does not.
-
-## One villager, assembled once
-
-Three separate things ask a model to be a villager: talking to the player, talking to
-another villager, and deciding where to stand. Each of them used to build "who this is
-and what they know" from scratch, and the three copies drifted — different slices of the
-same memory, different amounts of the same knowledge, and a fix that only ever landed in
-one of them, so Mira read her own opinion of Wren in the third person whenever the player
-was in front of her. `js/view.js` is the one assembly; each caller renders the parts it
-wants, and where they deliberately want different amounts the numbers sit together in one
-table so the next divergence is a decision rather than an accident.
-
-**Each character's prompt** is assembled per turn from that one view: who they are, what
-the generator gave them to want, the facts they hold, what you've told them, what you're
-carrying, and the difficulty level. They reply with a small JSON object — what they say,
-a translation, a romanisation, how much of you they understood, which facts they
-revealed, optionally something to remember, and optionally a trade.
-
-What it is *not* is an inventory. A villager's stock is a prior, not a manifest: the
-baker has whatever a baker would plausibly have, and if the traveller asks for a pain au
-chocolat then of course she has one. That looseness is the point and is passed through
-untouched — the only hard fact is what she is holding because she took it off you, which
-is the thing she used to deny having.
-
-## Getting a whole object back
-
-**Where the model will take a schema, it is not asked nicely.** Reading one session's
-logs turned up a third of the player-facing replies coming back as a bare `{"say": …}`
-— no English, no pinyin — every one of them a courtesy or a vocabulary gloss, which is
-to say every one a turn where the rest of the object was at its empty value. The prompt
-was the cause: every field but `say` carried a hedge (*OPTIONAL*, *only with sell or
-buy*, *[] if none*, *when in doubt leave it out*) and nothing said any field was
-mandatory, so the object read as mostly-optional and the tail got dropped. The
-villager-to-villager call, three fields and no hedges, was complete eighty-four times
-out of eighty-four in the same session.
-
-The prompt says which fields are never omitted now, and gives *nothing happened* a
-spelling of its own. But the stronger fix is to stop it being a matter of judgement:
-OpenRouter will take a JSON Schema as OpenAI's `response_format`, which the router
-translates to whatever backend it picks, so this is one branch rather than one per
-model.
-
-**It is asked once, and it fails closed.** Support is per endpoint, not per model,
-and OpenRouter *rejects* a request whose model has no structured outputs rather than
-ignoring the field — so sending one blindly would turn a reply that merely arrived
-thin into no reply at all. When the key is accepted the game looks the pair up in
-OpenRouter's `supported_parameters` and remembers the answer. Anything it could not look up, could not reach, or does
-not recognise counts as no. Some listed models are exactly that case: they take
-`response_format` for plain JSON mode but are not on the structured-outputs list, so
-they get the prompt and the repair, the way everything did before.
-
-**The prompt block and the schema are one list.** They are rendered from the same
-array of fields, so a field cannot be described to the villager and missing from the
-schema, or typed one way and explained another — which is the drift that put three
-copies of a villager's prompt out of step once already. Every field is required and
-the optional ones are nullable rather than absent, because that is the one shape both
-providers accept and it is also the shape the prompt describes: nothing is omitted,
-and a turn with nothing to report says so with `null`, `[]` and `"none"`. Each entry
-in the log records whether it was shape-checked or only asked.
-
-**Replies are read forgivingly, but never shown raw.** Villagers answer in JSON, and
-models occasionally drop a quote or leave a trailing comma. The parser strips fences,
-repairs the common breakages, and — failing that — lifts the fields out by hand. What
-it will not do is fall back to showing the raw text: a player should never see a brace
-in a speech bubble, so an unreadable reply is reported as a failed turn instead.
-
-**A translation has to be a translation.** The `en` field occasionally comes back in
-the villager's own language — a Chinese line "translated" into Chinese, which tells you
-nothing. Anything carrying Han, kana or Cyrillic where English was asked for is
-rejected and re-glossed by the helper model, so the blurred line under a villager's
-speech is always in a language you can read.
+- **Use a JSON Schema where supported** (OpenRouter `response_format`). When hedges like
+  *OPTIONAL* and *[] if none* were on every field except `say`, a third of replies came
+  back as bare `{"say": …}`.
+- Support is per endpoint. It's looked up once at connect time from
+  `supported_parameters` (`js/llm.js`) and cached. **Fail closed:** OpenRouter rejects a
+  schema sent to an unsupported model, so anything unknown is treated as unsupported
+  and gets prompt-based JSON plus repair.
+- The prompt's field list and the schema are rendered **from one array**. Every field is
+  required. Optional ones are nullable, and "nothing happened" is spelled `null`, `[]`,
+  or `"none"`. The log records whether each call was schema-checked.
+- The parser strips fences, repairs common breakage, and falls back to pulling out
+  fields by hand. It **never shows raw text**. An unreadable reply becomes a failed
+  turn, never a brace in a speech bubble.
+- If the translation contains non-Latin script (`looksEnglish`, `js/dialogue.js`), it's
+  discarded and the helper model re-glosses the line.
 
 ## Furigana
 
-**One spec, in one place.** The model was being asked for furigana in five separate
-places — the villager's own prompt, a second rule further down that same prompt, the
-villager-to-villager call, the notebook fact-checker, and the repair helper — each
-worded differently, and four of the five illustrating it with the bare word 漢字. That
-example never shows what to do about okurigana, which is exactly where it broke: 結ぶ
-has no obvious single-tag form, and with nothing to copy the model fell back to writing
-結ぶ[むすぶ]. All five now share `LG.FURIGANA`, whose worked example carries an okurigana
-word on purpose and shows the reading split across the tag boundary
-(`<ruby>結<rt>むす</rt></ruby>ぶ`).
+- One spec, `LG.FURIGANA` (`js/data.js`), shared by every prompt that asks for it. Its
+  example includes an okurigana word (`<ruby>結<rt>むす</rt></ruby>ぶ`). With only a
+  bare 漢字 example, models wrote 結ぶ[むすぶ].
+- The bracket convention (`糸[いと]`) is converted rather than fought: kanji followed by
+  bracketed kana becomes ruby, and okurigana is split back out. Other brackets are left
+  alone.
+- Ruby markup is sanitised to bare `ruby/rb/rt/rtc/rp` tags, and everything else is
+  dropped. When a line has kanji but no ruby, the helper model fills it in. The repair
+  is validated by stripping the readings and checking the text is unchanged, with one
+  retry, and a give-up is reported.
+- Wrong readings (だいこう for 大工) are **not** caught, since a smaller model wouldn't
+  judge readings better. The prompt asks for whole-word readings in a single pass.
+- `say` carries the ruby inline, so the line and its readings can't disagree.
+- Furigana goes in dialogue (spoken) only. Item names, signs, and notices are written
+  labels, so they stay plain kanji.
 
-**And the bracket convention is accepted anyway.** 糸[いと] is not a malfunction — it is
-how furigana is written in plain text everywhere — so rather than keep insisting, it is
-converted. A run of kanji followed by a bracket containing nothing but kana becomes ruby
-markup; where the word has okurigana the reading is split back off it, so 結ぶ[むすぶ]
-becomes `<ruby>結<rt>むす</rt></ruby>ぶ` rather than putting むすぶ over the whole word.
-Anything that is not kanji-then-kana-in-brackets is left exactly as it was, so ordinary
-brackets in a sentence survive.
+## Logging and cost
 
-Furigana is markup arriving from a model, so it is **sanitised**: the ruby tag family
-survives (`ruby`, `rb`, `rt`, `rtc`, `rp`), normalised to bare tags so no attribute
-ever reaches the page, and everything else tag-shaped is dropped. If a line has kanji
-and no furigana came back, the helper model is asked for the reading on its own — and
-*that* is validated by peeling the readings off and checking what is left is exactly
-the line the villager said, with one retry before giving up. A repair that alters the
-sentence is discarded, and a give-up says so rather than failing silently.
+- All API traffic goes through two functions in `js/llm.js`. Each call is logged in
+  full: system prompt, messages, **raw reply**, reasoning (both providers return it in
+  a separate field), model, latency, usage, and errors. It prints as a collapsed console
+  group and goes to `logs/` via the log server.
+- **Cost is tracked as villager vs helper.** Over 2.8 h of play, the main model made
+  ~60 calls/h and the helper ~1,200/h, which put 3.5× more cost on the helper side.
+  `tools/latency-report.js` uses the same split, by which model answered, so chatter
+  counts as helper.
+- The biggest cost lever is a non-reasoning helper: ~59 output tokens per call against
+  ~1,863 for a reasoning model, on the same yes/no questions. Its tasks don't benefit
+  from reasoning anyway.
+- The console narrates each villager in their own colour: decisions (with the reason on
+  Logfare), arrivals, what they learned and from whom, and off-screen conversations.
 
-What none of this catches is a **wrong reading** — 大工 as だいこう rather than だいく.
-Validation only proves the text is intact, and a second opinion from a smaller model
-would be less reliable, not more. The mitigations are prompt-side: annotate in one
-pass rather than re-transcribing, and name the failure (word readings, not character
-readings stitched together) without letting that instruction bleed into vocabulary
-choice.
+## Trade and the till
 
-The villager annotates as it writes — `say` itself carries the ruby markup, and the
-spoken line is whatever remains once the readings are peeled off. One field instead of
-two, so the line and its readings cannot disagree.
+The till is each villager's ledger of sales, purchases, refunds, trades, and refusals,
+with times and prices. It's shown as a ledger, not mixed into conversational memory.
+Rules were removed in favour of it: a shopkeeper who can see she was paid for two
+drinks and handed over one can work out the rest herself. Only schema facts stay as
+rules, such as `item` accepting a list.
 
-Furigana appears in dialogue but not on item names, and that is deliberate: a villager
-is *speaking*, so you need to know how the word sounds. An item name is written text —
-a label on an object — so plain kanji is what you would actually see.
+Each of these was a bug first:
 
-## Every call is on the record
+- **Multi-item sales.** `item` is a list and `price` is the total. When the price cap
+  trims a price, the villager is told.
+- **No double sale.** The same goods from the same villager on the very next turn after
+  a completed sale are refused and logged to the till (Tomas sold two knives for one
+  agreement). A repeat later is allowed. The prompt rule is conditional too: coins pay
+  for things not yet handed over.
+- **The till shows counts** ("knife ×2"). Without them, Tomas wouldn't take back the
+  second knife.
+- **Refund by gesture.** Holding out an item the till says they sold you asks for a
+  refund. If the reply agrees but flags `action: "none"`, `confirmOffer` →
+  `confirmTrade` catches it.
+- **Villagers take back what they sold**, at the price paid, once, and only items they
+  actually sold you. Their `buys` list doesn't cover their own stock.
+- **Bought goods become stock.** The villager is told what they're holding and can
+  resell it.
+- **An explicit price of 0 is not a sale.** It's narration, and the haggle band used to
+  round it up to one coin.
+- **Closed hours.** Trade is shut in the small hours. The villager is told they're shut
+  before they offer, and a sale claimed anyway is refused into the till. Notes state
+  what the till did, not what the villager should say. A silent refusal once let
+  Mikhalych sell tea twice at midnight with no effect.
+- **Tell the villager what the till did**, in coins, including the player's remaining
+  balance and every refusal reason. Otherwise they do arithmetic from half-memories.
+- **Errand items can't be sold for coins.** Villagers decline this themselves. Otherwise
+  selling a chain item was a silent dead end. Trading is unaffected.
+- **A gesture is not a bargain.** Offering an item completes a trade only if the villager
+  agrees. If the reply agrees but doesn't flag it, the helper model or Jev confirms.
+  Interest, questions, and "later" all count as no.
 
-All API traffic funnels through two functions, so that is where it is audited: each call
-is kept whole — the system prompt, the messages, the **raw reply before any parsing or
-repair**, the model, the latency and the token usage — and printed as a collapsed console
-group you can open and read. Failures are records too, with the error where the reply
-would be, rather than a gap in the log.
+## Finished exchanges
 
-Raw is the point. Nearly every bug in this project has lived in the space between what
-the model returned and what the game made of it — a missing quote, furigana in brackets,
-a two-item sale rung up as one — and a log of the tidied-up version would have hidden all
-of them.
+- A completed chain trade is written to both villagers' tills and stated as concluded.
+  When it used to vanish from the prompt, villagers kept trying to finish it, and each
+  attempt became a real transaction.
+- A finished errand replaces the villager's goal with the generator's plain-work line,
+  in all three callers. Otherwise Wren got his pig back and went on advertising a
+  reward for it.
+- That villager's chain facts about it retire too, only for the villager who was there.
+  Anyone who was merely told keeps believing it until they learn otherwise.
 
-The reasoning is the half worth having. A villager talking themselves into something daft
-does it in the reasoning, and it was being dropped on the floor: both providers return it
-in a field of its own, which nothing was reading.
+## Villager beliefs
 
-**And the log is where the cost shows up.** OpenRouter returns `usage.cost` on every
-reply, so a session file already totals itself — 2.8 hours of logged play says the model
-playing the villagers runs about 60 calls an hour and the helper about 1,200, which is
-3.5× the bill on the leg nobody thinks about. The instinct that the bookkeeping calls are
-a rounding error next to the dialogue was wrong by a factor of three, and only measuring
-said so.
-
-Within that, one choice dominates: a reasoning helper wrote 1,863 output tokens per call
-against 59 for one that does not, on the same yes/no questions about a transcript. Thirty
-times the output, on 95% of the calls. *Cheap and literal-minded beats clever here* was
-written as a quality argument — the transcript reader is not doing anything that rewards
-thinking — and it turns out to be the cost argument too, which is the comfortable case.
-
-**Open the console and you can watch them think.** Every decision comes back with a
-reason, and for a while nothing did anything with it — which made the difference between a
-villager reasoning and a villager rolling dice invisible from the outside. Each one prints
-a line tagged in their own colour: what they wondered, where they decided to go and why,
-when they arrived, what they learned from whom, and what they said to each other out of
-your earshot. Most of the village happens where you are not, and this is the only window
-onto it. On OpenRouter the "why" is gone from that window — Jev picks where they go
-without a reason (see *Jev picks a place, not a reason*) — and only the destination
-prints.
-
-## Money, and the till
-
-The till is a villager's own record: what they have sold you, bought from you, refunded,
-and every refusal, presented as a ledger with times and prices rather than folded into
-their conversational memory — where, briefly, it was filed under *"what the traveller has
-told you"*, which it plainly is not.
-
-**This is meant to replace rules rather than sit alongside them.** Given the record, a
-shopkeeper can work out for herself that she was paid for two drinks and handed over one,
-and ask for the difference — the way anyone behind a counter would. The instruction
-telling villagers that a return counts as a "buy" is gone, because `buy` is already
-defined as taking something and paying for it and a refund is plainly that. What stays is
-the schema itself: that `item` accepts a list is an API fact, not something to be
-reasoned out.
-
-Each of the rules below was a bug first.
-
-**A round of drinks is one sale.** A villager will happily say "beer and wine, that's
-six" — it is the natural way to sell two things — so `item` takes a list and `price` is
-the total for the lot. It used to be a single tag, which rang the whole thing up as one
-item at the two-item price: you paid for the round and got the beer. The price cap then
-made it worse by quietly trimming six coins to five, because five is the most a beer can
-cost. When the cap does bite it now says so, since being charged a number nobody in the
-conversation said is worse than either the villager's price or a refusal.
-
-**One sale does not go through twice.** Tomas agreed a knife for two coins and
-flagged the sale on the turn he agreed it — *"you give me two coins, the knife is
-yours"*, which is a bargain being struck rather than goods crossing a counter. The
-traveller then held out the coins, which is the obvious thing to do when you have
-just been told to, and the rule about that was unconditional: *holding out coins is
-them paying you, take the money and hand the goods over*. He did. Two knives, four
-coins, and a blacksmith who could not work out where the second knife had come from.
-
-The rule is conditional now — coins pay for something you have not handed over yet,
-and something the record already shows you were paid for is not being bought again.
-But that is a matter of the model reading its own last sentence, so it is not the
-whole fix: the same goods, from the same villager, on the turn straight after they
-were handed over and paid for, is refused outright and the refusal goes in the till.
-A repeat later is left alone, because wanting another knife tomorrow is an ordinary
-thing to want.
-
-**And the record says how many.** The ledger listed both sales and the line beside it
-said *"still in their hands, from you: knife"* — one object, no count. So when the
-traveller held a knife out, Tomas reasoned from his trade (*"I don't buy knives, I
-make them"*) rather than from the two he had just sold, and refused the return three
-times.
-
-**A refund is a gesture too.** Holding out something a villager sold you is the
-plainest way of asking for the money back. When he finally did understand, he
-described taking the knife and returning the coins — and flagged `"action": "none"`,
-so the traveller kept both knives and got nothing while the villager believed he had
-settled it. That is the same failure `confirmOffer` was written for, on the other side
-of the counter, and it is the same reader that catches it: offer back something the
-till says they sold you, and if the line agrees to take it, the money moves.
-
-**They take back what they sold you.** A villager's `buys` list is what they deal in as
-a trade — the innkeeper buys fish, meat and wheat — and does not include their own stock,
-so returning a beer she poured you five minutes ago found no price and did nothing at all
-while she cheerfully announced the refund. What each villager has sold you is now
-remembered, and comes back at what you actually paid rather than at a trade-in rate. The
-same one cannot be returned twice, and a beer she never sold you is not refundable at all.
-
-**What a villager buys, a villager has.** Goods used to evaporate on the way in: Petra
-bought an apple, it left the traveller's pocket, a coin came back, and then she went on
-saying she had no apples — truthfully, because nothing anywhere recorded that she was
-holding one. Villagers keep stock now, are told what is in their hands, and can sell it on
-even when it is not the sort of thing they usually deal in.
-
-**And nothing is exchanged for nothing.** An explicit price of zero is not a haggle, it is
-a villager narrating rather than dealing — and the haggle band would quietly round it up
-to a coin, which is how goods changed hands in a sale nobody meant to make.
-
-**The shop shuts in the small hours, and now somebody mentions it.** Trade goes with a
-villager all day, and only the small hours close it. That rule was enforced by refusing
-the sale and telling nobody: Mikhalych took two coins for a cup of tea at midnight,
-twice, described handing it over both times, and the game turned both down without a
-word to either party — the tea never existed and neither did the payment. A villager
-who is shut now knows they are shut before they offer, and if a sale is claimed anyway
-the refusal goes into their till where they can read it.
-
-What it tells them is that their trade is shut until morning, and then it stops. The
-first draft of that line told them not to offer, not to name a price and not to take the
-money, and added that they would like the custom — three failure modes named out loud
-and a feeling issued to a character who came with one. The same rule applies to the
-refusal notes: they say what the till did, not what the villager should say about it. A
-note reading *"the traveller is carrying that for somebody, tell them they will need it"*
-is a line written for someone whose whole job is writing their own, and it asserts
-something about the traveller's business that the villager has no way of knowing.
-
-**And the villager is told what the till did.** They used to remember only "the traveller
-bought beer" — no price, no mention of the wine — so the next turn they did arithmetic
-from a half-memory and insisted you had three coins when you had five. What goes into
-their memory is now what actually happened, in coins, including what you have left. So is
-every refusal — not enough coins, nothing in your pockets to hand over, not a thing they
-deal in. Left to narrate unaided they describe the refund as done and are then baffled
-when you offer the beer again, which is exactly what happened: *"I already took the beer
-back! I gave you 2 coins back, remember?"*
-
-**You cannot sell the errand.** Villagers will not buy a link of the chain off you for
-coins, and they say so themselves rather than the game silently declining. Selling the
-pie the baker is waiting for to the innkeeper for three coins used to be one click away,
-and short of buying it back at her price with the coins she had just handed over, the
-errand was over with nothing anywhere to say so. Trading is untouched — that is how the
-chain is meant to move, and a trade always hands you something back.
-
-**A gesture is not a bargain.** Holding an item out is something a villager
-understands without words, but it does not complete a trade on its own — they have to
-agree to the exchange. If they agree and their reply forgets to flag it, the offer is
-put to the same small model that does the fact-checking ("did they just accept it and
-hand theirs over?"), and only a yes completes the deal. Being interested, asking about
-it, or promising to trade later all count as no. That keeps a confused reply from
-stranding the chain without letting you barter by waving objects at people.
-
-## A finished exchange stays finished
-
-When a chain trade completed, every trace of it left the villager's prompt at once — the
-deal block vanished and nothing was written to the till, so from where they stood the
-exchange had simply never happened. They went on trying to finish it, and since the reply
-schema wants an action for anything that sounds like a transaction, each attempt became
-one: Nadia said *"here's the shell, take it"* and encoded *buy the shell*, and the game
-took it off the traveller. Trades are written to the till now, both sides of them, and a
-concluded deal says so in words rather than going quiet. Silence is not closure.
-
-**And a spent errand stops being what they want.** Finishing a trade turned over the
-deal block and nothing else. The goal sat next to it in the same assembly and did not,
-and the deal block only ever reaches the player-facing prompt — so the two calls that
-decide where a villager walks and what they say to each other were the two that never
-heard the errand had ended. Wren got his pig back, handed the teapot over, walked to
-the green to advertise the reward again, and asked where his pig was. A finished
-errand now leaves a villager the same plain-work line the generator already writes for
-everyone who never had a part in one, because that is what they are.
-
-Their facts go with it. Facts are dealt once at the start and nothing ever took one
-back, so Wren went on holding *Wren has a teapot* after trading the teapot away, and
-said so out loud. They retire on the same rule that already retires the player's note
-for that link — and only for the villager who was there. Anyone else who was told it
-believes it until somebody tells them otherwise, the same way nobody who never walks
-to the graveyard finds out the axe has gone; the memory left behind is how it travels.
-
-## What a villager believes
-
-**One list, and it does not lie to them.** A villager used to read two: `# What you
-know`, holding the chain facts flat, undated, under an instruction to say them as they
-came up — and `# What you have picked up lately` for everything else, as though that
-were a lesser kind of knowing. Neither said when anything had arrived or who had said
-so.
-
-That scaffold lies, and then the villager says the lie. Mira was told, as a plain
-present-tense fact with no date on it, that *Yuri is looking for a pair of shoes* —
-twelve minutes after the traveller had given Yuri the shoes and taken a compass for
-them. She noticed, out loud: *"but that's odd, I heard Yuri is looking for shoes —
-isn't he wearing shoes?"* She had understood the traveller, remembered it accurately,
-and spotted the contradiction. Then she had nothing to resolve it with, because one of
-the two claims was dressed as knowledge and the other as gossip and neither carried a
-time.
-
-Now there is one list, and every line says when they came by it and who from:
-
-```
-- (a while now) [f0] Yuri is looking for a pair of shoes.
-- (10:27, from Olo) [f1] Mikhalych has a pair of shoes.
-- (14:31, from the traveller) Yuri took my shoes and never paid for them
-```
-
-Nothing tells them that newer beats older or that a witness beats hearsay. They are a
-language model playing a person, and a person holding a date on each of two claims does
-not need to be told what to do with them.
-
-**And they can change their mind.** A villager is not a table of rows to expire. When
-something arrives that overtakes something they held, a reader offers them that one line
-written the way it is true now — *Yuri is looking for shoes* becomes *Yuri was looking
-for shoes, and has them now*, which is still worth passing on. The village should be
-able to tell you the errand was run, not merely fall silent about it. A chain fact keeps
-its id through this and gains their own wording; the notebook is built on those ids and
-none of them move. It is asked only when something new has actually landed — from the
-traveller or from another villager, on the same terms, because the player is not a
-special kind of informant — and nothing overtaken is the ordinary answer.
-
-**Where the world may write on them directly** is what they saw with their own eyes: a
-villager who has just handed a teapot over knows they no longer have it, and one who
-walked to the graveyard knows what was not there. That is the world being accurate about
-itself, not the game doing their thinking. Everything that reaches them by report goes
-through them.
-
-**And the village finds out the same way you would.** Facts are dealt once, at the start,
-so a villager told there was an axe in the graveyard would go on saying so all session.
-Now, if they walk to the spot themselves and it is plainly not there, they stop believing
-it and remember why — which they can then pass on. Nobody who never goes there ever finds
-out, which is right: it is the difference between knowing and having looked.
-
-What goes into their memory is what they saw: *"you went in the graveyard yourself and
-there was no axe there"*. It first said *"somebody has had it away"*, which hands them a
-theft they did not witness — and, this being the village where a baker's turn of phrase
-became a rice merchant, a supplied conclusion is exactly the kind of thing that gets
-passed on as a fact. They looked, and it was not there. What they make of that is theirs.
-
-**And what they take from you is asked about the conversation, not about them.** The
-field a villager writes that down in used to read *"OPTIONAL: one short English sentence
-stating a NEW fact you just learned from the traveller. Omit this unless you understood
-them"*, which puts the whole test on comprehension. Understanding someone is not the same
-as being told anything by them, but not following them was the only stated reason to
-leave the field empty — so a villager who understood perfectly well had been told, in
-effect, that there was a new fact there to be produced. Petra met こんにちは！, understood
-it fully, and wrote down that the traveller's name was Mira. Nobody had said a name.
-
-It asks for anything worth remembering now, which is the question the villager-to-villager
-call has always asked of a conversation that already happened, and *nothing was* has a
-spelling of its own. This is the same fix the rest of the reply object got and this one
-field missed: `revealed` was given `[]` and `action` was given `"none"`, while `remember`
-kept both its *OPTIONAL* and its hedge and so had no way to say that a turn had taught
-them nothing except to say nothing — which a model obliges by inventing something. The
-worked example of a turn where nothing happened is a greeting, because that is the exact
-turn that went wrong.
-
-**The notebook and the villagers ask different questions,** on purpose. Whether a thing
-is true of the world is what your notebook is entitled to know, because keeping your
-side of the game consistent is the game's job. What a villager believes is not that:
-they retire a fact when they have handed the goods over themselves, or walked to the
-spot and found nothing, and otherwise they find out the way you would. Answering the
-second question with the first would have a villager know the axe was gone because
-somebody else picked it up.
+- **One knowledge list, and every line is dated and sourced:**
+  ```
+  - (a while now) [f0] Yuri is looking for a pair of shoes.
+  - (10:27, from Olo) [f1] Mikhalych has a pair of shoes.
+  - (14:31, from the traveller) Yuri took my shoes and never paid for them
+  ```
+  There's no rule that newer beats older. With dates, the model resolves conflicts
+  itself. The old split into undated "what you know" and "what you picked up" left
+  Mira unable to resolve a contradiction she had noticed.
+- **Revision:** when new information arrives, from the player or another villager on
+  equal terms, a reader may rewrite an overtaken line in its current form ("Yuri was
+  looking for shoes, and has them now"). Chain facts keep their ids, because the
+  notebook depends on them. It runs only when something new has arrived.
+- **First-hand observation writes directly.** Handing an item over, or walking to a spot
+  and finding it empty, updates belief. The memory records only what they saw ("you went
+  in the graveyard yourself and there was no axe there"), never a conclusion such as
+  "somebody took it".
+- **`remember` asks for anything worth remembering**, with an explicit "nothing" value
+  and a greeting as the worked example. When it was framed as "a new fact, if you
+  understood them", a villager invented the player's name from こんにちは.
+- **The notebook and villagers answer different questions.** The notebook shows whether
+  something is true in the world, since the game keeps the player's side consistent. A
+  villager believes what they've witnessed or been told. Don't let one answer the other.
 
 ## The notebook
 
-**Notes are nominated, then fact-checked.** A villager's prompt lists their facts with
-tags, and their reply nominates the tags it thinks it just revealed. That report alone
-is not trusted — a villager will flag a fact because it *used* the word or explained
-what the word means, which writes things in your notebook that nobody told you. So
-when a villager nominates anything, the helper model reads the line that was actually
-said and confirms which statements were genuinely asserted. It runs after the reply is
-on screen, so nothing waits for it, and it fails closed: an unconfirmed note simply
-isn't written. The nomination is only a trigger, which keeps the check off the ~90% of
-turns where no fact is in play.
-
-**A lead you have already followed arrives ticked off**, and a spent one cannot arrive
-any other way. A note records that you were told something and nothing else. Whether it
-is still worth acting on is not written down: it is read off the world every time the
-notebook is drawn.
-
-That is the whole of the fix, and it is a fix to a shape rather than to a case. There
-were three answers to "has this already happened" and none of them agreed. Writing a
-note had a line of its own that knew about the thing lying in the world and nothing
-else. Completing a trade had a second, written inline, that knew only about its own
-link and deleted the note outright. Picking the terminal item up had a third, which
-ticked. So a villager could tell you *Yuri is looking for a pair of shoes* after you
-had handed Yuri the shoes and taken a compass for them, and it went in as a live lead —
-not because anybody decided it should, but because the one path that writes notes could
-not see the one kind of resolution that had happened.
-
-Now there is one predicate, and the notebook has no `done` field for it to disagree
-with. Both things the predicate reads are one-way — the thing in the world is collected
-*once, ever*, and a completed trade stays completed — so a struck-through line never
-comes back. Nothing is saved either; a note that persisted its own idea of being spent
-would be a second answer again, restored from a file.
-
-A spent lead is struck through rather than deleted, wherever it came from: a line that
-vanishes reads as a bug, and you lose the record of who told you.
-
-**And a note only ever means one fact, even arriving from a file.** The guarantee
-above — one note per fact, at most — is enforced by `learn` refusing a second write
-once `hasNote` says there is already one. That is a guard on one function, not a
-property of `state.notes` itself, and a save file reaches the notebook by a different
-door: `restore` used to check only that a note's fact still existed and take the rest
-of the file on faith. A save naming the same fact twice — hand-edited, or some future
-bug — would have loaded both, and the one-note-per-fact guarantee would have quietly
-stopped being true for the rest of that session without anything saying so. Restoring
-now keeps the same rule `learn` does: first occurrence wins.
-
-## A name is a fact too, and it works the same way
-
-The game used to know everyone's name from the moment their sprite loaded, which made
-the nametag, the dialogue header and the hint text the one place in the whole village
-where the player was simply handed something rather than told it. Everything else here
-already runs on *a fact only appears once a villager actually tells you it* — the
-notebook, the till, what a villager believes. A name is a fact like any other, so it
-gets the same rule: `LG.game.displayName` returns a villager's job until `nameKnown`
-is set, and it is set exactly once, by that villager's own reply stating it.
-
-**Only that villager's own testimony counts.** Mira mentioning that she knows a Boris
-is not Boris telling you his name — the same distinction the notebook already draws
-between a fact a villager saw with their own eyes and one that reached them by report.
-Hearsay can tell you a name exists to be learned; it cannot do the learning for you.
-That is a real cost, not a technicality skipped for convenience: a fact arriving from
-a third party is exactly the channel gossip already travels on, and it would have been
-the easy way to make this feature look like it worked without actually changing what
-the player has to do, which is ask.
-
-**No new schema field, and no extra call.** The tempting version asks the model for a
-`"namedSelf": true/false` flag alongside everything else in the reply object, the same
-shape `revealed` and `remember` already have. That is a real cost for a low-stakes
-question: getting it wrong here means a name shows up a turn early or late, not a
-chain fact recorded that never happened, so it does not need the nominate-then-verify
-weight `revealed` earns by guarding something that matters. What it needs is data the
-turn already produces: `reply.translation` is guaranteed English or blanked (see
-*Getting a whole object back*), so a villager who states their own name states it there
-in Latin letters regardless of what the village speaks, and checking for it costs
-nothing beyond a regular expression run against a field that already exists. The check
-runs before that field can be blanked for looking non-English, not after.
-
-**The dialogue panel needed its own placeholder, not the general one.** Everywhere
-else, "the village baker" reads fine standing in for a name — the hint line, the event
-log, a notice on the board. The dialogue panel already has a second line for the job
-directly underneath the name, so the same placeholder there would print "the village
-baker" twice in two lines and read as a bug rather than a mystery. It gets the same
-mark the nametag over their head does instead: `?`, once as a title and once above a
-sprite, saying plainly that this is a person the game is choosing not to name yet,
-not a person it forgot to.
-
-## Villagers already know each other
-
-That a name is a fact, earned only from its owner, is a rule about the *player*.
-Applied to the villagers themselves it produced the wrong thing: a villager asked
-about a neighbour they had no chain fact or memory about had nothing to answer from
-— which is the exact shape of gap that produced a rice merchant nobody had sold
-anything (`OLD-LI.md`). Thirteen people who have shared one small village for years
-already know who the blacksmith is; that is background, not something anyone had to
-tell them, and treating it as unknown until proven otherwise just made room for
-another invention.
-
-So every villager now carries a plain roster of everyone else in the village — name
-and trade, nothing more — alongside what they actually know. It says nothing about
-where anybody currently is, on purpose: knowing of Tomas is not the same as knowing
-where to find him right now, and that second thing is still `folk`, still keyed to
-who they can actually see.
-
-This does not weaken the rule it sits next to. A villager saying "Tomas" to the
-traveller is not Tomas telling the traveller his own name — `nameKnown` still checks
-only a villager's own testimony about themselves, so a name surfacing in someone
-else's speech does not put it on screen. What changed is only what a villager is
-allowed to already know about their own neighbours, not what the player is handed
-for free.
-
-**The roster carries persona too, now.** Name and trade stopping short of character
-was the same mistake in miniature: Petra had run around this village her whole life
-and still had nothing to say about Yuri beyond his job, because persona lived only on
-a villager's own entry, read solely to voice their own lines. Two people who have
-shared a village for years know what the other is like the same way they know their
-trade — Petra knows Yuri answers everything with a question about fish whether or not
-she has ever personally sat through it. So the roster's `persona` field, and the
-description each half of a villager-to-villager conversation gets of the other, now
-carry it. The line held is the same one as above: character is what years of
-unsimulated small talk would obviously have settled, and it does not move — whether
-Tomas has sold his hammer yet is news, still has to reach them the way it always did,
-and still costs nothing to say if it never comes up.
-
-## There is no gossip mechanic
-
-There was one: two villagers in range each copied a random fact id to the other, and
-*then* a conversation was generated to describe the transfer that had already happened.
-The talk was a caption. If the pair spent the whole exchange on the weather the fact
-moved anyway; if the call failed it moved anyway; a villager could tell you something
-they had never been depicted as being told.
-
-Now they just talk. Nothing is chosen to be passed and nothing changes hands during the
-conversation. Afterwards the helper model reads what was actually said and notes what each
-of them came away with. Ilya knows he has a dog; if the dog comes up, whoever he was
-talking to now knows about the dog. If instead he talks about his back, that is what they
-remember — and they do remember it, because what someone is like is worth keeping too. A
-conversation that turns out to be nothing but weather leaves nothing behind, which is
-right.
-
-The errand chain still needs to know when one of its facts has genuinely travelled, since
-the notebook is built on those ids. So the same call reports which of the speaker's own
-facts were said out loud, and only those move. It is a record of what was said, not a
-licence: a fact nobody mentioned does not travel, and a villager cannot pass on something
-that was never theirs to know. Both are tested.
-
-The consequence worth knowing about is that **gossip is now lossy**. Two villagers can
-meet and part with nothing learned. That is how rumours work, and it is what makes the
-free-text memories interesting rather than decorative — but it does mean a fact spreads
-more slowly than it used to.
-
-**Overhearing is a test, not a lesson.** What a pair say to each other reaches your event
-log only if you are near them, and what lands there is what they said, in their language:
-they are talking to each other, so there is no English anywhere in that exchange and none
-in the log either. The gloss stays blurred **even with translations switched on**. A
-villager explaining something to you is a lesson and the setting applies; eavesdropping is
-a test, and printing the answer turns overhearing into a way to skip the language entirely.
-
-## The noticeboard is written by nobody in particular
-
-It would have been easy to make the noticeboard a rule: when a villager holds the
-current link of the chain, have them post it. That is a scripted event wearing the
-shape of a mechanic — a bulletin board that only ever advertises the errand looks
-designed the moment you notice it never says anything else, and it hands the
-player a wanted-poster leaderboard rather than a village.
-
-So it isn't a rule. A villager who chooses to visit the board — the same choice
-that already sends them to their work or the green, see *Villagers decide where to
-go* — is simply asked whether they have anything worth pinning up, with the same
-latitude `remember` gives them in a conversation with the player: nothing is a
-perfectly good answer, and nothing forces them past it. What they post does not
-have to be the errand. It can be a complaint, a warning, gossip, a stray thought —
-whatever a person standing at a public board with something on their mind would
-actually write. Most of the village's business was never going to reach the board
-at all, which is correct: a person does not pin up everything they know.
-
-**Nominated, then fact-checked**, the same rule a villager's own report of what
-they told the player is held to — see *Getting a whole object back* and *the
-notebook*. A note that mentions a chain fact is confirmed against what was
-actually written before it is trusted, for the same reason a `revealed` tag is:
-the villager will nominate a fact because it used the word, not because it said
-the thing.
-
-**Reading it is being told, not being handed a fact.** A confirmed note sits in
-`state.board` until the player actually walks up and reads the thing — pressing
-E is what puts it in the notebook, not the villager pinning it. That is the same
-principle the notebook already runs on for a conversation: nothing reaches you by
-report except through the moment you were actually there for it. A player who
-never visits the board never benefits from it, which is the trade-off a physical
-noticeboard is supposed to have.
-
-**Furigana does not apply here, on purpose.** Dialogue is spoken and annotated;
-an item's name and a building's sign are written labels and stay plain kanji — see
-*Furigana*. A notice is closer to the sign than to speech: it is something posted
-to be read, the way a real noticeboard is never annotated for the people walking
-past it, so it gets the plain-text treatment and nothing more.
-
-## Difficulty is how hard the village is to read, not how far you walk
-
-Chain length used to scale with difficulty, and it was the wrong knob — a longer chain
-deals out *more* facts to *more* villagers, so it gives you more places to break in. A
-seven-link errand could comfortably be easier than a four-link one. Length is now rolled
-per village from the same 4–7 range at every level, purely for variety, and difficulty
-is carried by who knows what: the spread of each fact, a taper that buries the tail of
-the chain, and how much the village gossip knows. The README has the table.
-
-Petra was the loudest case. She was omniscient at every level, which is a skeleton key
-that makes every other knob moot: one conversation and you had the whole errand.
-
-## The map: a forest to lose things in, and a way in
-
-The village used to be the whole world, and it was a world with no outside. You began
-standing in the middle of it with no account of how you got there, and the furthest
-thing from you was ninety seconds' walk. Both of those are now different.
-
-**North is forest** — the top two-fifths of the map, and the point of it is that it is
-not scenery. `chain.js` puts the last item of every errand in one of `LG.PLACES`, and six
-of those are now clearings up in the trees, so roughly a quarter of villages end with
-*there is a shiny rock lying under the old oak* rather than *behind the farmhouse*.
-That sentence is worth more when it means a walk, because it is the one piece of the
-errand you can act on without talking to anybody, and it should be the piece that costs
-you something.
-
-Density is noise on top of noise. The first attempt was a flat probability, which gives
-an even stipple of trees at any setting you choose: low and it is an orchard, high and
-it is a hedge with corridors cut in it. What makes a wood is that it comes in *stands* —
-light getting through in some places and not others — so the density is `vnoise` at two
-scales multiplied into the base rate, opening to almost nothing at one end and closing
-to a thicket at the other. It thins over the last eight rows so the village looks out on
-scattered birches rather than at a wall. The test pins the result between 40% and 75%
-cover, because a density that quietly drifts either way is a forest that stops being one
-without anybody noticing.
-
-**Open is not the same as reachable, and a forest is that lesson at scale.** The
-woodcutter's clearing taught it once — a third of Ilya's own patch had no way into it.
-A forest is thousands of tiles of the same failure, and the failure is worse here: a
-glade walled in by trees is not a hard errand, it is an errand nobody can finish. So
-three things hold, in order of how much they are trusted. The glades are *cleared
-outright* rather than left to the noise, so every named place has room to stand in and
-an animal has room to potter. A network of tracks is carved after the trees are placed,
-and every glade hangs off a run that reaches back to the village. And then none of that
-is believed: `openTheWay` floods the map from the tile the traveller actually starts on
-and checks every place the game can point you at, cutting a way through to anything
-stranded. It has never had anything to do. It runs because *should* is how the rice
-merchant happened.
-
-The tracks are straight between their corners, which is what makes the network provably
-joined up, and that is not what you see: each tile frays a step to one side or the other,
-so a run reads as something walked between trees rather than surveyed through them.
-Fraying only ever adds walkable ground, so it cannot break the connection it is
-decorating — the pretty version and the correct version are the same object.
-
-**East is a railway halt, and it is where you begin.** An unmanned platform, a shelter,
-a bench, two lamps and a nameboard, at the end of a line that runs off the top and
-bottom of the map. It answers a question the game had been declining to: you are a
-person who does not speak the language and knows nobody, and now there is a reason —
-you got off a train at a place with nobody to meet you. The platform is the far east end
-of the high street, so the first thing you do is walk the length of the village past
-every shop sign in a language you cannot read yet. The nameboard is the first word most
-players will get.
-
-The line is solid. You cannot cross it, which makes the platform the edge of the
-traveller's world in the direction they came from, and that is the right shape for it.
-
-**Moving the village cost one bug, and it was already there.** Making room meant
-translating everything forty rows south, which is a hundred-odd coordinates across two
-files — so it was done under a harness that built the old map and the new one and
-compared every tile that had been placed deliberately, every building, label and prop,
-and every rectangle in `data.js`. Trees, flowers and grass are keyed on `hash(x, y)` and
-so were expected to differ; everything else had to land at exactly `y + 40`. One tile
-did not. The woodcutter's stand of trees overlaps the eastern shore of the pond and was
-never guarded against painting over what was already there — at the old coordinates the
-hash happened never to land on water, and at the new ones it did, and there was a tree
-standing in the pond. It is guarded now. The interesting part is that the bug did not
-arrive with the move: it had been one unlucky number away for as long as both features
-had existed, and the only thing that found it was checking a change that had nothing to
-do with it.
-
-## A save is not owed a refusal just because something moved
-
-The first version of this refused every save from before the map grew: bump the version
-number, explain why in the settings panel, done. That is the honest answer when a save
-genuinely cannot be read any more — a fact id that no longer means what it used to — but
-this was not that. Nothing about the errand changed. A villager who wanted a saw still
-wanted a saw; the notebook's fact ids still meant the same facts. The only thing wrong
-with an old save was that its numbers pointed at a map that had since moved out from
-under them, and a village whose problem is *arithmetic* deserves arithmetic, not a
-shrug.
-
-The move itself was a uniform shift — every y grows by forty tiles, nothing rotates or
-resizes — so a save's player, its villagers, and whatever the chain's last item was doing
-all migrate the same way: add the same fixed number to every pixel point, tile point, and
-rectangle in the file. That part was the easy half.
-
-**The hard half was that the village itself had quietly stopped being reproducible from
-its own seed.** The save format's whole design rests on not storing the village, only its
-seed and a digest — regenerate from the seed, check the digest still matches, and if it
-does the notebook's fact ids are still good. `LG.chain.generate` draws the errand's last
-item from `LG.PLACES` with `pick(list, rnd)`, which reads nothing about a place but its
-position in the list — so extending that list from seventeen entries to twenty-four, to
-add the glades and the platform, was on its own enough to send an *unchanged* seed's item
-somewhere else. The generator's logic never changed. The list it draws from got longer,
-which turns out to be exactly as disruptive.
-
-So a migrating save can't just be handed to today's generator — it has to be replayed
-against the seventeen-entry list it was actually drawn from, or the digest it carries will
-disagree with a village that never actually changed. `LG.saveMigrate.PLACES_V1_IDS` is
-that old order, kept as a named historical fact rather than folded into `LG.PLACES`
-itself, and `withPlaces` swaps the live global out for exactly one synchronous call and
-puts it back in a `finally`.
-
-**And that has to keep being true, not just be true once.** The first working version of
-this passed its own test and then failed the very next section of the smoke suite —
-closing the tab and opening it again on the *already-migrated* village refused it,
-because by then it was tagged version 2 like any other save, and a version 2 save is
-regenerated against today's `LG.PLACES`, which has the platform and the glades in it. The
-seed had not stopped needing the old list; the save format had just stopped remembering
-that it did. A property of *this seed*, decided once at generation time, was being
-inferred from a version tag that only ever describes the file format — two different
-questions wearing one flag.
-
-They're separate now. `_placesV1` lives on the plan itself, set the moment it's built
-under the old list, and `snapshot` writes it into `village.placesV1` on every single save
-from then on — not only the first one. `restore` reads that back rather than asking
-whether the *file* is version 1, because by the second save it never is. A village that
-started life migrated says so forever, the same way a `done` field never got to (see *the
-notebook*): a fact that can be read off something durable is safer than a flag that has to
-be remembered to be carried forward, and this one is read off the plan the same moment it
-is written.
-
-## The weather, and the screen
-
-**Most of the time nothing is laid over the screen at all.** The hour still colours the
-world, because the hour changes and dusk ought to look like dusk. The season does not —
-a wash that is always on is a wash you stop seeing, and it costs you the village's
-actual colours all day for information a glance at the notebook gives you anyway. Nor
-does most weather: you can see perfectly well that it is snowing from the snow, so only
-the five kinds that genuinely take the light away — fog, monsoon, thunderstorm,
-blizzard, sandstorm — grey anything out. Across the four climate tables that leaves the
-screen clean about 83% of the time, which the test suite asserts.
-
-Whether villagers shelter is a separate switch from how dark it looks, because the two
-had been the same number and disagreed: drizzle is worth stepping inside for and barely
-shows.
-
-**Rain falls on roofs, not through them.** Precipitation is punched out of the building
-footprints with an even-odd clip, so it stops at the eaves. Fog and haze are exempt —
-they sit around a building rather than landing on it, and cutting hard rectangles out of
-a soft cloud looked worse than the thing it fixed.
-
-**Snow settles, and then it lies there.** The weather is what is falling; snow that
-has fallen is a separate number that builds while it snows, holds through a hard frost,
-and melts at a rate the season sets — a winter can stay white across three changes of
-weather, and a thaw takes a couple of minutes rather than a frame. It is not a white
-wash over the finished picture: the ground goes white in drifts that spread and join
-up, trees carry it on the canopy and keep their green underneath, fences and benches
-and gravestones take it along the top, the pond goes to ice and the fountain stops
-running. What holds it least is the streets, which are walked all day — under the
-deepest fall the lanes are still there as pale bands through the white, because a
-village you cannot navigate is worse than a village that is not quite white enough.
-Roofs take it first and hold it longest, but never all the way: eleven identical white
-rectangles is not a village either. Villagers can see it too — the depth goes into
-their prompt, so a clear morning over a white village does not have them talking as
-though the snow had gone.
-
-The calendar is rolled with the village: every new village is a fresh arrival on a
-random day of the year, so you may well turn up in a blizzard. The hour is not rolled —
-you always arrive mid-morning, because arriving at three in the morning with nobody out
-of doors is no way to start.
-
-**Weather drives them indoors.** When it is raining, snowing or blowing sand, a villager
-would rather be under a roof — at their workplace if they have business there, at home
-otherwise — so a monsoon afternoon empties the green and fills the buildings. On a clear
-day they are mostly outside, which is what makes the wet days read as wet.
-
-**Doors are opaque, and your feet decide which room you are in.** A villager under a roof
-is out of sight; you can see into the room you are standing in — that is what lifting the
-roof is for — but not through somebody else's walls. Which room you are in is read from
-your feet rather than your tile, because the two disagree for the topmost few pixels of
-every room and the roof used to slam shut while you were plainly standing indoors.
-
-## The canopies came apart
-
-**Every tree turned into a horizontal band across the screen, a few times a
-second, on a phone.** The trunks stayed where they were; the round green tops
-became stripes running off to the right. A tree cannot draw wide — its canopy is
-an arc of a fixed thirteen-pixel radius at a fixed offset in its tile — so the
-picture was not of trees being drawn wrongly. It was of *all* of them being
-drawn as one shape: that is what a run of `arc` calls looks like when the
-`beginPath` between them has not taken effect, because then each `arc` joins the
-last with a straight line from one circle's rim to the next, and the whole
-accumulated thing is filled in one go. Trees on a row are at the same offset in
-their tiles, so those joining lines are horizontal, and they run to the edge of
-the view.
-
-The code did call `beginPath`. It called it a great many times: drawn tile by
-tile, the props pass was two or three `beginPath`/`arc`/`fill` for every tree,
-which standing in the woods came to a couple of hundred paths a frame and about
-thirteen thousand a second. Somewhere in that, Firefox for Android stopped
-honouring it.
-
-**So the drawing no longer asks to be believed hundreds of times a frame.** All
-the circles of a colour go into one path — one `beginPath`, one `fill` — with an
-explicit `moveTo` onto each circle's rim before its `arc`. Both halves of that
-are the point. The batching takes the ground pass from 166 path fills to 26 in
-the same view, so there is almost nothing left to go wrong; and the `moveTo`
-means that if it does go wrong anyway, the circles are already separate
-subpaths and still cannot join into bands.
-
-Reordering the pass is safe because nothing in a tile overlaps anything in
-another: a canopy is twenty-six across on a thirty-two tile and reaches from a
-pixel above its own tile to seven short of the next row's, with the trunk inside
-that. The old within-a-tile order — trunk, canopy, highlight, snow — survives as
-the order of the passes. Rendered side by side the two versions differ by at
-most five values out of 255 on a handful of antialiased edges, which is the
-rasteriser computing coverage once for a batched path instead of once per
-circle.
-
-The snow crowns are still drawn one at a time, because each carries its own
-depth and so cannot share a fill. They only exist in winter, and each is still a
-path of its own.
-
-## Two hands, or one thumb
-
-**The keyboard scheme is two hands and a phone has neither.** One hand walks, the
-other presses **E** at whoever is in front of you — and the second half is the part
-that does not survive the move. There is no key to press, and no room for a fixed
-D-pad that is always wherever the designer's thumb was rather than yours.
-
-What a phone has instead is a finger already touching the thing it means, so the two
-halves come apart along that line: **drag to walk, tap to name.** A finger put down
-anywhere on the village raises a joystick under it; a finger put down and lifted is
-aimed at whatever was underneath.
-
-**Which of the two a touch is cannot be decided when it lands**, because they start
-identically. Every finger is held as a maybe until it either travels twelve pixels
-(a walk) or lifts inside 320ms without having (a tap). A long press that never moves
-is neither and does nothing, which is the right answer for a thumb resting on the
-glass. Only the first finger down can become the stick; a second is free to tap while
-the first walks, and if the walking one lifts the other takes over from wherever it
-is rather than stopping you mid-stride.
-
-**The origin stays put.** A finger that runs past the rim does not drag the origin
-along behind it — an earlier version did, to save a full throw of the thumb after
-walking the length of the high street, but the same trick meant a stride forward, a
-step back, and a stride forward again crept the base across the screen chasing its own
-trail, which reads as the stick sliding around under you rather than as you steering
-it. Speed already saturates at the rim, so nothing is lost by simply pinning the knob
-there instead: past the rim reads as full speed in whatever direction the finger is
-now in, and the base does not move again until the finger lifts and lands somewhere
-else. Coming back to the middle stops you, but the ring stays drawn — a control that
-blinks out from under your thumb reads as a bug.
-
-**Keys and the stick add into the same pair of numbers**, so a keyboard next to a
-touchscreen is not a mode you have to be in. The keys are digital and the stick is
-not: its length is already how hard you are leaning, and the total is normalised only
-when it runs past 1. Diagonals on the keyboard are therefore exactly as fast as they
-were, while a half-pushed stick walks at half speed.
-
-**A tap obeys the same reach the E key does.** Tapping somebody across the green does
-not start a conversation any more than pressing E at them would, and a villager behind
-somebody else's wall is not drawn, so there is nothing there to aim at. What is
-different is what happens when you miss: a tap out of reach says *walk over to the
-baker* rather than going quiet, because a tap that produces nothing at all reads as a
-broken button rather than as distance.
-
-**The hints say the true thing rather than the keyboard thing.** Under a finger the
-prompt is "Tap the baker to talk"; under a keyboard it is "Press E to talk to the
-baker". Which is true is decided by what last touched the screen — assumed from
-`(pointer: coarse)` before anything has, so the first line a phone shows is already
-right — and published as a class on `<body>` so the help panel and the stylesheet can
-follow without asking.
-
-**The dialogue does not grab the keyboard on a phone.** Focusing the input throws the
-on-screen keyboard up over the card, so the conversation you just opened is behind it
-before you have read a word; and the first thing most players want is to tap a phrase,
-not to type. Tapping the box is one tap and gets the keyboard when it is actually
-wanted. When it does come up it does not make the page shorter — it slides a smaller
-window over it — so the dialogue and the settings panel are sized from
-`window.visualViewport` rather than the page. The canvas is left alone: scrolling the
-village up every time somebody types would be worse than the problem.
-
-**What you are typing wins the room.** The dialogue card is a flex column —
-header, conversation, two trays of chips, composer — and with a keyboard up
-those parts add up to more than the space left. Left to itself the browser
-keeps whatever it last scrolled to and clips the rest off one end or the other:
-the header on one phone, on another the box you are typing into. So the card
-says which gives, in order. The chrome and the conversation hand over what they
-can spare and the phrase trays lose their labels and come down to a single
-scrolling row — enough to still reach a phrase, not enough to push the composer
-off the bottom. If there is still not room the rack goes entirely, which is all
-that fits on a phone turned sideways with the keyboard up. The composer never
-shrinks and is never the thing that goes.
-
-**Tapping the box is a preference, not a measurement.** Height says what
-*fits*; tapping into the message box says what you would rather be *looking
-at*, and the answer is the line you are answering rather than a rack of
-suggestions you have just declined. So on a screen you tap, focus collapses the
-trays outright — worth about a hundred points with the keyboard up, which takes
-the conversation from a hundred and forty to two hundred and fifty. It only
-ever collapses, never expands: that is what keeps it safe to combine with the
-height rules, because a box losing focus can then never widen the card in a
-space that has not grown. Tapping the conversation puts the keyboard down and
-brings the rack back, so the collapse is reversible without hunting for a
-system button.
-
-**A tray folds; it does not vanish.** Collapsing it with `display:none` is a
-jump-cut, and two of them either side of a tap is most of what makes the card
-feel like it is arguing with you. The fold is a grid row going `1fr` to `0fr`,
-which animates to exactly the height of what is in it — a `max-height` has to
-name a number big enough for the tallest tray and then spends most of the
-animation travelling through space the short one never occupied, which reads as
-a jerk rather than a fold. It needs one child to be the row, which is what
-`.tray-in` is for. The padding and the rule above the tray go with it, or a
-folded tray leaves a stripe behind. `overflow:hidden` is what makes it clip
-cleanly and also what tells flexbox the tray may be squashed to nothing, which
-it promptly did — so the tray does not shrink at all now: it is either its own
-size or folded, and there is no useful state in between.
-
-**The newest line stays in view.** A conversation is read from the bottom — the
-line you are answering is the last one — and every single thing on a phone
-changes the height of the box holding it: the keyboard arrives, the trays fold,
-the phone turns. A scroll position measured from the top survives all of that
-by sliding the newest line off the bottom, which is the one place it must not
-go. Before this, raising the keyboard left the reader three hundred and
-fifty-seven points above the line they were answering. So the card notices
-whether the reader is at the end and, if they are, keeps them there through
-every resize — a `ResizeObserver` rather than a list of causes, because it is
-the resize that matters and not which of the four things did it, and because it
-fires throughout the fold's animation, so the end stays put as the card grows
-instead of arriving with a jump at the end of it. Scrolling up says they are
-reading something older, and they are left alone until they come back down.
-
-**How much room there is is a fact about the screen, not about what has focus.**
-The first version of this hung the card's layout off the input having focus,
-which is the obvious signal and the wrong one: tapping **Say it** takes focus
-off the box while the keyboard stays up, so the card sprang back to its roomy
-layout in a space that had not grown and pushed the composer it had just used
-off the bottom. Height is what actually decides what fits, so height is what is
-measured — `trackViewport` publishes `cramped` and `tight` on `<body>` from the
-visible height, and the stylesheet hangs off those. A media query cannot ask the
-question, because on the browsers that only slide a window over the page rather
-than shrinking it the page itself never changes size. Both mechanisms are
-listened for, and the fallback to `innerHeight` covers a browser with no
-`visualViewport` at all.
-
-**A keyboard is not one height.** Japanese input puts a strip of suggestions
-above the keys the moment there is a word to choose from and takes it away again
-the moment you commit one; Chinese and Korean do the same, and so does an
-English keyboard's autocorrect bar. Every one of those is a `visualViewport`
-resize a row of keys tall, several times a word — so a card pinned to the bottom
-of the visible window hops up and down under the very sentence you are reading
-back. The height the overlays are laid out to therefore follows the window down
-but not straight back up: while a keyboard is over the page and a text box has
-focus, a gain smaller than a row of keys (`KB_ROW`, ninety-six points) is the
-strip coming and going and is ignored. The card ends up where the tallest form
-of the keyboard put it and stays there, which costs a strip's worth of paper
-along the bottom and buys a card that holds still while you type into it.
-"A keyboard is over the page" is not a height in points — a big phone with the
-keys up is still taller than a small one without — but the window being more
-than a row shorter than the tallest it has been at this width; turning the phone
-starts that measurement again. Focus is allowed to say *still typing* and
-nothing else: letting go of the box drops straight back to the real
-measurement, which is still the short one, so the trap in the paragraph above
-is not reopened. A gain that reaches all the way back to the tallest height is
-the keyboard actually going away and is believed at once — including by the
-blur that finally lets the box go, which a suggestion strip can no longer trip
-on its way past. Only under a finger; a desktop window resized while somebody
-is typing into the settings panel should be believed immediately.
-
-A gain that does *not* reach all the way back — taller than what is held, but
-the keyboard is still plainly up — is not believed at once either
-(`GROW_MS`, 220 milliseconds). `visualViewport` is documented to report the
-keyboard's own opening animation dipping past its resting height before
-climbing back to it, and without this a card that latched onto one of those
-dips on the way down kept it for the rest of the conversation: a keystroke's
-worth of paper short of what the keyboard had actually left it, with no way
-back short of the keys going away entirely. A suggestion strip's whole cycle
-happens well inside `GROW_MS`, so ordinary typing keeps cancelling the wait
-and re-holding to whatever it dipped to; only a reading that has genuinely
-stopped moving gets believed, a beat later than the moment it first showed up.
-
-Firefox on Android has also been seen not to fire a `visualViewport` resize at
-all for a beat after the keyboard is visibly up — correcting itself later, on
-a scroll or some other unrelated nudge, rather than on its own. Nothing here
-can make the keyboard's own animation smoother than the browser reports it,
-but a text box taking focus schedules a few extra looks over the following
-half second regardless of whether anything actually fired an event, so a
-correction Firefox was going to make eventually is not waiting on the player
-to do something else first — costing nothing when the browser was not late in
-the first place, since a look that finds nothing changed writes back the
-numbers already there.
-
-**The message box had never had the font it was written for.** `font: 16px/1.4
-inherit` is not a font shorthand — `inherit` is only legal there as the whole
-value — so the declaration was invalid, was dropped, and the box you type the
-village's language into had been the user agent's default all along: monospace
-at 13.3px. The same mistake sat on every select and text field in the settings
-panel, the API key included. Both are longhands now, at sixteen pixels, which
-is not a rounding: it is the size below which a phone zooms the page in when
-you focus a field, and it is what a twenty-column `textarea` measures its own
-intrinsic width against — in a Japanese font that is twenty *ems*, which is how
-the box came to be wider than the card it sits in with the **Say it** button
-clipped off behind `.dlg-card`'s `overflow`. The composer is a grid rather than
-a flex row for the same reason: `minmax(0,1fr)` promises the column may be as
-narrow as it must be, `min-width:0` promises the same of the box in it, and the
-button's own column is sized to the button, so it is never what gives.
-
-**The page does not move under a finger.** With a keyboard up the window onto
-the page is smaller than the page, and a browser will let you drag the whole
-thing about inside it — so touching beside the dialogue slides the village, the
-dialogue and all, out from under you. `touch-action` is the CSS way to refuse
-that, but it is refused by intersection: a `none` anywhere above the finger
-kills scrolling in everything below it, and every surface worth pinning here —
-the dialogue's backdrop, a HUD box, a settings panel — is the ancestor of
-something that genuinely does scroll. So the question is answered once per
-gesture rather than once per element: on `touchstart`, walk up from what was
-touched looking for something that can really scroll — a conversation with more
-of itself above, a rack of chips taller than its row, any box you can type in —
-and refuse the move if there is nothing. Two fingers are always let through,
-because that is a pinch, and making the text bigger is nobody's business but
-the reader's.
-
-**The screen is not the page, and the village had been framed in the wrong
-one.** The canvas is fixed to the page and fills it, and on a phone the page is
-the larger rectangle twice over. The window onto it is shorter than the page
-whenever the browser toolbar is showing, and it can be scrolled about inside
-it — raising the keyboard scrolls it down, and putting the keyboard away does
-not reliably scroll it back, so a conversation left the HUD's top strip, the
-notebook's heading and its first lines, above the top of the glass and nothing
-short of a reload brought it down. And `viewport-fit=cover` asks for the whole
-screen, which on Android's edge-to-edge Chrome means the navigation buttons
-too: the bottom inch of the canvas is painted underneath them.
-
-Painting under both is the point — the village runs to the edge of the glass,
-under the notch and behind the buttons, which is why the canvas is not the
-thing that gets inset. Framing under both was not. The camera centred the
-player in the *canvas*, so at the bottom of the map, where the camera stops and
-the player walks the last stretch alone, the player and the last row of the
-village ended up behind the buttons with no way to bring them out.
-
-So the same measurement the dialogue card has always been laid out to now says
-two more things. The HUD is laid out to the window rather than the page
-(`--vv-top`/`--vv-h`, exactly as the card is), so it comes back down on its own
-however the browser leaves things — no scrolling anybody's page back for them,
-which is a fight with the browser rather than a fix. And the camera centres the
-player in the part of the canvas somebody can actually see, and lines the edges
-of the world up with that band rather than with the canvas: `seen()` in
-`game.js` is the window minus the safe-area insets, and `env()` being a CSS
-value with no way to ask for it directly, the insets are read back off `#safe`,
-a box of nothing in the page whose padding is the four of them.
-
-The band is left where it was while a keyboard is up — the strip above the keys
-is not what the village should be framed in for as long as a dialogue is open
-over it — and while the page is pinch-zoomed, where the window is wherever the
-reader has panned it to and a camera dragging the village back under their
-thumb would be its own bug. On a desktop window the band is the whole canvas
-and every number comes out where it always did.
-
-**Nothing on the desktop moved.** The joystick is only ever drawn while a finger is
-pushing, the folding HUD boxes live inside the narrow-screen media query, and the
-gesture code binds only non-mouse pointers, so a mouse still goes through the same
-click path it always did. The layout at desktop widths is unchanged down to the pixel.
+- **Nominate, then verify.** A villager's reply nominates fact tags in `revealed`. The
+  helper model or Jev checks them against the spoken line (`verifyRevealed`), after the
+  reply is on screen, and fails closed. Self-reports alone flag facts the villager
+  merely used a word from.
+- **Whether a lead is spent is derived, never stored.** One predicate reads two one-way
+  world facts (item collected, trade completed), and the notebook has no `done` field
+  or saved flag. There used to be three separate answers, which disagreed. Spent leads
+  are struck through, not deleted.
+- **One note per fact.** `learn` guards with `hasNote` (`js/game.js`), and `restore`
+  applies the same rule when loading a save, keeping the first occurrence.
+
+## Names
+
+- `LG.game.displayName` returns the villager's job until `nameKnown` is set. It's set
+  only when **that villager** states their own name. Hearsay doesn't count.
+- Detection is a regex over `reply.translation` (guaranteed English), run before any
+  non-English blanking. There's no schema field or extra call, because a wrong answer
+  is low-stakes.
+- The dialogue header shows `?` rather than the job, because the job is already on the
+  line below.
+- **Villagers know each other.** Each one gets a roster of everyone's name, trade, and
+  persona, but not their whereabouts (that's `folk`, from sight). An unknown neighbour
+  was the same kind of gap that produced the rice merchant. Current news still has to
+  travel. A name in someone else's speech doesn't set `nameKnown`.
+
+## Gossip is just conversation
+
+- Nothing is chosen to be passed on. Afterwards, the helper model reads the transcript
+  and records what each villager took away. Chain facts move only if they were actually
+  said, and only from a villager who held them. Both of these are tested. The old
+  mechanic copied facts first and generated talk as a caption.
+- As a result, gossip is lossy, and a pair can part having learned nothing. That's
+  intended.
+- **Overheard talk** reaches the event log only when the player is nearby. It's shown in
+  the village language, and the gloss stays blurred **even with translations on**,
+  because overhearing is a comprehension test.
+
+## Noticeboard
+
+- It's not scripted. A villager who chooses to visit the board is asked whether they
+  want to post anything, and "nothing" is fine. A notice can be anything: a complaint,
+  gossip, the errand.
+- Chain facts in a notice are nominated and verified, the same way as `revealed`.
+- Notices sit in `state.board` (max `BOARD_MAX`). A fact reaches the notebook only when
+  the player reads the notice (E).
+- No furigana, because notices are written text.
+
+## Difficulty
+
+Chain length is 4–7 at every level. It was the wrong knob, since longer chains spread
+more facts around. Difficulty controls who knows what: spread per fact, a taper that
+hides the tail of the chain, and how much Petra (the gossip) knows. Petra used to know
+everything at every level. The README has the table.
+
+## Map
+
+- **Forest (north ~2/5).** Six of `LG.PLACES` are glades, so about a quarter of errands
+  end in the woods, which makes the one fact you can act on alone take effort. Density
+  is value noise at two scales multiplied into a base rate, thinning over the last 8
+  rows toward the village. A test pins tree cover at 40–75%.
+- **Reachability, in order of trust:** glades are cleared outright, tracks are carved
+  after trees are placed, and `openTheWay` (`js/world.js`) flood-fills from the start
+  tile and cuts a path to anything stranded. It has never had to act. Keep it anyway.
+  Track fraying only adds walkable tiles, so it can't break connectivity.
+- **Railway halt (east edge)** is where the player starts, at the far end of the high
+  street. The line is solid.
+- The 40-row southward shift was verified by a harness diffing every deliberately placed
+  tile and rectangle. It found a latent bug: the woodcutter's trees could paint over
+  pond water, depending on the hash. That's guarded now.
+
+## Old-save migration
+
+- Saves from before the map shift are migrated, not refused. The shift was uniform (+40
+  tiles in y), so every point and rectangle gets the same offset (`js/save-migrate.js`).
+- **Seeds depend on list order.** `pick(LG.PLACES, rnd)` reads only the index, so growing
+  `LG.PLACES` from 17 to 24 entries changed the terminal item for unchanged seeds. Old
+  villages are regenerated against `PLACES_V1_IDS` via `withPlaces`, which swaps the
+  global for one synchronous call and restores it in `finally`.
+- "Needs the old list" is a property of the **seed**, not the file version. It's stored
+  as `_placesV1` on the plan and written into `village.placesV1` by **every**
+  `snapshot`. Keying it on file version broke the second load of a migrated save.
+
+## Weather and rendering
+
+- **No overlay most of the time.** The hour tints the world. Season doesn't, and neither
+  does most weather. Only fog, monsoon, thunderstorm, blizzard, and sandstorm darken the
+  screen, which leaves it clean about 83% of the time (asserted in tests).
+  Villager sheltering is a separate switch from darkness, because drizzle is worth
+  sheltering from but barely shows.
+- Rain and snow are clipped out of building footprints (even-odd clip). Fog and haze are
+  not.
+- **Snow depth is its own state.** It builds while snowing, holds in a hard frost, and
+  melts at a seasonal rate. It's drawn on ground, canopies, fence tops, and roofs; the
+  pond freezes and the fountain stops. Streets hold the least snow so paths stay
+  readable, and roofs never go fully white. The depth is included in villager prompts.
+- Each new village starts on a random day of the year, always mid-morning.
+- In rain, snow, or sand, villagers prefer their workplace or home.
+- Villagers indoors are hidden unless the player is in the same room. The player's room
+  is read from their feet, not their tile, because the tile disagrees for the top
+  pixels of a room.
+- **Batch canvas paths.** Firefox for Android stopped honouring `beginPath` at around
+  13k paths/s, and tree canopies joined into horizontal bands. Now each colour is one
+  path, with an explicit `moveTo` onto each circle's rim before its `arc`, so a dropped
+  `beginPath` still can't join circles. Ground-pass fills went from 166 to 26. Passes
+  keep the old in-tile order (trunk, canopy, highlight, snow), which is safe because
+  tiles don't overlap. Snow crowns stay per-tree, since each has its own depth.
+
+## Touch and mobile layout
+
+Desktop is unchanged: the joystick draws only while a finger is down, the HUD folding is
+inside the narrow-screen media query, and gestures bind only to non-mouse pointers.
+
+- **Drag to walk, tap to act** (`js/touch.js`). A touch stays undecided until it moves
+  `DEAD` (12 px, a walk) or lifts within `TAP_MS` (320 ms, a tap). A stationary long
+  press does nothing. Only the first finger can become the stick. If it lifts, a second
+  finger takes over.
+- **The stick origin is pinned**, and the knob clamps at `RANGE`. A trailing origin
+  crept across the screen. The ring stays drawn at zero deflection.
+- Keys and stick add into one vector, normalised only above 1, so keyboard diagonals
+  are unchanged and a half-pushed stick walks at half speed.
+- A tap has the same reach as E. An out-of-reach tap says "walk over to the baker"
+  rather than doing nothing.
+- The hint text follows the last input type, starting from `(pointer: coarse)`, and is
+  published as a `<body>` class.
+- **Don't autofocus the dialogue input on touch.** The keyboard would cover the card.
+- **Overlay sizing uses `visualViewport`** (`trackViewport`, `js/game.js`), because
+  keyboards overlay the page rather than resizing it. It sets `cramped`/`tight` classes
+  on `<body>` by visible height (`CRAMPED` 460, `TIGHT` 320). Size is decided by height,
+  not focus: tapping **Say it** blurs the input while the keyboard stays up. The canvas
+  isn't resized.
+- **When cramped, the composer never shrinks.** The chrome and conversation give up
+  space first, then the phrase trays drop to one scrolling row, then they're hidden.
+- Focusing the input on touch **only collapses** the trays, never expands them, so it
+  can't fight the height rules. Tapping the conversation dismisses the keyboard and
+  restores the trays.
+- Trays fold with a grid row going `1fr` → `0fr` (`.tray-in` is the row child), not
+  `display:none` or `max-height`. They're set to not flex-shrink, because
+  `overflow:hidden` let flexbox crush them.
+- **Stick to the newest line.** A `ResizeObserver` keeps the conversation scrolled to the
+  bottom through any resize, if the reader was already within `ANCHOR` px of it.
+- **Keyboard height hysteresis.** Suggestion strips resize the viewport on every word.
+  While typing, an increase smaller than `KB_ROW` (96) is ignored. A larger increase that
+  doesn't reach full height waits `GROW_MS` (220 ms), to ride out the keyboard's opening
+  animation overshoot. A return to full height is believed immediately. "Keyboard up"
+  means more than a row below the tallest height seen at this width. Rotation resets
+  that. This applies to touch only. Blur falls back to the real measurement.
+- Firefox Android can delay `visualViewport` events, so focusing a text box schedules
+  rechecks (`FOCUS_RECHECK_MS`).
+- **Inputs use 16px longhand font properties.** `font: 16px/1.4 inherit` is invalid
+  CSS, so it was silently dropped and inputs fell back to 13.3px monospace. 16px is the
+  size below which mobile browsers zoom in on focus, and it also sets the `textarea`'s
+  intrinsic width. The composer is a grid with a `minmax(0,1fr)` column, so the button
+  never gets clipped.
+- **The page never pans under a finger.** `touch-action` can't express this, because
+  `none` on an ancestor disables scrolling for all its descendants. Instead, on
+  `touchstart`, walk up from the target looking for something that can genuinely
+  scroll. If nothing can, block the move. Two-finger pinch is always allowed.
+- **Frame the camera to the visible band.** The HUD uses `--vv-top`/`--vv-h`, like the
+  dialogue card. The camera centres the player in `seen()`, which is the visual
+  viewport minus safe-area insets, read from `#safe`'s padding because `env()` can't be
+  queried from JS. The canvas still paints edge to edge. The band is frozen while a
+  keyboard is up or the page is pinch-zoomed.
 
 ## Saving
 
-**One format, and only one.** It is a plain JSON object with a version on it, built by
-exactly one function and read back by exactly one function, both in `js/save.js`. There
-are two places to put it — this browser's `localStorage`, and `saves/village.json` if the
-log server is running — and both are handed *the same bytes*. Nothing is converted at
-either end, so the file on disk is a save a browser can load and what is in
-`localStorage` is a save you can drop into the directory. That was the whole design
-constraint: two sinks with their own idea of what a village is would have drifted the
-way three copies of a villager's prompt once did.
+- **One format** (`js/save.js`: `snapshot`/`restore`), written as the same bytes to
+  `localStorage` and `saves/village.json`. Either works without the other. On load, the
+  local copy restores instantly, and the server copy wins only if it's newer.
+- **Only the seed is stored**, plus a digest of the generated village. If the digest
+  doesn't match, the save is refused with an explicit message, because notebook fact
+  ids would no longer mean the same facts. Changing the generator therefore invalidates
+  saves, unless you add a migration (see above).
+- In-progress state isn't saved: routes, bubbles, pending decisions, conversations.
+  Villagers re-think on load.
+- **Exception: who is chasing the player** (and why) *is* saved and always restored.
+  `newVillage` treats every load as an arrival, so Petra kept running to meet a train
+  from days ago. The chase route itself is recomputed.
+- No API keys go in the save. They live in `lg-settings`. Language and difficulty are
+  saved, because the village is generated from them.
 
-Both are written together and neither is a dependency: no server is ordinary, and a
-private window with no storage is ordinary too. On startup the local copy is read and put
-back instantly, and the server is asked in the same breath — its copy wins only if it is
-genuinely newer, which is what happens when you played in another browser, or cleared
-this one, and is exactly when you would want it to.
+## Log server
 
-**The village is not stored, only its seed.** The generator is deterministic: the same
-seed and difficulty give the same chain, the same cast, and the same facts under the same
-ids — which matters, because your notebook is a list of those ids. So the save carries the
-seed and a short digest of what the generator made from it, and the digest is checked on
-the way back in. Change the generator and the digest stops matching, and the save is
-refused *out loud* — "that village was built by a different version of the generator" —
-rather than loaded on top of a chain whose fact ids no longer mean what the notebook
-thinks they mean. That is the trade: saves are small and self-checking, and they do not
-survive a change to how villages are built.
+`tools/logserver.js` serves the page (providers reject `file://`), collects logs, hands
+over `.env` keys, and stores the save.
 
-**What is deliberately not kept** is everything a villager was in the middle of: a route
-being walked, a speech bubble, a decision the model had not answered yet, a conversation
-with someone who is now somewhere else. All of that is about a moment that is over. They
-come back thinking again, which they would have done within the minute anyway.
-
-*Who* they were on their way to see is the exception, and it is kept for the opposite
-reason: a restore rebuilds the village with `newVillage` and then lays the save over it,
-and a new village is an arrival — Petra sets off to meet the train in every single one of
-them. A save that said nothing about who was chasing the traveller left her flag standing
-where the rebuild had set it, so every reload of a village you had been living in for days
-opened with the village child sprinting across the map to greet you off a train you got off
-last week. So each villager's save says whether they are coming for you and what they will
-say they came for, and the restore sets that from the file for everybody rather than
-leaving what the rebuild happened to put there. A file from before this was written down
-says nobody is, which is the right answer for a village old enough to have one. The chase
-itself still starts over: a fresh route to where you are now, not the one it had.
-
-No API keys go in it either — the save is a file that gets written to disk and copied
-about, and the keys stay in `lg-settings` with the other settings, where they were. The
-language and the difficulty *are* in it, because the village is generated out of them.
-
-## The log server, and what it deliberately does not do
-
-Serving the page and collecting the log from one process is not a convenience so much as
-an admission: serving it over http is needed anyway, since the providers reject `file://`
-origins, and doing both from the same place means there is no CORS to arrange and nothing
-to switch on. Reading `.env` came from the same place — the game asks for a key at the
-front door because a web page cannot read a file off your disk, and a server can.
-
-Two things it does not do. It does not make the keys any safer — they still end up in the
-browser, which is where they lived anyway; this saves the pasting, not the trust. And it
-does not proxy the API: the page still calls the provider directly, so it keeps working as
-a plain static page. Routing the calls through the server would keep the keys server-side
-and moot CORS entirely, which is strictly better security and strictly worse for opening
-`index.html`.
-
-What it does do is refuse to hand anything over that it should not: it binds `127.0.0.1`
-only, refuses `/env` to anything that is not a local connection, and will not serve
-dotfiles or `logs/` as static files — otherwise serving the directory that contains
-`.env` would hand it to anyone who guessed the name.
+- It does not make keys safer, because they still end up in the browser. It does not
+  proxy API calls, so the game still works as a plain static page.
+- It binds to `127.0.0.1` only, refuses `/env` to non-local connections, and won't serve
+  dotfiles or `logs/`.
 
 ## Voices
 
-ElevenLabs **Flash v2.5** is the fastest model that is properly multilingual, which
-matters because generated dialogue almost never repeats: there is nothing worth caching
-and time-to-first-sound is the whole story. Flash voices are cross-lingual, so Boris
-keeps his voice when you switch the village from Russian to Japanese — a locale-keyed
-provider would have made him a different person in each language.
-
-Voices are **cast at load time** from whatever your account has: the villager list
-carries a wanted gender and age, `GET /v1/voices` supplies the candidates, and each
-villager is scored and given a distinct voice. **Quality leads**: the written gender is
-a gentle nudge worth less than the quality range, so a villager whose voice does not
-match how they are written is fine while a villager who is unpleasant to listen to is
-not. Distinctness also wins over age, so nobody sounds like anybody else.
-
-Quality varies a lot across an account, so the score uses what the voice list actually
-tells us: `category` (professional and premade rank above generated, and well above the
-instant clones that account for most of the poor ones), `high_quality_base_model_ids`,
-`verified_languages` matching the village's current language, and share counts as a
-tie-break. Every field is read defensively — one that is absent costs a voice nothing.
-Casting falls back automatically rather than leaving anyone mute on a thin account.
-
-Speech is **slowed down by default**, because the point is to be understood rather than
-to sound naturalistic: beginner runs at 0.75× and advanced at 0.95×. A new line cuts off
-the one before it including any request still in flight, so a slow line can never talk
-over the one that replaced it.
-
-If the key is refused, **Test this key** reports exactly what ElevenLabs said — a 401
-from them names which of "invalid key", "missing permission" (it will name the
-permission) or "wrong kind of key" it was, and that detail is shown rather than
-swallowed. The most common cause is a key without `voices_read`.
+- ElevenLabs Flash v2.5 (`js/tts.js`): lowest latency among the multilingual models, and
+  it matters because lines never repeat, so nothing can be cached. Voices are
+  cross-lingual, so a villager keeps their voice when the language changes.
+- Voices are cast at load from the account's voice list. The curated categories
+  (`premade`, `professional`) are preferred, with a fallback so nobody is left mute.
+  Scoring puts **quality first** (category, `high_quality_base_model_ids`, a
+  `verified_languages` match for the village language, share count), then
+  distinctness, then the written gender and age. Every field is read defensively.
+- Speed is 0.75× at beginner and 0.95× at advanced. A new line cancels the previous one,
+  including an in-flight request.
+- **Test this key** shows ElevenLabs' own 401 detail. The usual cause is a missing
+  `voices_read` permission.

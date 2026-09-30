@@ -109,7 +109,7 @@ LG.world = (function () {
   function build() {
     tiles = new Uint8Array(W * H).fill(T.GRASS);
     buildings.length = 0; props.length = 0;
-    signposts.length = 0; signBoxes = []; signRevealed = {};
+    signposts.length = 0; signBoxes = [];
 
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const edge = Math.min(x, y, W - 1 - x, H - 1 - y);

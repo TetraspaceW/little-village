@@ -45,10 +45,14 @@ LG.game = (function () {
      on every side, so a moving camera just blits it from a different
      offset until it drifts off the painted area. Keyed on the exact
      camera position instead, it missed on every frame the player walked.
+     When it does drift off, what's already painted is slid across onto a
+     second canvas and only the strip that came into view is painted:
+     repainting the whole layer every 96 px of walking was a visible
+     hitch, worst in the forest.
      Water glints and the fountain move on their own, so they are drawn
      on top every frame (W.drawAnimated), as are characters and weather. */
   const OVERSCAN = 96;
-  let groundCanvas = null, groundCtx = null;
+  let groundCanvas = null, groundCtx = null, spareCanvas = null, spareCtx = null;
   const groundSeen = { x: NaN, y: NaN, roomX: NaN, roomY: NaN, snow: -1, night: false, lang: '', trans: false };
   let player, npcs = [], beast = null, worldItem = null;
   let whereFact = null;             // the fact saying where the world thing is lying
@@ -784,11 +788,14 @@ LG.game = (function () {
     vignette.addColorStop(0, 'rgba(0,0,0,0)');
     vignette.addColorStop(1, 'rgba(20,14,8,.30)');
 
-    if (!groundCanvas) groundCanvas = document.createElement('canvas');
-    groundCanvas.width = (vw + 2 * OVERSCAN) * dpr; groundCanvas.height = (vh + 2 * OVERSCAN) * dpr;
-    groundCtx = groundCanvas.getContext('2d');
-    groundCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    groundCtx.imageSmoothingEnabled = false;
+    if (!groundCanvas) { groundCanvas = document.createElement('canvas'); spareCanvas = document.createElement('canvas'); }
+    for (const c of [groundCanvas, spareCanvas]) {
+      c.width = (vw + 2 * OVERSCAN) * dpr; c.height = (vh + 2 * OVERSCAN) * dpr;
+      const g = c.getContext('2d');
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.imageSmoothingEnabled = false;
+    }
+    groundCtx = groundCanvas.getContext('2d'); spareCtx = spareCanvas.getContext('2d');
     groundSeen.x = NaN;                  // a resized canvas has nothing painted on it yet
   }
 
@@ -2052,23 +2059,54 @@ LG.game = (function () {
      can still land a tile edge on a fractional device pixel, giving
      adjacent ground tiles their own antialiased edges instead of a
      shared crisp seam (visible as a faint lattice over the terrain).
-     Both draw() and paintGroundLayer() call this, so the cached ground
+     Both draw() and refreshGroundLayer() call this, so the cached ground
      layer stays aligned with where a live translate would place it. */
   function roundedCam() {
     return { x: Math.round(cam.x * dpr) / dpr, y: Math.round(cam.y * dpr) / dpr };
   }
 
-  function paintGroundLayer(room) {
+  /* Paints the part of the cached layer at (rx, ry, rw, rh), in layer
+     coordinates — the whole of it, or a strip that has just come into
+     view. A strip is clipped to itself, and drawn from two tiles further
+     out on every side, so what overhangs into it from just outside
+     (roofs, drift shadows, a canopy's top) comes out exactly as a whole
+     repaint would draw it. Signs are always all drawn, clipped: drawing
+     them is also what lists where they can be clicked. */
+  function paintGround(room, rx, ry, rw, rh) {
     const g = groundCtx, at = { x: groundSeen.x, y: groundSeen.y };
     const w = vw + 2 * OVERSCAN, h = vh + 2 * OVERSCAN;
-    g.fillStyle = '#3f6b3a';
-    g.fillRect(0, 0, w, h);
+    const whole = rw >= w && rh >= h, m = whole ? 0 : W.TILE * 2;
+    const part = { x: at.x + rx - m, y: at.y + ry - m }, pw = rw + 2 * m, ph = rh + 2 * m;
     g.save();
+    if (!whole) { g.beginPath(); g.rect(rx, ry, rw, rh); g.clip(); }
+    g.fillStyle = '#3f6b3a';
+    g.fillRect(rx, ry, rw, rh);
     g.translate(-at.x, -at.y);
-    W.drawGround(g, at, w, h, dpr);
-    W.drawBuildings(g, room, at, w, h);
+    W.drawGround(g, part, pw, ph, dpr);
+    W.drawBuildings(g, room, part, pw, ph);
     W.drawSigns(g, at, w, h, settings.lang, settings.showTranslation, dpr);
     g.restore();
+  }
+
+  /* Slides what's painted by the camera's move onto the spare canvas,
+     which becomes the layer, then paints the strips that came into view.
+     Moves are whole device pixels, like the layer's own position. */
+  function scrollGroundLayer(room, nx, ny) {
+    // In device pixels: the canvas's own size is rounded down from the
+    // layer's at a fractional dpr, and a strip measured from the layer's
+    // would leave a column of the spare canvas's old contents at its edge.
+    const dw = groundCanvas.width, dh = groundCanvas.height;
+    const dx = Math.round((nx - groundSeen.x) * dpr), dy = Math.round((ny - groundSeen.y) * dpr);
+    spareCtx.setTransform(1, 0, 0, 1, 0, 0);
+    spareCtx.drawImage(groundCanvas, -dx, -dy);
+    spareCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    [groundCanvas, spareCanvas] = [spareCanvas, groundCanvas];
+    [groundCtx, spareCtx] = [spareCtx, groundCtx];
+    groundSeen.x = nx; groundSeen.y = ny;
+    if (dx > 0) paintGround(room, (dw - dx) / dpr, 0, dx / dpr, dh / dpr);
+    else if (dx < 0) paintGround(room, 0, 0, -dx / dpr, dh / dpr);
+    if (dy > 0) paintGround(room, 0, (dh - dy) / dpr, dw / dpr, dy / dpr);
+    else if (dy < 0) paintGround(room, 0, 0, dw / dpr, -dy / dpr);
   }
 
   /* Repaints the cached ground layer only when something visible in it
@@ -2089,11 +2127,20 @@ LG.game = (function () {
         settings.lang === groundSeen.lang && settings.showTranslation === groundSeen.trans) return;
     // Centred on the camera again, on whole device pixels like roundedCam(),
     // so the blit offset in draw() is always a whole number of device pixels.
-    groundSeen.x = Math.round((c.x - OVERSCAN) * dpr) / dpr;
-    groundSeen.y = Math.round((c.y - OVERSCAN) * dpr) / dpr;
+    const nx = Math.round((c.x - OVERSCAN) * dpr) / dpr, ny = Math.round((c.y - OVERSCAN) * dpr) / dpr;
+    const w = vw + 2 * OVERSCAN, h = vh + 2 * OVERSCAN;
+    // Only the camera moved, and not so far that nothing painted is still in view.
+    if (roomX === groundSeen.roomX && roomY === groundSeen.roomY &&
+        snow === groundSeen.snow && night === groundSeen.night &&
+        settings.lang === groundSeen.lang && settings.showTranslation === groundSeen.trans &&
+        Math.abs(nx - groundSeen.x) < w / 2 && Math.abs(ny - groundSeen.y) < h / 2) {
+      scrollGroundLayer(room, nx, ny);
+      return;
+    }
+    groundSeen.x = nx; groundSeen.y = ny;
     groundSeen.roomX = roomX; groundSeen.roomY = roomY; groundSeen.snow = snow; groundSeen.night = night;
     groundSeen.lang = settings.lang; groundSeen.trans = settings.showTranslation;
-    paintGroundLayer(room);
+    paintGround(room, 0, 0, w, h);
   }
 
   function draw() {

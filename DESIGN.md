@@ -349,6 +349,13 @@ everything at every level. The README has the table.
   (`snowField` in `js/world.js`). Per-tile blobs printed the grid onto every thaw as polka
   dots. Props read the same field; ponds ice over as one sheet. Don't `closePath()` the pieces: in Chrome it
   costs ~100× a `lineTo` and was most of a repaint.
+- **Snow isn't a clean cut-out.** Drifts cover their own tiles and spill 0–9 px over a
+  street's edge, roughened by noise; stopping on the tile edge read as paper. More spill
+  (or blurring which tiles hold snow) swallows the one-tile forest paths. A faint relief
+  shading (half resolution) breaks up deep snow.
+- **The snow field is precomputed.** Its samples depend only on the map, so they're built
+  once, visible tiles first and the rest in 4 ms background slices. Computed as tiles
+  came into view, the first step into new ground stuttered.
 - Each new village starts on a random day of the year, always mid-morning.
 - In rain, snow, or sand, villagers prefer their workplace or home.
 - Villagers indoors are hidden unless the player is in the same room. The player's room
@@ -359,7 +366,15 @@ everything at every level. The README has the table.
   path, with an explicit `moveTo` onto each circle's rim before its `arc`, so a dropped
   `beginPath` still can't join circles. Ground-pass fills went from 166 to 26. Passes
   keep the old in-tile order (trunk, canopy, highlight, snow), which is safe because
-  tiles don't overlap. Snow crowns stay per-tree, since each has its own depth.
+  tiles don't overlap. Snow crowns are stamped from one sprite per tenth of depth.
+- **Sprites blit one texel per device pixel, at whole device pixels.** Stretched by a
+  fraction, which edge column survived depended on float noise in the layer's position,
+  so two paints of the same tree disagreed.
+- **The ground layer scrolls.** When the camera leaves it, the painted layer is slid onto
+  a spare canvas and only the newly exposed strip is painted, clipped, from two tiles
+  further out (`scrollGroundLayer` in `js/game.js`). Full repaints every 96 px were the
+  walking stutter, worst in the forest. Anything the layer draws must depend only on
+  `refreshGroundLayer`'s keys, or a strip will disagree with what's beside it.
 
 ## Touch and mobile layout
 

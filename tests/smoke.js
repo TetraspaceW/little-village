@@ -815,6 +815,110 @@ async function jevPicksThePlace() {
      'and a Jev call, which takes no system prompt, is logged without an invented one');
 }
 
+/* ------------------------------------------------------- a schema where it's taken
+   Every call that wants a structured reply sends its JSON Schema whenever
+   the model takes one (the catalogue says so), and never otherwise. */
+async function schemasWhereTaken() {
+  section('a reply schema goes with every call whose model takes one');
+  // A fresh game whose fetch plays OpenRouter: `net.catalogue` is 'up' or 'down', `net.reply` the model's answer.
+  const realNow = Date.now;
+  function fakeOpenRouter() {
+    const sb = makeSandbox({});
+    for (const f of files) {
+      vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sb, { filename: f });
+    }
+    const net = { catalogue: 'up', reply: '{}', lookups: 0, later: 0, sent: [] };
+    sb.Date = class extends Date { static now() { return realNow.call(Date) + net.later; } };
+    sb.fetch = async (url, init) => {
+      if (!init || !init.body) {                    // OpenRouter's model catalogue
+        net.lookups++;
+        if (net.catalogue === 'down') throw new Error('offline');
+        return { ok: true, json: async () => ({ data: [
+          { id: 'deepseek/deepseek-v4.1-flash', supported_parameters: ['structured_outputs'] },
+          { id: 'z-ai/glm-5.3-flash', supported_parameters: ['structured_outputs'] },
+          { id: 'late/model', supported_parameters: ['structured_outputs'] },
+          { id: 'plain/model', supported_parameters: ['temperature'] }] }) };
+      }
+      net.sent.push({ url: url, body: JSON.parse(init.body) });
+      return { ok: true, status: 200, json: async () => ({
+        choices: [{ message: { content: net.reply }, finish_reason: 'stop' }] }) };
+    };
+    sb.LG.llm.audit = false;
+    return { L: sb.LG.llm, net: net };
+  }
+  const { L, net } = fakeOpenRouter();
+  const sent = net.sent;
+  const or = { provider: 'openrouter', apiKey: 'k', model: 'deepseek/deepseek-v4.1-flash' };
+  const lf = { provider: 'logfare', apiKey: 'k', model: 'logfare/auto' };
+  const schemaOf = r => r.body.response_format ? r.body.response_format.json_schema.schema : null;
+  const lastSchema = () => schemaOf(sent[sent.length - 1]);
+  const me = { name: 'Petra', job: 'the gossip', persona: 'Nosy.' };
+
+  await Promise.all([L.gloss(or, 'Da.', { langName: 'Russian' }), L.gloss(or, 'Net.', { langName: 'Russian' })]);
+  ok(sent.length === 2 && sent.every(r => !!schemaOf(r)),
+     'the first calls to a model wait for its lookup, and both go with their schema');
+  ok(net.lookups === 1, 'from one look at the catalogue between them');
+  const gl = schemaOf(sent[0]);
+  ok(gl && gl.required.join() === 'translation' && gl.additionalProperties === false &&
+     sent[0].body.response_format.json_schema.strict === true,
+     'a gloss is held to its one field, strictly');
+  ok(sent[0].body.messages[1].content.indexOf('{"translation": "a plain English translation of the line"}') !== -1,
+     'and the prompt shows the same shape the schema enforces');
+
+  await L.revise(or, { who: 'Mira', held: ['a line'], fresh: 'news' });
+  ok((lastSchema() || {}).properties.n.type === 'integer', 'a revision goes with its schema');
+  await L.recall(or, { transcript: [], a: { name: 'Mira', facts: [] }, b: { name: 'Olo', facts: [] } });
+  const rc = lastSchema() || { properties: {}, required: [] };
+  ok(rc.required.join() === 'Mira,Olo' && rc.properties.Mira && rc.properties.Mira.required.join() === 'remembers,said',
+     'so does what two villagers took away, an object for each');
+  await L.notice(or, { me: me, langName: 'Chinese', romanLabel: 'pinyin' });
+  ok((lastSchema() || { required: [] }).required.join() === 'post,text,translation,roman,revealed',
+     'and a notice, with the romanisation the language has');
+  await L.converse(or, { me: me, them: { name: 'Olo', job: 'the fisher' }, langName: 'Russian' });
+  ok((lastSchema() || { required: [] }).required.join() === 'say,translation', 'and a line between villagers');
+
+  const main = { type: 'object', properties: { say: { type: 'string' } }, required: ['say'], additionalProperties: false };
+  net.reply = '{"say": "Hm."}';
+  await L.speak(or, 'You are Mira.', [{ role: 'user', content: 'hi' }], main, { who: 'Mira' });
+  ok(JSON.stringify(lastSchema()) === JSON.stringify(main), 'the villager’s own reply goes with its schema');
+  await L.speak(Object.assign({}, or, { model: 'plain/model' }), 'You are Mira.', [{ role: 'user', content: 'hi' }], main);
+  ok(!lastSchema(), 'but not to a model the catalogue says cannot take one');
+  await L.speak(lf, 'You are Mira.', [{ role: 'user', content: 'hi' }], main);
+  ok(!lastSchema(), 'nor on Logfare, which has no catalogue to ask');
+
+  // On Logfare the fact check and trade check go to the helper model, without a schema;
+  // their replies are read whether or not the model kept to the JSON shape.
+  const facts = [{ id: 'f0', text: 'Mira has a shell.' }];
+  net.reply = '{"told": [{"tag": "f0", "note": "a shell"}]}';
+  const told = await L.judge(lf, 'Da.', 'Yes.', facts, { langName: 'Russian' });
+  ok(told.length === 1 && told[0].id === 'f0' && told[0].note === 'a shell', 'a fact check reads its "told" list');
+  net.reply = '[{"tag": "f0"}]';
+  ok((await L.judge(lf, 'Da.', 'Yes.', facts, {})).length === 1, 'and a bare list, from a model that dropped the wrapper');
+  const deal = { npcName: 'Mira', wants: 'a pie', gives: 'a shell' };
+  net.reply = '{"answer": "yes"}';
+  ok(await L.confirmTrade(lf, 'Da.', 'Yes.', deal) === true, 'a trade check reads its answer');
+  net.reply = '{"answer": "no"}';
+  ok(await L.confirmTrade(lf, 'Da.', 'Yes.', deal) === false, 'no included');
+  net.reply = 'Yes.';
+  ok(await L.confirmTrade(lf, 'Da.', 'Yes.', deal) === true, 'and a plain yes, from a model that answered in a word');
+
+  // A lookup that fails (no network at startup, say) is tried again later, not taken as a no for good.
+  const off = fakeOpenRouter();
+  const offSchema = () => schemaOf(off.net.sent[off.net.sent.length - 1]);
+  const late = Object.assign({}, or, { helper: 'late/model' });
+  off.net.catalogue = 'down';
+  await off.L.gloss(late, 'Da.', { langName: 'Russian' });
+  ok(off.net.sent.length === 1 && !offSchema(),
+     'a model whose lookup failed goes without, rather than risk a rejected request');
+  off.net.catalogue = 'up';
+  const before = off.net.lookups;
+  await off.L.gloss(late, 'Da.', { langName: 'Russian' });
+  ok(!offSchema() && off.net.lookups === before, 'and is not looked up again on every call');
+  off.net.later = 61000;
+  await off.L.gloss(late, 'Da.', { langName: 'Russian' });
+  ok(!!offSchema(), 'but is a minute later, and from then on gets its schema');
+}
+
 /* ------------------------------------------------------- what they believe now
    Every entry a villager holds has a timestamp and source, and when
    something new supersedes one of them, that entry gets rewritten
@@ -1419,6 +1523,7 @@ async function villagersTalking() {
   await promptCached();
   await keysPerProvider();
   await jevPicksThePlace();
+  await schemasWhereTaken();
   await namesUnknownUntilTold();
   await historyInFull();
   await touchControls();

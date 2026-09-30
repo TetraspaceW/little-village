@@ -124,16 +124,21 @@ OpenRouter's decisions endpoint (`decisionPost`/`askJev` in `js/llm.js`), not
 
 ## Structured output and reply parsing
 
-- **Use a JSON Schema where supported** (OpenRouter `response_format`). When hedges like
-  *OPTIONAL* and *[] if none* were on every field except `say`, a third of replies came
-  back as bare `{"say": …}`.
-- Support is per endpoint. It's looked up once at connect time from
-  `supported_parameters` (`js/llm.js`) and cached. **Fail closed:** OpenRouter rejects a
-  schema sent to an unsupported model, so anything unknown is treated as unsupported
-  and gets prompt-based JSON plus repair.
-- The prompt's field list and the schema are rendered **from one array**. Every field is
-  required. Optional ones are nullable, and "nothing happened" is spelled `null`, `[]`,
-  or `"none"`. The log records whether each call was schema-checked.
+- **Every structured call sends a JSON Schema where the model takes one** (OpenRouter
+  `response_format`), main model and helper alike. When hedges like *OPTIONAL* and
+  *[] if none* were on every field except `say`, a third of replies came back as bare
+  `{"say": …}`. Furigana is the one exception: its reply is the sentence itself.
+- Support is per endpoint. `providerCall` looks each model up in `supported_parameters`
+  before its first call (concurrent calls share the lookup), so keys from `.env` or a
+  changed model are covered. A failed lookup is retried after a minute. **Fail closed:**
+  OpenRouter rejects a schema sent to an unsupported model, so anything unknown gets
+  prompt-based JSON plus repair. Logfare has no catalogue and never gets a schema.
+- The prompt's field list and the schema are rendered **from one array** (`buildReply`
+  for the villager, `replyShape` for helper calls). Every field is required. Optional
+  ones are nullable, and "nothing happened" is spelled `null`, `[]`, or `"none"`. A
+  schema's root must be an object, so the fact check replies `{"told": […]}` and the
+  trade check `{"answer": "yes" | "no"}`; a bare list or a plain "yes" still parses.
+  The log records whether each call was schema-checked.
 - **History replays whole replies** (`pastReply`, `js/dialogue.js`): every field of the
   current format, with furigana inline. Replayed as `{"say": …}` it showed the model
   its own turns in the bare shape the prompt forbids.

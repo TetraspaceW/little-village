@@ -143,11 +143,16 @@ LG.llm = (function () {
   }
 
   /* ------------------------------------------------------- can it take a schema
-     OpenRouter rejects a request whose schema the model can't take, and
-     support is per endpoint, so it's looked up once per model from the
-     catalogue's `supported_parameters`. Anything unknown counts as no:
-     prompt-only JSON with repair. */
-  const SCHEMA_OK = {};              // 'provider:model' -> true | false
+     Every call that wants a structured reply passes its schema, and it's
+     sent whenever the model takes one. OpenRouter rejects a schema the
+     model can't take, and support is per endpoint, so it's looked up per
+     model in the catalogue's `supported_parameters` before the first call
+     to it. Anything unknown counts as no (prompt-only JSON, with repair);
+     Logfare has no catalogue, so it never gets one. A failed lookup is
+     tried again after RETRY_MS. */
+  const SCHEMA_OK = {};              // 'provider:model' -> true | false, or the lookup in flight
+  const FAILED = {};                 // 'provider:model' -> when its lookup last failed
+  const RETRY_MS = 60000;
   let orModels = null;               // OpenRouter's model list, fetched once, shared with maxPriceFor
 
   async function getJSON(url, headers) {
@@ -160,26 +165,35 @@ LG.llm = (function () {
     return cfg.provider + ':' + model;
   }
 
-  /* Synchronous, so sending never waits on it. Unresolved reads as false. */
+  /* What's known now, without waiting. A lookup in flight reads as false. */
   function schemaOK(cfg, model) {
     return SCHEMA_OK[schemaKey(cfg, model || cfg.model)] === true;
   }
 
-  async function probeOne(cfg, model) {
+  /* Whether `model` takes a schema, looking it up if it hasn't been (or its
+     last lookup failed a while ago). Concurrent calls share one lookup.
+     Never rejects. */
+  function probeOne(cfg, model) {
     const key = schemaKey(cfg, model);
-    if (key in SCHEMA_OK) return SCHEMA_OK[key];
-    SCHEMA_OK[key] = false;
+    if (key in SCHEMA_OK && !(FAILED[key] && Date.now() - FAILED[key] > RETRY_MS))
+      return Promise.resolve(SCHEMA_OK[key]);
+    delete FAILED[key];
     // Logfare picks its own backend, so there's no catalogue to ask.
-    if (cfg.provider !== 'openrouter') return false;
-    try {
-      if (!orModels) orModels = getJSON('https://openrouter.ai/api/v1/models');
-      const d = await orModels;
-      const m = (d.data || []).find(x => x.id === model);
-      SCHEMA_OK[key] = !!m && (m.supported_parameters || []).indexOf('structured_outputs') !== -1;
-    } catch (e) {
-      orModels = null;               // a failed fetch isn't cached
-    }
-    return SCHEMA_OK[key];
+    if (cfg.provider !== 'openrouter') return Promise.resolve(SCHEMA_OK[key] = false);
+    const look = (async () => {
+      try {
+        if (!orModels) orModels = getJSON('https://openrouter.ai/api/v1/models');
+        const d = await orModels;
+        const m = (d.data || []).find(x => x.id === model);
+        return (SCHEMA_OK[key] = !!m && (m.supported_parameters || []).indexOf('structured_outputs') !== -1);
+      } catch (e) {
+        orModels = null;             // a failed fetch isn't cached
+        FAILED[key] = Date.now();
+        return (SCHEMA_OK[key] = false);
+      }
+    })();
+    SCHEMA_OK[key] = look;
+    return look;
   }
 
   /* Looks up the main and helper model. Never throws. */
@@ -312,14 +326,33 @@ LG.llm = (function () {
     }
   }
 
-  /* Every chat call goes through here. Callers pass the schema they want;
-     whether the model takes one is decided here (schemaOK). `opts` carries
-     the call's `kind` and `who` for the log, and send's options. */
+  /* Every chat call goes through here. Callers pass the schema their reply
+     should follow; it's sent if the model takes one (see probeOne), which
+     costs nothing extra on OpenRouter, since send waits for the same
+     catalogue for its price cap. `opts` carries the call's `kind` and `who`
+     for the log, and send's options. */
   function providerCall(cfg, system, messages, schema, opts) {
-    const s = schema && schemaOK(cfg, cfg.model) ? schema : null;
-    return audited(cfg, system, messages, () =>
-      send(cfg, system, messages, s, opts), opts);
+    return audited(cfg, system, messages, async () => {
+      const takes = !!schema && await probeOne(cfg, cfg.model);
+      return send(cfg, system, messages, takes ? schema : null, opts);
+    }, opts);
   }
+
+  /* One reply shape, rendered twice: as the example object a prompt shows,
+     and as the JSON Schema sent with it where the model takes one. Each
+     field is {k, type, show}: its JSON Schema, and the text standing in for
+     its value in the example. Strict mode wants every field required, so an
+     optional one is typed nullable instead. */
+  function replyShape(fields) {
+    const properties = {};
+    fields.forEach(f => { properties[f.k] = f.type; });
+    return {
+      text: '{' + fields.map(f => JSON.stringify(f.k) + ': ' + f.show).join(', ') + '}',
+      schema: { type: 'object', properties: properties, required: fields.map(f => f.k),
+                additionalProperties: false }
+    };
+  }
+  const STR = { type: 'string' }, STRS = { type: 'array', items: { type: 'string' } };
 
   function dump() {
     return transcript.map(e =>
@@ -422,34 +455,37 @@ LG.llm = (function () {
       '',
       'Statements:'
     ].concat(candidates.map(c => '[' + c.id + '] ' + c.text));
+    // What each told statement carries: described to the model, and the schema's items.
+    const each = [
+      { k: 'tag', type: { type: 'string', enum: candidates.map(c => c.id) }, desc: 'the statement tag' },
+      { k: 'note', type: STR,
+        desc: 'how the listener would jot that down in ' + lang + ', in one short line.\n' +
+              '           Use the words the speaker actually used. Write it in ' + lang + ', not in English.' +
+              (opts && opts.diacritics ? '\n           Write it fully vocalised, tashkeel and all:\n' + LG.TASHKEEL : '') }
+    ];
+    if (opts && opts.furigana) each.push({ k: 'ruby', type: STR, desc: 'the same note, annotated:\n' + LG.FURIGANA });
+    const shape = replyShape([{ k: 'told', type: { type: 'array', items: replyShape(each).schema }, show: '[...]' }]);
     lines.push('');
-    lines.push('Reply with only a JSON array. For each statement that WAS genuinely told, add an object:');
-    lines.push('  "tag"  - the statement tag');
-    lines.push('  "note" - how the listener would jot that down in ' + lang + ', in one short line.');
-    lines.push('           Use the words the speaker actually used. Write it in ' + lang + ', not in English.');
-    if (opts && opts.furigana) {
-      lines.push('  "ruby" - the same note, annotated:');
-      lines.push(LG.FURIGANA);
-    }
-    if (opts && opts.diacritics) {
-      lines.push('           Write it fully vocalised, tashkeel and all:');
-      lines.push(LG.TASHKEEL);
-    }
+    lines.push('Reply with only a JSON object, ' + shape.text +
+               '. For each statement that WAS genuinely told, add an object to "told":');
+    each.forEach(f => lines.push('  "' + f.k + '"' + (f.k.length < 4 ? ' ' : '') + ' - ' + f.desc));
     lines.push('');
-    lines.push('Leave out anything that was not told. Reply [] if none of them were.');
+    lines.push('Leave out anything that was not told. "told" is [] if none of them were.');
 
     const vcfg = helperConfig(cfg);
     let raw;
     try {
       raw = await providerCall(vcfg, 'You verify claims against a transcript. Answer with JSON only.',
-        [{ role: 'user', content: lines.join('\n') }], null, { kind: 'notebook', who: opts && opts.who });
+        [{ role: 'user', content: lines.join('\n') }], shape.schema, { kind: 'notebook', who: opts && opts.who });
     } catch (e) {
       return [];                     // never guess on failure
     }
-    const m = String(raw).match(/\[[\s\S]*\]/);
-    if (!m) return [];
-    let arr;
-    try { arr = JSON.parse(m[0]); } catch (e) { return []; }
+    const obj = parseJSON(raw);
+    let arr = obj && Array.isArray(obj.told) ? obj.told : null;
+    if (!arr) {                      // a bare array, from a model that ignored the wrapper
+      const m = String(raw).match(/\[[\s\S]*\]/);
+      try { arr = m ? JSON.parse(m[0]) : null; } catch (e) { arr = null; }
+    }
     if (!Array.isArray(arr)) return [];
     const valid = {};
     candidates.forEach(c => (valid[c.id] = true));
@@ -474,6 +510,7 @@ LG.llm = (function () {
     if (cfg.provider === 'openrouter' && cfg.apiKey) {
       return confirmTradeByJev(cfg, said, translation, deal);
     }
+    const shape = replyShape([{ k: 'answer', type: { type: 'string', enum: ['yes', 'no'] }, show: '"yes" or "no"' }]);
     const ask = [
       'One line of dialogue, and a question about it.',
       '',
@@ -487,13 +524,16 @@ LG.llm = (function () {
       'Being interested, asking a question about it, saying they want it, or agreeing to',
       'trade later is NOT acceptance. They have to be completing the exchange now.',
       '',
-      'Answer with one word: yes or no.'
+      'Reply with only a JSON object: ' + shape.text
     ].join('\n');
     const vcfg = helperConfig(cfg);
     try {
-      const raw = await providerCall(vcfg, 'You answer yes or no about what a line of dialogue did.',
-        [{ role: 'user', content: ask }], null, { kind: 'trade', who: deal.npcName });
-      return /^\W*yes\b/i.test(String(raw).trim());
+      const raw = await providerCall(vcfg, 'You answer yes or no about what a line of dialogue did. Answer with JSON only.',
+        [{ role: 'user', content: ask }], shape.schema, { kind: 'trade', who: deal.npcName });
+      const obj = parseJSON(raw);
+      // a bare yes, from a model that answered in a word
+      const ans = obj && typeof obj.answer === 'string' ? obj.answer : String(raw);
+      return /^\W*yes\b/i.test(ans.trim());
     } catch (e) {
       return false;
     }                                // a failed check is no deal
@@ -504,6 +544,10 @@ LG.llm = (function () {
      now") rather than deleting it. At most one revision; null for none. */
   async function revise(cfg, opts) {
     const o = opts || {};
+    const shape = replyShape([
+      { k: 'n', type: { type: 'integer' }, show: '<the number, or 0 if nothing is out of date>' },
+      { k: 'line', type: STR, show: '"<the rewritten line, or an empty string>"' }
+    ]);
     const ask = [
       o.who + ' already believes these, oldest first:',
       o.held.map((h, i) => i + 1 + '. ' + h).join('\n'),
@@ -518,12 +562,12 @@ LG.llm = (function () {
       'voice, no longer, and it should still say what it used to say happened, in the past.',
       '',
       'Reply with only a JSON object:',
-      '{"n": <the number, or 0 if nothing is out of date>, "line": "<the rewritten line, or an empty string>"}'
+      shape.text
     ].join('\n');
     const vcfg = helperConfig(cfg);
     try {
       const raw = await providerCall(vcfg, "You keep one person's beliefs up to date. Answer with JSON only.",
-        [{ role: 'user', content: ask }], null, { kind: 'revise', who: o.who });
+        [{ role: 'user', content: ask }], shape.schema, { kind: 'revise', who: o.who });
       const obj = parseJSON(raw);
       const n = obj && Number(obj.n);
       if (!obj || !n || !(n > 0) || n > o.held.length) return null;
@@ -538,23 +582,23 @@ LG.llm = (function () {
   /* Fills in a translation or romanisation the villager's reply left out. */
   async function gloss(cfg, say, opts) {
     const o = opts || {};
-    const want = ['  "translation": "a plain English translation of the line"'];
+    const want = [{ k: 'translation', type: STR, show: '"a plain English translation of the line"' }];
     if (o.romanLabel)
-      want.push('  "roman": "the ' + o.romanLabel + ' of the line' + (o.romanNote ? ', ' + o.romanNote : '') + '"');
+      want.push({ k: 'roman', type: STR,
+                  show: '"the ' + o.romanLabel + ' of the line' + (o.romanNote ? ', ' + o.romanNote : '') + '"' });
+    const shape = replyShape(want);
     const ask = [
       'Here is one line of ' + (o.langName || 'text') + ':',
       '',
       JSON.stringify(say),
       '',
       'Reply with only a JSON object:',
-      '{',
-      want.join(',\n'),
-      '}'
+      shape.text
     ].join('\n');
     const vcfg = helperConfig(cfg);
     try {
       const raw = await providerCall(vcfg, 'You translate and romanise single lines. Answer with JSON only.',
-        [{ role: 'user', content: ask }], null, { kind: 'gloss', who: o.who });
+        [{ role: 'user', content: ask }], shape.schema, { kind: 'gloss', who: o.who });
       const o2 = parseJSON(raw);
       return o2 || null;
     } catch (e) {
@@ -574,6 +618,15 @@ LG.llm = (function () {
           ? who.facts.map(f => '  [' + f.id + '] ' + f.text).join('\n')
           : '  (they know nothing in particular, so this list is empty)'
       ].join('\n');
+    // One object per villager: what they came away remembering, and which of their facts they said.
+    const tookAway = name => replyShape([
+      { k: 'remembers', type: STRS, show: '["..."]' },
+      { k: 'said', type: STRS, show: '["ids ' + name + ' actually said, [] if none"]' }
+    ]);
+    const shape = replyShape([o.a.name, o.b.name].map(name => {
+      const t = tookAway(name);
+      return { k: name, type: t.schema, show: t.text };
+    }));
     const lines = [
       'Two villagers have just been talking. Here is what was said:',
       '',
@@ -593,15 +646,12 @@ LG.llm = (function () {
       'naming who it is about: "Ilya has a dog called Musya", "Mira’s back is bad again".',
       '',
       'Reply with only a JSON object:',
-      '{',
-      '  "' + o.a.name + '": {"remembers": ["..."], "said": ["ids ' + o.a.name + ' actually said, [] if none"]},',
-      '  "' + o.b.name + '": {"remembers": ["..."], "said": ["ids ' + o.b.name + ' actually said, [] if none"]}',
-      '}'
+      shape.text
     ].join('\n');
     const vcfg = helperConfig(cfg);
     const sys = 'You note what people took away from a conversation. Answer with JSON only.';
     try {
-      const raw = await providerCall(vcfg, sys, [{ role: 'user', content: lines }], null,
+      const raw = await providerCall(vcfg, sys, [{ role: 'user', content: lines }], shape.schema,
         { kind: 'recall', who: o.a.name + ' & ' + o.b.name });
       const obj = parseJSON(raw);
       if (!obj) return null;
@@ -742,6 +792,11 @@ LG.llm = (function () {
     if (cfg.provider === 'openrouter' && cfg.apiKey) {
       return decideByJev(cfg, o);
     }
+    const names = o.places.map(p => p.name).filter((x, i, all) => all.indexOf(x) === i);
+    const shape = replyShape([
+      { k: 'go', type: { type: 'string', enum: names }, show: '"exactly one of the strings listed above"' },
+      { k: 'why', type: STR, show: '"a few words, in English"' }
+    ]);
     const lines = [
       'You are ' + o.me.name + ' — ' + o.me.job + '. ' + o.me.persona,
       o.goal ? 'What you are about: ' + o.goal : null,
@@ -768,12 +823,12 @@ LG.llm = (function () {
       'Decide where to be for the next while, and why.',
       '',
       'Reply with only a JSON object:',
-      '{"go": "exactly one of the strings listed above", "why": "a few words, in English"}'
+      shape.text
     ].filter(x => x !== null && x !== undefined).join('\n');
     const vcfg = helperConfig(cfg);
     const sys = 'You decide what a villager does next. Answer with JSON only.';
     try {
-      const raw = await providerCall(vcfg, sys, [{ role: 'user', content: lines }], null, { kind: 'intent', who: o.me.name });
+      const raw = await providerCall(vcfg, sys, [{ role: 'user', content: lines }], shape.schema, { kind: 'intent', who: o.me.name });
       const obj = parseJSON(raw);
       if (!obj || !obj.go) return null;
       return obj;
@@ -786,6 +841,17 @@ LG.llm = (function () {
      Nothing is pre-selected, and "nothing" is a fine answer. */
   async function notice(cfg, opts) {
     const o = opts || {};
+    const fields = [
+      { k: 'post', type: { type: 'boolean' }, show: 'true or false' },
+      { k: 'text', type: STR, show: '"what you pin up, in ' + o.langName + ' — empty string if post is false"' },
+      { k: 'translation', type: STR, show: '"plain English, or empty string if post is false"' }
+    ];
+    if (o.romanLabel)
+      fields.push({ k: 'roman', type: STR,
+                    show: '"' + o.romanLabel + (o.romanNote ? ', ' + o.romanNote : '') + ', or empty string if post is false"' });
+    fields.push({ k: 'revealed', type: STRS,
+                  show: '["ids from what you know that this notice states outright, [] if none or if post is false"]' });
+    const shape = replyShape(fields);
     const lines = [
       'You are ' + o.me.name + ' — ' + o.me.job + '. ' + o.me.persona,
       o.goal ? 'What you are about: ' + o.goal : null,
@@ -808,20 +874,12 @@ LG.llm = (function () {
       ('In ' + o.langName + '. ' + (o.register || '')).trim(),
       '',
       'Reply with only a JSON object:',
-      '{"post": true or false,',
-      ' "text": "what you pin up, in ' + o.langName + ' — empty string if post is false",',
-      ' "translation": "plain English, or empty string if post is false"' +
-        (o.romanLabel
-          ? ',\n "roman": "' + o.romanLabel + (o.romanNote ? ', ' + o.romanNote : '') +
-            ', or empty string if post is false"'
-          : '') +
-        ',',
-      ' "revealed": ["ids from what you know that this notice states outright, [] if none or if post is false"]}'
+      shape.text
     ].filter(x => x !== null && x !== undefined).join('\n');
     const vcfg = helperConfig(cfg);
     const sys = 'You decide whether a villager posts a notice, and write it if so. Answer with JSON only.';
     try {
-      const raw = await providerCall(vcfg, sys, [{ role: 'user', content: lines }], null, { kind: 'notice', who: o.me.name });
+      const raw = await providerCall(vcfg, sys, [{ role: 'user', content: lines }], shape.schema, { kind: 'notice', who: o.me.name });
       const obj = parseJSON(raw);
       if (!obj) return null;
       return obj;
@@ -836,6 +894,10 @@ LG.llm = (function () {
   async function converse(cfg, opts) {
     const o = opts || {};
     const said = (o.transcript || []).map(t => t.who + ': ' + t.say);
+    const fields = [{ k: 'say', type: STR, show: '"your line"' }, { k: 'translation', type: STR, show: '"plain English"' }];
+    if (o.romanLabel)
+      fields.push({ k: 'roman', type: STR, show: '"' + o.romanLabel + (o.romanNote ? ', ' + o.romanNote : '') + '"' });
+    const shape = replyShape(fields);
     const lines = [
       'You are ' + o.me.name + ' — ' + o.me.job + '. ' + o.me.persona,
       // Where they actually are and why, from their own decision.
@@ -885,14 +947,12 @@ LG.llm = (function () {
       o.diacritics ? 'Write "say" fully vocalised, tashkeel and all.\n' + LG.TASHKEEL : null,
       '',
       'Reply with only a JSON object:',
-      '{"say": "your line", "translation": "plain English"' +
-        (o.romanLabel ? ', "roman": "' + o.romanLabel + (o.romanNote ? ', ' + o.romanNote : '') + '"' : '') +
-        '}'
+      shape.text
     ].filter(x => x !== null && x !== undefined).join('\n');
     const vcfg = helperConfig(cfg);
     const sys = 'You play one villager in a two-person conversation. Answer with JSON only.';
     try {
-      const raw = await providerCall(vcfg, sys, [{ role: 'user', content: lines }], null, { kind: 'chatter', who: o.me.name });
+      const raw = await providerCall(vcfg, sys, [{ role: 'user', content: lines }], shape.schema, { kind: 'chatter', who: o.me.name });
       const obj = parseJSON(raw);
       if (!obj || !obj.say) return null;
       return obj;
@@ -902,7 +962,8 @@ LG.llm = (function () {
   }
 
   /* Adds furigana to a Japanese line the villager left unannotated. Null on
-     anything unexpected. */
+     anything unexpected. The reply is the sentence itself, not JSON, so
+     there's no shape for a schema to hold it to. */
   async function furigana(cfg, say, attempt, who) {
     const ask = [
       'Add furigana to this Japanese sentence.',

@@ -302,14 +302,6 @@ for (const p of LG.PLACES) {
    a runtime error when a player happens to walk far enough to see it.
    Renders the entire map, in every language, with and without snow,
    with a viewport wide enough that nothing gets culled from the draw call. */
-section('the cached ground knows when it has water in it');
-{
-  const T = LG.world.TILE, view = 10 * T;
-  ok(LG.world.animatedIn({ x: 6 * T, y: 68 * T }, view, view), 'the pond keeps the ground layer moving');
-  ok(LG.world.animatedIn({ x: 36 * T, y: 66 * T }, view, view), 'and so does the fountain');
-  ok(!LG.world.animatedIn({ x: 30 * T, y: 4 * T }, view, view), 'the deep woods can sit still');
-}
-
 section('the whole map draws');
 {
   const cam = { x: 0, y: 0 };
@@ -322,6 +314,7 @@ section('the whole map draws');
       LG.world.drawBuildings(ctx2d, LG.world.buildings[0], cam, fullW, fullH);
       LG.world.drawSigns(ctx2d, cam, fullW, fullH, lang, false);
       LG.world.drawSigns(ctx2d, cam, fullW, fullH, lang, true);
+      LG.world.drawAnimated(ctx2d, cam, fullW, fullH);
       drew++;
     }
   }
@@ -712,6 +705,49 @@ async function keysPerProvider() {
   ok(el('setKey').value === 'lf-not-real', 'so switching back to Logfare finds its key still there');
   pick('openrouter');
   ok(el('setKey').value === 'or-not-real', 'and the OpenRouter one is there too');
+}
+
+/* ---------------------------------------------------------- Jev, always
+   On OpenRouter every movement decision goes to Jev's decisions endpoint,
+   with nothing to switch on first; Logfare, which has no route to Jev,
+   still asks the helper model. Its own sandbox, since villagersTalking
+   has already stubbed out LG.llm.intent in the main one. */
+async function jevPicksThePlace() {
+  section('on OpenRouter, Jev decides where a villager goes');
+  const s4 = makeSandbox({});
+  for (const f of files) {
+    vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), s4, { filename: f });
+  }
+  const sent = [];
+  s4.fetch = async (url, init) => {
+    // no body: OpenRouter's model list, looked up for its price cap
+    if (!init || !init.body) return { ok: true, json: async () => ({ data: [] }) };
+    const body = JSON.parse(init.body);
+    sent.push({ url: url, body: body });
+    if (url.indexOf('/alpha/decisions') !== -1)
+      return { ok: true, status: 200, json: async () => ({
+        model: body.model, answers: { go: { choice: 'the bakery' } } }) };
+    return { ok: true, status: 200, json: async () => ({
+      choices: [{ message: { content: '{"go": "the bakery", "why": "hungry"}' },
+                  finish_reason: 'stop' }] }) };
+  };
+  s4.LG.llm.audit = false;
+  const opts = { me: { name: 'Petra', job: 'the baker', persona: 'Brisk.' }, here: 'at home',
+                 places: [{ name: 'the bakery' }, { name: 'the village green' }] };
+
+  const onOR = await s4.LG.llm.intent(
+    { provider: 'openrouter', apiKey: 'k', model: 'deepseek/deepseek-v4.1-flash' }, opts);
+  const jev = sent.filter(r => r.url.indexOf('/alpha/decisions') !== -1);
+  const chat = sent.filter(r => r.url.indexOf('/chat/completions') !== -1);
+  ok(jev.length === 1 && jev[0].body.model === 'typesafe/jev-1.13' && chat.length === 0,
+     'with no setting turned on, the call goes to Jev and not the helper model');
+  ok(!!onOR && onOR.go === 'the bakery' && !onOR.why, 'and comes back as a place, with no reason');
+
+  sent.length = 0;
+  const onLF = await s4.LG.llm.intent({ provider: 'logfare', apiKey: 'k', model: 'logfare/auto' }, opts);
+  ok(sent.length === 1 && sent[0].url.indexOf('logfare.ai') !== -1,
+     'on Logfare, which has no route to Jev, the helper model is asked');
+  ok(!!onLF && onLF.go === 'the bakery' && onLF.why === 'hungry', 'and still says why');
 }
 
 /* ------------------------------------------------------- what they believe now
@@ -1265,6 +1301,7 @@ async function villagersTalking() {
 
   await promptCached();
   await keysPerProvider();
+  await jevPicksThePlace();
   await namesUnknownUntilTold();
   await touchControls();
   await roomForTheComposer();

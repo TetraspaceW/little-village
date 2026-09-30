@@ -95,7 +95,11 @@ python3 waveflag.py path/to/flat-flag.png output.png
 ```
 
 Input must be a PNG (rasterize an SVG source first, e.g. with
-`cairosvg` or `resvg`). Then to turn a render into a font glyph:
+`cairosvg` or `resvg`). Give `build_font.py` a render at the default 128:
+it embeds the PNG it is given verbatim in the SVG table (the CBDT table
+is downsampled to 128 regardless), and that font is inlined into
+`css/style.css` as base64. A 512 render once put 146 KB of flag behind a
+glyph drawn at about 14px. Then to turn a render into a font glyph:
 
 ```
 pip install nanoemoji resvg-cli   # resvg-cli must end up on $PATH

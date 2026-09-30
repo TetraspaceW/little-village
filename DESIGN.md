@@ -344,6 +344,11 @@ everything at every level. The README has the table.
   melts at a seasonal rate. It's drawn on ground, canopies, fence tops, and roofs; the
   pond freezes and the fountain stops. Streets hold the least snow so paths stay
   readable, and roofs never go fully white. The depth is included in villager prompts.
+- **Ground snow is one field, never per-tile shapes.** Depth sets a level on a map-wide
+  noise field; the snowline is traced at 4 px (marching squares) into one path
+  (`snowField` in `js/world.js`). Per-tile blobs printed the grid onto every thaw as polka
+  dots. Props read the same field; ponds ice over as one sheet. Don't `closePath()` the pieces: in Chrome it
+  costs ~100× a `lineTo` and was most of a repaint.
 - Each new village starts on a random day of the year, always mid-morning.
 - In rain, snow, or sand, villagers prefer their workplace or home.
 - Villagers indoors are hidden unless the player is in the same room. The player's room

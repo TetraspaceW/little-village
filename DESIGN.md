@@ -48,11 +48,13 @@ not. A villager who wanted a saw more than anything never went looking for one. 
 villager who had just been told the baker has bread did not walk to the bakery. The fact
 graph and the movement system did not know each other existed.
 
-The decision goes to the helper model now, and it gets what a person would have: their
+The decision goes to a model now — Jev on OpenRouter (see *Jev picks a place, not a
+reason*, below), the helper model on Logfare — and it gets what a person would have: their
 own goal, what they know, the hour and the weather, where they are, **who they have seen
 about the village and where**, and the places they could go. That last one matters more
 than it looks — knowing Sanna has the pack of cards is worth nothing if there is no way
-to express going to find Sanna. They answer with somewhere to be and a few words of why.
+to express going to find Sanna. They answer with somewhere to be, and, when the helper
+model is the one asked, a few words of why.
 
 They are asked only when something has changed — they arrived, the hour turned, the
 weather broke, they learned something — so a settled villager costs nothing, and there is
@@ -81,26 +83,26 @@ every villager can reach every patch they can be sent to.
 TypeSafe's Jev answers a different kind of question than every other model this game
 calls: given a fixed list of options, it returns which one and a probability, not
 generated text. That is exactly the shape of the "go" decision above — one of a named
-list of places — and nothing else here, so it is wired into `LG.llm.intent` alone,
-behind its own setting, and no other call (dialogue, chatter, the notebook's checks)
-can reach it.
+list of places — and nothing else here, so it is wired into `LG.llm.intent` alone, and
+no other call (dialogue, chatter, the notebook's checks) can reach it. It started out
+behind a setting, off by default; it is not a setting any more. On OpenRouter every
+movement decision goes to Jev.
 
 It is asked over OpenRouter's decisions endpoint, not `/chat/completions` — genuinely a
 different request, `{state, questions}` rather than a system prompt and messages — so it
 could not simply join the model lists the way a new chat model would; picking it as the
 main or helper model would leave dialogue with a model that cannot write dialogue.
-Logfare has no equivalent endpoint, so the setting only does anything on OpenRouter, and
-is disabled in the settings panel otherwise — `decideByJev` also checks the provider
-itself before ever calling out, rather than trusting the checkbox alone.
+Logfare has no equivalent endpoint, so on Logfare the helper model still makes the "go"
+decision, the way it did before Jev.
 
 **It does not answer "why."** A villager walking to the bakery because they are hungry
 and one walking there because they heard bread was for sale look the same to Jev — it
 was given a place to choose from, not a reason to have wanted one, and a System One
 model returns a probability over the options it was handed, not prose about them. The
 existing call's `why` was worth having (see *Open the console and you can watch them
-think*, above) and this trades it away on purpose, in exchange for a call priced by
-input tokens alone, with nothing charged for the answer. A villager who moves by way of
-Jev just moves; a villager whose move still runs through the helper model still says why.
+think*, below) and this trades it away on purpose, in exchange for a call priced by
+input tokens alone, with nothing charged for the answer. On OpenRouter a villager just
+moves; only on Logfare, where the helper model still decides, do they say why.
 
 ## Two villagers talking
 
@@ -343,7 +345,9 @@ villager reasoning and a villager rolling dice invisible from the outside. Each 
 a line tagged in their own colour: what they wondered, where they decided to go and why,
 when they arrived, what they learned from whom, and what they said to each other out of
 your earshot. Most of the village happens where you are not, and this is the only window
-onto it.
+onto it. On OpenRouter the "why" is gone from that window — Jev picks where they go
+without a reason (see *Jev picks a place, not a reason*) — and only the destination
+prints.
 
 ## Money, and the till
 

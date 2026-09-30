@@ -27,9 +27,8 @@ LG.llm = (function () {
      picking it as a chat or helper model would leave dialogue with a
      model that cannot write dialogue. It gets its own request path
      (decisionPost/decideByJev, near intent() below), reachable only
-     over OpenRouter -- there's no Logfare equivalent -- and only when
-     the player has turned it on for movement decisions specifically
-     (see DESIGN.md). */
+     over OpenRouter -- there's no Logfare equivalent -- where it makes
+     every movement decision and nothing else (see DESIGN.md). */
   const JEV_MODEL = "typesafe/jev-1.13";
   const DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions";
 
@@ -1021,10 +1020,11 @@ LG.llm = (function () {
      villager isn't re-asked. */
   async function intent(cfg, opts) {
     const o = opts || {};
-    /* Movement only, and only when the player has turned it on -- Jev
-       has no route through Logfare and nothing to say for dialogue or
-       chatter, which need generated text (see JEV_MODEL above). */
-    if (cfg.provider === "openrouter" && cfg.apiKey && cfg.jevMovement) {
+    /* Every movement decision on OpenRouter goes to Jev. Logfare has no
+       route to it, so there the helper model's call below still runs --
+       and dialogue and chatter never come here, since they need
+       generated text (see JEV_MODEL above). */
+    if (cfg.provider === "openrouter" && cfg.apiKey) {
       return decideByJev(cfg, o);
     }
     const lines = [

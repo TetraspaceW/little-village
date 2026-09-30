@@ -122,8 +122,8 @@ client-side either way.
   you.
 - **Helper model** — smaller/cheaper, runs everything else: confirming which
   facts a villager actually revealed, deciding what two villagers took away
-  from a conversation, filling in missing furigana, confirming trades, and
-  choosing where each villager goes.
+  from a conversation, filling in missing furigana, confirming trades, and —
+  on Logfare — choosing where each villager goes.
 
 On OpenRouter the main model is DeepSeek V4.1 Flash
 (`deepseek/deepseek-v4.1-flash`) and the helper is GLM-5.3 Flash
@@ -140,13 +140,14 @@ Use a fast, non-reasoning model for the helper if you can — see below.
 
 ### Jev, for movement only
 
-An optional third option, OpenRouter only: **Use Jev for movement decisions** hands
-"where does this villager go next" to [TypeSafe's Jev](https://openrouter.ai/typesafe/jev-1.13)
-instead of the helper model. Jev doesn't generate text — given the same places a
-villager could go, it returns which one, with a probability, for $0.042 per million
-input tokens and nothing charged for the answer. What it can't do is say why: the helper
-model's version of this decision comes back with a line of reasoning, logged to the
-console; Jev's doesn't, because there's no text to write one in. Off by default.
+On OpenRouter, "where does this villager go next" always goes to
+[TypeSafe's Jev](https://openrouter.ai/typesafe/jev-1.13), not the helper model; there's
+no setting for it. Jev doesn't generate text — given the places a villager could go, it
+returns which one, with a probability, for $0.042 per million input tokens and nothing
+charged for the answer. What it can't do is say why: the console shows where each
+villager decided to go, but not the line of reasoning the helper model used to give,
+because there's no text to write one in. Logfare has no route to Jev, so there the
+helper model still decides, and still says why.
 
 ### Cost
 

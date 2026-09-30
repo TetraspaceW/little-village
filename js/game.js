@@ -39,13 +39,17 @@ LG.game = (function () {
 
   /* Caches the ground/buildings/signs layer to its own offscreen canvas
      and reuses it (a plain blit) instead of redrawing every frame — it
-     only visually changes when the camera moves, the player enters/exits
-     a roofed area, snow accumulation changes, or the display language
-     changes. Everything else in a frame (character animation, weather,
-     the vignette) still redraws every tick; only this layer is cached,
-     and only invalidated when one of those specific things changes. */
+     only visually changes when the player enters/exits a roofed area,
+     snow accumulation changes, night falls or lifts, or the display
+     language changes. It is painted OVERSCAN pixels bigger than the view
+     on every side, so a moving camera just blits it from a different
+     offset until it drifts off the painted area. Keyed on the exact
+     camera position instead, it missed on every frame the player walked.
+     Water glints and the fountain move on their own, so they are drawn
+     on top every frame (W.drawAnimated), as are characters and weather. */
+  const OVERSCAN = 96;
   let groundCanvas = null, groundCtx = null;
-  const groundSeen = { camX: NaN, camY: NaN, roomX: NaN, roomY: NaN, snow: -1, lang: '', trans: false };
+  const groundSeen = { x: NaN, y: NaN, roomX: NaN, roomY: NaN, snow: -1, night: false, lang: '', trans: false };
   let player, npcs = [], beast = null, worldItem = null;
   let whereFact = null;             // the fact saying where the world thing is lying
   let chainNeeds = {};              // items the errand cannot be finished without
@@ -117,8 +121,9 @@ LG.game = (function () {
     settings.showTranslation = false;
     settings.voiceQuality = 'curated';
     settings.voiceSpeed = 'auto';
-    // Jev used to be opt-in; it now always makes movement decisions on OpenRouter, so nothing reads this.
+    // Jev used to be opt-in; it's now always used on OpenRouter, so nothing reads these.
     delete settings.jevMovement;
+    delete settings.jevValidation;
   }
   function saveSettings() {
     try { localStorage.setItem('lg-settings', JSON.stringify(settings)); } catch (e) {}
@@ -774,11 +779,11 @@ LG.game = (function () {
     vignette.addColorStop(1, 'rgba(20,14,8,.30)');
 
     if (!groundCanvas) groundCanvas = document.createElement('canvas');
-    groundCanvas.width = vw * dpr; groundCanvas.height = vh * dpr;
+    groundCanvas.width = (vw + 2 * OVERSCAN) * dpr; groundCanvas.height = (vh + 2 * OVERSCAN) * dpr;
     groundCtx = groundCanvas.getContext('2d');
     groundCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     groundCtx.imageSmoothingEnabled = false;
-    groundSeen.camX = NaN;               // a resized canvas has nothing painted on it yet
+    groundSeen.x = NaN;                  // a resized canvas has nothing painted on it yet
   }
 
   /* ------------------------------------------------- what you can see of it
@@ -1925,8 +1930,10 @@ LG.game = (function () {
     // conversation doesn't burn in-game hours or change the weather mid-chat.
     if (!LG.dialogue.isOpen() && LG.time.tick(dt))
       log('🗓 ' + LG.time.season().name + ', day ' + LG.time.dayOfSeason() + '.');
-    const el = document.getElementById('clock');
-    if (el) el.textContent = LG.time.label();
+    // Written only when it changes: setting the same text still makes the
+    // browser recompute style and layout for the page, every frame.
+    const el = document.getElementById('clock'), label = LG.time.label();
+    if (el && el.textContent !== label) el.textContent = label;
 
     movePlayer(dt);
 
@@ -1982,28 +1989,26 @@ LG.game = (function () {
        simply tapping what's visible -- no key to name. On keyboard, it
        needs to say which key to press. */
     const tap = LG.touch.on;
+    let say = '';
     if (uiBlocked()) {
-      hint.classList.remove('show');
+      // nothing, over an open panel
     } else if (nudgeT > 0) {
-      hint.textContent = nudge;
-      hint.classList.add('show');
+      say = nudge;
     } else if (nearby) {
-      hint.textContent = tap ? 'Tap ' + displayName(nearby) + ' to talk'
-                             : 'Press E to talk to ' + displayName(nearby);
-      hint.classList.add('show');
+      say = tap ? 'Tap ' + displayName(nearby) + ' to talk'
+                : 'Press E to talk to ' + displayName(nearby);
     } else if (beast && !beast.caught && dist(player, beast) < TILE * 1.8) {
-      hint.textContent = (tap ? 'Tap to pick up ' : 'Press E to pick up ') + beast.name;
-      hint.classList.add('show');
+      say = (tap ? 'Tap to pick up ' : 'Press E to pick up ') + beast.name;
     } else if (worldItem && !worldItem.taken && dist(player, worldItem) < TILE * 1.8) {
-      hint.textContent = tap ? 'Tap to pick it up' : 'Press E to pick it up';
-      hint.classList.add('show');
+      say = tap ? 'Tap to pick it up' : 'Press E to pick it up';
     } else if (nearBoard()) {
-      hint.textContent = tap ? 'Tap the noticeboard to read it'
-                             : 'Press E to read the noticeboard';
-      hint.classList.add('show');
-    } else {
-      hint.classList.remove('show');
+      say = tap ? 'Tap the noticeboard to read it'
+                : 'Press E to read the noticeboard';
     }
+    // Same as the clock: touched only on a change. A hidden hint keeps its
+    // last text, so it doesn't blank out while it fades.
+    if (say && hint.textContent !== say) hint.textContent = say;
+    hint.classList.toggle('show', !!say);
 
     /* Camera is centered on the middle of the visible band (see seen()),
        not the middle of the full canvas, and clamped so the map edge
@@ -2047,56 +2052,71 @@ LG.game = (function () {
   }
 
   function paintGroundLayer(room) {
-    const g = groundCtx, c = roundedCam();
+    const g = groundCtx, at = { x: groundSeen.x, y: groundSeen.y };
+    const w = vw + 2 * OVERSCAN, h = vh + 2 * OVERSCAN;
     g.fillStyle = '#3f6b3a';
-    g.fillRect(0, 0, vw, vh);
+    g.fillRect(0, 0, w, h);
     g.save();
-    g.translate(-c.x, -c.y);
-    W.drawGround(g, cam, vw, vh, dpr);
-    W.drawBuildings(g, room, cam, vw, vh);
-    W.drawSigns(g, cam, vw, vh, settings.lang, settings.showTranslation, dpr);
+    g.translate(-at.x, -at.y);
+    W.drawGround(g, at, w, h, dpr);
+    W.drawBuildings(g, room, at, w, h);
+    W.drawSigns(g, at, w, h, settings.lang, settings.showTranslation, dpr);
     g.restore();
   }
 
   /* Repaints the cached ground layer only when something visible in it
-     has actually changed: camera position, entering/exiting a roofed
-     area, snow depth advancing a bucket (bucketed the same way world.js
-     does -- see readSnow() there), or a sign's language/reveal state.
-     Otherwise draw() just blits the existing cached layer unchanged. */
+     has actually changed: the camera leaving the painted area, entering/
+     exiting a roofed area, snow depth advancing a bucket (bucketed the
+     same way world.js does -- see readSnow() there), the lamps lighting
+     or going out, or a sign's language/reveal state. Otherwise draw()
+     just blits the existing cached layer from wherever the camera is. */
   function refreshGroundLayer(room) {
     const c = roundedCam();
     const snow = Math.round((LG.time && typeof LG.time.snow === 'number' ? LG.time.snow : 0) * 400);
+    const night = LG.time.isNight();
     const roomX = room ? room.x : -1, roomY = room ? room.y : -1;
-    if (c.x === groundSeen.camX && c.y === groundSeen.camY &&
+    if (c.x >= groundSeen.x && c.x <= groundSeen.x + 2 * OVERSCAN &&
+        c.y >= groundSeen.y && c.y <= groundSeen.y + 2 * OVERSCAN &&
         roomX === groundSeen.roomX && roomY === groundSeen.roomY &&
-        snow === groundSeen.snow && settings.lang === groundSeen.lang &&
-        settings.showTranslation === groundSeen.trans) return;
-    groundSeen.camX = c.x; groundSeen.camY = c.y; groundSeen.roomX = roomX; groundSeen.roomY = roomY;
-    groundSeen.snow = snow; groundSeen.lang = settings.lang; groundSeen.trans = settings.showTranslation;
+        snow === groundSeen.snow && night === groundSeen.night &&
+        settings.lang === groundSeen.lang && settings.showTranslation === groundSeen.trans) return;
+    // Centred on the camera again, on whole device pixels like roundedCam(),
+    // so the blit offset in draw() is always a whole number of device pixels.
+    groundSeen.x = Math.round((c.x - OVERSCAN) * dpr) / dpr;
+    groundSeen.y = Math.round((c.y - OVERSCAN) * dpr) / dpr;
+    groundSeen.roomX = roomX; groundSeen.roomY = roomY; groundSeen.snow = snow; groundSeen.night = night;
+    groundSeen.lang = settings.lang; groundSeen.trans = settings.showTranslation;
     paintGroundLayer(room);
   }
 
   function draw() {
     const room = W.buildingUnder(player);
     refreshGroundLayer(room);
-    ctx.drawImage(groundCanvas, 0, 0, vw, vh);
+    const c = roundedCam();
+    ctx.drawImage(groundCanvas, groundSeen.x - c.x, groundSeen.y - c.y,
+                  groundCanvas.width / dpr, groundCanvas.height / dpr);
 
     ctx.save();
-    const c = roundedCam();
     ctx.translate(-c.x, -c.y);
 
+    W.drawAnimated(ctx, c, vw, vh);
     drawWorldItem();
 
     /* A villager inside a building the player isn't in is not drawn --
        the player can see into whatever room they're standing in (that's
        what the roof-lifting effect is for), but not through another
        building's walls, so e.g. the baker at her oven is genuinely
-       unreachable-looking until the player actually goes inside. */
+       unreachable-looking until the player actually goes inside. Nor is
+       anyone off the screen; the margin is for a speech bubble, which
+       reaches well above and to either side of whoever is speaking. */
+    const onScreen = a => a.px > c.x - 240 && a.px < c.x + vw + 240 &&
+                          a.py > c.y - 240 && a.py < c.y + vh + 240;
     const drawables = npcs.filter(a => {
+      if (!onScreen(a)) return false;
       const r = W.buildingUnder(a);
       return !r || r === room;
     });
-    if (beast) { const r = W.buildingUnder(beast); if (!r || r === room) drawables.push(beast); }
+    if (beast && onScreen(beast)) { const r = W.buildingUnder(beast); if (!r || r === room) drawables.push(beast); }
     drawables.push(player);
     drawables.sort((a, b) => a.py - b.py);
 

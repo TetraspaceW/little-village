@@ -120,10 +120,11 @@ client-side either way.
 
 - **Main model** — plays the villagers directly, one call per line said to
   you.
-- **Helper model** — smaller/cheaper, runs everything else: confirming which
-  facts a villager actually revealed, deciding what two villagers took away
-  from a conversation, filling in missing furigana, confirming trades, and —
-  on Logfare — choosing where each villager goes.
+- **Helper model** — smaller/cheaper, runs everything else: deciding what two
+  villagers took away from a conversation, filling in missing furigana,
+  deciding whether a villager posts a noticeboard notice. On Logfare, which
+  has no Jev (see below), it also confirms which facts a villager actually
+  revealed, confirms trades, and chooses where each villager goes.
 
 On OpenRouter the main model is DeepSeek V4.1 Flash
 (`deepseek/deepseek-v4.1-flash`) and the helper is GLM-5.3 Flash
@@ -138,16 +139,24 @@ doesn't lose the other one.
 
 Use a fast, non-reasoning model for the helper if you can — see below.
 
-### Jev, for movement only
+### Jev, for what has a fixed set of answers
 
-On OpenRouter, "where does this villager go next" always goes to
-[TypeSafe's Jev](https://openrouter.ai/typesafe/jev-1.13), not the helper model; there's
-no setting for it. Jev doesn't generate text — given the places a villager could go, it
-returns which one, with a probability, for $0.042 per million input tokens and nothing
-charged for the answer. What it can't do is say why: the console shows where each
-villager decided to go, but not the line of reasoning the helper model used to give,
-because there's no text to write one in. Logfare has no route to Jev, so there the
-helper model still decides, and still says why.
+On OpenRouter, three of the helper model's jobs go to [TypeSafe's Jev](https://openrouter.ai/typesafe/jev-1.13)
+instead, automatically — there's no setting for it, and no way to turn it off short of
+switching to Logfare. Jev doesn't generate text — given a fixed set of typed questions, it
+answers each with one of a named list of options and a probability, for $0.042 per
+million input tokens and nothing charged for the answer, which is exactly the shape of
+these three jobs: did this happen, yes or no, or which of these places should a villager
+be.
+
+**Where a villager goes next.** What Jev can't do is say why: the helper model's version
+of this decision comes back with a line of reasoning, logged to the console; Jev's
+doesn't, because there's no text to write one in.
+
+**Whether a trade actually completed**, and **whether a line actually stated a fact
+outright** — both a yes/no choice rather than a written answer. The helper model's
+version of the fact check writes a note in the player's language when it confirms one;
+Jev can't, so a fact it confirms is recorded under the line as spoken instead.
 
 ### Cost
 

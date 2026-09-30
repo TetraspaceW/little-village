@@ -314,6 +314,7 @@ section('the whole map draws');
       LG.world.drawBuildings(ctx2d, LG.world.buildings[0], cam, fullW, fullH);
       LG.world.drawSigns(ctx2d, cam, fullW, fullH, lang, false);
       LG.world.drawSigns(ctx2d, cam, fullW, fullH, lang, true);
+      LG.world.drawAnimated(ctx2d, cam, fullW, fullH);
       drew++;
     }
   }

@@ -697,14 +697,10 @@ LG.world = (function () {
         if (r < 0.18) { ctx.fillStyle = COLORS.pathEdge;
           ctx.fillRect(px + (r * 20 | 0), py + (r * 27 | 0) % 24, 4, 3); }
         break;
-      case T.WATER: {
+      case T.WATER:                                     // its glint is drawn live, in drawAnimated
         ctx.fillStyle = r < 0.5 ? COLORS.water : COLORS.waterDeep;
         ctx.fillRect(px, py, TILE, TILE);
-        const t2 = (performance.now() / 900 + r * 6) % 4;
-        if (t2 < 1) { ctx.fillStyle = 'rgba(255,255,255,.22)';
-          ctx.fillRect(px + 6, py + 10 + (r * 8 | 0), 12, 2); }
         break;
-      }
       case T.SAND: ctx.fillStyle = COLORS.sand; ctx.fillRect(px, py, TILE, TILE); break;
       case T.REED:
         ctx.fillStyle = COLORS.sand; ctx.fillRect(px, py, TILE, TILE);
@@ -1063,7 +1059,16 @@ LG.world = (function () {
     if (froze > 0.55) {                               // frozen solid — no water animation
       ctx.fillStyle = 'rgba(214,232,243,' + (froze * 0.85).toFixed(3) + ')';
       ctx.beginPath(); ctx.ellipse(cx, cy, 25, 15, 0, 0, Math.PI * 2); ctx.fill();
-    } else {
+    }
+    // The ripples, and everything drawn over them, go in drawFountainLive.
+  }
+
+  /* The fountain's moving part: ripples, then the snow and plinth that sit
+     on top of them. Drawn every frame over the cached ground layer, since
+     anything with performance.now() in it would freeze in the cache. */
+  function drawFountainLive(ctx, p) {
+    const cx = (p.x + 1) * TILE, cy = (p.y + 1) * TILE;
+    if (snowAt(p.x, p.y) <= 0.55) {
       const t = performance.now() / 700;
       ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 2;
       for (let i = 0; i < 2; i++) {
@@ -1311,51 +1316,51 @@ LG.world = (function () {
     return overSign(wx, wy);
   }
 
-  /* Caches the ground snow layer to an offscreen canvas rather than
-     redrawing it into the visible context every frame. Redrawing directly
-     was the expensive part: every visible tile gets a jittered ellipse
-     (sometimes a rounded rect too) redrawn 60 times a second, for a
-     picture that barely changes — the underlying noise is fixed and
-     `lying` moves only slightly frame to frame. The camera also has to
-     cross a full tile before the visible tile range even shifts, so the
-     same blobs were being redrawn identically for a dozen-plus frames at
-     a time. Now the offscreen canvas is only rebuilt when the visible
-     tile range or the snow bucket changes; otherwise it's just blitted. */
-  let snowLayer = null, snowLayerCtx = null, snowLayerKey = null;
-  function drawSnowLayer(ctx, x0, y0, x1, y1) {
-    const key = x0 + ',' + y0 + ',' + x1 + ',' + y1 + ',' + snowBucket;
-    const w = (x1 - x0 + 1) * TILE, h = (y1 - y0 + 1) * TILE;
-    if (key !== snowLayerKey) {
-      if (!snowLayer) snowLayer = document.createElement('canvas');
-      if (snowLayer.width !== w || snowLayer.height !== h) {
-        snowLayer.width = w; snowLayer.height = h;
-        snowLayerCtx = snowLayer.getContext('2d');
-      } else {
-        snowLayerCtx.clearRect(0, 0, w, h);
-      }
-      for (let y = y0; y <= y1; y++)
-        for (let x = x0; x <= x1; x++)
-          snowOnTile(snowLayerCtx, x, y, (x - x0) * TILE, (y - y0) * TILE);
-      snowLayerKey = key;
-    }
-    ctx.drawImage(snowLayer, x0 * TILE, y0 * TILE);
-  }
-
+  /* Called only when game.js repaints its cached ground layer, so the
+     snow is drawn straight into that. (It had an offscreen canvas of its
+     own from before that cache existed, keyed on the tile range and snow
+     bucket — the same things that make the ground layer repaint, so it
+     almost never hit, and it was drawn at 1x, which left drifts blocky
+     on a high-density screen.) */
   function drawGround(ctx, cam, vw, vh, dpr) {
     readSnow();
     const x0 = Math.max(0, (cam.x / TILE) | 0), y0 = Math.max(0, (cam.y / TILE) | 0);
     const x1 = Math.min(W - 1, ((cam.x + vw) / TILE) | 0), y1 = Math.min(H - 1, ((cam.y + vh) / TILE) | 0);
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) drawTile(ctx, x, y, x * TILE, y * TILE);
-    // Snow layer drawn after all ground tiles, as a separate pass --
+    // Snow drawn after all ground tiles, as a separate pass --
     // drawing it tile-by-tile alongside the ground would let each
     // drift's spillover get clipped again by the following tile's grass.
-    if (lying > 0) drawSnowLayer(ctx, x0, y0, x1, y1);
+    if (lying > 0)
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) snowOnTile(ctx, x, y, x * TILE, y * TILE);
     drawPropsPass(ctx, x0, y0, x1, y1, dpr);
+  }
+
+  /* What moves on its own and isn't a character: water glints and the
+     fountain. game.js paints everything else once into a cached layer and
+     keeps it until the camera leaves it, so these are drawn fresh on top
+     every frame instead. Nothing in that layer overlaps them. */
+  function drawAnimated(ctx, cam, vw, vh) {
+    readSnow();
+    const x0 = Math.max(0, (cam.x / TILE) | 0), y0 = Math.max(0, (cam.y / TILE) | 0);
+    const x1 = Math.min(W - 1, ((cam.x + vw) / TILE) | 0), y1 = Math.min(H - 1, ((cam.y + vh) / TILE) | 0);
+    const t = performance.now() / 900;
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      if (get(x, y) !== T.WATER) continue;
+      const r = hash(x, y);
+      if ((t + r * 6) % 4 >= 1) continue;
+      // Drawn over the ice rather than under it now, so fade it by as much as the ice would.
+      const ice = lying > 0 ? snowAt(x, y) * 0.75 : 0;
+      ctx.fillStyle = 'rgba(255,255,255,' + (0.22 * (1 - ice)).toFixed(3) + ')';
+      ctx.fillRect(x * TILE + 6, y * TILE + 10 + (r * 8 | 0), 12, 2);
+    }
+    for (const p of props)
+      if (p.type === 'fountain' && inView(p.x * TILE, p.y * TILE, TILE * 2, TILE * 2, cam, vw, vh, TILE))
+        drawFountainLive(ctx, p);
   }
 
   return { TILE, W, H, T, build, get, isSolid, isWalkable, nearestOpen, pathTo,
            buildingAt, buildingUnder, roofRects, buildingByLabel, inRect, nearRect,
-           drawGround, drawBuildings, drawSigns, hitSign, overSign, buildings,
+           drawGround, drawBuildings, drawSigns, drawAnimated, hitSign, overSign, buildings,
            // for the tests: what got placed, and where you can get to from here
            _props: () => props, _signs: () => signSpots(), _flood: flood,
            _signBoxes: () => signBoxes };

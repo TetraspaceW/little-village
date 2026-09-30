@@ -1420,6 +1420,7 @@ async function villagersTalking() {
   await keysPerProvider();
   await jevPicksThePlace();
   await namesUnknownUntilTold();
+  await historyInFull();
   await touchControls();
   await roomForTheComposer();
   whatYouCanSee();
@@ -1479,6 +1480,47 @@ async function namesUnknownUntilTold() {
   ok(back.nameKnown === true, 'and a name once learned is not forgotten on reload');
 
   LG.llm.speak = real;
+}
+
+/* The villager's past turns go back to the model as whole replies, in the
+   current reply format, not as a bare {"say"} -- the shape the prompt tells
+   it never to use. */
+async function historyInFull() {
+  section('a villager’s past replies go back to them whole');
+  const g = LG.game, npc = g.npcs[1];
+  const real = LG.llm.speak, lang = g.settings.lang, audit = LG.llm.audit;
+  const seen = [];
+  LG.llm.audit = false;                       // the reply's `remember` sets off a revise that has nowhere to go
+  LG.llm.speak = async (cfg, system, msgs, schema) => {
+    seen.push({ msgs: msgs, schema: schema });
+    return { say: '<ruby>村<rt>むら</rt></ruby>です', translation: 'It is the village.',
+             understood: 'partial', revealed: ['f0'], remember: 'The traveller is looking for rope.',
+             action: 'none' };
+  };
+  try {
+    g.settings.lang = 'ja';
+    npc.history = [];
+    LG.dialogue.open(npc);
+    await LG.dialogue.send('こんにちは');
+    await LG.dialogue.send('もう一度');
+    LG.dialogue.close();
+    await LG.dialogue.settled();              // the checks each reply sets off in the background
+  } finally {
+    LG.llm.speak = real;
+    g.settings.lang = lang;
+    LG.llm.audit = audit;
+  }
+  const second = seen[1];
+  const past = second && second.msgs.filter(m => m.role === 'assistant');
+  ok(past && past.length === 1, 'the second turn carries the first reply');
+  if (!past || !past.length) return;
+  const was = JSON.parse(past[0].content);
+  ok(JSON.stringify(Object.keys(was)) === JSON.stringify(second.schema.required),
+     'with every field the reply format has, in its order');
+  ok(was.understood === 'partial' && was.revealed[0] === 'f0' && was.action === 'none' &&
+     was.remember === 'The traveller is looking for rope.' && was.translation === 'It is the village.',
+     'as the villager actually gave them');
+  ok(was.say.indexOf('<ruby>') !== -1, 'and a Japanese line keeps the furigana the prompt asks for');
 }
 
 /* Tests touch/mobile input handling. No PointerEvent is dispatched here

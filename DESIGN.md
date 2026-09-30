@@ -134,6 +134,9 @@ OpenRouter's decisions endpoint (`decisionPost`/`askJev` in `js/llm.js`), not
 - The prompt's field list and the schema are rendered **from one array**. Every field is
   required. Optional ones are nullable, and "nothing happened" is spelled `null`, `[]`,
   or `"none"`. The log records whether each call was schema-checked.
+- **History replays whole replies** (`pastReply`, `js/dialogue.js`): every field of the
+  current format, with furigana inline. Replayed as `{"say": …}` it showed the model
+  its own turns in the bare shape the prompt forbids.
 - The parser strips fences, repairs common breakage, and falls back to pulling out
   fields by hand. It **never shows raw text**. An unreadable reply becomes a failed
   turn, never a brace in a speech bubble.

@@ -569,18 +569,41 @@ LG.dialogue = (function () {
     const stableText = stable.join('\n');
     const volatileText = volatile.join('\n');
     return { text: stableText + '\n\n' + volatileText,
-             core: coreText, stable: stableText,
+             core: coreText, stable: stableText, keys: required,
              schema: { type: 'object', properties: props, required: required,
                        additionalProperties: false } };
   }
 
   function systemPrompt(npc, offered) { return buildReply(npc, offered).text; }
 
-  function historyMessages(npc) {
+  /* A past turn as the villager's reply, in this turn's reply format
+     (`keys`, from buildReply): every field present, "nothing happened"
+     spelled out, and for a furigana language the readings inline in "say".
+     Replayed as a bare {"say"}, the history showed the model its own
+     replies in exactly the shape the prompt rules out. */
+  function pastReply(h, keys) {
+    const L = LG.LANGUAGES[LG.game.settings.lang];
+    const was = {
+      say: L.furigana && rubyMatches(h.ruby, h.say) ? h.ruby : h.say,
+      translation: h.translation || '',
+      roman: h.roman || '',
+      understood: h.understood || 'full',
+      revealed: h.revealed || [],
+      remember: h.remember || null,
+      item: h.item || null,
+      price: typeof h.price === 'number' ? h.price : null,
+      action: h.action || 'none'
+    };
+    const out = {};
+    keys.forEach(k => { out[k] = k in was ? was[k] : null; });
+    return out;
+  }
+
+  function historyMessages(npc, keys) {
     const msgs = [];
     npc.history.slice(-8).forEach(h => {
       msgs.push({ role: 'user', content: h.player });
-      msgs.push({ role: 'assistant', content: JSON.stringify({ say: h.say }) });
+      msgs.push({ role: 'assistant', content: JSON.stringify(pastReply(h, keys)) });
     });
     return msgs;
   }
@@ -781,9 +804,9 @@ LG.dialogue = (function () {
     let reply;
     try {
       const cfg = LG.game.llmConfig();
-      const msgs = historyMessages(npc);
-      msgs.push({ role: 'user', content: shown || '[says nothing, just holds out the item]' });
       const built = buildReply(npc, offered);
+      const msgs = historyMessages(npc, built.keys);
+      msgs.push({ role: 'user', content: shown || '[says nothing, just holds out the item]' });
       // One session per villager: each has their own stable prefix, so
       // it's each villager's turns that are worth keeping on one provider.
       reply = await LG.llm.speak(cfg, built.text, msgs, built.schema,
@@ -813,8 +836,16 @@ LG.dialogue = (function () {
       else if (reply.ruby) ruby = usableRuby(reply.ruby, reply.say); // separate field, still honoured
     }
 
+    // What the reply said besides the line itself, so history can replay it whole (see pastReply).
+    const price = reply.price != null && reply.price !== '' ? Number(reply.price) : null;
     const turn = { player: shown, silent: !!prompt, say: spoken, translation: reply.translation,
-                   roman: reply.roman, ruby: ruby };
+                   roman: reply.roman, ruby: ruby,
+                   understood: String(reply.understood || 'full').toLowerCase(),
+                   revealed: Array.isArray(reply.revealed) ? reply.revealed.map(String) : [],
+                   remember: typeof reply.remember === 'string' && reply.remember.trim() ? reply.remember : null,
+                   action: String(reply.action || 'none').toLowerCase(),
+                   item: Array.isArray(reply.item) ? reply.item.map(String) : reply.item ? [String(reply.item)] : null,
+                   price: isFinite(price) ? price : null };
     npc.turns = (npc.turns || 0) + 1;       // history is trimmed; this only ever goes up
     npc.history.push(turn);
     if (npc.history.length > 20) npc.history.shift();

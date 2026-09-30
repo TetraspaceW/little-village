@@ -49,6 +49,16 @@ LG.chain = (function () {
   function pick(arr, rnd) { return arr[(rnd() * arr.length) | 0]; }
   const NUMWORD = ['zero','one','two','three','four','five','six','seven'];
 
+  /* The goal of a villager with no part in the errand: a bystander, or a
+     link whose trade is done, who goes back to being an ordinary villager.
+     Also given by save.js to a villager added since a village was saved. */
+  function plainGoal(id) {
+    const d = LG.NPCS.find(x => x.id === id) || {};
+    return 'Your own work, as ' + (d.job || 'a villager') +
+      ', which is what your day is mostly about. Nobody has asked you for anything, ' +
+      'so beyond that you are happy to stop and talk, and you pass on what you have heard.';
+  }
+
   /* ---------------------------------------------------------- the build */
   function attempt(opts) {
     const level = LG.LEVELS[opts.level] || LG.LEVELS.beginner;
@@ -213,18 +223,6 @@ LG.chain = (function () {
       roles[n.id] = { goal: '', trade: null, link: -1 };
     });
 
-    /* Default goal text for a villager with no active role in the errand —
-       either a bystander, or a link whose part of the chain is complete.
-       Reused for both cases deliberately: once a villager's trade is
-       settled, they should go back to being an ordinary villager, not
-       keep acting like they still want something they've already received. */
-    const plainGoal = id => {
-      const d = LG.NPCS.find(x => x.id === id) || {};
-      return 'Your own work, as ' + (d.job || 'a villager') +
-        ', which is what your day is mostly about. Nobody has asked you for anything, ' +
-        'so beyond that you are happy to stop and talk, and you pass on what you have heard.';
-    };
-
     links.forEach((lk, i) => {
       const r = roles[lk.npcId];
       r.link = i;
@@ -292,14 +290,6 @@ LG.chain = (function () {
         item: terminalItem, isBeast, beastName,
         placeId: place.id, placeText: place.en, rect: place.rect
       },
-      /* Which place ids `pick(LG.PLACES..., rnd)` above actually had to
-         choose from -- not just this plan's *result*, but the list length
-         and order it was drawn against. `LG.PLACES` only ever grows, so a
-         plan built today may need to be replayed against a shorter list
-         later, once new places have joined it; this is what lets
-         save.js's restore() do that (see `LG.saveMigrate.withPlaces`)
-         without caring whether the plan is brand new or years old. */
-      placesSnapshot: LG.PLACES.map(p => p.id),
       // used by the ending screen to describe what the errand accomplished
       goalItem: wants[0], clientId: links[0].npcId, clientName: links[0].npcName
     };
@@ -330,5 +320,5 @@ LG.chain = (function () {
     throw new Error('could not build a solvable errand chain');
   }
 
-  return { generate, makeSeed, validate };
+  return { generate, makeSeed, validate, plainGoal };
 })();

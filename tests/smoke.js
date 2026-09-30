@@ -956,8 +956,8 @@ section('a village, written down and read back');
 
   const after = LG.game;
   ok(after.plan.seed === before.seed, 'the same village came back');
-  ok(LG.save.digestOf(after.plan) === shot.village.digest,
-     'and the generator built the same chain from the seed');
+  ok(JSON.stringify(after.plan) === JSON.stringify(shot.village.plan),
+     'and the errand is the one that was saved');
   ok(LG.time.day === before.day && Math.abs(LG.time.frac - before.frac) < 1e-9,
      'on the same day, at the same hour');
   ok(LG.time.weather === before.weather && Math.abs(LG.time.snow - before.snow) < 1e-9,
@@ -1024,6 +1024,35 @@ section('a village, written down and read back');
     ok(LG.save.restore(JSON.parse(text)) === null, 'and the newer save loads again after it');
   }
 
+  /* The generator draws from these lists, so a seed alone would build a
+     different village once any of them grew. The save carries its plan. */
+  section('content added since a village was saved does not lose it');
+  {
+    const hold = Object.keys(LG.ITEMS).find(k => LG.ITEMS[k].tags.indexOf('hold') !== -1);
+    LG.ITEMS.teacup = Object.assign({}, LG.ITEMS[hold], { en: 'teacup', full: 'a teacup' });
+    LG.OPINIONS.push('whistles too much');
+    LG.BEAST_NAMES.push('Dora');
+    const why = LG.save.restore(JSON.parse(text));
+    ok(why === null, 'a new item, opinion and beast name later, the save still loads' + (why ? ': ' + why : ''));
+    ok(JSON.stringify(LG.game.plan) === JSON.stringify(shot.village.plan), 'as the same errand');
+    delete LG.ITEMS.teacup; LG.OPINIONS.pop(); LG.BEAST_NAMES.pop();
+
+    const moved = JSON.parse(text);
+    const place = LG.PLACES.find(p => p.id === moved.village.plan.terminal.placeId);
+    moved.village.plan.terminal.rect = { x: 0, y: 0, w: 1, h: 1 };
+    ok(LG.save.restore(moved) === null && LG.game.plan.terminal.rect === place.rect,
+       'and where its errand ends is read off today\'s map, not the file');
+
+    const fewer = JSON.parse(text);
+    const bystander = LG.NPCS.find(n => !fewer.village.plan.links.some(lk => lk.npcId === n.id));
+    delete fewer.village.plan.roles[bystander.id];
+    delete fewer.village.plan.npcFacts[bystander.id];
+    ok(LG.save.restore(fewer) === null, 'a villager who moved in since the save is no reason to refuse it');
+    ok(/^Your own work/.test(LG.game.plan.roles[bystander.id].goal),
+       'and they get on with their own work, having no part in the errand');
+    ok(LG.save.restore(JSON.parse(text)) === null, 'the save loads as it was afterwards');
+  }
+
   section('a save this version cannot use is refused, out loud');
   ok(typeof LG.save.check({}) === 'string', 'something that is not a village');
   ok(typeof LG.save.check(Object.assign({}, shot, { v: shot.v + 1 })) === 'string',
@@ -1031,13 +1060,16 @@ section('a village, written down and read back');
   ok(typeof LG.save.check(Object.assign({}, shot, { village: Object.assign({}, shot.village, { level: 'impossible' }) })) === 'string',
      'a difficulty this version does not have');
   const tampered = JSON.parse(text);
-  tampered.village.digest = 'notthedigest';
+  tampered.village.plan.prize = 'unobtainium';
   const standing = LG.game.plan.seed;
   const refused = LG.save.restore(tampered);
-  ok(typeof refused === 'string' && refused.indexOf('generator') !== -1,
-     'and a village the generator would no longer build the same way');
+  ok(typeof refused === 'string' && refused.indexOf('unobtainium') !== -1,
+     'and a village whose errand needs something this version does not have');
   ok(LG.game.plan.seed === standing,
      'and being refused leaves the village you were in standing');
+  const planless = JSON.parse(text);
+  delete planless.village.plan;
+  ok(typeof LG.save.restore(planless) === 'string', 'and a current save with no errand in it');
   ok(LG.save.restore(JSON.parse(text)) === null, 'the good save still loads afterwards');
 
   /* A version-1 save is from the map before the forest and station
@@ -1057,7 +1089,7 @@ section('a village, written down and read back');
     // than from the original request.
     const v1Plan = LG.saveMigrate.withPlaces(LG.saveMigrate.PLACES_V1_IDS, () =>
       LG.chain.generate({ level: 'beginner', seed: 'migration-check-' + plan.seed }));
-    const v1Digest = LG.save.digestOf(v1Plan);
+    const v1Digest = LG.saveMigrate.digestOf(v1Plan);
 
     const mira = LG.NPCS.find(n => n.id === 'mira');
     const oldHome = { x: mira.home.x, y: mira.home.y - 40, w: mira.home.w, h: mira.home.h };
@@ -1090,17 +1122,14 @@ section('a village, written down and read back');
     ok(back.patch === back.def.home,
        'and her old home rectangle resolves to her actual, current home — not a lookalike copy');
 
-    /* The village now saves as version 2 (its coordinates really are
-       v2), but its seed only ever produced this plan under the *old*
-       LG.PLACES list, which has since grown again (the platform and six
-       glades were added in this same change). Losing track of that
-       would make the *second* close-and-reopen of a migrated village
-       fail in exactly the way this whole migration feature exists to
-       prevent: a still-correct save being refused over an unrelated change. */
+    /* Its seed only builds this plan against the old place list. Written
+       back, the save carries the plan itself, so the second reopening
+       doesn't depend on replaying that draw. */
     const resaved = LG.save.snapshot();
     ok(resaved.v === LG.save.VERSION, 'the next save this village writes is tagged current');
-    ok(JSON.stringify(resaved.village.placesSnapshot) === JSON.stringify(LG.saveMigrate.PLACES_V1_IDS),
-       'and still says which place list its seed has to be replayed against');
+    ok(JSON.stringify(resaved.village.plan.links) === JSON.stringify(v1Plan.links) &&
+       resaved.village.plan.terminal.placeId === v1Plan.terminal.placeId,
+       'and carries the errand the old place list built, rather than a seed to replay');
     ok(LG.save.restore(JSON.parse(JSON.stringify(resaved))) === null,
        'so closing and reopening it a second time still works');
     ok(LG.game.plan.seed === v1Plan.seed, 'as the same village, not a refusal or a new one');
@@ -1120,7 +1149,7 @@ section('a village, written down and read back');
     const oldStyleSave = {
       v: 2, game: 'little-village', saved: new Date().toISOString(),
       village: { seed: oldPlan.seed, level: 'beginner', lang: 'en',
-                 digest: LG.save.digestOf(oldPlan), placesV1: true },
+                 digest: LG.saveMigrate.digestOf(oldPlan), placesV1: true },
       time: { day: 1, frac: 0.5, weather: 'clear', hold: 0, snow: 0 },
       player: { x: 100, y: 100, dir: 'down' },
       inventory: { coins: 3 },
@@ -1130,6 +1159,29 @@ section('a village, written down and read back');
     ok(LG.save.restore(oldStyleSave) === null,
        'a village saved under the old boolean flag, before snapshots existed, still loads');
     ok(LG.game.plan.seed === oldPlan.seed, 'as the same village the flag named');
+  }
+
+  section('a version-2 save, a seed and the place list it was drawn from, still loads');
+  {
+    const v2Plan = LG.chain.generate({ level: 'beginner', seed: 'snapshot-check-' + plan.seed });
+    const v2save = {
+      v: 2, game: 'little-village', saved: new Date().toISOString(),
+      village: { seed: v2Plan.seed, level: 'beginner', lang: 'en',
+                 digest: LG.saveMigrate.digestOf(v2Plan), placesSnapshot: LG.PLACES.map(p => p.id) },
+      time: { day: 1, frac: 0.5, weather: 'clear', hold: 0, snow: 0 },
+      player: { x: 100, y: 100, dir: 'down' },
+      inventory: { coins: 3 },
+      notes: [], deeds: [], board: [], won: false,
+      terminal: null, villagers: {}
+    };
+    ok(LG.save.restore(v2save) === null, 'it loads');
+    ok(JSON.stringify(LG.game.plan.links) === JSON.stringify(v2Plan.links), 'as the errand its seed built');
+    ok(LG.save.snapshot().village.plan, 'and is written back with that errand in it');
+    const drifted = JSON.parse(JSON.stringify(v2save));
+    drifted.village.digest = 'notthedigest';
+    const refused = LG.save.restore(drifted);
+    ok(typeof refused === 'string' && refused.indexOf('generator') !== -1,
+       'but one whose seed the generator no longer builds the same way is refused');
   }
 
   section('a save this version cannot read backwards is still refused');
@@ -1210,7 +1262,7 @@ section('closing the tab and opening it again');
      'and it carries on from there without anyone walking into a wall');
 
   const again = s2.LG.save.snapshot();
-  ok(again.village.digest === written.village.digest,
+  ok(JSON.stringify(again.village.plan) === JSON.stringify(written.village.plan),
      'a save of the resumed village is a save of the same village');
 }
 

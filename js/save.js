@@ -21,33 +21,19 @@
    generated from them — loading a save under a different language/
    difficulty would produce a different village despite the same seed.
 
-   The village itself isn't stored — only its generation seed. The
-   generator is deterministic: the same seed + difficulty always
-   regenerates the same chain, facts (with the same ids), and cast. So a
-   save stores the seed plus a digest of what the generator produced, and
-   `restore` regenerates the village from the seed and checks the digest
-   matches. If a newer version of the generator produces something
-   different from the same seed, the save is refused explicitly rather
-   than being loaded against a chain whose fact ids no longer mean what
-   the notebook thinks they mean.
-
-   Exception: differences this version knows how to migrate. When the map
-   was shifted south to make room for the forest, that changed what a
-   save's stored coordinates mean without changing the village they
-   describe — `save-migrate.js`'s `migrateV1` handles that one specific,
-   known case. This is a one-off compatibility shim for that change, not a
-   general guarantee that saves stay loadable across all future versions. */
+   The generated errand (the plan: links, facts and their ids, roles) is
+   stored whole, so adding items, places or lines to data.js, or changing
+   the generator, leaves existing saves loadable. A save is refused only
+   if its plan names an item, villager or place this version doesn't have.
+   Saves from before version 3 held only the seed; save-migrate.js
+   regenerates their plan once, and they're written back with it. */
 window.LG = window.LG || {};
 
 LG.save = (function () {
-  /* Version 2: the map grew (forest to the north, railway halt to the
-     east), shifting the whole village south. Version 1 saves aren't
-     refused for this alone — save-migrate.js's `migrateV1` shifts every
-     coordinate field by the same fixed amount the village moved. The one
-     non-coordinate exception is where the errand's terminal item ended
-     up, which gets re-derived under the old place list instead (see
-     `migrateV1` / `LG.saveMigrate.withPlaces`). */
-  const VERSION = 2;
+  /* Version 3: the plan is in the save. Version 2 held a seed and digest;
+     version 1 also predates the map moving south. Both are migrated (see
+     save-migrate.js). */
+  const VERSION = 3;
   const KEY = 'lg-save';                 // localStorage
   const ENDPOINT = '/save';              // the log server, when there is one
   const EVERY = 20;                      // seconds between autosaves
@@ -68,20 +54,34 @@ LG.save = (function () {
            typeof location !== 'undefined' && /^https?:/.test(location.protocol);
   }
 
-  /* ------------------------------------------------------------- digest
-     Cheap fingerprint of the generated village (cast, trades, fact ids —
-     not the save file itself), used to detect when a seed no longer
-     regenerates the same village the notebook was built against. */
-  function digestOf(plan) {
-    if (!plan) return '';
-    const parts = [plan.seed, plan.level, plan.prize, plan.terminal.item, plan.terminal.placeId];
-    plan.links.forEach(lk => parts.push(lk.npcId + '>' + lk.wants + ':' + lk.wantsCount +
-                                        '>' + lk.gives + ':' + lk.givesCount));
-    Object.keys(plan.facts).forEach(id => parts.push(id + '=' + plan.facts[id].text));
-    let h = 2166136261;
-    const s = parts.join('|');
-    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
-    return (h >>> 0).toString(36);
+  /* ---------------------------------------------------------------- plans
+     Why a saved plan can't be used, or null. Only references to things
+     this version might not have are checked; everything else in the plan
+     is the save's own record. */
+  function planProblem(p) {
+    if (!p || !Array.isArray(p.links) || !p.links.length || !p.facts || !p.roles || !p.terminal)
+      return 'it does not say what the errand was';
+    const items = [p.prize, p.terminal.item];
+    p.links.forEach(lk => items.push(lk.wants, lk.gives));
+    const item = items.find(id => !LG.ITEMS[id]);
+    if (item !== undefined) return 'its errand needs ' + item + ', which this version does not have';
+    const who = p.links.map(lk => lk.npcId).find(id => !LG.NPCS.some(n => n.id === id));
+    if (who !== undefined) return 'its errand needs ' + who + ', who does not live here in this version';
+    if (!LG.PLACES.some(pl => pl.id === p.terminal.placeId))
+      return 'its errand ends at ' + p.terminal.placeId + ', which this version does not have';
+    return null;
+  }
+
+  /* Ties a saved plan back to this version's world: where its place is on
+     today's map, and a plain role for any villager added since it was saved. */
+  function settle(p) {
+    p.terminal.rect = LG.PLACES.find(pl => pl.id === p.terminal.placeId).rect;
+    p.npcFacts = p.npcFacts || {};
+    LG.NPCS.forEach(n => {
+      if (!p.roles[n.id]) p.roles[n.id] = { goal: LG.chain.plainGoal(n.id), trade: null, link: -1 };
+      if (!p.npcFacts[n.id]) p.npcFacts[n.id] = [];
+    });
+    return p;
   }
 
   /* --------------------------------------------------------------- rects
@@ -159,7 +159,7 @@ LG.save = (function () {
       game: 'little-village',
       saved: new Date().toISOString(),
       village: { seed: plan.seed, level: g.settings.level, lang: g.settings.lang,
-                 digest: digestOf(plan), placesSnapshot: plan.placesSnapshot },
+                 plan: JSON.parse(JSON.stringify(plan)) },
       /* Weather affects villager behavior (see byDice() in npc.js) and
          accumulated snow depth takes multiple in-game days to build up —
          both must be restored exactly, not re-randomized on load. */
@@ -191,51 +191,21 @@ LG.save = (function () {
     if (why) return why;
     const g = LG.game;
 
-    /* Two distinct questions, easy to conflate since one file can answer
-       both: (1) "is this a raw v1 file?" — determines whether coordinates
-       need shifting (a one-time operation; the result is always written
-       back as v2), and (2) "which place ids was this village's plan
-       actually drawn against?" — determines how to regenerate that plan
-       (see `LG.saveMigrate.withPlaces`). Every plan generated since this
-       field existed records its own `placesSnapshot`, so (2) only needs
-       falling back to the frozen `PLACES_V1_IDS` for a save old enough to
-       predate it: a raw v1 file, or a v2 resave written back when this
-       was still a boolean flag rather than a list. `data` itself isn't
-       mutated by any of this — it may have come from the server, and
-       mutating the caller's object would be a surprise. */
-    const isRawV1 = data.v === 1;
-    data = isRawV1 ? LG.saveMigrate.migrateV1(data, VERSION) : data;
-    const placesSnapshot = (data.village && data.village.placesSnapshot) ||
-      (isRawV1 || (data.village && data.village.placesV1) ? LG.saveMigrate.PLACES_V1_IDS : null);
-    const withPlaces = fn => placesSnapshot ? LG.saveMigrate.withPlaces(placesSnapshot, fn) : fn();
+    /* Everything is checked before any game state is touched, so a refused
+       save (possibly from the server, mid-session) leaves the village
+       being played standing. `data` itself is never mutated. */
+    if (data.v === 1) data = LG.saveMigrate.migrateV1(data, VERSION);
+    let plan = data.village.plan ? JSON.parse(JSON.stringify(data.village.plan))
+             : data.village.digest ? LG.saveMigrate.regenerate(data.village) : null;
+    if (typeof plan === 'string') return plan;
+    const bad = planProblem(plan);
+    if (bad) return bad;
+    plan = settle(plan);
 
-    /* All validation happens before any game state is touched. The
-       generator runs once here purely to check the digest still matches —
-       validating only after mutating state would risk discarding the
-       currently-running village on a rejected load, which matters since
-       this can be called with a save arriving from the server mid-session. */
-    let candidate = null;
-    try {
-      candidate = withPlaces(() => LG.chain.generate({ level: data.village.level, seed: data.village.seed }));
-    }
-    catch (e) { return 'the generator could not rebuild that village at all'; }
-    if (digestOf(candidate) !== data.village.digest) {
-      return 'that village was built by a different version of the generator';
-    }
-
-    /* Difficulty/language must be set before newVillage() runs, since the
-       village is generated from them. newVillage() builds its own plan
-       from the seed rather than reusing `candidate` above, so it needs the
-       same place-list restriction applied — otherwise it could build a
-       different plan from the same seed than the one just verified
-       against the digest. The resulting plan records its own
-       `placesSnapshot` (see chain.js's `attempt()`), so future saves of
-       this village keep replaying the same list without restore() having
-       to remember anything about it itself. */
     g.settings.lang = data.village.lang;
     g.settings.level = data.village.level;
-    // `restoring`: newVillage must not save the bare village before the save is laid over it.
-    withPlaces(() => g.newVillage(data.village.seed, true, true));
+    // Lays the save over a village built from its own plan; newVillage doesn't save it bare first.
+    g.newVillage(plan.seed, true, plan);
 
     const tm = data.time || {};
     LG.time.start(tm.day, tm.frac);
@@ -323,17 +293,13 @@ LG.save = (function () {
     return null;
   }
 
-  /* Validates a save file's basic shape before it's used.
-
-     Version 1 is deliberately accepted here (restore() migrates it rather
-     than rejecting it) — this is the one place where "current version"
-     and "loadable version" differ. Anything older, or from a future
-     version this code can't read, is rejected: migration support is
-     added deliberately per-version, not owed indefinitely. */
+  /* Validates a save file's basic shape before it's used. Versions 1 and 2
+     are accepted and migrated by restore(); anything older, or newer than
+     this code, is refused. */
   function check(data) {
     if (!data || typeof data !== 'object') return 'there was nothing readable in it';
     if (data.game !== 'little-village') return 'that is not a village';
-    if (data.v !== VERSION && data.v !== 1) {
+    if (data.v !== VERSION && data.v !== 2 && data.v !== 1) {
       return 'that save is from version ' + data.v + ', and this is version ' + VERSION;
     }
     const v = data.village || {};
@@ -454,7 +420,7 @@ LG.save = (function () {
     window.addEventListener('pagehide', bye);
   }
 
-  return { VERSION, snapshot, restore, check, write, tick, resume, forget, keep, digestOf,
+  return { VERSION, snapshot, restore, check, write, tick, resume, forget, keep,
            has: () => !!fromLocal(),
            get forgotten() { return off; },
            get lastAt() { return lastAt; },

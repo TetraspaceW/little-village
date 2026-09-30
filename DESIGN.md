@@ -324,15 +324,14 @@ everything at every level. The README has the table.
 
 ## Old-save migration
 
-- Saves from before the map shift are migrated, not refused. The shift was uniform (+40
-  tiles in y), so every point and rectangle gets the same offset (`js/save-migrate.js`).
-- **Seeds depend on list order.** `pick(LG.PLACES, rnd)` reads only the index, so growing
-  `LG.PLACES` from 17 to 24 entries changed the terminal item for unchanged seeds. Old
-  villages are regenerated against `PLACES_V1_IDS` via `withPlaces`, which swaps the
-  global for one synchronous call and restores it in `finally`.
-- "Needs the old list" is a property of the **seed**, not the file version. It's stored
-  as `_placesV1` on the plan and written into `village.placesV1` by **every**
-  `snapshot`. Keying it on file version broke the second load of a migrated save.
+- Saves from before the map shift (v1) are migrated, not refused. The shift was uniform
+  (+40 tiles in y), so every point and rectangle gets the same offset
+  (`js/save-migrate.js`).
+- v1 and v2 saves held only a seed and a digest. `regenerate` rebuilds their plan once,
+  and they're written back as v3 with the plan in them.
+- **Seeds depend on list order.** `pick(LG.PLACES, rnd)` reads only the index, so a v1
+  seed is replayed against `PLACES_V1_IDS` (and a v2 seed against its own
+  `placesSnapshot`) via `withPlaces`, which swaps the global for one synchronous call.
 
 ## Weather and rendering
 
@@ -454,10 +453,13 @@ inside the narrow-screen media query, and gestures bind only to non-mouse pointe
 - **One format** (`js/save.js`: `snapshot`/`restore`), written as the same bytes to
   `localStorage` and `saves/village.json`. Either works without the other. On load, the
   local copy restores instantly, and the server copy wins only if it's newer.
-- **Only the seed is stored**, plus a digest of the generated village. If the digest
-  doesn't match, the save is refused with an explicit message, because notebook fact
-  ids would no longer mean the same facts. Changing the generator therefore invalidates
-  saves, unless you add a migration (see above).
+- **The plan is stored, not just the seed.** The generator draws from `LG.ITEMS`,
+  `NPCS`, `PLACES`, `REASONS`, `OPINIONS` and `BEAST_NAMES`, so a seed alone built a
+  different village as soon as any of them grew: one new item refused every save.
+  Notebook fact ids keep meaning the same facts because the facts travel with them.
+- A save is refused only if its plan names an item, villager or place this version
+  doesn't have. On load the errand's place is read off today's map, and a villager
+  added since gets a plain role (`settle`, `js/save.js`).
 - In-progress state isn't saved: routes, bubbles, pending decisions, conversations.
   Villagers re-think on load.
 - **Exception: who is chasing the player** (and why) *is* saved and always restored.

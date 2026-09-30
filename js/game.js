@@ -691,10 +691,11 @@ LG.game = (function () {
   }
 
   /* Generates a fresh errand chain and resets all state that depends on it.
-     `restoring` is set by LG.save.restore, which lays a save over the
-     result and must not have the bare village saved over it first. */
-  function newVillage(seed, quiet, restoring) {
-    plan = LG.chain.generate({ level: settings.level, seed: seed || null });
+     `given` is a saved plan from LG.save.restore, which lays the rest of
+     the save over the result and must not have the bare village saved
+     over it first. */
+  function newVillage(seed, quiet, given) {
+    plan = given || LG.chain.generate({ level: settings.level, seed: seed || null });
 
     /* A new village rolls a fresh calendar too: a random day of the
        year, with whatever weather that day has. The hour of arrival is
@@ -764,7 +765,7 @@ LG.game = (function () {
     /* Saved immediately rather than waiting for the next autosave, so
        closing the tab within the first ~20 seconds doesn't bring back
        the old village on reload. */
-    if (restoring) return;
+    if (given) return;
     LG.save.keep();
     if (saving()) LG.save.write();
   }

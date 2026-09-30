@@ -700,6 +700,49 @@ async function keysPerProvider() {
   ok(el('setKey').value === 'or-not-real', 'and the OpenRouter one is there too');
 }
 
+/* ---------------------------------------------------------- Jev, always
+   On OpenRouter every movement decision goes to Jev's decisions endpoint,
+   with nothing to switch on first; Logfare, which has no route to Jev,
+   still asks the helper model. Its own sandbox, since villagersTalking
+   has already stubbed out LG.llm.intent in the main one. */
+async function jevPicksThePlace() {
+  section('on OpenRouter, Jev decides where a villager goes');
+  const s4 = makeSandbox({});
+  for (const f of files) {
+    vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), s4, { filename: f });
+  }
+  const sent = [];
+  s4.fetch = async (url, init) => {
+    // no body: OpenRouter's model list, looked up for its price cap
+    if (!init || !init.body) return { ok: true, json: async () => ({ data: [] }) };
+    const body = JSON.parse(init.body);
+    sent.push({ url: url, body: body });
+    if (url.indexOf('/alpha/decisions') !== -1)
+      return { ok: true, status: 200, json: async () => ({
+        model: body.model, answers: { go: { choice: 'the bakery' } } }) };
+    return { ok: true, status: 200, json: async () => ({
+      choices: [{ message: { content: '{"go": "the bakery", "why": "hungry"}' },
+                  finish_reason: 'stop' }] }) };
+  };
+  s4.LG.llm.audit = false;
+  const opts = { me: { name: 'Petra', job: 'the baker', persona: 'Brisk.' }, here: 'at home',
+                 places: [{ name: 'the bakery' }, { name: 'the village green' }] };
+
+  const onOR = await s4.LG.llm.intent(
+    { provider: 'openrouter', apiKey: 'k', model: 'deepseek/deepseek-v4.1-flash' }, opts);
+  const jev = sent.filter(r => r.url.indexOf('/alpha/decisions') !== -1);
+  const chat = sent.filter(r => r.url.indexOf('/chat/completions') !== -1);
+  ok(jev.length === 1 && jev[0].body.model === 'typesafe/jev-1.13' && chat.length === 0,
+     'with no setting turned on, the call goes to Jev and not the helper model');
+  ok(!!onOR && onOR.go === 'the bakery' && !onOR.why, 'and comes back as a place, with no reason');
+
+  sent.length = 0;
+  const onLF = await s4.LG.llm.intent({ provider: 'logfare', apiKey: 'k', model: 'logfare/auto' }, opts);
+  ok(sent.length === 1 && sent[0].url.indexOf('logfare.ai') !== -1,
+     'on Logfare, which has no route to Jev, the helper model is asked');
+  ok(!!onLF && onLF.go === 'the bakery' && onLF.why === 'hungry', 'and still says why');
+}
+
 /* ------------------------------------------------------- what they believe now
    Every entry a villager holds has a timestamp and source, and when
    something new supersedes one of them, that entry gets rewritten
@@ -1248,6 +1291,7 @@ async function villagersTalking() {
 
   await promptCached();
   await keysPerProvider();
+  await jevPicksThePlace();
   await namesUnknownUntilTold();
   await touchControls();
   await roomForTheComposer();

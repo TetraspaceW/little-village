@@ -121,6 +121,9 @@ LG.game = (function () {
     settings.showTranslation = false;
     settings.voiceQuality = 'curated';
     settings.voiceSpeed = 'auto';
+    // Jev used to be opt-in; it's now always used on OpenRouter, so nothing reads these.
+    delete settings.jevMovement;
+    delete settings.jevValidation;
   }
   function saveSettings() {
     try { localStorage.setItem('lg-settings', JSON.stringify(settings)); } catch (e) {}

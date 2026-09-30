@@ -230,9 +230,6 @@ LG.game = (function () {
     if (logLines.length > 5) logLines.shift();
     const box = document.getElementById('log');
     box.innerHTML = logLines.map(l => '<div>' + l + '</div>').join('');
-    Array.prototype.forEach.call(box.querySelectorAll('.gloss.hidden-tr'), el => {
-      el.onclick = () => el.classList.remove('hidden-tr');
-    });
   }
 
   function log(msg) { pushLog(escapeHTML(msg)); }
@@ -285,9 +282,6 @@ LG.game = (function () {
       }));
     nb.innerHTML = rows.length ? rows.join('')
       : '<div class="q muted">Nothing yet. Try asking around!</div>';
-    Array.prototype.forEach.call(nb.querySelectorAll('.gloss.hidden-tr'), el => {
-      el.onclick = () => el.classList.remove('hidden-tr');
-    });
   }
 
   /* --------------------------------------------------------------- shops */
@@ -1042,6 +1036,12 @@ LG.game = (function () {
     });
     window.addEventListener('blur', () => { for (const k in held) held[k] = false; });
 
+    // A blurred gloss anywhere (the log, notebook, board or a conversation) comes clear when clicked.
+    document.addEventListener('click', e => {
+      const gloss = e.target && e.target.closest && e.target.closest('.hidden-tr');
+      if (gloss) gloss.classList.remove('hidden-tr');
+    });
+
     LG.touch.init(canvas, { blocked: uiBlocked, tap: tapAt });
 
     /* The notebook and inventory boxes cover most of a phone screen —
@@ -1072,9 +1072,9 @@ LG.game = (function () {
     };
     // Not `= submitSettings`: the click event would arrive as a truthy forceNewVillage.
     document.getElementById('setSave').onclick = () => submitSettings(false);
-    document.getElementById('setProvider').onchange = () => { swapKeyField(); refreshModelList(); refreshHelperList(); };
-    document.getElementById('setModel').onchange = syncModelBox;
-    document.getElementById('setHelper').onchange = syncHelperBox;
+    document.getElementById('setProvider').onchange = () => { swapKeyField(); refreshPickers(); };
+    document.getElementById('setModel').onchange = () => syncPicker('model');
+    document.getElementById('setHelper').onchange = () => syncPicker('helper');
   }
 
   /* Tucks away whatever is in the key box under the provider it was
@@ -1112,8 +1112,8 @@ LG.game = (function () {
       provider: document.getElementById('setProvider').value,
       apiKey: document.getElementById('setKey').value.trim(),
       keys: Object.assign({}, draftKeys),
-      model: readModel() || settings.model,
-      helper: readHelper(),
+      model: readPicker('model') || settings.model,
+      helper: readPicker('helper'),
       voices: document.getElementById('setVoices').checked,
       ttsKey: document.getElementById('setTtsKey').value.trim()
     };
@@ -1212,8 +1212,7 @@ LG.game = (function () {
     }
     document.getElementById('setVoices').checked = settings.voices;
     document.getElementById('setTtsKey').value = settings.ttsKey;
-    refreshModelList();
-    refreshHelperList();
+    refreshPickers();
     showSaveNote();
     s.classList.add('open');
   }
@@ -1237,64 +1236,49 @@ LG.game = (function () {
       ')' + (LG.save.onServer ? ' and in saves/village.json' : '') + '.';
   }
 
-  /* "Other" reveals a free-text box, so a model newer than this
-     picker's hardcoded list can still be used without editing the
-     source. */
-  function readModel() {
-    const sel = document.getElementById('setModel');
-    if (sel.value !== 'other') return sel.value;
-    return document.getElementById('setModelCustom').value.trim();
+  /* The model and helper pickers: the provider's offered models, plus
+     "Other", which reveals a box for any model id, so a model newer than
+     the list can be used without editing the source. `role` is the
+     setting each one fills in. */
+  const PICKERS = {
+    model: { sel: 'setModel', custom: 'setModelCustom', list: () => LG.llm.MODELS },
+    helper: { sel: 'setHelper', custom: 'setHelperCustom', list: () => LG.llm.HELPERS }
+  };
+
+  function readPicker(role) {
+    const p = PICKERS[role], sel = document.getElementById(p.sel);
+    return sel.value !== 'other' ? sel.value : document.getElementById(p.custom).value.trim();
   }
 
-  function readHelper() {
-    const sel = document.getElementById('setHelper');
-    if (sel.value !== 'other') return sel.value;
-    return document.getElementById('setHelperCustom').value.trim();
-  }
-
-  function refreshHelperList() {
+  function refreshPicker(role) {
+    const p = PICKERS[role], current = settings[role];
     const prov = document.getElementById('setProvider').value;
-    const sel = document.getElementById('setHelper');
-    const list = LG.llm.HELPERS[prov] || [];
+    const sel = document.getElementById(p.sel);
+    const list = p.list()[prov] || [];
     // Logfare has exactly one model and always picks it — nothing to override.
     const fixed = prov === 'logfare';
     sel.innerHTML = list.map(m => '<option value="' + m.id + '">' + m.label + '</option>').join('')
       + (fixed ? '' : '<option value="other">Other — type an id below</option>');
     sel.disabled = fixed;
-    const known = list.some(m => m.id === settings.helper);
+    const known = list.some(m => m.id === current);
     sel.value = fixed ? list[0].id
-              : settings.helper && !known ? 'other' : (settings.helper || (list[0] && list[0].id) || 'other');
-    document.getElementById('setHelperCustom').value = fixed || known ? '' : settings.helper;
-    syncHelperBox();
+              : current && !known ? 'other' : (current || (list[0] && list[0].id) || 'other');
+    document.getElementById(p.custom).value = fixed || known ? '' : current;
+    syncPicker(role);
   }
 
-  function syncHelperBox() {
-    const other = document.getElementById('setHelper').value === 'other';
-    document.getElementById('setHelperCustom').style.display = other ? '' : 'none';
+  function syncPicker(role) {
+    const p = PICKERS[role];
+    const other = document.getElementById(p.sel).value === 'other';
+    document.getElementById(p.custom).style.display = other ? '' : 'none';
   }
 
-  function refreshModelList() {
-    const prov = document.getElementById('setProvider').value;
-    const sel = document.getElementById('setModel');
-    const list = LG.llm.MODELS[prov] || [];
-    // Logfare has exactly one model and always picks it — nothing to override.
-    const fixed = prov === 'logfare';
-    sel.innerHTML = list.map(m => '<option value="' + m.id + '">' + m.label + '</option>').join('')
-      + (fixed ? '' : '<option value="other">Other — type an id below</option>');
-    sel.disabled = fixed;
-    const known = list.some(m => m.id === settings.model);
-    sel.value = fixed ? list[0].id
-              : settings.model && !known ? 'other' : (settings.model || (list[0] && list[0].id) || 'other');
-    document.getElementById('setModelCustom').value = fixed || known ? '' : settings.model;
-    syncModelBox();
-    document.getElementById('keyHint').textContent = prov === 'logfare'
+  function refreshPickers() {
+    refreshPicker('model');
+    refreshPicker('helper');
+    document.getElementById('keyHint').textContent = document.getElementById('setProvider').value === 'logfare'
       ? 'From logfare.ai/register — free and instant, no email needed.'
       : 'From openrouter.ai/keys.';
-  }
-
-  function syncModelBox() {
-    const other = document.getElementById('setModel').value === 'other';
-    document.getElementById('setModelCustom').style.display = other ? '' : 'none';
   }
 
   /* A villager who sought out the player speaks first when the
@@ -1798,9 +1782,6 @@ LG.game = (function () {
     });
     box.innerHTML = rows.length ? rows.join('')
       : '<div class="notice muted">Nothing pinned up yet.</div>';
-    Array.prototype.forEach.call(box.querySelectorAll('.gloss.hidden-tr'), el => {
-      el.onclick = () => el.classList.remove('hidden-tr');
-    });
   }
 
   /* ---------------------------------------------------------------- loop */

@@ -726,7 +726,6 @@ LG.dialogue = (function () {
     tr.lang = 'en';
     tr.textContent = translation || '';
     tr.title = 'click to reveal';
-    tr.onclick = () => tr.classList.remove('hidden-tr');
     tr.style.display = translation ? '' : 'none';
     bub.appendChild(tr);
 

@@ -781,6 +781,28 @@ async function keysPerProvider() {
   ok(el('setKey').value === 'or-not-real', 'and the OpenRouter one is there too');
 }
 
+/* One click listener for every blurred gloss, wherever it was rendered,
+   rather than handlers re-attached each time a box is redrawn. */
+function glossesClearWhenClicked() {
+  section('a blurred gloss clears when clicked, wherever it is');
+  const s6 = makeSandbox({});
+  const clicks = [];
+  s6.document.addEventListener = (type, fn) => { if (type === 'click') clicks.push(fn); };
+  for (const f of files) {
+    vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), s6, { filename: f });
+  }
+  s6.LG.game.init();
+  s6.LG.game.thoughts = false;
+  const blurred = s6.document.createElement('span');
+  blurred.classList.add('hidden-tr');
+  const click = target => clicks.forEach(fn => fn({ target: target }));
+  click({ closest: sel => sel === '.hidden-tr' ? blurred : null });
+  ok(clicks.length === 1 && !blurred.classList.contains('hidden-tr'), 'one listener on the page clears it');
+  blurred.classList.add('hidden-tr');
+  click({ closest: () => null });
+  ok(blurred.classList.contains('hidden-tr'), 'and a click anywhere else leaves it be');
+}
+
 /* ---------------------------------------------------------- Jev, always
    On OpenRouter every movement decision goes to Jev's decisions endpoint,
    with nothing to switch on first; Logfare, which has no route to Jev,
@@ -1563,6 +1585,7 @@ async function villagersTalking() {
 
   await promptCached();
   await keysPerProvider();
+  glossesClearWhenClicked();
   await jevPicksThePlace();
   await schemasWhereTaken();
   await namesUnknownUntilTold();

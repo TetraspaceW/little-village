@@ -433,6 +433,14 @@ section('the woods and the fog are stamped, not drawn');
   ok(fogDrawn >= 20, 'fog is a screenful of big ellipses (' + fogDrawn + ')');
   ok(fogStamped <= 1, 'and one sprite once it has a pixel ratio (' + fogStamped + ')');
   console.log('   fog: ' + fogDrawn + ' ellipses a frame, ' + fogStamped + ' when stamped');
+
+  LG.time.setWeather('blizzard', 999);
+  for (let i = 0; i < 60; i++) LG.sky.step(1 / 60, 900, 640);
+  const flakesDrawn = curves(() => LG.sky.draw(ctx2d, 900, 640, null));
+  curves(() => LG.sky.draw(ctx2d, 900, 640, null, 2));          // renders the sprites, once
+  const flakesStamped = curves(() => LG.sky.draw(ctx2d, 900, 640, null, 2));
+  ok(flakesDrawn >= 300, 'a blizzard is hundreds of flakes (' + flakesDrawn + ')');
+  ok(flakesStamped === 0, 'stamped from sprites once it has a pixel ratio (' + flakesStamped + ' curves)');
   LG.time.setWeather(wasWeather || 'clear', 999);
 }
 

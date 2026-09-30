@@ -122,6 +122,32 @@ LG.sky = (function () {
     return made;
   }
 
+  /* Snowflake sprites: FLAKE_SIZES radii across the flakes' 1.4-3.2 px
+     range, drawn one texel per device pixel. Null without a pixel ratio or
+     a canvas to draw them on, and the flakes are drawn live instead. */
+  const FLAKE = 'rgba(255,255,255,.85)', FLAKE_SIZES = 6;
+  let flakeSprites = null, flakeDpr = 0;
+  function flakes(dpr) {
+    if (!dpr) return null;
+    if (flakeDpr === dpr) return flakeSprites;
+    flakeDpr = dpr; flakeSprites = null;
+    const out = [];
+    for (let i = 0; i < FLAKE_SIZES; i++) {
+      const r = 1.4 + (i + 0.5) / FLAKE_SIZES * 1.8, size = Math.ceil(r + 1) * 2;
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = Math.round(size * dpr);
+      const g = canvas.getContext && canvas.getContext('2d');
+      if (!g || typeof g.arc !== 'function') return null;
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.fillStyle = FLAKE;
+      g.beginPath();
+      g.arc(size / 2, size / 2, r, 0, Math.PI * 2);
+      g.fill();
+      out.push({ canvas, half: size / 2, side: canvas.width / dpr });
+    }
+    return (flakeSprites = out);
+  }
+
   function draw(ctx, vw, vh, roofs, dpr) {
     const info = LG.time.info || {};
     const s = LG.time.season();
@@ -151,8 +177,26 @@ LG.sky = (function () {
       for (const p of parts) { ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + 4, p.y + 16 + p.v * 10); }
       ctx.stroke();
     } else if (kind === 'snow') {
-      ctx.fillStyle = 'rgba(255,255,255,.85)';
-      for (const p of parts) { ctx.beginPath(); ctx.arc(p.x, p.y, 1.4 + p.s * 1.8, 0, Math.PI * 2); ctx.fill(); }
+      /* Stamped from a sprite per size, like the trees and the fog: a
+         blizzard is ~380 flakes, and as a path each that was well past the
+         rate at which Firefox for Android stops honouring beginPath. */
+      const sizes = flakes(dpr);
+      if (sizes) {
+        for (const p of parts) {
+          const f = sizes[Math.min(FLAKE_SIZES - 1, (p.s * FLAKE_SIZES) | 0)];
+          ctx.drawImage(f.canvas, Math.round((p.x - f.half) * dpr) / dpr,
+                        Math.round((p.y - f.half) * dpr) / dpr, f.side, f.side);
+        }
+      } else {
+        ctx.fillStyle = FLAKE;
+        ctx.beginPath();
+        for (const p of parts) {
+          const r = 1.4 + p.s * 1.8;
+          ctx.moveTo(p.x + r, p.y);                 // a new subpath, not joined to the last flake
+          ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+        }
+        ctx.fill();
+      }
     } else if (kind === 'sand') {
       ctx.strokeStyle = 'rgba(214,180,120,.5)'; ctx.lineWidth = 1.6;
       ctx.beginPath();

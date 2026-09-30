@@ -385,6 +385,8 @@ everything at every level. The README has the table.
   `beginPath` still can't join circles. Ground-pass fills went from 166 to 26. Passes
   keep the old in-tile order (trunk, canopy, highlight, snow), which is safe because
   tiles don't overlap. Snow crowns are stamped from one sprite per tenth of depth.
+  Falling snow is stamped from six flake sprites (`flakes`, `js/sky.js`): a blizzard
+  is ~380 flakes a frame.
 - **Sprites blit one texel per device pixel, at whole device pixels.** Stretched by a
   fraction, which edge column survived depended on float noise in the layer's position,
   so two paints of the same tree disagreed.

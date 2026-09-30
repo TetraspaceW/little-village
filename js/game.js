@@ -358,7 +358,7 @@ LG.game = (function () {
        game state or conversation ever contradicting it. */
     if (!LG.view.open()) {
       return refuse('It is the middle of the night and you are not trading, so nothing changed hands.',
-                    d.name + ' is not trading at this hour — nothing changed hands.');
+                    displayName(npc) + ' is not trading at this hour — nothing changed hands.');
     }
 
     /* A refusal must be visible to the villager via the till, not just
@@ -431,7 +431,7 @@ LG.game = (function () {
       if (spoken.length) {
         const names = spoken.map(id => LG.ITEMS[id].en).join(' and ');
         return refuse('The ' + names + ' did not change hands: that is not one you buy off them.',
-                      d.name + ' will not buy the ' + names + ' — it is part of the errand.');
+                      displayName(npc) + ' will not buy the ' + names + ' — it is part of the errand.');
       }
     }
 
@@ -440,9 +440,9 @@ LG.game = (function () {
       const theirs = asked.filter(id => priceFrom(d.sells, d.sellsTags, id, 1) > 0);
       return theirs.length
         ? refuse('That is not one you sold them, so there is nothing to refund.',
-                 d.name + ' did not sell you that ' + LG.ITEMS[theirs[0]].en + '.')
+                 displayName(npc) + ' did not sell you that ' + LG.ITEMS[theirs[0]].en + '.')
         : refuse('You do not deal in ' + names + ', and said so.',
-                 d.name + ' does not deal in ' + names + '.');
+                 displayName(npc) + ' does not deal in ' + names + '.');
     }
 
     const base = priced.reduce((n, w) => n + w.base, 0);
@@ -480,7 +480,7 @@ LG.game = (function () {
           (npc.turns || 0) - (last.turn || 0) <= 1) {
         return refuse('You had already handed over ' + names + ' and been paid for it, ' +
                       'so nothing changed hands this time.',
-                      d.name + ' had already sold you ' + names + ' — nothing changed hands.');
+                      displayName(npc) + ' had already sold you ' + names + ' — nothing changed hands.');
       }
     }
 
@@ -511,7 +511,7 @@ LG.game = (function () {
       give('coins', cost);
     }
 
-    if (asking !== cost) log('¤ ' + d.name + ' said ' + asking + ', the going rate is ' + cost + '.');
+    if (asking !== cost) log('¤ ' + displayName(npc) + ' said ' + asking + ', the going rate is ' + cost + '.');
     const dealKey = act === 'sell' ? 'buy' : refunding ? 'refund' : 'handOver';
     const ids = priced.map(w => w.id);
     txnLog('¤', dealKey, { items: itemsPhrase(ids, settings.lang), name: nameOrEmoji(npc), cost: cost },

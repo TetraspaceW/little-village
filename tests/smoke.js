@@ -1552,6 +1552,16 @@ async function namesUnknownUntilTold() {
   g.remember(npc, 'somebody else told the traveller this villager\'s name is ' + npc.def.name, 'a bystander');
   ok(!npc.nameKnown, 'hearsay about their name is not the same as being told it');
 
+  // The till's messages name them the same way as everything else.
+  const foreign = Object.keys(LG.ITEMS).find(k => k !== 'coins' &&
+    !(npc.def.sells || []).some(w => w.i === k) && !(npc.stock || {})[k] &&
+    !(npc.def.sellsTags || []).some(t => (LG.ITEMS[k].tags || []).indexOf(t) !== -1));
+  ok(!g.commerce(npc, 'sell', foreign, 1), 'a sale of something they do not deal in is refused');
+  const logged = sandbox.document.getElementById('log').innerHTML;
+  const lastLine = logged.slice(logged.lastIndexOf('<div>'));
+  ok(lastLine.indexOf(npc.def.name) === -1 && lastLine.indexOf(npc.def.job) !== -1,
+     'and the refusal calls them by their job, not a name you were never told: ' + lastLine);
+
   const real = LG.llm.speak;
 
   // A reply that never states their own name teaches nothing.

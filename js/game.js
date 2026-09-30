@@ -32,10 +32,6 @@ LG.game = (function () {
 
   let plan = null;                 // the generated errand chain (chain.js)
   let canvas, ctx, cam = { x: 0, y: 0 }, vw = 0, vh = 0, dpr = 1;
-  /* The vignette gradient only depends on vw/vh, which only change on
-     resize — cached here and rebuilt in resize(), instead of calling
-     createRadialGradient() every frame. */
-  let vignette = null;
 
   /* Caches the ground/buildings/signs layer to its own offscreen canvas
      and reuses it (a plain blit) instead of redrawing every frame — it
@@ -45,10 +41,14 @@ LG.game = (function () {
      on every side, so a moving camera just blits it from a different
      offset until it drifts off the painted area. Keyed on the exact
      camera position instead, it missed on every frame the player walked.
+     When it does drift off, what's already painted is slid across onto a
+     second canvas and only the strip that came into view is painted:
+     repainting the whole layer every 96 px of walking was a visible
+     hitch, worst in the forest.
      Water glints and the fountain move on their own, so they are drawn
      on top every frame (W.drawAnimated), as are characters and weather. */
   const OVERSCAN = 96;
-  let groundCanvas = null, groundCtx = null;
+  let groundCanvas = null, groundCtx = null, spareCanvas = null, spareCtx = null;
   const groundSeen = { x: NaN, y: NaN, roomX: NaN, roomY: NaN, snow: -1, night: false, lang: '', trans: false };
   let player, npcs = [], beast = null, worldItem = null;
   let whereFact = null;             // the fact saying where the world thing is lying
@@ -779,16 +779,22 @@ LG.game = (function () {
     ctx.imageSmoothingEnabled = false;
     readInsets();       // a phone that turned has swapped notch for home bar
 
-    vignette = ctx.createRadialGradient(vw / 2, vh / 2, Math.min(vw, vh) * 0.42,
-                                         vw / 2, vh / 2, Math.max(vw, vh) * 0.75);
-    vignette.addColorStop(0, 'rgba(0,0,0,0)');
-    vignette.addColorStop(1, 'rgba(20,14,8,.30)');
+    /* The vignette is a page element over the canvas, not painted into it:
+       a screen-sized gradient fill every frame was the single biggest
+       cost of a frame in Firefox (~5 ms at 1900x1350), and the compositor
+       lays a gradient over the canvas for nothing. */
+    document.getElementById('vignette').style.background =
+      'radial-gradient(circle at 50% 50%, rgba(20,14,8,0) ' + Math.round(Math.min(vw, vh) * 0.42) +
+      'px, rgba(20,14,8,.3) ' + Math.round(Math.max(vw, vh) * 0.75) + 'px)';
 
-    if (!groundCanvas) groundCanvas = document.createElement('canvas');
-    groundCanvas.width = (vw + 2 * OVERSCAN) * dpr; groundCanvas.height = (vh + 2 * OVERSCAN) * dpr;
-    groundCtx = groundCanvas.getContext('2d');
-    groundCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    groundCtx.imageSmoothingEnabled = false;
+    if (!groundCanvas) { groundCanvas = document.createElement('canvas'); spareCanvas = document.createElement('canvas'); }
+    for (const c of [groundCanvas, spareCanvas]) {
+      c.width = (vw + 2 * OVERSCAN) * dpr; c.height = (vh + 2 * OVERSCAN) * dpr;
+      const g = c.getContext('2d');
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.imageSmoothingEnabled = false;
+    }
+    groundCtx = groundCanvas.getContext('2d'); spareCtx = spareCanvas.getContext('2d');
     groundSeen.x = NaN;                  // a resized canvas has nothing painted on it yet
   }
 
@@ -2052,23 +2058,54 @@ LG.game = (function () {
      can still land a tile edge on a fractional device pixel, giving
      adjacent ground tiles their own antialiased edges instead of a
      shared crisp seam (visible as a faint lattice over the terrain).
-     Both draw() and paintGroundLayer() call this, so the cached ground
+     Both draw() and refreshGroundLayer() call this, so the cached ground
      layer stays aligned with where a live translate would place it. */
   function roundedCam() {
     return { x: Math.round(cam.x * dpr) / dpr, y: Math.round(cam.y * dpr) / dpr };
   }
 
-  function paintGroundLayer(room) {
+  /* Paints the part of the cached layer at (rx, ry, rw, rh), in layer
+     coordinates — the whole of it, or a strip that has just come into
+     view. A strip is clipped to itself, and drawn from two tiles further
+     out on every side, so what overhangs into it from just outside
+     (roofs, drift shadows, a canopy's top) comes out exactly as a whole
+     repaint would draw it. Signs are always all drawn, clipped: drawing
+     them is also what lists where they can be clicked. */
+  function paintGround(room, rx, ry, rw, rh) {
     const g = groundCtx, at = { x: groundSeen.x, y: groundSeen.y };
     const w = vw + 2 * OVERSCAN, h = vh + 2 * OVERSCAN;
-    g.fillStyle = '#3f6b3a';
-    g.fillRect(0, 0, w, h);
+    const whole = rw >= w && rh >= h, m = whole ? 0 : W.TILE * 2;
+    const part = { x: at.x + rx - m, y: at.y + ry - m }, pw = rw + 2 * m, ph = rh + 2 * m;
     g.save();
+    if (!whole) { g.beginPath(); g.rect(rx, ry, rw, rh); g.clip(); }
+    g.fillStyle = '#3f6b3a';
+    g.fillRect(rx, ry, rw, rh);
     g.translate(-at.x, -at.y);
-    W.drawGround(g, at, w, h, dpr);
-    W.drawBuildings(g, room, at, w, h);
+    W.drawGround(g, part, pw, ph, dpr);
+    W.drawBuildings(g, room, part, pw, ph);
     W.drawSigns(g, at, w, h, settings.lang, settings.showTranslation, dpr);
     g.restore();
+  }
+
+  /* Slides what's painted by the camera's move onto the spare canvas,
+     which becomes the layer, then paints the strips that came into view.
+     Moves are whole device pixels, like the layer's own position. */
+  function scrollGroundLayer(room, nx, ny) {
+    // In device pixels: the canvas's own size is rounded down from the
+    // layer's at a fractional dpr, and a strip measured from the layer's
+    // would leave a column of the spare canvas's old contents at its edge.
+    const dw = groundCanvas.width, dh = groundCanvas.height;
+    const dx = Math.round((nx - groundSeen.x) * dpr), dy = Math.round((ny - groundSeen.y) * dpr);
+    spareCtx.setTransform(1, 0, 0, 1, 0, 0);
+    spareCtx.drawImage(groundCanvas, -dx, -dy);
+    spareCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    [groundCanvas, spareCanvas] = [spareCanvas, groundCanvas];
+    [groundCtx, spareCtx] = [spareCtx, groundCtx];
+    groundSeen.x = nx; groundSeen.y = ny;
+    if (dx > 0) paintGround(room, (dw - dx) / dpr, 0, dx / dpr, dh / dpr);
+    else if (dx < 0) paintGround(room, 0, 0, -dx / dpr, dh / dpr);
+    if (dy > 0) paintGround(room, 0, (dh - dy) / dpr, dw / dpr, dy / dpr);
+    else if (dy < 0) paintGround(room, 0, 0, dw / dpr, -dy / dpr);
   }
 
   /* Repaints the cached ground layer only when something visible in it
@@ -2076,24 +2113,45 @@ LG.game = (function () {
      exiting a roofed area, snow depth advancing a bucket (bucketed the
      same way world.js does -- see readSnow() there), the lamps lighting
      or going out, or a sign's language/reveal state. Otherwise draw()
-     just blits the existing cached layer from wherever the camera is. */
+     just blits the existing cached layer from wherever the camera is.
+     A camera move only paints the strip that came into view (see
+     scrollGroundLayer), and a change of snow depth is repainted a band a
+     frame over GROUND_BANDS frames: it comes round every second or so
+     while snow is falling, and a whole snowy repaint in one frame was a
+     30-45 ms hitch in Firefox. */
+  const GROUND_BANDS = 6;
+  let bandNext = 0, bandsOwed = 0;
   function refreshGroundLayer(room) {
     const c = roundedCam();
     const snow = Math.round((LG.time && typeof LG.time.snow === 'number' ? LG.time.snow : 0) * 400);
     const night = LG.time.isNight();
     const roomX = room ? room.x : -1, roomY = room ? room.y : -1;
-    if (c.x >= groundSeen.x && c.x <= groundSeen.x + 2 * OVERSCAN &&
-        c.y >= groundSeen.y && c.y <= groundSeen.y + 2 * OVERSCAN &&
-        roomX === groundSeen.roomX && roomY === groundSeen.roomY &&
-        snow === groundSeen.snow && night === groundSeen.night &&
-        settings.lang === groundSeen.lang && settings.showTranslation === groundSeen.trans) return;
     // Centred on the camera again, on whole device pixels like roundedCam(),
     // so the blit offset in draw() is always a whole number of device pixels.
-    groundSeen.x = Math.round((c.x - OVERSCAN) * dpr) / dpr;
-    groundSeen.y = Math.round((c.y - OVERSCAN) * dpr) / dpr;
+    const nx = Math.round((c.x - OVERSCAN) * dpr) / dpr, ny = Math.round((c.y - OVERSCAN) * dpr) / dpr;
+    const w = vw + 2 * OVERSCAN, h = vh + 2 * OVERSCAN;
+    // Still the same picture, bar the snow and where it's been scrolled to.
+    if (groundSeen.x === groundSeen.x &&                  // NaN until it's first painted
+        roomX === groundSeen.roomX && roomY === groundSeen.roomY && night === groundSeen.night &&
+        settings.lang === groundSeen.lang && settings.showTranslation === groundSeen.trans &&
+        Math.abs(nx - groundSeen.x) < w / 2 && Math.abs(ny - groundSeen.y) < h / 2) {
+      if (snow !== groundSeen.snow) { groundSeen.snow = snow; bandsOwed = GROUND_BANDS; }
+      if (c.x < groundSeen.x || c.x > groundSeen.x + 2 * OVERSCAN ||
+          c.y < groundSeen.y || c.y > groundSeen.y + 2 * OVERSCAN) scrollGroundLayer(room, nx, ny);
+      if (bandsOwed) {
+        // Bands are whole device pixels, like strips (see scrollGroundLayer).
+        const dw = groundCanvas.width, dh = groundCanvas.height, bh = Math.ceil(dh / GROUND_BANDS);
+        const top = bandNext * bh;
+        paintGround(room, 0, top / dpr, dw / dpr, Math.min(bh, dh - top) / dpr);
+        bandNext = (bandNext + 1) % GROUND_BANDS; bandsOwed--;
+      }
+      return;
+    }
+    groundSeen.x = nx; groundSeen.y = ny;
     groundSeen.roomX = roomX; groundSeen.roomY = roomY; groundSeen.snow = snow; groundSeen.night = night;
     groundSeen.lang = settings.lang; groundSeen.trans = settings.showTranslation;
-    paintGroundLayer(room);
+    bandsOwed = 0;
+    paintGround(room, 0, 0, w, h);
   }
 
   function draw() {
@@ -2147,10 +2205,7 @@ LG.game = (function () {
     ctx.restore();
     LG.sky.draw(ctx, vw, vh, W.roofRects(cam, vw, vh, dpr), dpr);
 
-    ctx.fillStyle = vignette;
-    ctx.fillRect(0, 0, vw, vh);
-
-    // Drawn on top of the weather and vignette layers -- it's a UI control, not part of the scenery.
+    // Drawn on top of the weather -- it's a UI control, not part of the scenery.
     LG.touch.draw(ctx);
   }
 

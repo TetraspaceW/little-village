@@ -333,7 +333,11 @@ LG.llm = (function () {
      below, which is why this is centralized here rather than at each
      call site. Each call is recorded in full — system prompt, messages,
      the *raw* reply before any parsing/repair, timing, and usage — and
-     printed as a collapsed console group.
+     printed to the console as one line with that record attached, to
+     expand. Printed in full, as half a dozen messages a call each carrying
+     the whole prompt, the console piled up in Firefox's parent process at
+     ~18 calls a minute, and its garbage collector froze the whole
+     browser, game included, for up to ~2 s at a time.
 
      Recording the raw (pre-repair) reply matters: most bugs in this game
      have come from mismatches between what the model actually returned
@@ -448,26 +452,9 @@ LG.llm = (function () {
         "background:" +
         (err ? "#a33" : "#356") +
         ";color:#fff;border-radius:3px;font-weight:600";
-      const group = console.groupCollapsed || console.log;
-      group.call(console, head, tag, "color:#888");
-      console.log("system:\n" + system);
-      (messages || []).forEach((m) => console.log(m.role + ":\n" + m.content));
-      if (entry.reasoning) console.log("reasoning:\n" + entry.reasoning);
-      if (err) console.log("error: " + entry.error);
-      else {
-        console.log("raw reply:\n" + out);
-        if (entry.truncated)
-          console.log(
-            "*** cut off at max_tokens — the reply is incomplete ***",
-          );
-        if (entry.usage)
-          console.log(
-            "usage: " +
-              JSON.stringify(entry.usage) +
-              (entry.stop ? "  stop: " + entry.stop : ""),
-          );
-      }
-      if (console.groupEnd) console.groupEnd();
+      // One line a call, with the whole record (prompt, messages, raw
+      // reply, reasoning, usage) attached to expand -- see the note above.
+      console.log(head, tag, "color:#888", entry);
     }
     return entry;
   }

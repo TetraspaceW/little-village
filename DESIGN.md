@@ -344,6 +344,23 @@ everything at every level. The README has the table.
   melts at a seasonal rate. It's drawn on ground, canopies, fence tops, and roofs; the
   pond freezes and the fountain stops. Streets hold the least snow so paths stay
   readable, and roofs never go fully white. The depth is included in villager prompts.
+- **Ground snow is one field, never per-tile shapes.** Depth sets a level on a map-wide
+  noise field; the snowline is traced at 4 px (marching squares) and joined into closed
+  loops through the grid edges the pieces share (`traceLoops` in `js/world.js`). Per-tile
+  blobs printed the grid onto every thaw as polka dots. Props read the same field; ponds
+  ice over as one sheet; floors are forced bare so no drift shows when a roof lifts.
+- **Snow is cheap to trace and fill.** Only tiles the line crosses are traced, into
+  typed arrays; a piece per cell was tens of thousands of shapes, ~10 ms a fill in
+  Firefox. The drift lip is the path filled again 2 px lower, not a canvas shadow
+  (Firefox draws shadows through an offscreen pass, ~20 ms a repaint). Don't
+  `closePath()`: in Chrome it costs ~100× a `lineTo`.
+- **Snow isn't a clean cut-out.** Drifts cover their own tiles and spill 0–9 px over a
+  street's edge, roughened by noise; stopping on the tile edge read as paper. More spill
+  (or blurring which tiles hold snow) swallows the one-tile forest paths. A faint relief
+  shading (half resolution) breaks up deep snow.
+- **The snow field is precomputed.** Its samples depend only on the map, so they're built
+  once, visible tiles first and the rest in 4 ms background slices. Computed as tiles
+  came into view, the first step into new ground stuttered.
 - Each new village starts on a random day of the year, always mid-morning.
 - In rain, snow, or sand, villagers prefer their workplace or home.
 - Villagers indoors are hidden unless the player is in the same room. The player's room
@@ -354,7 +371,24 @@ everything at every level. The README has the table.
   path, with an explicit `moveTo` onto each circle's rim before its `arc`, so a dropped
   `beginPath` still can't join circles. Ground-pass fills went from 166 to 26. Passes
   keep the old in-tile order (trunk, canopy, highlight, snow), which is safe because
-  tiles don't overlap. Snow crowns stay per-tree, since each has its own depth.
+  tiles don't overlap. Snow crowns are stamped from one sprite per tenth of depth.
+- **Sprites blit one texel per device pixel, at whole device pixels.** Stretched by a
+  fraction, which edge column survived depended on float noise in the layer's position,
+  so two paints of the same tree disagreed.
+- **The ground layer scrolls.** When the camera leaves it, the painted layer is slid onto
+  a spare canvas and only the newly exposed strip is painted, clipped, from two tiles
+  further out (`scrollGroundLayer` in `js/game.js`). Full repaints every 96 px were the
+  walking stutter, worst in the forest. A snow-depth change (every ~0.6 s while it
+  snows) repaints one band a frame over six frames. Anything the layer draws must depend
+  only on `refreshGroundLayer`'s keys, or a strip will disagree with what's beside it.
+- **Profile in Firefox, not just Chrome.** The user plays in Floorp, whose software canvas
+  rasterises on the call. Chrome hid a 45–70 ms snowy repaint that Firefox felt. The
+  vignette is a CSS gradient over the canvas: filled into it every frame it cost Firefox
+  ~5 ms at 1900×1350.
+- **Keep the console light.** A Floorp profile showed the game's frames stalling for
+  1.8 s while the browser's parent process collected garbage; the game's own frame was a
+  few ms. The LLM audit printed ~6 messages a call with the whole prompt, which the console
+  keeps in that process; it now prints one line per call with the record attached.
 
 ## Touch and mobile layout
 

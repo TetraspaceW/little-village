@@ -323,21 +323,62 @@ LG.actors = (function () {
     return 'rgb(' + r + ',' + g + ',' + b + ')';
   }
 
-  function drawBubble(ctx, a, font) {
-    if (!a.bubble || a.bubbleT <= 0) return;
-    const text = a.bubble;
-    ctx.font = '13px ' + (font || 'system-ui');
-    const maxW = 190;
-    const words = text.split(/(\s+)/);
+  /* ---------------------------------------------------------- speech bubbles
+     A bubble breaks at spaces, and between any two CJK characters, since
+     Chinese and Japanese don't space their words. Closing punctuation stays
+     with the character before it and opening brackets with the one after,
+     and a run too long for a line on its own is broken where it fills one. */
+  const BUBBLE_W = 190;
+  const CJK = /[\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]/;
+  const CLOSES = /[\u3001\u3002\uff0c\uff0e\uff01\uff1f\uff1a\uff1b\uff09\u300d\u300f\u3011\u3015\u3009\u300b\u2019\u201d\u2026\u30fc\u30fb,.!?:;)\]}]/;
+  const OPENS = /[\u300c\u300e\uff08\u3010\u3014\u3008\u300a\u2018\u201c(\[{]/;
+  function tokens(text) {
+    const out = [];                            // [text, kind], kind one of 'space', 'cjk', 'word'
+    for (const ch of Array.from(text)) {
+      const last = out[out.length - 1];
+      const kind = /\s/.test(ch) ? 'space' : CJK.test(ch) ? 'cjk' : 'word';
+      const joins = last && (kind === 'space'
+        ? last[1] === 'space'
+        : last[1] !== 'space' && (CLOSES.test(ch) || OPENS.test(last[0].slice(-1)) ||
+                                  (kind === 'word' && last[1] === 'word')));
+      if (joins) last[0] += ch;
+      else out.push([ch, kind]);
+    }
+    return out;
+  }
+  function wrap(ctx, text) {
     const lines = [];
     let line = '';
-    for (const w of words) {
-      if (ctx.measureText(line + w).width > maxW && line) { lines.push(line.trim()); line = w; }
-      else line += w;
+    for (const [t, kind] of tokens(text)) {
+      if (line && ctx.measureText(line + t).width > BUBBLE_W) {
+        lines.push(line.trim());
+        line = kind === 'space' ? '' : t;
+      } else line += t;
+      let chars = Array.from(line);
+      while (chars.length > 1 && ctx.measureText(line).width > BUBBLE_W) {
+        let n = chars.length - 1;
+        while (n > 1 && ctx.measureText(chars.slice(0, n).join('')).width > BUBBLE_W) n--;
+        lines.push(chars.slice(0, n).join(''));
+        chars = chars.slice(n); line = chars.join('');
+      }
     }
     if (line.trim()) lines.push(line.trim());
+    return lines;
+  }
+
+  function drawBubble(ctx, a, font) {
+    if (!a.bubble || a.bubbleT <= 0) return;
+    const f = '13px ' + (font || 'system-ui');
+    ctx.font = f;
+    // Wrapped once per line said, not every frame.
+    if (!a.bubbleWrap || a.bubbleWrap.text !== a.bubble || a.bubbleWrap.font !== f) {
+      const lines = wrap(ctx, a.bubble);
+      a.bubbleWrap = { text: a.bubble, font: f, lines: lines,
+                       width: Math.max.apply(null, lines.map(l => ctx.measureText(l).width)) };
+    }
+    const lines = a.bubbleWrap.lines;
     const lh = 17;
-    const bw = Math.min(maxW, Math.max.apply(null, lines.map(l => ctx.measureText(l).width))) + 18;
+    const bw = Math.min(BUBBLE_W, a.bubbleWrap.width) + 18;
     const bh = lines.length * lh + 12;
     const bx = a.px - bw / 2, by = a.py - 46 - bh;
     const alpha = Math.min(1, a.bubbleT);
@@ -352,5 +393,6 @@ LG.actors = (function () {
     ctx.globalAlpha = 1;
   }
 
-  return { makeNPC, makeCreature, wander, walk, routine, stepTowards, meet, drawCharacter, drawBubble, roundRect };
+  return { makeNPC, makeCreature, wander, walk, routine, stepTowards, meet, drawCharacter, drawBubble, roundRect,
+           _wrap: wrap };
 })();

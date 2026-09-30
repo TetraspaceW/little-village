@@ -444,6 +444,31 @@ section('the woods and the fog are stamped, not drawn');
   LG.time.setWeather(wasWeather || 'clear', 999);
 }
 
+section('a speech bubble wraps in Chinese and Japanese too');
+{
+  let measured = 0;
+  const wide = { measureText: t => { measured++; return { width: Array.from(t).length * 13 }; } };
+  const ja = '村の人はみんな、パン屋のミラさんが「今日は特別なパンがある」と言っていました。';
+  const lines = LG.actors._wrap(wide, ja);
+  ok(lines.length > 1, 'a long Japanese line takes more than one line (' + lines.length + ')');
+  ok(lines.every(l => Array.from(l).length * 13 <= 190), 'and none is wider than the bubble');
+  ok(lines.join('') === ja, 'without losing or reordering anything');
+  ok(lines.every(l => !/^[、。」』）]/.test(l)), 'no line starts with closing punctuation');
+  ok(lines.every(l => !/[「『（]$/.test(l)), 'or ends on an opening bracket');
+  const zh = '面包师米拉说今天有特别的面包，你要不要去看看？她的店就在广场旁边。';
+  ok(LG.actors._wrap(wide, zh).length > 1, 'Chinese wraps the same way');
+  const en = 'The quick brown fox jumps over the lazy dog and keeps on running far away';
+  const enLines = LG.actors._wrap(wide, en);
+  ok(enLines.length > 1 && enLines.join(' ') === en, 'and English still breaks between words');
+
+  const talker = { px: 100, py: 100, bubble: ja, bubbleT: 3 };
+  const g = Object.assign(Object.create(ctx2d), wide);
+  LG.actors.drawBubble(g, talker, 'serif');
+  measured = 0;
+  LG.actors.drawBubble(g, talker, 'serif');
+  ok(measured === 0, 'a bubble is wrapped once per line said, not measured again every frame');
+}
+
 section('every building says what it is, in the language you are learning');
 const signs = LG.world._signs();
 for (const b of LG.world.buildings) {

@@ -49,7 +49,7 @@ LG.game = (function () {
      on top every frame (W.drawAnimated), as are characters and weather. */
   const OVERSCAN = 96;
   let groundCanvas = null, groundCtx = null, spareCanvas = null, spareCtx = null;
-  const groundSeen = { x: NaN, y: NaN, roomX: NaN, roomY: NaN, snow: -1, night: false, lang: '', trans: false };
+  const groundSeen = { x: NaN, y: NaN, roomX: NaN, roomY: NaN, snow: -1, night: false, lang: '' };
   let player, npcs = [], beast = null, worldItem = null;
   let whereFact = null;             // the fact saying where the world thing is lying
   let chainNeeds = {};              // items the errand cannot be finished without
@@ -1061,28 +1061,6 @@ LG.game = (function () {
     });
     window.addEventListener('blur', () => { for (const k in held) held[k] = false; });
 
-    /* A click landing on a signboard is swallowed rather than read as a
-       click on the ground beneath it, so it's tested against whatever
-       signs are on screen first. */
-    const toWorld = e => {
-      const r = canvas.getBoundingClientRect();
-      return { x: (e.clientX - r.left) + cam.x, y: (e.clientY - r.top) + cam.y };
-    };
-    /* Touch input's equivalent goes through LG.touch below, which
-       suppresses the synthetic click event a tap also generates —
-       without that, a tapped sign would register twice (once from the
-       tap handler, once from the delayed synthetic click). The
-       `LG.touch.on` check here is a backup guard against anything that
-       fires a click event without a corresponding pointer. */
-    canvas.addEventListener('click', e => {
-      if (uiBlocked() || LG.touch.on) return;
-      const p = toWorld(e);
-      W.hitSign(p.x, p.y);
-    });
-    canvas.addEventListener('mousemove', e => {
-      const p = toWorld(e);
-      canvas.style.cursor = (!uiBlocked() && W.overSign(p.x, p.y)) ? 'pointer' : 'default';
-    });
     LG.touch.init(canvas, { blocked: uiBlocked, tap: tapAt });
 
     /* The notebook and inventory boxes cover most of a phone screen —
@@ -1410,9 +1388,6 @@ LG.game = (function () {
   function tapAt(sx, sy) {
     if (uiBlocked()) return;
     const wx = sx + cam.x, wy = sy + cam.y;
-    // A tap on a signboard is consumed there, not also treated as a tap on the ground beneath it.
-    if (W.hitSign(wx, wy)) return;
-
     const m = tapPick(wx, wy);
     if (m) {
       if (dist(player, m.a) > m.reach) {
@@ -2070,8 +2045,7 @@ LG.game = (function () {
      view. A strip is clipped to itself, and drawn from two tiles further
      out on every side, so what overhangs into it from just outside
      (roofs, drift shadows, a canopy's top) comes out exactly as a whole
-     repaint would draw it. Signs are always all drawn, clipped: drawing
-     them is also what lists where they can be clicked. */
+     repaint would draw it. Signs are drawn for the whole layer, clipped. */
   function paintGround(room, rx, ry, rw, rh) {
     const g = groundCtx, at = { x: groundSeen.x, y: groundSeen.y };
     const w = vw + 2 * OVERSCAN, h = vh + 2 * OVERSCAN;
@@ -2084,7 +2058,7 @@ LG.game = (function () {
     g.translate(-at.x, -at.y);
     W.drawGround(g, part, pw, ph, dpr);
     W.drawBuildings(g, room, part, pw, ph);
-    W.drawSigns(g, at, w, h, settings.lang, settings.showTranslation, dpr);
+    W.drawSigns(g, at, w, h, settings.lang, dpr);
     g.restore();
   }
 
@@ -2113,7 +2087,7 @@ LG.game = (function () {
      has actually changed: the camera leaving the painted area, entering/
      exiting a roofed area, snow depth advancing a bucket (bucketed the
      same way world.js does -- see readSnow() there), the lamps lighting
-     or going out, or a sign's language/reveal state. Otherwise draw()
+     or going out, or the language the signs are in. Otherwise draw()
      just blits the existing cached layer from wherever the camera is.
      A camera move only paints the strip that came into view (see
      scrollGroundLayer), and a change of snow depth is repainted a band a
@@ -2134,7 +2108,7 @@ LG.game = (function () {
     // Still the same picture, bar the snow and where it's been scrolled to.
     if (groundSeen.x === groundSeen.x &&                  // NaN until it's first painted
         roomX === groundSeen.roomX && roomY === groundSeen.roomY && night === groundSeen.night &&
-        settings.lang === groundSeen.lang && settings.showTranslation === groundSeen.trans &&
+        settings.lang === groundSeen.lang &&
         Math.abs(nx - groundSeen.x) < w / 2 && Math.abs(ny - groundSeen.y) < h / 2) {
       if (snow !== groundSeen.snow) { groundSeen.snow = snow; bandsOwed = GROUND_BANDS; }
       if (c.x < groundSeen.x || c.x > groundSeen.x + 2 * OVERSCAN ||
@@ -2150,7 +2124,7 @@ LG.game = (function () {
     }
     groundSeen.x = nx; groundSeen.y = ny;
     groundSeen.roomX = roomX; groundSeen.roomY = roomY; groundSeen.snow = snow; groundSeen.night = night;
-    groundSeen.lang = settings.lang; groundSeen.trans = settings.showTranslation;
+    groundSeen.lang = settings.lang;
     bandsOwed = 0;
     paintGround(room, 0, 0, w, h);
   }

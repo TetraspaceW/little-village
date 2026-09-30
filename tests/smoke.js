@@ -344,8 +344,7 @@ section('the whole map draws');
       LG.time.setSnow(snow);
       LG.world.drawGround(ctx2d, cam, fullW, fullH);
       LG.world.drawBuildings(ctx2d, LG.world.buildings[0], cam, fullW, fullH);
-      LG.world.drawSigns(ctx2d, cam, fullW, fullH, lang, false);
-      LG.world.drawSigns(ctx2d, cam, fullW, fullH, lang, true);
+      LG.world.drawSigns(ctx2d, cam, fullW, fullH, lang);
       LG.world.drawAnimated(ctx2d, cam, fullW, fullH);
       drew++;
     }
@@ -362,11 +361,17 @@ section('the whole map draws');
   ok(present.has(LG.world.T.TREE) && present.has(LG.world.T.WATER),
      'and the ordinary ground it used to have');
 
-  // A sign is only clickable if its draw call registered a hit-box for it.
-  LG.world.drawSigns(ctx2d, cam, fullW, fullH, 'ru', false);
-  const st = LG.world._signs().find(s => s.key === 'Station');
-  ok(st && LG.world.overSign(st.x, st.y - 10), 'the station nameboard can be clicked');
-  ok(!LG.world.overSign(0, 0), 'and the empty corner of the map cannot');
+  // A sign is the village's name for the place and nothing else: no English line under it.
+  const written = [];
+  ctx2d.fillText = t => { written.push(t); };
+  LG.world.drawSigns(ctx2d, cam, fullW, fullH, 'ru');
+  delete ctx2d.fillText;
+  const english = LG.world._signs().map(s => LG.placeName(s.key, 'en'))
+    .filter(en => LG.world._signs().every(s => LG.placeName(s.key, 'ru') !== en));
+  ok(written.length === LG.world._signBoxes().length && written.every(t => english.indexOf(t) === -1),
+     'every sign has one line on it, in the village’s language');
+  const helpText = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  ok(!/sign[^<]*<\/b>[^.]*English/.test(helpText), 'and the help panel does not promise English on them');
 
   /* Sign boards are sized by measureText, unlike everything else here
      which is sized by the tile grid — making a board the one element
@@ -378,7 +383,7 @@ section('the whole map draws');
   const measured = ctx2d.measureText;
   ctx2d.measureText = () => ({ width: 37.3183 });
   for (const dpr of [1, 1.25, 1.5, 2, 2.625, 3]) {
-    LG.world.drawSigns(ctx2d, cam, fullW, fullH, 'ja', false, dpr);
+    LG.world.drawSigns(ctx2d, cam, fullW, fullH, 'ja', dpr);
     const boxes = LG.world._signBoxes();
     const adrift = boxes.filter(b => [b.x, b.y, b.x + b.w, b.y + b.h]
       .some(v => Math.abs(v * dpr - Math.round(v * dpr)) > 1e-6));

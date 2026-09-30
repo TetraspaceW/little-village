@@ -1476,15 +1476,10 @@ LG.world = (function () {
   }
 
   /* ------------------------------------------------------------------ signs
-     Draws a readable sign at every building's door plus the noticeboard:
-     the name in the village's language, with an English gloss underneath.
-     The gloss is shown or hidden globally, following the same "reveal
-     translation" setting used elsewhere — unlike the notebook and
-     overheard speech, a sign has no per-sign reveal state of its own, so
-     with the setting off it stays monolingual. `signBoxes` is rebuilt in
-     world-space coordinates on every draw call; game.js hit-tests click
-     position against it since it's the one that knows the actual mouse
-     position. */
+     A sign at every building's door, the noticeboard and the station, in
+     the village's language only: no English underneath, and nothing to
+     click. `signBoxes` is where each board was last drawn, in world
+     coordinates, for the tests. */
   let signBoxes = [];
 
   /* Non-building signposted locations (noticeboard, station). Populated
@@ -1504,11 +1499,10 @@ LG.world = (function () {
     return out.concat(signposts);
   }
 
-  function drawSigns(ctx, cam, vw, vh, lang, revealAll, dpr) {
+  function drawSigns(ctx, cam, vw, vh, lang, dpr) {
     signBoxes = [];
     const L = LG.LANGUAGES && LG.LANGUAGES[lang];
     const nativeFont = '600 11px ' + ((L && L.fontStack) || 'system-ui');
-    const glossFont = '10px system-ui';
     /* Sign boards are the one thing here sized by text measurement
        rather than the tile grid — measureText returns a fractional
        width, and centering the board on that width would land its edges
@@ -1527,12 +1521,8 @@ LG.world = (function () {
     for (const s of signSpots()) {
       if (!inView(s.x - 40, s.y - 40, 80, 40, cam, vw, vh, TILE)) continue;
       const native = LG.placeName(s.key, lang);
-      const gloss = (lang === 'en' || !revealAll) ? null : LG.placeName(s.key, 'en');
       ctx.font = nativeFont;
-      let w = ctx.measureText(native).width;
-      if (gloss) { ctx.font = glossFont; w = Math.max(w, ctx.measureText(gloss).width); }
-      w = snap(w + 16);
-      const h = snap(gloss ? 34 : 20);
+      const w = snap(ctx.measureText(native).width + 16), h = snap(20);
       const bx = snap(s.x - w / 2), by = snap(s.y - h);
 
       ctx.fillStyle = '#6b4a2f';                        // the post
@@ -1543,26 +1533,9 @@ LG.world = (function () {
       ctx.strokeRect(bx + 0.75, by + 0.75, w - 1.5, h - 1.5);
 
       ctx.fillStyle = '#3a2e1f';
-      ctx.font = nativeFont;
       ctx.fillText(native, s.x, by + 15);
-      if (gloss) {
-        ctx.fillStyle = '#6d5b45';
-        ctx.font = glossFont;
-        ctx.fillText(gloss, s.x, by + 29);
-      }
       signBoxes.push({ x: bx, y: by, w, h, key: s.key });
     }
-  }
-
-  /* Signs no longer have per-sign reveal state to toggle (the gloss is
-     shown/hidden globally via the "reveal translation" setting), but a
-     click/tap on a signboard should still be consumed rather than also
-     treated as a click on the ground beneath it. */
-  function overSign(wx, wy) {
-    return signBoxes.some(b => wx >= b.x && wx <= b.x + b.w && wy >= b.y && wy <= b.y + b.h);
-  }
-  function hitSign(wx, wy) {
-    return overSign(wx, wy);
   }
 
   /* Called only when game.js repaints its cached ground layer, so the
@@ -1609,7 +1582,7 @@ LG.world = (function () {
 
   return { TILE, W, H, T, build, get, isSolid, isWalkable, nearestOpen, pathTo,
            buildingAt, buildingUnder, roofRects, buildingByLabel, inRect, nearRect,
-           drawGround, drawBuildings, drawSigns, drawAnimated, hitSign, overSign, buildings,
+           drawGround, drawBuildings, drawSigns, drawAnimated, buildings,
            // for the tests: what got placed, and where you can get to from here
            _props: () => props, _signs: () => signSpots(), _flood: flood,
            _signBoxes: () => signBoxes };

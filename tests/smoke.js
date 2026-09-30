@@ -739,7 +739,9 @@ async function keysPerProvider() {
   section('an old Anthropic setup, and a key per provider');
   const kept = {
     'lg-settings': JSON.stringify({ provider: 'anthropic', apiKey: 'sk-ant-not-real',
-                                    model: 'claude-sonnet-5', helper: 'claude-haiku-4-5' })
+                                    model: 'claude-sonnet-5', helper: 'claude-haiku-4-5',
+                                    showTranslation: true, npcChatter: false,
+                                    voiceQuality: 'any', voiceSpeed: 'fast' })
   };
   const s3 = makeSandbox(kept);
   for (const f of files) {
@@ -752,6 +754,8 @@ async function keysPerProvider() {
   ok(set.apiKey === '' && !set.keys.openrouter && !set.keys.logfare,
      'without the Anthropic key, which OpenRouter was never meant to see');
   ok(set.model === 'deepseek/deepseek-v4.1-flash' && set.helper === '', 'and on the default models');
+  ok(['showTranslation', 'npcChatter', 'voiceQuality', 'voiceSpeed'].every(k => !(k in set)),
+     'and the settings that are no longer choices are dropped, not carried along');
 
   const el = id => s3.document.getElementById(id);
   const pick = prov => { el('setProvider').value = prov; el('setProvider').onchange(); };
@@ -1417,7 +1421,7 @@ section('closing the tab and opening it again');
   }
   s2.LG.game.init();
   s2.LG.game.thoughts = false;                     // suppress console narration during tests
-  s2.LG.game.settings.npcChatter = false;          // and ensure no requests are sent regardless of key presence
+  s2.LG.game.settings.apiKey = '';                 // and no requests are sent
 
   ok(s2.LG.save.resumed, 'a fresh browser came back into the saved village');
   ok(s2.LG.game.plan.seed === written.village.seed,
@@ -1513,7 +1517,6 @@ async function villagersTalking() {
   const cast = LG.game.npcs;
   const a = cast[0], b = cast[1];
   LG.game.settings.apiKey = 'not-a-real-key';       // both stubs above, so nothing is sent
-  LG.game.settings.npcChatter = true;
   LG.dialogue.turnHold = 0;
   LG.dialogue._chatReset();
   a.frozen = b.frozen = false;

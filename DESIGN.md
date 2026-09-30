@@ -297,7 +297,7 @@ Each of these was a bug first:
 - As a result, gossip is lossy, and a pair can part having learned nothing. That's
   intended.
 - **Overheard talk** reaches the event log only when the player is nearby. It's shown in
-  the village language, and the gloss stays blurred **even with translations on**,
+  the village language, with its gloss blurred until clicked, like every gloss,
   because overhearing is a comprehension test.
 
 ## Noticeboard

@@ -722,10 +722,10 @@ LG.dialogue = (function () {
     bub.appendChild(r);
 
     const tr = document.createElement('div');
-    tr.className = 'trans' + (s.showTranslation ? '' : ' hidden-tr');
+    tr.className = 'trans hidden-tr';
     tr.lang = 'en';
     tr.textContent = translation || '';
-    tr.title = s.showTranslation ? '' : 'click to reveal';
+    tr.title = 'click to reveal';
     tr.onclick = () => tr.classList.remove('hidden-tr');
     tr.style.display = translation ? '' : 'none';
     bub.appendChild(tr);

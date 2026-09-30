@@ -100,13 +100,9 @@ LG.tts = (function () {
     const o = opts || {};
     const lang = o.lang ? String(o.lang).toLowerCase() : '';
 
-    // Prefer curated voices, but fall back to the full list rather than
-    // leaving villagers without voices if filtering leaves too few.
-    let pool = list;
-    if (o.curatedOnly) {
-      const curated = list.filter(isCurated);
-      if (curated.length >= Math.min(npcs.length, 2)) pool = curated;
-    }
+    // Curated voices, falling back to the full list rather than leave villagers mute.
+    const curated = list.filter(isCurated);
+    const pool = curated.length >= Math.min(npcs.length, 2) ? curated : list;
 
     const taken = {};
     npcs.forEach(npc => {
@@ -194,7 +190,7 @@ LG.tts = (function () {
     try {
       const data = await res.json();
       catalogue = data.voices || data || [];
-      voices = assign(catalogue, LG.NPCS, { lang: cfg.lang, curatedOnly: cfg.curatedOnly });
+      voices = assign(catalogue, LG.NPCS, { lang: cfg.lang });
       state = Object.keys(voices).length ? 'ready' : 'error';
       lastError = state === 'ready'
         ? 'Cast ' + Object.keys(voices).length + ' voices from ' + catalogue.length +

@@ -10,16 +10,7 @@ LG.game = (function () {
     /* One key per provider, so switching provider and back doesn't lose
        the other one. `apiKey` is always the current provider's entry. */
     keys: { openrouter: '', logfare: '' },
-    /* These four are no longer exposed as player-facing settings —
-       villager gossip is always on, translations always start blurred
-       (click to reveal), voices are always cast from the curated
-       library, and speech speed always matches difficulty. Kept as
-       fields since other code still reads settings.npcChatter etc.;
-       loadSettings() below force-resets them on load so an old
-       localStorage save with different values can't reintroduce the
-       removed choice. */
-    showTranslation: false, npcChatter: true,
-    voices: false, ttsKey: '', voiceSpeed: 'auto', voiceQuality: 'curated'
+    voices: false, ttsKey: ''
   };
 
   // `gated` blocks input until settings (incl. API key) are confirmed via the front-door panel.
@@ -116,14 +107,12 @@ LG.game = (function () {
     settings.keys = Object.assign({ openrouter: '', logfare: '' }, settings.keys);
     if (settings.apiKey && !settings.keys[settings.provider]) settings.keys[settings.provider] = settings.apiKey;
     settings.apiKey = settings.keys[settings.provider] || '';
-    // No longer configurable -- force these even if an old save has different values stored.
-    settings.npcChatter = true;
-    settings.showTranslation = false;
-    settings.voiceQuality = 'curated';
-    settings.voiceSpeed = 'auto';
-    // Jev used to be opt-in; it's now always used on OpenRouter, so nothing reads these.
-    delete settings.jevMovement;
-    delete settings.jevValidation;
+    /* Settings that are no longer choices: villagers always gossip,
+       translations always start blurred, voices are always cast from the
+       curated library at a pace set by difficulty, and Jev is always used
+       on OpenRouter. Dropped from an older browser's stored settings. */
+    ['npcChatter', 'showTranslation', 'voiceQuality', 'voiceSpeed', 'jevMovement', 'jevValidation']
+      .forEach(k => { delete settings[k]; });
   }
   function saveSettings() {
     try { localStorage.setItem('lg-settings', JSON.stringify(settings)); } catch (e) {}
@@ -131,8 +120,7 @@ LG.game = (function () {
   function ttsConfig() {
     // Talking speed is always derived from difficulty, not separately configurable.
     const speed = (LG.LEVELS[settings.level] || {}).speed || 0.85;
-    return { key: settings.ttsKey.trim(), speed: speed,
-             lang: settings.lang, curatedOnly: settings.voiceQuality === 'curated' };
+    return { key: settings.ttsKey.trim(), speed: speed, lang: settings.lang };
   }
   function llmConfig() {
     return { provider: settings.provider, apiKey: settings.apiKey.trim(),
@@ -200,9 +188,8 @@ LG.game = (function () {
     const L = LG.LANGUAGES[settings.lang];
     const line = fillTemplate(set[settings.lang] || set.en, native);
     const gloss = fillTemplate(set.en, english);
-    const hide = settings.showTranslation ? '' : ' hidden-tr';
     pushLog(icon + ' <span class="heard" lang="' + L.tag + '">' + escapeHTML(line) + '</span>' +
-            '<span class="gloss' + hide + '" lang="en" title="click to read">' + escapeHTML(gloss) + '</span>');
+            '<span class="gloss hidden-tr" lang="en" title="click to read">' + escapeHTML(gloss) + '</span>');
   }
 
   /* ------------------------------------------------------------ notebook
@@ -250,15 +237,10 @@ LG.game = (function () {
 
   function log(msg) { pushLog(escapeHTML(msg)); }
 
-  /* Logs a line overheard between two villagers.
-
-     Villagers speak to each other only in their own language — no
-     English shown by default, matching the exchange itself. The line
-     shown carries furigana/romanization like any other displayed line.
-     The English gloss is available to self-check against but stays
-     blurred until clicked, and unlike other lines it stays blurred even
-     with translations turned on globally — showing it by default would
-     let the player skip understanding the overheard language entirely. */
+  /* Logs a line overheard between two villagers, in their language with
+     furigana or romanisation like any other line. The English gloss is
+     there to check yourself against, blurred until clicked: overhearing
+     is a comprehension test. */
   function logSpeech(name, said, ruby, roman, gloss) {
     const L = LG.LANGUAGES[settings.lang];
     const heard = (ruby && L.furigana) ? LG.dialogue.rubyHTML(ruby) : escapeHTML(said);
@@ -294,12 +276,11 @@ LG.game = (function () {
       .concat(state.notes.map(n => {
         const heard = (n.ruby && L.furigana) ? LG.dialogue.rubyHTML(n.ruby) : escapeHTML(n.text);
         const gloss = plan.facts[n.id].text;
-        const hide = settings.showTranslation ? '' : ' hidden-tr';
         const done = factSpent(n.id);          // read off the world, never stored
         return '<div class="q' + (done ? ' done' : '') + '"><span class="heard" lang="' +
                L.tag + '"' + (L.furigana && n.ruby ? ' style="line-height:2"' : '') +
                '>' + (done ? '\u2714 ' : '\u2022 ') + heard + '</span>' +
-               '<span class="gloss' + hide + '" lang="en" title="' + escapeHTML(gloss) + '">' +
+               '<span class="gloss hidden-tr" lang="en" title="' + escapeHTML(gloss) + '">' +
                escapeHTML(gloss) + '</span></div>';
       }));
     nb.innerHTML = rows.length ? rows.join('')
@@ -1133,15 +1114,8 @@ LG.game = (function () {
       keys: Object.assign({}, draftKeys),
       model: readModel() || settings.model,
       helper: readHelper(),
-      // No longer player-configurable: gossip is always on, translations
-      // always start blurred, voices are always curated, and speech
-      // speed always matches difficulty.
-      showTranslation: false,
-      npcChatter: true,
       voices: document.getElementById('setVoices').checked,
-      ttsKey: document.getElementById('setTtsKey').value.trim(),
-      voiceSpeed: 'auto',
-      voiceQuality: 'curated'
+      ttsKey: document.getElementById('setTtsKey').value.trim()
     };
     err.textContent = '';
 
@@ -1741,7 +1715,7 @@ LG.game = (function () {
      on every arrival -- only when the villager hasn't posted recently. */
   const BOARD_MAX = 6;
   function maybePostNotice(n) {
-    if (!settings.apiKey || !settings.npcChatter) return;
+    if (!settings.apiKey) return;
     if (n.boardCool > 0) return;
     n.boardCool = 90 + Math.random() * 150;
     const v = LG.view.of(n, 'board');
@@ -1810,7 +1784,6 @@ LG.game = (function () {
     const L = LG.LANGUAGES[settings.lang];
     const box = document.getElementById('boardList');
     const rows = (state.board || []).slice().reverse().map(entry => {
-      const hide = settings.showTranslation ? '' : ' hidden-tr';
       // A notice always shows the poster's real name, unlike a nametag
       // or spoken dialogue -- it's a public, written document, and a
       // noticeboard that couldn't identify its own postings would defeat the point.
@@ -1819,7 +1792,7 @@ LG.game = (function () {
              '<span class="heard" lang="' + L.tag + '">' + escapeHTML(entry.text) + '</span>' +
              (entry.roman && L.romanize ? '<span class="roman" lang="' + L.romanTag + '">' +
                escapeHTML(entry.roman) + '</span>' : '') +
-             (entry.translation ? '<span class="gloss' + hide + '" lang="en" title="click to read">' +
+             (entry.translation ? '<span class="gloss hidden-tr" lang="en" title="click to read">' +
                escapeHTML(entry.translation) + '</span>' : '') +
              '</div>';
     });
@@ -1930,7 +1903,7 @@ LG.game = (function () {
       const wasFollowing = n.followingPlayer;
       const walking = wasFollowing ? followPlayer(n, dt) : !!(n.route && n.route.length);
       if (!wasFollowing)
-        A.routine(n, dt, LG.GREEN, settings.apiKey && settings.npcChatter ? decideWhereToGo : null);
+        A.routine(n, dt, LG.GREEN, settings.apiKey ? decideWhereToGo : null);
       if (n.wasWalking && !walking) {
         think(n, 'arrives', LG.view.where(n) + (n.why ? ' — ' + n.why : ''));
         // `patch` still reflects wherever the villager last decided to
@@ -1944,10 +1917,8 @@ LG.game = (function () {
       if (n.bubbleT > 0) n.bubbleT -= dt;
       if (n.boardCool > 0) n.boardCool -= dt;
     }
-    if (settings.npcChatter) {
-      LG.dialogue.chatTick(dt);
-      A.meet(npcs, dt, log, LG.dialogue.chatterLine, villagerTalk);
-    }
+    LG.dialogue.chatTick(dt);
+    A.meet(npcs, dt, log, LG.dialogue.chatterLine, villagerTalk);
 
     if (beast) {
       if (beast.following) {

@@ -345,10 +345,15 @@ everything at every level. The README has the table.
   pond freezes and the fountain stops. Streets hold the least snow so paths stay
   readable, and roofs never go fully white. The depth is included in villager prompts.
 - **Ground snow is one field, never per-tile shapes.** Depth sets a level on a map-wide
-  noise field; the snowline is traced at 4 px (marching squares) into one path
-  (`snowField` in `js/world.js`). Per-tile blobs printed the grid onto every thaw as polka
-  dots. Props read the same field; ponds ice over as one sheet. Don't `closePath()` the pieces: in Chrome it
-  costs ~100× a `lineTo` and was most of a repaint.
+  noise field; the snowline is traced at 4 px (marching squares) and joined into closed
+  loops through the grid edges the pieces share (`traceLoops` in `js/world.js`). Per-tile
+  blobs printed the grid onto every thaw as polka dots. Props read the same field; ponds
+  ice over as one sheet; floors are forced bare so no drift shows when a roof lifts.
+- **Snow is cheap to trace and fill.** Only tiles the line crosses are traced, into
+  typed arrays; a piece per cell was tens of thousands of shapes, ~10 ms a fill in
+  Firefox. The drift lip is the path filled again 2 px lower, not a canvas shadow
+  (Firefox draws shadows through an offscreen pass, ~20 ms a repaint). Don't
+  `closePath()`: in Chrome it costs ~100× a `lineTo`.
 - **Snow isn't a clean cut-out.** Drifts cover their own tiles and spill 0–9 px over a
   street's edge, roughened by noise; stopping on the tile edge read as paper. More spill
   (or blurring which tiles hold snow) swallows the one-tile forest paths. A faint relief
@@ -373,8 +378,13 @@ everything at every level. The README has the table.
 - **The ground layer scrolls.** When the camera leaves it, the painted layer is slid onto
   a spare canvas and only the newly exposed strip is painted, clipped, from two tiles
   further out (`scrollGroundLayer` in `js/game.js`). Full repaints every 96 px were the
-  walking stutter, worst in the forest. Anything the layer draws must depend only on
-  `refreshGroundLayer`'s keys, or a strip will disagree with what's beside it.
+  walking stutter, worst in the forest. A snow-depth change (every ~0.6 s while it
+  snows) repaints one band a frame over six frames. Anything the layer draws must depend
+  only on `refreshGroundLayer`'s keys, or a strip will disagree with what's beside it.
+- **Profile in Firefox, not just Chrome.** The user plays in Floorp, whose software canvas
+  rasterises on the call. Chrome hid a 45–70 ms snowy repaint that Firefox felt. The
+  vignette is a CSS gradient over the canvas: filled into it every frame it cost Firefox
+  ~5 ms at 1900×1350.
 
 ## Touch and mobile layout
 

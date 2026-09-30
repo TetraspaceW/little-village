@@ -70,6 +70,8 @@ body{
   -webkit-tap-highlight-color:transparent;
 }
 #stage{position:fixed;inset:0}
+/* Darkens the corners; drawn by the compositor over the canvas (see resize() in game.js). */
+#vignette{position:absolute;inset:0;pointer-events:none}
 canvas{
   display:block;width:100%;height:100%;outline:none;cursor:default;
   /* The canvas handles its own touch input via LG.touch — disables the

@@ -643,6 +643,9 @@ LG.world = (function () {
     const ta = Math.min(W - 1, (i / SUB) | 0), tb = Math.min(H - 1, (j / SUB) | 0);
     const ia = i % SUB ? ta : Math.max(0, ta - 1), jb = j % SUB ? tb : Math.max(0, tb - 1);
     if (holds[tb * W + ta] || holds[tb * W + ia] || holds[jb * W + ta] || holds[jb * W + ia]) E[k] = Math.max(E[k], 0.02);
+    // Never inside a building, though: a drift spilling in off the walls would show once the roof lifts.
+    if (tiles[tb * W + ta] === T.FLOOR || tiles[tb * W + ia] === T.FLOOR ||
+        tiles[jb * W + ta] === T.FLOOR || tiles[jb * W + ia] === T.FLOOR) E[k] = -1;
     const d = 0.25;
     S[k] = (relief(Math.max(0, x - d), Math.max(0, y - d)) - relief(x + d, y + d)) / (2 * d);
     return k;
@@ -711,71 +714,125 @@ LG.world = (function () {
            t !== T.WATER && t !== T.FLOOR && t !== T.CAVE;
   }
 
-  /* One cell of the fine grid, given the depth at its corners (clockwise
-     from top left), as marching squares: walk the cell's edge, taking the
-     corners under snow and the points between corners where the snowline
-     crosses. A cell with two opposite corners under snow and a bare middle
-     is two separate corners, not one band across it.
-     Each piece is left open: fill() closes it anyway, and in Chrome an
-     explicit closePath() costs over a hundred times what a lineTo() does,
-     which across a screenful of snowline was most of a repaint. */
-  let pen = 0;
-  function to(ctx, x, y) { if (pen++) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
-  function snowCell(ctx, px, py, s, a, b, c, d) {
-    const A = a > 0, B = b > 0, C = c > 0, D = d > 0;
-    const top = px + s * a / (a - b), right = py + s * b / (b - c);
-    const bottom = px + s * d / (d - c), left = py + s * a / (a - d);
-    pen = 0;
-    if (A === C && B === D && A !== B && a + b + c + d <= 0) {
-      if (A) {
-        to(ctx, px, py); to(ctx, top, py); to(ctx, px, left);
-        pen = 0; to(ctx, px + s, py + s); to(ctx, bottom, py + s); to(ctx, px + s, right);
-      } else {
-        to(ctx, top, py); to(ctx, px + s, py); to(ctx, px + s, right);
-        pen = 0; to(ctx, bottom, py + s); to(ctx, px, py + s); to(ctx, px, left);
-      }
-      return;
+  /* The snowline, as closed loops. Marching squares over the fine grid:
+     each cell whose corners disagree adds a stretch of line between the
+     points where it crosses the cell's edges, turned so the snow is on
+     its right, and the stretches are joined end to end through the edges
+     they share. Filled (nonzero), the loops cover everything inside them,
+     so a screenful of snow is its outline and nothing more. Built as a
+     piece per cell and a rectangle per row of cells, it was tens of
+     thousands of shapes, and each fill of it cost Firefox ~10 ms.
+     Only cells in tiles the line passes through (`fate` 0) are looked at,
+     plus a ring of cells just outside the range, which counts as bare so
+     that every loop closes. A cell with two opposite corners inside and a
+     bare middle is two corners, not a band across it. Loops aren't
+     closePath()ed: fill() closes them, and in Chrome closePath() costs
+     over a hundred times what a lineTo() does. */
+  /* Scratch for traceLoops, grown as needed and reused: each paint's
+     values on a local grid, and per grid edge where the line crosses it
+     and which edge the line goes on to. `gen` stamps mark what this paint
+     has set, so nothing needs clearing. (Maps keyed by edge made the
+     tracing, not the drawing, the slow part of a snowy repaint.) */
+  let vals = new Float32Array(0), ex = new Float32Array(0), ey = new Float32Array(0);
+  let onward = new Int32Array(0), crossed = new Int32Array(0), linked = new Int32Array(0), gen = 0;
+  const starts = [];
+  function traceLoops(p, x0, y0, x1, y1, fate, shade) {
+    const step = shade ? 2 : 1, per = SUB / step, cols = x1 - x0 + 1, rows = y1 - y0 + 1;
+    const I0 = x0 * SUB, I1 = (x1 + 1) * SUB, J0 = y0 * SUB, J1 = (y1 + 1) * SUB, px = TILE / SUB;
+    // The range's samples, one step apart, inside a ring of bare ones.
+    const LW = (I1 - I0) / step + 3, LH = (J1 - J0) / step + 3, n = LW * LH;
+    if (vals.length < n) {
+      vals = new Float32Array(n); ex = new Float32Array(2 * n); ey = new Float32Array(2 * n);
+      onward = new Int32Array(2 * n); crossed = new Int32Array(2 * n); linked = new Int32Array(2 * n);
     }
-    if (A) to(ctx, px, py);
-    if (A !== B) to(ctx, top, py);
-    if (B) to(ctx, px + s, py);
-    if (B !== C) to(ctx, px + s, right);
-    if (C) to(ctx, px + s, py + s);
-    if (C !== D) to(ctx, bottom, py + s);
-    if (D) to(ctx, px, py + s);
-    if (D !== A) to(ctx, px, left);
-  }
-
-  /* Adds one tile's share of a region to the current path, from the
-     values at its (n+1)² sample points in `corners` (positive = inside).
-     Whole runs of inside cells go in as one rectangle. */
-  const corners = new Float32Array((SUB + 1) * (SUB + 1));
-  function traceTile(ctx, px, py, n) {
-    const R = n + 1, s = TILE / n;
-    for (let j = 0; j < n; j++) {
-      let run = -1;                           // where a run of wholly inside cells began
-      for (let i = 0; i <= n; i++) {
-        const k = j * R + i;
-        if (i < n && corners[k] > 0 && corners[k + 1] > 0 && corners[k + R] > 0 && corners[k + R + 1] > 0) {
-          if (run < 0) run = i;
-          continue;
+    /* Only what's read gets set: the ring, the range's own edge — where a
+       wholly snowed-over tile just needs to read as inside, so its loop
+       closes out in the ring — and every sample of the tiles the line
+       runs through. Working out every sample in range was most of a
+       repaint's time in Firefox. */
+    for (let li = 0; li < LW; li++) { vals[li] = -1; vals[(LH - 1) * LW + li] = -1; }
+    for (let lj = 1; lj < LH - 1; lj++) {
+      const row = Math.min((lj - 1) / per | 0, rows - 1) * cols;
+      vals[lj * LW] = -1; vals[lj * LW + LW - 1] = -1;
+      vals[lj * LW + 1] = fate[row] > 0 ? 1 : -1; vals[lj * LW + LW - 2] = fate[row + cols - 1] > 0 ? 1 : -1;
+    }
+    for (let li = 1; li < LW - 1; li++) {
+      const c = Math.min((li - 1) / per | 0, cols - 1);
+      vals[LW + li] = fate[c] > 0 ? 1 : -1; vals[(LH - 2) * LW + li] = fate[(rows - 1) * cols + c] > 0 ? 1 : -1;
+    }
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      if (fate[(y - y0) * cols + x - x0] !== 0) continue;
+      const li0 = (x - x0) * per + 1, lj0 = (y - y0) * per + 1;
+      for (let lj = lj0; lj <= lj0 + per; lj++)
+        for (let li = li0, k = lj * LW + li0, g = (J0 + (lj - 1) * step) * SW + I0 + (li0 - 1) * step; li <= li0 + per; li++, k++, g += step) {
+          let v = depth(N[g]);
+          const e = E[g] * EK;
+          if (e < v) v = e;
+          if (shade && S[g] - SHADE < v) v = S[g] - SHADE;
+          vals[k] = v;
         }
-        if (run >= 0) { ctx.rect(px + run * s, py + j * s, (i - run) * s, s); run = -1; }
-        if (i < n) snowCell(ctx, px + i * s, py + j * s, s, corners[k], corners[k + 1], corners[k + R + 1], corners[k + R]);
+    }
+    gen++; starts.length = 0;
+    const s = step * px;
+    // Edges are numbered by the sample they start from, times two, plus one if they run down.
+    function at(e, x, y) { if (crossed[e] !== gen) { crossed[e] = gen; ex[e] = x; ey[e] = y; } return e; }
+    function join(a, b) { onward[a] = b; linked[a] = gen; starts.push(a); }
+    function cell(li, lj) {
+      const k = lj * LW + li, a = vals[k], b = vals[k + 1], c = vals[k + LW + 1], d = vals[k + LW];
+      const q = (a > 0 ? 8 : 0) | (b > 0 ? 4 : 0) | (c > 0 ? 2 : 0) | (d > 0 ? 1 : 0);
+      if (q === 0 || q === 15) return;
+      const x = (I0 + (li - 1) * step) * px, y = (J0 + (lj - 1) * step) * px;
+      const A = q >> 3, B = (q >> 2) & 1, C = (q >> 1) & 1, D = q & 1;
+      const T = A !== B ? at(2 * k, x + s * a / (a - b), y) : -1;
+      const R = B !== C ? at(2 * (k + 1) + 1, x + s, y + s * b / (b - c)) : -1;
+      const Bo = C !== D ? at(2 * (k + LW), x + s * d / (d - c), y + s) : -1;
+      const L = D !== A ? at(2 * k + 1, x, y + s * a / (a - d)) : -1;
+      switch (q) {                            // from crossing to crossing, snow on the right
+        case 1: join(L, Bo); break;          case 14: join(Bo, L); break;
+        case 2: join(Bo, R); break;          case 13: join(R, Bo); break;
+        case 3: join(L, R); break;           case 12: join(R, L); break;
+        case 4: join(R, T); break;           case 11: join(T, R); break;
+        case 6: join(Bo, T); break;          case 9: join(T, Bo); break;
+        case 7: join(L, T); break;           case 8: join(T, L); break;
+        case 5:                                // top right and bottom left
+          if (a + b + c + d > 0) { join(L, T); join(R, Bo); } else { join(R, T); join(L, Bo); }
+          break;
+        case 10:                               // top left and bottom right
+          if (a + b + c + d > 0) { join(T, R); join(Bo, L); } else { join(T, L); join(Bo, R); }
+          break;
+      }
+    }
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      if (fate[(y - y0) * cols + x - x0] !== 0) continue;
+      const li0 = (x - x0) * per + 1, lj0 = (y - y0) * per + 1;
+      for (let lj = lj0; lj < lj0 + per; lj++) for (let li = li0; li < li0 + per; li++) cell(li, lj);
+    }
+    for (let li = 0; li < LW - 1; li++) { cell(li, 0); cell(li, LH - 2); }
+    for (let lj = 1; lj < LH - 2; lj++) { cell(0, lj); cell(LW - 2, lj); }
+    for (let i = 0; i < starts.length; i++) {
+      const start = starts[i];
+      if (linked[start] !== gen) continue;   // already walked, as part of an earlier loop
+      let e = start;
+      p.moveTo(ex[e], ey[e]);
+      for (;;) {
+        const next = onward[e];
+        linked[e] = 0;
+        if (next === start || linked[next] !== gen) break;
+        p.lineTo(ex[next], ey[next]); e = next;
       }
     }
   }
 
   /* Draws the snow for tiles x0..x1, y0..y1 over already-drawn ground.
-     Drifts are the snowline traced through the fine grid, all in one
-     path and one fill — separate fills would leave hairline seams where
-     neighbouring pieces meet. The fill's shadow is a thin blue-grey lip
-     under each drift, which is what makes a white patch read as snow
-     lying on the grass rather than a hole cut in it. The relief's shadows
-     go over that as a second path, only where there's snow, traced at
-     half the resolution — they're too faint for the difference to show,
-     and it's a quarter of the work. */
-  function snowField(ctx, x0, y0, x1, y1, dpr) {
+     Drifts are the snowline's loops in one path; a thin blue-grey lip
+     under each drift — the same path filled first, 2 px lower — is what
+     makes a white patch read as snow lying on the grass rather than a
+     hole cut in it. (It was the fill's shadow, which Firefox draws through
+     an extra offscreen pass: ~20 ms a repaint.) The relief's shadows go
+     over that as a second path, only where there's snow, traced at half
+     the resolution — they're too faint for the difference to show, and
+     it's a quarter of the work. */
+  function snowField(ctx, x0, y0, x1, y1) {
     snowFieldReady();
     /* Streets get thin, even, packed snow, never a drift, since they're
        walked constantly. Deliberately capped well short of white: even
@@ -794,51 +851,28 @@ LG.world = (function () {
       ctx.fillRect(x * TILE, y * TILE, TILE, TILE);
     }
 
-    /* A tile is in the drift wholly (1), partly (0) or not at all (-1).
-       Indoors never is: a drift spilling in off the walls would show
-       once the roof lifts. */
-    const fate = new Int8Array((x1 - x0 + 1) * (y1 - y0 + 1));
+    // Whether each tile is under the drift wholly (1), partly (0) or not at all (-1),
+    // and the same for the relief's shadows.
+    const n = (x1 - x0 + 1) * (y1 - y0 + 1), fate = new Int8Array(n), shaded = new Int8Array(n);
     for (let y = y0, f = 0; y <= y1; y++) for (let x = x0; x <= x1; x++, f++) {
-      const g = get(x, y);
-      if (g === T.FLOOR || g === T.CAVE) { fate[f] = -1; continue; }
       const m = tileField(x, y) * 6;
       fate[f] = (hi[m + 1] <= 0 || depth(lo[m]) <= 0) ? -1 : (lo[m + 1] > 0 && depth(hi[m]) > 0) ? 1 : 0;
+      shaded[f] = (fate[f] < 0 || hi[m + 2] <= SHADE) ? -1 : (fate[f] > 0 && lo[m + 2] > SHADE) ? 1 : 0;
     }
 
-    ctx.save();
-    ctx.fillStyle = '#fbfcff';
-    ctx.shadowColor = 'rgba(90,112,140,.32)';
-    ctx.shadowOffsetY = 2 * (dpr || 1);       // shadow offsets ignore the transform, so these are device pixels
-    ctx.beginPath();
-    for (let y = y0, f = 0; y <= y1; y++) for (let x = x0; x <= x1; x++, f++) {
-      if (fate[f] < 0) continue;
-      const px = x * TILE, py = y * TILE;
-      if (fate[f] > 0) { ctx.rect(px, py, TILE, TILE); continue; }
-      for (let j = 0, k = 0; j <= SUB; j++)
-        for (let i = 0; i <= SUB; i++, k++) {
-          const s = (y * SUB + j) * SW + x * SUB + i;
-          corners[k] = Math.min(depth(N[s]), E[s] * EK);
-        }
-      traceTile(ctx, px, py, SUB);
+    const drift = typeof Path2D === 'function' ? new Path2D() : null;
+    if (!drift) ctx.beginPath();
+    traceLoops(drift || ctx, x0, y0, x1, y1, fate, false);
+    if (drift) {
+      ctx.fillStyle = 'rgba(90,112,140,.32)';
+      ctx.translate(0, 2); ctx.fill(drift); ctx.translate(0, -2);
     }
-    ctx.fill();
-    ctx.restore();
+    ctx.fillStyle = '#fbfcff';
+    if (drift) ctx.fill(drift); else ctx.fill();
 
     ctx.fillStyle = 'rgba(150,172,204,.14)';
     ctx.beginPath();
-    for (let y = y0, f = 0; y <= y1; y++) for (let x = x0; x <= x1; x++, f++) {
-      if (fate[f] < 0) continue;
-      const m = (y * W + x) * 6;
-      if (hi[m + 2] <= SHADE) continue;
-      const px = x * TILE, py = y * TILE;
-      if (fate[f] > 0 && lo[m + 2] > SHADE) { ctx.rect(px, py, TILE, TILE); continue; }
-      for (let j = 0, k = 0; j <= SUB; j += 2)
-        for (let i = 0; i <= SUB; i += 2, k++) {
-          const s = (y * SUB + j) * SW + x * SUB + i;
-          corners[k] = Math.min(depth(N[s]), E[s] * EK, S[s] - SHADE);
-        }
-      traceTile(ctx, px, py, SUB / 2);
-    }
+    traceLoops(ctx, x0, y0, x1, y1, shaded, true);
     ctx.fill();
   }
 
@@ -1541,11 +1575,12 @@ LG.world = (function () {
     readSnow();
     const x0 = Math.max(0, (cam.x / TILE) | 0), y0 = Math.max(0, (cam.y / TILE) | 0);
     const x1 = Math.min(W - 1, ((cam.x + vw) / TILE) | 0), y1 = Math.min(H - 1, ((cam.y + vh) / TILE) | 0);
+    if (x1 < x0 || y1 < y0) return;      // a strip of the ground layer lying wholly off the map
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) drawTile(ctx, x, y, x * TILE, y * TILE);
     // Snow drawn after all ground tiles, as a separate pass --
     // drawing it tile-by-tile alongside the ground would let each
     // drift's spillover get clipped again by the following tile's grass.
-    if (lying > 0) snowField(ctx, x0, y0, x1, y1, dpr);
+    if (lying > 0) snowField(ctx, x0, y0, x1, y1);
     drawPropsPass(ctx, x0, y0, x1, y1, dpr);
   }
 

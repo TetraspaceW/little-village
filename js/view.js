@@ -1,33 +1,19 @@
-/* view.js — builds the "who this villager is and what they know" data
-   passed into LLM prompts, for one villager at a time.
+/* view.js — the one assembly of "who this villager is and what they know"
+   for every prompt: talking to the player (dialogue.js), to another
+   villager (LG.llm.converse), and deciding where to go (LG.llm.intent).
+   Separate copies drifted (see DESIGN.md), so each caller renders the parts
+   it needs from `of`, and how much of each it gets is set in TRIM.
 
-   Three call sites need this: talking to the player (dialogue.js), talking
-   to another villager (LG.llm.converse), and deciding where to stand
-   (LG.llm.intent). They used to each assemble it independently, which let
-   the copies drift apart — different slices of memory, different amounts
-   of knowledge, and a self-reference fix (see `ownVoice`) that only got
-   applied in one of the three, so a villager could read their own opinion
-   of someone else in the third person when talking to the player.
-
-   This module is the single shared assembly (`of`). Each caller renders
-   only the parts it needs; where callers deliberately want different
-   amounts of data, that's controlled centrally via TRIM below, so any
-   future difference between them is a deliberate choice, not drift.
-
-   Not included: an inventory system. A villager's stock is a prior, not a
-   fixed list — a baker has whatever a baker would plausibly have, so if
-   asked for a pastry she has one. That's handled via def.sells /
-   def.sellsTags and passed through as-is. */
+   A villager's stock is a prior, not an inventory: a baker has whatever a
+   baker would, via def.sells / def.sellsTags. */
 window.LG = window.LG || {};
 
 LG.view = (function () {
   const W = LG.world;
 
-  /* Per-caller limits on how much of `knows`/`memory`/`folk` to include.
-     0 means "all of them". Talking to the player gets the full fact list
-     (they need to be able to reference any fact by its tag); the helper
-     calls (intent, chat, board) get a trimmed list because they're making
-     one small decision and a long list would crowd out the prompt. */
+  /* How much of `knows`/`memory`/`folk` each caller gets; 0 is all. The
+     player-facing prompt gets every fact, since it may cite any by tag; the
+     helper calls make one small decision and get a trimmed list. */
   const TRIM = {
     all:    { knows: 0, memory: 0,  folk: 0 },
     player: { knows: 0, memory: 12, folk: 0 },
@@ -60,9 +46,7 @@ LG.view = (function () {
     return 'out in the village';
   }
 
-  /* Villagers can trade wherever they are, not just at their shop — only
-     nighttime closes trading, so this depends only on the clock, not on
-     which villager is asking. */
+  // Trade is open anywhere; only night shuts it.
   function open() { return !LG.time.isNight(); }
 
   /* Whether they're physically at their workplace — affects flavor and
@@ -74,11 +58,9 @@ LG.view = (function () {
   }
 
   /* ------------------------------------------------------------ what they know */
-  /* Opinions are stored third-person ("Mira thinks Wren talks too much")
-     since that's how they read to everyone else. When handing facts back
-     to Mira herself, rewrite to second person ("You think Wren talks too
-     much") — otherwise she'd read her own opinion back as something she
-     was told by someone else. */
+  /* Opinions are stored in the third person ("Mira thinks Wren talks too
+     much"); handed back to Mira they read "You think…", or she'd read her
+     own opinion as something she was told. */
   function ownVoice(n, text) {
     const head = n.def.name + ' thinks ';
     return (text && text.indexOf(head) === 0)
@@ -86,14 +68,10 @@ LG.view = (function () {
       : text;
   }
 
-  /* Each returned fact has both `text` (as this villager would say it,
-     post-ownVoice) and `plain` (the fact as written, third-person). Both
-     are needed: prompting-as-the-villager needs `text`; anything reasoning
-     about the villager from the outside (e.g. summarizing a conversation
-     between two villagers) needs `plain`, since a list of "You think..."
-     strings is ambiguous about whose "you" it is.
-     `id` never changes (the notebook is keyed on it); `note`, if set, is
-     the villager's own revised phrasing of the fact. */
+  /* Each fact has `text`, as this villager holds it (ownVoice, or their own
+     revised wording in `note`), and `plain`, as written, for anything
+     reasoning about them from outside. `id` never changes; the notebook
+     is keyed on it. */
   function knows(n) {
     const p = plan();
     if (!p) return [];
@@ -109,26 +87,16 @@ LG.view = (function () {
       .filter(Boolean);
   }
 
-  /* People currently within SIGHT range and where they are — needed so a
-     villager can act on a fact like "Sanna has the cards" by saying where
-     to find Sanna. */
+  // Who they can see, and where, so "Sanna has the cards" can be acted on.
   function folk(n) {
     const all = (LG.game && LG.game.npcs) || [];
     return all.filter(o => o !== n && near(n, o, SIGHT))
               .map(o => ({ id: o.def.id, name: o.def.name, job: o.def.job, where: where(o) }));
   }
 
-  /* Everyone else in the village, by name, job, and general personality
-     — unlike a chain fact, or a name the *player* has to be told
-     directly (see `nameKnown`), a villager doesn't need this told to
-     them: they've lived alongside these people for years, and would
-     obviously already know the blacksmith's name and that Yuri answers
-     everything with a question about fish, without today's conversation
-     having established either. Deliberately excludes current location
-     and anything that changes moment-to-moment — that's `folk` and
-     `knows`/`memory`, which stay keyed to what a villager has actually
-     seen or been told, since knowing what someone is like isn't the same
-     as knowing what they're currently doing. */
+  /* Everyone else in the village by name, job and character: what years of
+     living alongside them would tell anyone. Where they are and what
+     they're doing today stays with `folk` and what they've been told. */
   function roster(n) {
     const all = (LG.game && LG.game.npcs) || [];
     return all.filter(o => o !== n)
@@ -146,43 +114,24 @@ LG.view = (function () {
   function stock(n) { return itemised(n.stock); }
   function sold(n)  { return itemised(n.sold, v => v && v.n > 0); }
 
-  /* Returns the animal currently following the player, if any. Not
-     treated as something a villager has to be told, or as hidden in a
-     pocket — an animal trailing behind someone is directly observable by
-     anyone they're talking to, the same way `where` is something a
-     villager simply sees rather than something reported to them. */
+  // The animal following the player, if any: anyone talking to the player can see it.
   function companion() {
     const beast = LG.game && LG.game.beast;
     return (beast && beast.following) ? { name: beast.name, item: beast.item } : null;
   }
 
-  /* Why this villager is standing here, and who (if anyone) they walked
-     over to find.
-
-     `after` (n.wentAfter) must be cleared once read (see `arrived` below).
-     It used to be set when the villager set off and never cleared, so a
-     villager who'd once walked over to talk to Mira would greet her with
-     "I came looking for you" on every subsequent meeting that day. */
+  // Why they're here, and who they came after, if anyone (cleared by `arrived`).
   function errand(n) {
     return { why: n.why || '', after: n.wentAfter || null };
   }
 
-  /* Call once the villager has reached their destination and had the
-     conversation — clears wentAfter so it isn't repeated on future
-     encounters. */
+  // Once they've arrived and had the conversation, so "I came looking for you" isn't said twice.
   function arrived(n) { n.wentAfter = null; }
 
-  /* Formats one entry with its date/source prefix, so two entries about
-     the same thing can be told apart at a glance. Doesn't resolve
-     conflicting entries — a villager holding two dated, differently
-     sourced claims is just someone who's heard two things, and it's the
-     model's job (playing that person) to decide what to make of it, not
-     this code's.
-
-     `held` merges facts and picked-up memory into one list — they're
-     structurally the same kind of entry, and presenting one as "knowledge"
-     and the other as "gossip" would be a distinction the game doesn't
-     actually track. */
+  /* One entry with its date and source in front, so two about the same
+     thing can be told apart. Which is current is the model's call, not
+     this code's. `held` puts facts and memories in one list: the game
+     doesn't treat them differently, and neither should the villager. */
   function sourced(e) {
     const when = e.at ? (e.from ? e.at + ', from ' + e.from : e.at)
                       : (e.from ? 'from ' + e.from : 'a while now');
@@ -198,14 +147,7 @@ LG.view = (function () {
     const d = n.def;
     return {
       id: d.id, name: d.name, job: d.job, persona: d.persona,
-      /* Must switch to r.settled once the trade is done — `trade.deal`/
-         `trade.done` below already did (keyed on n.tradeDone), but `goal`
-         didn't used to, so a villager whose trade had completed kept being
-         prompted with their original goal (e.g. "worried about his pig,
-         offering a reward") even though their own memory already recorded
-         the pig being returned. Only dialogue.js read `goal`, so the intent
-         and chat calls — which decide where they walk and what they say —
-         never learned the errand was over. */
+      // Their errand's goal until their trade is done, then their ordinary work (r.settled).
       goal: (n.tradeDone && r.settled) ? r.settled : (r.goal || ''),
       knows: firstOf(knows(n), t.knows),
       memory: lastOf(n.memory || [], t.memory),
@@ -215,11 +157,9 @@ LG.view = (function () {
       roster: roster(n),
       errand: errand(n),
       companion: companion(),
-      /* What a villager may sell is loose, not a fixed inventory: `sells`
-         is their obvious stock-in-trade and `sellsTags` broadens that to
-         their whole line of business. `stock`, in contrast, is the
-         concrete list of items they've actually acquired from the
-         traveller — items they can't plausibly claim not to have. */
+      /* `sells` is their stock-in-trade and `sellsTags` their line of
+         business; `stock` is what they've actually bought off the traveller
+         and can't claim not to have. */
       trade: {
         open: open(),
         atCounter: atCounter(n),

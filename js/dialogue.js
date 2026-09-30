@@ -17,17 +17,13 @@ LG.dialogue = (function () {
     return arr[(Math.random() * arr.length) | 0];
   }
 
-  /* Furigana arrives as HTML markup from the model, so all HTML is
-     escaped except the ruby tag family (ruby/rb/rt/rtc/rp), which is let
-     back through with attributes stripped. */
+  /* Furigana arrives as HTML from the model: everything is escaped but the
+     ruby tags (ruby/rb/rt/rtc/rp), let back through without attributes. */
   const KANJI = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
   const KANJI_G = new RegExp(KANJI.source, 'g');  // same ranges, for counting rather than testing
-  // <rb> and <rtc> are part of the ruby family and models do emit them
   const RUBY_TAG = /^(?:ruby|rb|rt|rtc|rp)$/;
 
-  /* Strips ruby markup back to plain text, permissively (any casing,
-     attributes, or tag from the ruby family). Feeds only the comparison
-     in rubyMatches() below — never rendered to the page. */
+  // Ruby markup back to plain text, permissively; only for rubyMatches, never rendered.
   function stripRuby(html) {
     return String(html)
       .replace(/<rp\b[^>]*>[\s\S]*?<\/rp>/gi, '')
@@ -35,9 +31,8 @@ LG.dialogue = (function () {
       .replace(/<rt\b[^>]*>[\s\S]*?<\/rt>/gi, '')
       .replace(/<\/?(?:ruby|rb|rt|rtc|rp)\b[^>]*>/gi, '');
   }
-  /* Normalizes for comparison: loose enough to tolerate width/spacing
-     differences, strict enough that we never show the player words the
-     villager didn't actually say. */
+  /* For comparison: loose about width and spacing, strict enough that the
+     player is never shown words the villager didn't say. */
   function normText(str) {
     let t = String(str);
     try { t = t.normalize('NFKC'); } catch (e) {}
@@ -48,9 +43,8 @@ LG.dialogue = (function () {
     return normText(stripRuby(ruby)) === normText(say);
   }
 
-  /* A reply may arrive wrapped in a code fence or quotes. Tries each
-     plausible unwrapping and returns the first that passes validation —
-     nothing unvalidated is ever accepted. */
+  /* A reply may come fenced or quoted: the first unwrapping that strips
+     back to the line as said, or null. Nothing unchecked is accepted. */
   function usableRuby(raw, say) {
     if (!raw) return null;
     const t = String(raw).trim();
@@ -62,13 +56,9 @@ LG.dialogue = (function () {
     for (const cand of tries) if (rubyMatches(cand, say)) return cand;
     return null;
   }
-  /* Converts bracket-style furigana (e.g. 糸[いと]) into ruby tags.
-
-     This is a common, legitimate plain-text furigana convention, so a
-     model producing it isn't malfunctioning — accepting it is simpler
-     than trying to prevent it. Only converts a run of kanji immediately
-     followed by a bracket containing pure kana; anything else (including
-     ordinary brackets in running text) is left untouched. */
+  /* Bracket-style furigana (糸[いと]), a common plain-text convention, is
+     converted to ruby rather than fought. Only a run of kanji followed by a
+     bracket of pure kana; other brackets are left alone. */
   const KANJI_RUN = '[\\u3400-\\u4dbf\\u4e00-\\u9fff\\u3005\\u3007\\u30f6]';
   const KANA_RUN  = '[\\u3040-\\u309f\\u30a0-\\u30ff\\u30fc]';
   const BRACKETED = new RegExp(
@@ -81,12 +71,9 @@ LG.dialogue = (function () {
   function normaliseFurigana(str) {
     if (!str) return str;
     return String(str).replace(BRACKETED, (m, kanji, okuri, reading) => {
-      /* This bracket form covers the whole word including okurigana —
-         e.g. \u7d50\u3076[\u3080\u3059\u3076] means \u7d50\u3076 is read \u3080\u3059\u3076. Ruby annotation only
-         goes on the kanji itself, so the okurigana needs stripping back
-         off the reading: \u7d50 gets \u3080\u3059, and \u3076 is left unannotated. If the
-         reading doesn't end with the okurigana text, the split can't be
-         done safely, so the whole word+okurigana gets wrapped instead. */
+      /* The brackets read the whole word, okurigana included (結ぶ[むすぶ]);
+         ruby goes on the kanji alone (結 as むす, ぶ bare). If the reading
+         doesn't end with the okurigana, the whole word is wrapped instead. */
       if (okuri && reading.length > okuri.length &&
           reading.slice(-okuri.length) === okuri) {
         return '<ruby>' + kanji + '<rt>' + reading.slice(0, -okuri.length) + '</rt></ruby>' + okuri;
@@ -97,10 +84,8 @@ LG.dialogue = (function () {
 
   function needsFurigana(say) { return KANJI.test(String(say)); }
 
-  /* Detects when a villager's reply mistakenly put the target-language
-     text into the English translation field. A translation full of hanzi,
-     kana, or Cyrillic is worse than no translation, so it's treated as
-     missing and a real one is fetched separately. */
+  /* Whether a "translation" is English. One in hanzi, kana or Cyrillic is
+     treated as missing and fetched separately. */
   const NOT_LATIN = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\u0400-\u04ff\u0600-\u06ff]/;
   function looksEnglish(str) {
     const t = String(str || '').trim();
@@ -109,28 +94,12 @@ LG.dialogue = (function () {
     return /[a-z]{2}/i.test(t);
   }
 
-  /* Detects pinyin that's the wrong length for the hanzi it's supposed
-     to gloss. Pinyin is genuinely Latin text — looksEnglish alone can't
-     tell a well-formed roman field from one that's missing a syllable or
-     has two run together, which happens without the field looking broken
-     in any other way. Tone marks are stripped, then syllables are
-     counted as maximal runs of vowel letters (a run like "iao" is one
-     syllable, however many vowel letters it contains) — this counts
-     fine whether or not multi-syllable words are joined without spaces,
-     which is the normal way to write most disyllabic Mandarin words
-     (e.g. "xièxie", "shénme"). Splitting on non-letters instead, so a
-     word boundary counted as a syllable boundary, would misfire on
-     exactly those. Mirrors tools/format-stats.js's syllableCount /
-     hanziCount / erhuaCount.
-
-     Not exact — erhua ("一点儿" -> "yìdiǎnr", one fewer syllable than
-     characters, corrected for below) that's actually its own word
-     ("儿子" -> "érzi", a syllable of its own instead) and reduplicated
-     measure words can legitimately come out uneven — but those are rare
-     enough that an occasional unnecessary repair call costs less than
-     leaving a genuinely wrong count on screen. Only meaningful for a
-     language pinyin actually gets checked against; callers gate on
-     L.romanize (Chinese is the only one). */
+  /* Pinyin with the wrong number of syllables for its hanzi: a dropped or
+     run-together syllable, which looksEnglish can't see. Syllables are runs
+     of vowels once tone marks are gone, so joined words (xièxie) count
+     right; erhua (一点儿, yìdiǎnr) is allowed for. Off by more than one
+     gets a repair call; the odd needless one costs less than a wrong line
+     on screen. Mirrors tools/format-stats.js. Chinese only (L.romanize). */
   const ERHUA = /儿/g;
   function pinyinWrongLength(spoken, roman) {
     const say = String(spoken);
@@ -145,9 +114,7 @@ LG.dialogue = (function () {
   }
   function rubyHTML(str) {
     return String(str)
-      // Keeps only ruby-family tags, stripped down to their bare form
-      // (removing attributes but preserving structure); strips everything
-      // else that looks like a tag.
+      // Ruby-family tags survive, bare; anything else that looks like a tag goes.
       .replace(/<(\/?)([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/g, (m, slash, name) => {
         const n = name.toLowerCase();
         return RUBY_TAG.test(n) ? '<' + slash + n + '>' : '';
@@ -157,9 +124,7 @@ LG.dialogue = (function () {
       .replace(/<ruby>([\s\S]*?)<\/ruby>/g, dropKanaRuby);
   }
 
-  /* Drops furigana readings over kana (katakana/hiragana already show
-     their own pronunciation, so a reading there is redundant clutter) —
-     keeps the base text, removes the annotation. */
+  // Readings over kana are dropped: kana already shows how it's said.
   function dropKanaRuby(match, inner) {
     const base = String(inner)
       .replace(/<rt>[\s\S]*?<\/rt>/g, '')
@@ -172,40 +137,26 @@ LG.dialogue = (function () {
   function itemName(id, lang) { return LG.itemName(id, lang); }
 
   /* -------------------------------------------------------- prompt build */
-  /* Builds both the prompt text and its JSON schema together, from one
-     shared field list (see `fields` below), so they can't drift apart.
-     `systemPrompt` below is a string-only wrapper around this, used by
-     tests and the prompt dump. */
+  /* The villager's system prompt and its reply schema, built together from
+     one field list (`fields`) so they can't drift apart. */
   function buildReply(npc, offered) {
     const s = LG.game.settings;
     const L = LG.LANGUAGES[s.lang];
     const lvl = LG.LEVELS[s.level];
-    /* Uses the same villager-assembly function that also drives where
-       they walk and what they say to other villagers — see view.js for
-       why this used to be three separate, drifting implementations. */
+    // The same view of them as the movement and chatter prompts (view.js).
     const v = LG.view.of(npc, 'player');
     const inv = LG.game.inventoryList(v.companion && v.companion.item);
     const trade = v.trade.deal;
-    // What they have to sell, when they are standing where they work —
-    // computed here since both halves below need it (the trade section
-    // itself is volatile; whether the reply schema needs item/price
-    // fields is decided in the stable half).
+    // Needed by both halves: the trade section changes turn to turn, the reply format's fields don't.
     const working = v.trade.open && v.trade.sells.length;
 
-    /* Two lists instead of one flat one: `stable` is everything that
-       stays byte-identical across an entire conversation with this
-       villager in this language — character, roster, language rules,
-       the reply-format spec — and `volatile` is everything derived from
-       live game state that can change turn to turn: the clock, held
-       facts, inventory, trade and till. Prompt caching is a prefix
-       match — one changed byte invalidates everything after it — so
-       putting what never changes first and what changes every turn last
-       is what makes a cache breakpoint at the seam worth anything. The
-       breakpoint itself is placed in llm.js (see systemParts). */
+    /* `stable` is what stays byte-identical through a conversation
+       (character, roster, language rules, reply format), `volatile` what
+       live state changes turn to turn (clock, what they know, inventory,
+       trade, till). Caching matches a prefix, so the stable part goes first
+       and a breakpoint goes at the seam (see systemParts in llm.js). */
     const stable = [], volatile = [];
-    // Pushes a blank separator line, but never two in a row — lets each
-    // section just say "sep(arr); arr.push('# Header')" without having
-    // to track whether whatever came before it already left one.
+    // A blank line between sections, never two in a row.
     const sep = arr => { if (arr.length && arr[arr.length - 1] !== '') arr.push(''); };
     const coins = n => n + (n === 1 ? ' coin' : ' coins');
 
@@ -215,44 +166,19 @@ LG.dialogue = (function () {
     stable.push('Name: ' + v.name + ' — ' + v.job + '.');
     stable.push('Personality: ' + v.persona);
     stable.push('Your current concern: ' + v.goal);
-    /* In a village this size, everyone knows everyone else by name,
-       trade, and general personality — that's background knowledge, not
-       something anyone had to be told, and it's separate from the
-       *player* learning a name (see `nameKnown` below): a villager
-       mentioning "Tomas" doesn't put Tomas's name on screen until Tomas
-       says it himself. Without this roster, a villager asked about a
-       neighbor they had no fact-based history with had nothing to
-       answer from — see OLD-LI.md for the resulting bug (an unreachable
-       NPC nobody could interact with). This roster stops at personality,
-       though: whether Tomas has sold his hammer yet is news, not
-       character, and news still has to actually reach a villager through
-       normal means before they can know it. */
+    /* Everyone knows everyone here by name, trade and character. That's
+       background, not news, and separate from the player learning a name.
+       Without it a villager asked about a neighbour invented one (OLD-LI.md).
+       What a neighbour is doing today still has to reach them as news. */
     if (v.roster.length) {
       sep(stable);
       stable.push('# Everyone else in the village');
       stable.push('You have lived here for years; you know everyone in the village, whether or not you have any news of them today:');
       v.roster.forEach(r => stable.push('- ' + r.name + ' — ' + r.job + '. ' + r.persona));
     }
-    /* One combined, dated list of everything the villager knows.
-
-       This used to be two separate sections: "# What you know" held
-       chain facts as flat, undated statements to state as they came up;
-       "# What you have picked up lately" held everything else, implicitly
-       as lesser knowledge. Neither included a date or source.
-
-       That undated structure produced actively wrong behavior: a
-       villager could be told, as a bare present-tense fact, that someone
-       "is looking for shoes" — even after that errand had already been
-       completed — with no way to notice the contradiction against a
-       newer memory of the shoes being delivered, because the two claims
-       weren't comparable (no dates, and one read as "knowledge" while
-       the other read as "gossip").
-
-       So instead: one list, each entry dated and sourced. Older and newer
-       entries are both shown as what they are, with no explicit rule
-       saying newer overrides older — a model playing a person with a
-       dated pair of claims can reason about which is current on its own,
-       the same way a person would. */
+    /* Everything they know, in one list, each line dated and sourced, with
+       no rule that newer wins: given dates, the model works out what's
+       current (see DESIGN.md, "Villager beliefs"). */
     sep(volatile);
     volatile.push('# What you know');
     volatile.push('Everything you have picked up, with when you came by it and who from.');
@@ -277,22 +203,12 @@ LG.dialogue = (function () {
     sep(stable);
     stable.push('# How to speak');
     stable.push('Speak only in ' + L.name + '. ' + lvl.prompt);
-    /* This instruction previously offered only two simplification levers
-       (easier words, shorter sentences) while forbidding a third
-       (breaking grammar) — correct to forbid, but incomplete: when a
-       thought's only natural phrasing needs grammar the beginner
-       traveller has no chance of following, both permitted levers fail.
-       E.g. a beginner-level Mandarin villager asking for a pet back used
-       correct but far-too-advanced constructions (把…带回来, 谁…就谁) because
-       nothing told it there was a third option: rephrasing the thought
-       itself into something simpler to say, rather than translating a
-       fixed idea into harder grammar. */
+    /* A third way to simplify, besides easier words and shorter sentences:
+       saying something simpler. Without it, beginner villages got correct
+       but far too hard grammar (把…带回来) for thoughts that needed it. */
     stable.push('Simplify by choosing easier words, shorter sentences, and simpler things to say — never by breaking the grammar. Where saying what you mean would take more grammar than they have, mean something simpler rather than saying it a harder way. The traveller learns by copying you, so what you say has to be worth copying.');
-    /* Item lists below include both the game's internal English name and
-       the village's own name (see LG.itemSaid) — without this line, a
-       model could read the quoted village-language name as an
-       explanatory gloss rather than the actual word to say. Only added
-       when there are two distinct names to disambiguate between. */
+    /* Items are listed with both names (LG.itemSaid): this says the quoted
+       village-language one is the word to say, not a gloss. */
     if (s.lang !== 'en') stable.push('Anything listed with a name in quotation marks is called that here, and that is the name to say.');
     stable.push('Stay in character.');
     stable.push('A sentence or two at a time.');
@@ -304,10 +220,7 @@ LG.dialogue = (function () {
       volatile.push(counter
         ? 'You are at your own place of work, with your whole stock to hand.'
         : 'You are out and about, but your trade goes with you.');
-      /* Items just bought from the traveller need to be listed explicitly
-         as current stock — without this, a villager who'd just bought an
-         apple had no way to know they now had one, and would (truthfully,
-         from their own state) keep saying they had none. */
+      // What they've bought off the traveller, so they know they have it.
       if (v.trade.stock.length) {
         volatile.push('In your hands right now, bought off the traveller: ' +
           v.trade.stock.map(it => LG.itemSaid(it.id, s.lang) + (it.n > 1 ? ' \u00d7' + it.n : '')).join(', ') +
@@ -332,40 +245,22 @@ LG.dialogue = (function () {
       volatile.push('The traveller has ' + coins(LG.game.count('coins')) + ' on them.');
 
       volatile.push('Offer your goods the way you would to any customer, and haggle if it suits you.');
-      /* Previously this instruction unconditionally said "that is them
-         paying you," with no check for whether a sale was actually
-         outstanding. That let a villager who'd already been paid (and
-         whose own till record showed it) hand over a second item when
-         the player held out coins again for an unrelated reason — the
-         rule as written told them to treat any offered coins as payment
-         for something. */
+      // Coins pay for what hasn't been handed over yet; the till says what has.
       volatile.push('If the traveller holds out their coins, that is them paying you for something you have not handed over yet — take the money and hand the goods over in the same breath. Something the record already shows you were paid for is not being bought a second time.');
       volatile.push('Two things at once is still one sale: put both tags in "item" and the total in "price". Only list what you are actually handing over this turn.');
     } else if (v.trade.sells.length) {
-      /* Villagers need to be told explicitly when their trade is
-         closed (nighttime only) — without it, a villager would agree to
-         sell at midnight, but the game would silently refuse to process
-         the sale, with no explanation given to either party.
-
-         States only the fact of being closed, nothing more. An earlier
-         version spelled out three separate prohibitions (don't offer,
-         don't name a price, don't take money) plus an assigned feeling
-         about it ("you'd like the custom") — over-specifying what should
-         just follow from the villager's own character and the one fact
-         that matters: they're shut. */
+      /* Shut at night, and told so, or they agree to sales the till then
+         refuses. Just the fact: how they feel about it is theirs. */
       sep(volatile);
       volatile.push('# Your trade');
       volatile.push('It is the middle of the night. Your trade is shut until morning.');
     }
 
     {
-      /* The till: a ground-truth record of what actually changed hands,
-         separate from conversational memory. A villager reading this can
-         work out on their own that they were paid for two drinks but only
-         handed over one, the way a real shopkeeper would notice, without
-         needing an explicit rule for it. Placed outside the trade-open
-         block above deliberately — a villager needs to see a failed sale
-         in the till whether or not their shop happens to be open. */
+      /* The till: what actually changed hands, apart from memory, so a
+         villager can work out for themselves that they were paid for two
+         and handed over one. Shown whether or not the shop is open, since a
+         refused sale belongs in it too. */
       const till = v.trade.till;
       if (till.length) {
         sep(volatile);
@@ -380,12 +275,7 @@ LG.dialogue = (function () {
           volatile.push('- ' + t.at + ' \u2014 ' + line +
             (t.asked !== t.coins ? ' (you said ' + t.asked + ', the till took ' + t.coins + ')' : ''));
         });
-        /* Must include the count. When this line named the item without
-           a count, a villager who'd sold the same traveller two of an
-           item (with the till above correctly showing two sales) would
-           reason from a summary that implied only one, missing that they
-           held that quantity and reasoning incorrectly about what they
-           had access to. */
+        // With counts: without them, two sold read as one.
         if (v.trade.sold.length) volatile.push('Still in their hands, from you: ' +
           v.trade.sold.map(it => { const nm = LG.itemSaid(it.id, s.lang, true);
                                    return it.n > 1 ? it.n + ' \u00d7 ' + nm : nm; }).join(', ') + '.');
@@ -404,11 +294,8 @@ LG.dialogue = (function () {
         : LG.itemSaid(trade.gives, s.lang)) + '.');
       volatile.push(trade.hint);
     }
-    /* A completed deal must be stated explicitly. It used to simply
-       disappear from the prompt the instant it completed, leaving no
-       sign it had ever happened — so the villager kept trying to
-       complete it again, and the schema turned each retry into another
-       transaction. Omission doesn't communicate "this is done." */
+    /* A finished deal is stated as finished; left out, the villager tried
+       to complete it again, and each attempt became a real trade. */
     if (v.trade.done) {
       const r = v.trade.done;
       sep(volatile);
@@ -419,12 +306,7 @@ LG.dialogue = (function () {
         (r.gives === 'coins' ? coins(r.givesCount) : LG.itemSaid(r.gives, s.lang)) +
         '. That exchange is finished and does not want doing again.');
     }
-    /* Furigana gets its own section with a fully worked example
-       sentence, rather than living inside the "say" field's description
-       in the JSON schema (its previous location) — nested inside a JSON
-       string inside a schema, that example was easy to skim past and
-       easy for a model to reproduce incorrectly. A worked example outside
-       the schema specifies the format far more reliably than a rule. */
+    // Furigana gets its own section and a worked example (LG.FURIGANA), not a line in a field description.
     if (L.furigana) {
       sep(stable);
       stable.push('# Furigana');
@@ -441,14 +323,9 @@ LG.dialogue = (function () {
     if (trade) acts.push('trade');
     if (working) acts.push('sell', 'buy');
 
-    /* Single source of truth for the reply's fields, used to render
-       three things: the field list the villager reads, the "always
-       present" sentence below, and (where the provider supports it) the
-       JSON Schema that enforces this instead of leaving it to model
-       judgment. Deriving all three from one array means a field can't be
-       described in the prompt but missing from the schema, or typed one
-       way and documented another. Which fields exist is decided once,
-       here. */
+    /* The reply's fields, rendered three ways: the list the villager reads,
+       the "always present" sentence, and the JSON Schema where the model
+       takes one. Which fields exist is decided here, once. */
     const fields = [
       { k: 'say', always: true, type: { type: 'string' },
         desc: 'what you say out loud, in ' + L.name +
@@ -466,22 +343,13 @@ LG.dialogue = (function () {
     fields.push({ k: 'revealed', arr: true,
       type: { type: 'array', items: { type: 'string' } },
       desc: 'tags of any facts above that you plainly TOLD the traveller this turn — [] if none' });
-    /* Previously worded as "OPTIONAL: ... a NEW fact you just learned
-       from the traveller. Omit this unless you understood them" — which
-       made "did I understand them" the only gate, so a villager who
-       perfectly understood a plain greeting was implicitly told a new
-       fact must exist to report. This produced fabricated facts: one
-       villager, given only "こんにちは！" ("hello"), invented and recorded a
-       name the traveller never stated. Reworded to ask what's actually
-       worth keeping (matching the villager-to-villager call), with
-       "nothing worth keeping" as its own explicit, valid answer (null)
-       rather than something achieved by omission. */
+    /* Anything worth remembering, with null as its own answer. Asked for "a
+       new fact, if you understood them", a villager invented the player's
+       name from a hello. */
     fields.push({ k: 'remember', type: { type: ['string', 'null'] },
       desc: 'anything the traveller has said that is worth remembering, as one short English sentence — null if nothing was' });
     if (working) {
-      /* commerce() accepts either a single tag or a list, but the
-         schema only asks for the list form — one shape to validate
-         rather than two to allow. */
+      // Always a list here; commerce() takes a single tag too.
       fields.push({ k: 'item', type: { type: ['array', 'null'], items: { type: 'string' } },
         desc: 'the [tag] of the goods, or a list of tags if it is more than one thing — only with sell or buy' });
       fields.push({ k: 'price', type: { type: ['number', 'null'] },
@@ -490,12 +358,9 @@ LG.dialogue = (function () {
     fields.push({ k: 'action', type: { type: 'string', enum: acts },
       desc: acts.join(' | ') });
 
-    /* Everything in `stable` up to here is the same for this villager
-       whatever their shop and deal are doing; the reply format below
-       isn't (the item/price fields, the action list, the sell and trade
-       rules). A second cache breakpoint here means a shop opening or a
-       deal finishing only rewrites the reply format, not the character
-       sheet and roster above it. */
+    /* Up to here `stable` doesn't depend on the shop or the deal; the reply
+       format below does. A second breakpoint here means a shop opening
+       rewrites only the reply format. */
     const coreText = stable.join('\n');
     sep(stable);
     stable.push('# Reply format');
@@ -506,21 +371,9 @@ LG.dialogue = (function () {
       stable.push('  "' + f.k + '": ' + val + (i < fields.length - 1 ? ',' : ''));
     });
     stable.push('}');
-    // (the word-reading rule lives in LG.FURIGANA now, with the rest of the spec)
-    /* States explicitly which fields are never omitted. Every field but
-       "say" used to carry a hedge (OPTIONAL, only with sell or buy, [] if
-       none, when in doubt leave it out) with nothing stating any field
-       was actually mandatory, so the whole object read as mostly
-       optional. On a turn with nothing extra to report, models predictably
-       dropped everything but "say": in one logged session, roughly a
-       third of player-facing replies came back as a bare {"say": …} — all
-       of them turns where "revealed" should have been [] and "action"
-       "none", i.e. cases the fields already had a correct empty value
-       for, if only they'd been included. The villager-to-villager prompt,
-       whose fields carry no hedges, had no such failures in the same
-       session — pointing at this schema's phrasing as the cause. Fix:
-       name which fields are always present, and give "nothing happened"
-       its own explicit value rather than expressing it via absence. */
+    /* Which fields are never left out, and "nothing happened" spelled as a
+       value. With every field but "say" hedged as optional, a third of
+       replies came back as a bare {"say": …}. */
     const always = fields.filter(f => f.always).map(f => '"' + f.k + '"');
     stable.push('Every reply carries ' + always.slice(0, -1).join(', ') + ' and ' +
                always[always.length - 1] + '. A one-word answer, a greeting, or ' +
@@ -530,11 +383,7 @@ LG.dialogue = (function () {
                '"revealed" is [], "remember" is null, "action" is "none".' +
                (working ? ' Only "item" and "price" are ever absent.'
                         : ' No field is ever absent.'));
-    /* A worked example reinforces the rule above (fields are never
-       dropped) more reliably than the rule stated alone — the furigana
-       spec was moved out of the schema for the same reason. This example
-       is specifically a turn with nothing to report, still carrying
-       every field — the exact case that used to come back bare. */
+    // A worked example of a turn with nothing to report, still carrying every field.
     const shown = { say: '"<your line, in ' + L.name + '>"',
                     translation: '"<the same line, in English>"',
                     roman: '"<the ' + L.romanLabel + '>"',
@@ -554,18 +403,11 @@ LG.dialogue = (function () {
       stable.push('Set "action" to "trade" at the moment you actually hand over ' + (trade.gives === 'coins' ? 'the coins' : LG.itemSaid(trade.gives, s.lang)) + ', and not before.');
       stable.push('Someone holding an object out to you is a gesture you understand without words — but a gesture is not yet a bargain. If it is not clear what the two of you are exchanging, ask them before you take it. Once the exchange is plain to you both, take it and hand yours over in the same breath.');
     }
-    /* Every field is marked JSON-Schema `required`, with the truly
-       optional ones typed nullable instead of just omitted from
-       `required` — the one shape both providers accept, and it matches
-       what the prompt itself says: nothing is ever omitted, and "nothing
-       to report" is spelled out as null, [], or "none". */
+    // Every field required, the optional ones nullable: what the prompt says, and what strict mode wants.
     const props = {}, required = [];
     fields.forEach(f => { props[f.k] = f.type; required.push(f.k); });
 
-    /* `core` and `stable` are returned alongside the combined `text` so
-       the caller can hand them to llm.js as cache prefixes — breakpoints
-       go before the reply format and at the seam, not after the whole
-       system prompt. */
+    // `core` and `stable` go to llm.js as the cache breakpoints.
     const stableText = stable.join('\n');
     const volatileText = volatile.join('\n');
     return { text: stableText + '\n\n' + volatileText,
@@ -609,27 +451,17 @@ LG.dialogue = (function () {
   }
 
   /* ---------------------------------------------------------------- UI */
-  /* `why`, when passed (LG.game.talkTo forwards `n.why`, including an
-     empty string), indicates the villager sought out the player, so the
-     villager speaks first — matching how it would play out if someone
-     had deliberately come to find you. `why` is `undefined` in the
-     ordinary case, where the player always speaks first. */
+  /* `why` is a string (possibly empty) when the villager came looking for
+     the player, and then they speak first; undefined otherwise. */
   function open(npc, why) {
     const L = LG.LANGUAGES[LG.game.settings.lang];
     current = npc;
     npc.frozen = true;
     npc.metPlayer = true;
     el.dlg.classList.add('open');
-    /* Tags the input box's lang as the village's language — this is
-       what an IME uses to pick its input mode, and it's what stops the
-       browser's English spellchecker from underlining every correctly-
-       spelled non-English word. */
+    // The input is tagged with the village's language: it picks the IME's mode and quiets the English spellchecker.
     el.dlgInput.lang = L.tag;
-    // Shows '?' rather than a role-repeating placeholder for an unknown
-    // name — the job title is already shown right below, so repeating it
-    // ("the village baker" over "the village baker") would read as a
-    // display glitch rather than as "name unknown". Matches the '?'
-    // convention used by the nametag above the villager's head.
+    // '?' for an unknown name, as on the nametag: the job is already on the line below.
     el.dlgName.textContent = npc.nameKnown ? npc.def.name : '?';
     el.dlgRole.textContent = npc.def.job;
     el.dlgAvatar.textContent = npc.def.emoji;
@@ -652,11 +484,7 @@ LG.dialogue = (function () {
         (why ? ' What brought you: ' + why + '.' : '') +
         ' Say your opening line.]');
     }
-    /* Doesn't auto-focus on touch devices. Auto-focusing would raise
-       the keyboard immediately, covering the dialogue card before the
-       player has read anything — and most players' first action is
-       tapping a phrase chip, not typing. Tapping the input box remains
-       one tap away when actually needed. */
+    // Not focused on touch: the keyboard would cover the card before anything's read.
     if (!LG.touch.on) setTimeout(() => el.dlgInput.focus(), 60);
   }
 
@@ -694,13 +522,9 @@ LG.dialogue = (function () {
     } else {
       main.textContent = text;
     }
-    /* Each of the three lines in this bubble is tagged individually
-       (not the bubble as a whole), since they're in three different
-       registers: the spoken line is the village's language, the
-       romanization is that language in Latin letters, the gloss is
-       English. Applies to both speakers (the player also types in the
-       village's language), though only the villager's line gets the
-       language's own font. */
+    /* Each line is tagged with its own language: the village's, its
+       romanisation, and English. Only a villager's line gets the
+       language's font. */
     main.lang = L.tag;
     if (who === 'npc') main.style.fontFamily = L.fontStack;
     bub.appendChild(main);
@@ -712,8 +536,7 @@ LG.dialogue = (function () {
       say.onclick = () => speakLine(npc, text);
       bub.appendChild(say);
     }
-    // Both gloss lines are created upfront (even if empty) so a
-    // later async repair (see repairGloss) has an element to fill in.
+    // Both gloss lines exist even when empty, for repairGloss to fill in later.
     const r = document.createElement('div');
     r.className = 'roman';
     r.lang = L.romanTag;
@@ -774,12 +597,9 @@ LG.dialogue = (function () {
   }
 
   /* -------------------------------------------------------- the exchange */
-  /* `prompt`, when passed, is a stage direction rather than player-typed
-     text — used when a villager who sought out the player (see
-     LG.game.talkTo) speaks first. It's recorded as this turn's line (so
-     the conversation history and model both see it happened) but is
-     never rendered on screen as a player line — see the `silent` flag
-     below, checked in `open`. */
+  /* `prompt` is a stage direction instead of the player's words, for a
+     villager who came looking for them and speaks first. It's recorded as
+     the turn's line but never shown (`silent`). */
   async function send(text, offered, prompt) {
     if (!current || busy) return;
     text = (text || '').trim();
@@ -794,9 +614,8 @@ LG.dialogue = (function () {
     if (!prompt) { addLine('player', shown); el.dlgInput.value = ''; }
     status(LG.game.displayName(npc) + ' is thinking…', 'thinking');
 
-    /* The reply is awaited, and by the time it lands the player may have
-       walked off -- or be talking to someone else, whose card must not
-       get this villager's line. The turn is still recorded either way. */
+    /* By the time the reply lands the player may have walked off, or be
+       talking to someone else; the turn is recorded either way. */
     const here = () => current === npc;
     const say = (msg, kind) => { if (here()) status(msg, kind); };
 
@@ -806,8 +625,7 @@ LG.dialogue = (function () {
       const built = buildReply(npc, offered);
       const msgs = historyMessages(npc, built.keys);
       msgs.push({ role: 'user', content: shown || '[says nothing, just holds out the item]' });
-      // One session per villager: each has their own stable prefix, so
-      // it's each villager's turns that are worth keeping on one provider.
+      // A session per villager, since each has their own cached prefix.
       reply = await LG.llm.speak(cfg, built.text, msgs, built.schema,
                                  { who: npc.def.name, cachePrefixes: [built.core, built.stable], session: 'npc-' + npc.id });
     } catch (err) {
@@ -823,9 +641,7 @@ LG.dialogue = (function () {
       return;
     }
 
-    // For a furigana language, the villager annotates readings inline
-    // as part of "say" — the spoken text itself is whatever remains once
-    // the readings are stripped back out.
+    // Readings come inline in "say"; what was spoken is what's left without them.
     const L = LG.LANGUAGES[LG.game.settings.lang];
     let spoken = reply.say, ruby = null;
     if (L.furigana) {
@@ -850,15 +666,9 @@ LG.dialogue = (function () {
     if (npc.history.length > 20) npc.history.shift();
     const gotIt = String(reply.understood || 'full').toLowerCase() !== 'none';
 
-    /* Name-known detection — see LG.game.displayName. Deliberately not
-       a schema field: it would be one more field a model could hedge on
-       and drop (the same failure mode the "always-fields" fix above
-       addressed), for something that can be checked for free against a
-       field that already exists. `reply.translation` is guaranteed to be
-       English or blanked further down, so a villager stating their own
-       name will appear here in Latin letters regardless of what language
-       the village speaks. Checked against `reply.translation` before
-       that blanking happens, not `turn.translation` (blanked) afterward. */
+    /* Whether they just told the player their name (LG.game.displayName):
+       checked against the English translation, before it's blanked below,
+       rather than asked for in a field a model could leave out. */
     if (gotIt && !npc.nameKnown && looksEnglish(reply.translation) &&
         new RegExp('\\b' + npc.def.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i')
           .test(reply.translation)) {
@@ -873,9 +683,7 @@ LG.dialogue = (function () {
     if (gotIt && reply.remember && typeof reply.remember === 'string' && reply.remember.length > 3) {
       if (LG.game.remember(npc, reply.remember, 'the traveller')) {
         LG.game.log(LG.game.displayName(npc) + ' will remember: "' + reply.remember + '"');
-        /* The new memory may supersede something already held — only
-           checked (reviseHeld) when something new was actually recorded,
-           so a turn that taught the villager nothing costs nothing. */
+        // Something new may overtake something they held; only checked when something was recorded.
         pending.push(reviseHeld(npc, reply.remember));
       }
     }
@@ -905,34 +713,23 @@ LG.dialogue = (function () {
     else if (u === 'partial') say(LG.game.displayName(npc) + ' only caught part of that.', 'miss');
     else say('');
 
-    /* Shopkeeping: the villager's reply claims a sale happened; the
-       game verifies and applies it, or reports why not. This check used
-       to be skipped entirely outside working hours, so a midnight sale
-       was neither completed nor refused — the villager narrated handing
-       over tea, and nothing in the game state ever contradicted it. */
+    // A sale the reply claims is carried out or refused by the till, out of hours too.
     const act = gotIt ? String(reply.action || '').toLowerCase() : '';
     if (act === 'sell' || act === 'buy') {
       if (LG.game.commerce(npc, act, reply.item, reply.price)) renderItems();
       else say('That sale could not be squared up.', 'miss');
     }
 
-    /* A refund request is also communicated as a gesture: holding out
-       an item the villager previously sold to the player. The model
-       typically narrates agreeing to it in words but leaves "action" as
-       "none" — the same failure mode confirmOffer exists for on the
-       selling side. Without this check, a villager could narrate taking
-       an item back and refunding coins while "action":"none" left the
-       actual game state unchanged — the player kept the item and got
-       nothing, while the villager believed the refund had happened. */
+    /* Holding out something they sold you asks for a refund. The reply
+       tends to agree in words and leave "action" at "none", so it's
+       checked, as an offered trade is (confirmOffer). */
     const held = (npc.sold || {})[offered];
     if (act !== 'buy' && offered && held && held.n > 0) {
       pending.push(confirmRefund(npc, offered, held.price, spoken, reply.translation));
     }
 
-    // A trade completes only because the villager's reply agreed to
-    // it, never just because an item was held out at them. If they agree
-    // in words but the model forgets to set the field, a second check
-    // catches that — see confirmOffer.
+    // A trade completes only when the reply agrees to it, never on the gesture
+    // alone; agreement in words without the field set is checked (confirmOffer).
     const trade = npc.tradeDone ? null : (LG.game.plan.roles[npc.def.id] || {}).trade;
     if (trade) {
       const need = trade.wantsCount || 1;
@@ -956,15 +753,12 @@ LG.dialogue = (function () {
     if (!LG.touch.on && here()) el.dlgInput.focus();
   }
 
-  /* The in-character model self-reports which facts it thinks it
-     revealed; a second, cheaper model call verifies those against what
-     was actually said before anything gets written to the notebook.
-     Kicked off after the reply is already displayed, so the player isn't
-     blocked waiting on it. */
+  /* The checks each reply sets off after it's on screen (facts, glosses,
+     furigana, trades), so the player isn't kept waiting. `settled()` waits
+     for them. */
   const pending = [];
 
-  /* Fills in a missing translation or romanization via the helper model,
-     rather than leaving the player with a bare, ungloseed sentence. */
+  // Fills in a missing translation or romanisation.
   async function repairGloss(npc, spoken, row, have) {
     const L = LG.LANGUAGES[LG.game.settings.lang];
     try {
@@ -983,18 +777,10 @@ LG.dialogue = (function () {
     } catch (e) { /* the line is still readable */ }
   }
 
-  /* After learning something new, checks whether it supersedes an
-     existing belief and rewrites that one line if so. Not a deletion:
-     e.g. "X is looking for shoes" becomes "X was looking for shoes, and
-     has them now" — still true, and still worth being able to say, so
-     the village can confirm an errand happened rather than just going
-     silent about it.
-
-     A chain fact keeps its id and gets an added villager-specific
-     wording (factNote); the notebook is built on those ids, which never
-     change. An untagged memory entry is simply rewritten directly. Runs
-     after the reply is already displayed; on failure the villager just
-     keeps their prior belief. */
+  /* When something new overtakes a belief, that one line is rewritten, not
+     deleted ("was looking for shoes, and has them now"). A chain fact keeps
+     its id and gets the villager's wording (factNote); a memory is
+     rewritten in place. On failure they keep what they believed. */
   async function reviseHeld(npc, fresh) {
     try {
       const v = LG.view.of(npc, 'player');
@@ -1013,10 +799,8 @@ LG.dialogue = (function () {
     } catch (err) { /* they go on believing what they believed */ }
   }
 
-  /* Same verification approach as verifyRevealed, applied to a refund:
-     did the villager actually take the item back and hand the money
-     over? Apologizing, offering to look at it, or promising to sort it
-     out later all count as "no". */
+  /* Whether they actually took it back and paid out. Apologising, offering
+     to look at it, or promising to sort it out later are all no. */
   async function confirmRefund(npc, id, price, spoken, translation) {
     try {
       const yes = await LG.llm.confirmTrade(LG.game.llmConfig(), spoken, translation, {
@@ -1028,9 +812,7 @@ LG.dialogue = (function () {
     } catch (e) { /* no refund on a failed check */ }
   }
 
-  /* Called when the player held out exactly the right item but the
-     villager's reply didn't flag a completed trade — checks whether they
-     actually declined, or agreed but the model just omitted the field. */
+  // The right item was held out but the reply didn't flag the trade: did they agree?
   async function confirmOffer(npc, trade, spoken, translation) {
     try {
       const yes = await LG.llm.confirmTrade(LG.game.llmConfig(), spoken, translation, {
@@ -1045,9 +827,8 @@ LG.dialogue = (function () {
     } catch (e) { /* no deal */ }
   }
 
-  /* Repairs missing or malformed furigana: asks the helper model for
-     just the annotation, verifies it strips back to the same sentence
-     already spoken, and updates the line already on screen. */
+  /* Missing furigana from the helper model, accepted only if it strips back
+     to the line as spoken; the line on screen is updated in place. */
   async function repairFurigana(npc, spoken, row) {
     let last = null;
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -1095,10 +876,8 @@ LG.dialogue = (function () {
     } catch (e) { /* an unwritten note is always better than a wrong one */ }
   }
 
-  /* Villager-to-villager conversations, triggered wherever two meet.
-     Runs on the cheap helper model, so the village can talk to itself
-     freely; the queue below exists only to cap concurrent conversations,
-     not to ration how much talking happens overall. */
+  /* Villager-to-villager conversations, wherever two meet, on the helper
+     model. The queue caps how many run at once, not how much is said. */
   const chatQueue = [];
   let chatGap = 0, chatBusy = 0;
   const CHAT_GAP = 1.2, CHAT_PARALLEL = 2, CHAT_STALE = 12;
@@ -1129,10 +908,8 @@ LG.dialogue = (function () {
   let turnHold = 2800;                 // how long a line sits before the reply
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-  /* Runs a meeting between two villagers, turn by turn. Each line is a
-     separate helper-model call given that villager's persona and the
-     transcript so far, so the two are genuinely responding to each other
-     rather than one model authoring a pre-planned exchange for both. */
+  /* A meeting between two villagers, one call per line, each villager
+     writing only their own (see DESIGN.md). */
   async function startChat(job) {
     const a = job.a, b = job.b;
     chatBusy++;
@@ -1154,10 +931,7 @@ LG.dialogue = (function () {
         const turn = await LG.llm.converse(LG.game.llmConfig(), {
           me: vMe,
           them: vThem,
-          /* No topic is assigned — the villager just has what's on
-             their mind and their own personality, and whether either
-             comes up is left to the conversation itself. Nothing
-             downstream depends on any particular thing being said. */
+          // No topic: whatever's on their mind comes up, or doesn't.
           held: LG.view.held(vMe),
           here: vMe.here || '',
           errand: (vMe.errand && vMe.errand.why) || '',
@@ -1183,8 +957,7 @@ LG.dialogue = (function () {
         a.pauseT = Math.max(a.pauseT, 6); a.route = null;
         b.pauseT = Math.max(b.pauseT, 6); b.route = null;
 
-        // Most of this happens off-screen; the console is the only way
-        // to observe villager-to-villager conversation the player didn't witness.
+        // Mostly off screen; the console is where it can be followed.
         if (LG.game.think) LG.game.think(me, 'says', plain +
           (turn.translation ? '  \u2014 ' + turn.translation : ''));
         if (LG.game.canOverhear(a, b)) {
@@ -1198,16 +971,12 @@ LG.dialogue = (function () {
     chatBusy--;
     a.chatting = b.chatting = false;
 
-    /* What each villager takes away is determined from the
-       conversation that actually happened, not decided in advance. */
+    // What each takes away is worked out from what was actually said.
     if (transcript.length >= 2 && ctx.a && ctx.b) remember(a, b, transcript, ctx);
   }
 
   function remember(a, b, transcript, ctx) {
-    /* This call reasons about the conversation from a third-party
-       perspective, so it's given facts in their written (third-person)
-       form rather than either villager's own voice — "X thinks Y talks
-       too much," never "You think...". */
+    // Facts in their written, third-person form: "you think" is ambiguous from outside.
     const told = v => (v.knows || []).map(f => ({ id: f.id, text: f.plain }));
     LG.llm.recall(LG.game.llmConfig(), {
       transcript: transcript,
@@ -1230,10 +999,7 @@ LG.dialogue = (function () {
         if (LG.game.think) LG.game.think(speaker, 'remembers', m);
       }
     });
-    /* Applies the same reviseHeld() check used for player conversations
-       — restricting revision to only player-sourced info would make the
-       player a privileged source, which they aren't; hearing something
-       from another villager is exactly as valid a way to learn it. */
+    // Revised the same as news from the player, who is no more reliable a source.
     if (landed) reviseHeld(speaker, landed);
     // A chain fact only spreads to the listener if it was actually said out loud.
     const ids = mine.map(f => f.id);
@@ -1247,20 +1013,9 @@ LG.dialogue = (function () {
     });
   }
 
-  /* Keeps the conversation scrolled to its latest line across layout
-     changes (keyboard opening, tray folding, orientation change), all
-     of which resize the dialogue log's container. A scroll position
-     fixed from the top wouldn't survive that — the newest line could
-     end up pushed below the visible area, which is exactly wrong for a
-     conversation the player is actively reading. Tracks whether the
-     reader is currently scrolled to the bottom; if so, re-pins to the
-     bottom on every resize. If they've scrolled up to read earlier
-     lines, leaves them alone until they scroll back down themselves.
-     Uses a ResizeObserver rather than listening for each specific cause
-     of a resize, since what matters is that a resize happened, not
-     which of several possible causes triggered it — this also fires
-     continuously during the tray's fold animation, keeping the bottom
-     pinned smoothly rather than jumping at the end. */
+  /* Keeps the conversation on its newest line through any resize (keyboard,
+     trays folding, rotation) while the reader is at the bottom; scrolled
+     up, they're left alone. */
   const ANCHOR = 24;                  // px from the bottom that still counts as "at the end"
   function keepTheEnd() {
     const log = el.dlgLog;
@@ -1276,20 +1031,13 @@ LG.dialogue = (function () {
     bind();
     el.dlgSend.onclick = () => send(el.dlgInput.value);
     el.dlgClose.onclick = close;
-    /* Focusing the text input signals the player wants to focus on
-       typing, so the phrase tray gives up its space to the conversation.
-       This is separate from trackViewport's height-based collapsing in
-       game.js (which handles what fits) — this handles what's
-       preferred, and only ever hides the tray, never re-shows it just
-       because focus was lost, so it can't widen the card into space
-       that hasn't actually grown. Touch-only: desktop has room for both. */
+    /* Focusing the input folds the phrase trays away (touch only). It only
+       ever hides them, so it can't fight the height-based layout in
+       game.js. */
     const mode = on => { try { document.body.classList.toggle('typing', on); } catch (e) {} };
     el.dlgInput.addEventListener('focus', () => mode(true));
     el.dlgInput.addEventListener('blur', () => mode(false));
-    /* Gives the player a way to dismiss the keyboard without hunting
-       for the system back button — with the phrase tray collapsed
-       (above), the conversation area is the largest available tap
-       target, and it's already what they're looking at. */
+    // Tapping the conversation puts the keyboard down.
     el.dlgLog.addEventListener('click', () => { if (LG.touch.on) el.dlgInput.blur(); });
     keepTheEnd();
     el.dlgInput.addEventListener('keydown', e => {

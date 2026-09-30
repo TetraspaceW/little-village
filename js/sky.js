@@ -77,12 +77,9 @@ LG.sky = (function () {
     if (flash > 0) flash = Math.max(0, flash - dt * 2.2);
   }
 
-  /* Clips rain/snow/sand so they don't render through roofs. Roofs arrive
-     as screen-space rectangles and are punched out of the particle layer
-     with an even-odd clip (one path per frame). Fog and haze skip this:
-     they drift around buildings rather than falling onto them, and a hard
-     rectangular cutout in a soft cloud looks worse than the overlap it
-     would fix. */
+  /* Rain, snow and sand stop at the roofs: the roofs' screen rectangles are
+     cut out with an even-odd clip. Fog and haze drift round buildings
+     instead, and a hard cut-out in a soft cloud looks worse than overlap. */
   function shelterClip(ctx, vw, vh, roofs) {
     if (!roofs || !roofs.length) return false;
     ctx.save();
@@ -93,10 +90,9 @@ LG.sky = (function () {
     return true;
   }
 
-  /* Caches one pre-rendered wisp sprite per weather kind, at the
-     largest size a wisp is ever drawn, invalidated when the pixel ratio
-     changes. Returns null when there's no canvas to render into, which
-     signals the caller to fall back to drawing live ellipses instead. */
+  /* One wisp sprite per kind, at the largest size a wisp is drawn, rebuilt
+     when the pixel ratio changes. Null with no canvas to draw it on, and
+     the wisps are drawn live. */
   const WISP = { fog: 260, haze: 260 };
   let wisps = {}, wispDpr = 0;
   function wisp(kind, dpr) {
@@ -203,16 +199,10 @@ LG.sky = (function () {
       for (const p of parts) { ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - 26 - p.v * 20, p.y + 2); }
       ctx.stroke();
     } else if (kind === 'fog' || kind === 'haze') {
-      /* A wisp is a large filled ellipse, drawn ~26 times per frame across
-         the screen. Rain/snow/sand are strokes, which barely load the
-         path rasterizer, which is why fog/haze specifically trigger the
-         same Firefox flashing bug as trees — see the disc-sprite notes
-         in world.js. Stamping from a pre-rendered sprite avoids that
-         load. The sprite is rendered at the largest wisp size and only
-         ever scaled down per-particle (never up), so nothing looks
-         softer than the original; image smoothing is explicitly
-         re-enabled here since the canvas has it disabled for crisp tile
-         rendering elsewhere. */
+      /* ~26 large filled ellipses a frame, the load that smeared trees in
+         Firefox (see the disc sprites in world.js), so they're stamped from
+         a sprite drawn at the largest size and only ever scaled down, with
+         smoothing on for it (the canvas has it off for crisp tiles). */
       const w = wisp(kind, dpr);
       ctx.globalAlpha = kind === 'fog' ? 0.10 : 0.05;
       if (w) {

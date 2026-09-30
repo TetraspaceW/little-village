@@ -1,13 +1,13 @@
-/* chain.js — generates a fresh errand chain for each playthrough.
+/* chain.js — generates a fresh errand chain for each village.
 
-   A chain is a sequence of villagers, each wanting the item the next one
-   down the chain holds, terminating in an item found out in the world:
+   A chain is a run of villagers, each wanting what the next one holds,
+   ending in something out in the world:
 
      client wants G  <-  H1 has G, wants A  <-  H2 has A, wants <world thing>
 
-   Everything the player can learn is represented as a *fact* with an id.
-   Facts are distributed to villagers who know them; a fact only appears in
-   the player's notebook once some villager has actually told it to them. */
+   Everything the player can learn is a *fact* with an id, dealt to the
+   villagers who know it; it reaches the notebook only when one of them
+   actually says it. */
 window.LG = window.LG || {};
 
 LG.chain = (function () {
@@ -50,8 +50,10 @@ LG.chain = (function () {
   const NUMWORD = ['zero','one','two','three','four','five','six','seven'];
 
   /* The goal of a villager with no part in the errand: a bystander, or a
-     link whose trade is done, who goes back to being an ordinary villager.
-     Also given by save.js to a villager added since a village was saved. */
+     link whose trade is done. It gives them their own work to get on with:
+     "You want nothing in particular today" read as no reason to do
+     anything, and a shopkeeper talked herself out of opening. Also given by
+     save.js to a villager added since a village was saved. */
   function plainGoal(id) {
     const d = LG.NPCS.find(x => x.id === id) || {};
     return 'Your own work, as ' + (d.job || 'a villager') +
@@ -64,9 +66,7 @@ LG.chain = (function () {
     const level = LG.LEVELS[opts.level] || LG.LEVELS.beginner;
     const seed = opts.seed || makeSeed();
     const rnd = mulberry32(hashSeed(seed));
-    // Chain length is randomized the same way at every difficulty level —
-    // it controls variety, not difficulty. See the note above LG.LEVELS
-    // for why difficulty no longer scales chain length.
+    // Chain length is rolled the same at every level (see LG.LEVELS).
     const span = LG.DEPTH || [2, 4];
     const rolled = span[0] + ((rnd() * (span[1] - span[0] + 1)) | 0);
     const depth = Math.min(rolled, LG.NPCS.length - 1);
@@ -150,13 +150,9 @@ LG.chain = (function () {
       return pool.slice(0, n);
     }
 
-    /* How many extra villagers (besides the fact's owner) get told a fact.
-       Scales with village population — a fixed count of 2 is easy to find
-       among 6 villagers but hard to find among 12, so `base` scales with
-       LG.NPCS.length. It then decreases (`taper`) for facts further down
-       the chain, so longer chains hide facts more deeply rather than
-       spreading them wider. The link owner always knows their own part
-       regardless of taper, so the chain stays solvable end-to-end. */
+    /* How many villagers besides a fact's owner know it: scaled to the
+       population, and fewer (`taper`) down the chain, so a longer chain hides
+       more. The owner always knows, so the chain can always be solved. */
     const base = Math.max(0, Math.round((level.spread || 1) * LG.NPCS.length / 6));
     const taper = level.taper || 0;
     const heardBy = i => Math.max(0, base - taper * i);
@@ -184,9 +180,7 @@ LG.chain = (function () {
       }
     });
 
-    // The terminal item's location has no owning villager (nobody "has" it,
-    // it's just out in the world), so at least one villager must be picked
-    // to have seen it, regardless of how low heardBy() would otherwise go.
+    // Nobody owns where the world thing is, so at least one villager has seen it.
     const seenBy = others([], Math.max(1, heardBy(depth - 1)));
     const whereText = isBeast
       ? beastName + ' the ' + named(terminalItem) + ' was last seen ' + place.en + '.'
@@ -202,13 +196,9 @@ LG.chain = (function () {
         [a.id].concat(others([a.id, b.id], 1)), { type: 'opinion' });
     }
 
-    /* The village's designated gossip villager (LG.NPCS entry with
-       prefers==='gossip') knows a difficulty-dependent share of all facts.
-       At beginner she knows nearly everything and can hand the player the
-       whole errand in one conversation; at higher difficulty she knows
-       less (down to just opinion facts at advanced). Capping this per
-       difficulty matters — an always-omniscient gossip would let the
-       player skip every other difficulty setting. */
+    /* The village gossip (prefers === 'gossip') knows a share of every fact
+       set by difficulty: nearly all at beginner, only opinions at advanced.
+       Always knowing everything, she'd make difficulty moot. */
     const gossip = LG.NPCS.find(n => n.prefers === 'gossip');
     const share = typeof level.gossip === 'number' ? level.gossip : 1;
     if (gossip) {
@@ -268,12 +258,6 @@ LG.chain = (function () {
       }
     });
 
-    /* Bug history: this text used to open "You want nothing in particular
-       today," meaning "you have no part in the errand." The model read it
-       as "you have no reason to do anything" instead, and a shopkeeper
-       given that goal reasoned her way out of opening her own shop.
-       plainGoal() avoids that phrasing — having no errand role doesn't
-       mean having no reason to act normally. */
     bystanders.forEach(n => { roles[n.id].goal = plainGoal(n.id); });
 
     /* -------------------------------------------------------- assemble */

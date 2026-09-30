@@ -1,25 +1,11 @@
 /* save.js — persists and restores village state (localStorage + server).
 
-   A village's full state — its errand chain, calendar, purse, notebook,
-   and 13 villagers' memories — lives only in memory otherwise, so nothing
-   survives closing the tab. That matters because an errand is meant to
-   span multiple in-game days and a villager's memory of the player is
-   meant to persist.
+   One format: a versioned JSON object built by `snapshot` and read by
+   `restore`, written as the same bytes to localStorage and to the log
+   server's saves/village.json, so either loads in the other.
 
-   One format, in one place. Every save is a plain versioned JSON object,
-   built by exactly one function (`snapshot`) and restored by exactly one
-   function (`restore`). Both storage backends — this browser's
-   localStorage, and the log server's `saves/` directory — store and
-   return the identical bytes, so a save written by either is readable by
-   the other with no conversion step. That symmetry is the reason for
-   this design, rather than having the server maintain its own
-   representation of a village.
-
-   What's excluded: API keys. Saves may end up written to disk and copied
-   around, so keys stay only in `lg-settings` with the rest of the
-   settings. Language and difficulty ARE included, since the village is
-   generated from them — loading a save under a different language/
-   difficulty would produce a different village despite the same seed.
+   API keys never go in a save; they stay in `lg-settings`. Language and
+   difficulty do, since the village is built from them.
 
    The generated errand (the plan: links, facts and their ids, roles) is
    stored whole, so adding items, places or lines to data.js, or changing
@@ -85,12 +71,9 @@ LG.save = (function () {
   }
 
   /* --------------------------------------------------------------- rects
-     A villager's `patch` is a reference to one of the game's actual
-     rectangle objects (their home, a shop interior, the green). Saved as
-     plain {x,y,w,h} numbers and, on load, matched back to the real
-     rectangle object with the same bounds — needed because npc.js does
-     identity comparisons (`want === a.patch`) that a freshly-deserialized
-     plain object with matching coordinates wouldn't pass. */
+     A villager's `patch` is one of the game's rectangle objects, and npc.js
+     compares them by identity, so a saved {x,y,w,h} is matched back to the
+     real rectangle with those bounds. */
   function rectOut(r) { return r ? { x: r.x, y: r.y, w: r.w, h: r.h } : null; }
   function sameRect(a, b) {
     return a && b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
@@ -123,29 +106,15 @@ LG.save = (function () {
         history: (n.history || []).slice(),
         met: !!n.metPlayer, traded: !!n.tradeDone, named: !!n.nameKnown,
         patch: rectOut(n.patch),
-        /* Saves who this villager is chasing (if anyone) and why -- not
-           the route itself (in-progress routes are transient state,
-           dropped on reload; see `restore`), but the underlying reason,
-           which persists even after arrival: a villager standing next to
-           the player still has a reason for being there.
-
-           This must be saved explicitly because `restore` calls
-           `newVillage` to regenerate the village before applying the
-           save on top, and `newVillage` always triggers Petra's
-           train-greeting behavior (see game.js) as if it were a fresh
-           arrival. Without this saved per-villager chase state, reloading
-           a week-old village would incorrectly make Petra rush to greet
-           a train that arrived days ago. */
+        /* Who they're chasing and why (the route itself is recomputed).
+           newVillage always sets Petra off to meet the train, so without
+           this a week-old village would have her run to a train long gone. */
         chasing: !!n.followingPlayer, after: n.wentAfter || null, why: n.why || ''
       };
     });
 
     const t = g.beast
-      /* `home` is the area the creature wanders when unheld, and it can
-         change during play (e.g. returning the goat updates its home from
-         the hillside it strayed to, to the farmer's yard). Must be saved
-         explicitly — saving only its current position would put it back
-         at the old home area on reload. */
+      // `home` changes in play (a returned goat lives in the farmer's yard), so it's saved too.
       ? { kind: 'beast', x: round(g.beast.px), y: round(g.beast.py),
           tx: g.beast.tx, ty: g.beast.ty, home: rectOut(g.beast.home),
           caught: !!g.beast.caught, following: !!g.beast.following }
@@ -160,9 +129,7 @@ LG.save = (function () {
       saved: new Date().toISOString(),
       village: { seed: plan.seed, level: g.settings.level, lang: g.settings.lang,
                  plan: JSON.parse(JSON.stringify(plan)) },
-      /* Weather affects villager behavior (see byDice() in npc.js) and
-         accumulated snow depth takes multiple in-game days to build up —
-         both must be restored exactly, not re-randomized on load. */
+      // The sky and the snow lying come back as they were, not re-rolled.
       time: { day: LG.time.day, frac: LG.time.frac, weather: LG.time.weather,
               hold: LG.time.weatherLeft, snow: LG.time.snow },
       player: { x: round(p.px), y: round(p.py), dir: p.dir },
@@ -182,10 +149,7 @@ LG.save = (function () {
   function round(n) { return Math.round(Number(n) * 10) / 10; }
 
   /* ------------------------------------------------------------- restore
-     Returns null on success, or a human-readable string explaining the
-     failure — callers display this rather than failing silently, so a
-     rejected save is distinguishable from one that was simply never
-     written. */
+     Null on success, or why the save can't be used, which callers show. */
   function restore(data) {
     const why = check(data);
     if (why) return why;
@@ -218,12 +182,7 @@ LG.save = (function () {
 
     const st = g.state;
     st.inv = Object.assign({}, data.inventory);
-    /* Enforces at most one note per fact id, same guarantee `learn`
-       provides during live play (via the `hasNote` check in game.js) --
-       but a save file bypasses that guard entirely, so nothing stops a
-       hand-edited or buggy save from listing the same fact id twice.
-       Deduplicates on restore rather than trusting the file's shape;
-       first occurrence wins, matching what would happen during live play. */
+    // One note per fact, first one kept, as `learn` guarantees in play; a file can say otherwise.
     const noted = new Set();
     st.notes = (data.notes || [])
       .filter(n => g.plan.facts[n.id] && !noted.has(n.id) && noted.add(n.id))
@@ -241,10 +200,7 @@ LG.save = (function () {
       if (!s) return;
       n.px = s.x; n.py = s.y; n.tx = s.tx; n.ty = s.ty; n.dir = s.dir || 'down';
       n.facts = (s.facts || []).filter(id => g.plan.facts[id]);
-      /* Older saves stored memory entries as bare strings, before they
-         gained `at`/`from` fields. Normalize on load so older saves still
-         work — an undated entry is treated as one the villager has simply
-         had for a while. */
+      // Older saves kept memories as bare strings: undated, as if long held.
       n.memory = (s.memory || []).map(m =>
         typeof m === 'string' ? { at: null, text: m, from: null } : m).filter(m => m && m.text);
       n.factAt = Object.assign({}, s.factAt);
@@ -256,22 +212,12 @@ LG.save = (function () {
       n.history = (s.history || []).slice();
       n.metPlayer = !!s.met; n.tradeDone = !!s.traded; n.nameKnown = !!s.named;
       n.patch = rectIn(n, s.patch);
-      /* Any in-progress state (route, pending decision, active bubble/
-         conversation) is discarded rather than restored — it refers to a
-         moment that's now over, and the villager will simply reconsider
-         on the next tick, same as they normally would. */
+      // Nothing in progress comes back (routes, decisions, bubbles, conversations); they think again.
       n.route = null; n.wantsGo = null; n.deciding = false; n.thought = null;
       n.chatting = false; n.frozen = false; n.bubble = null; n.bubbleT = 0;
-      /* Unlike the transient state cleared above, chase state (who a
-         villager is following and why) is explicitly restored from the
-         save for every villager, overriding whatever `newVillage`
-         initialized a few lines earlier -- so Petra only keeps chasing
-         the player if the save says she still was when it was written.
-         An older save with no chase data defaults to nobody chasing,
-         which is correct: any train-greeting `newVillage` initialized
-         happened long before that save was written. Any restored chase
-         restarts its pathing fresh from the current position, with a
-         full new timeout window to catch up. */
+      /* A chase does come back, from the save, overriding the one newVillage
+         gave Petra; a save without chase data has nobody chasing. Its route
+         and timeout start afresh. */
       n.followingPlayer = !!s.chasing; n.followFor = 0; n.followCool = 0;
       n.wentAfter = s.after || null;
       n.why = s.why || '';
@@ -311,9 +257,8 @@ LG.save = (function () {
   }
 
   /* ---------------------------------------------------------------- sinks
-     Both backends are given the identical serialized string. Neither is a
-     hard requirement — no localStorage (e.g. a private window) and no
-     server are both handled gracefully; the game keeps working either way. */
+     Both get the same string, and neither is required: no localStorage (a
+     private window) or no server, the game goes on. */
   function toLocal(text) {
     try { localStorage.setItem(KEY, text); return true; } catch (e) { return false; }
   }
@@ -322,10 +267,7 @@ LG.save = (function () {
   }
   function toServer(text, leaving) {
     if (!server || !http()) return;
-    /* A normal fetch started as the tab is closing is usually aborted
-       mid-flight. sendBeacon is guaranteed by the browser to complete, so
-       the server's copy doesn't end up lagging localStorage by up to one
-       autosave interval. */
+    // A fetch started as the tab closes is usually cut off; a beacon gets there.
     if (leaving && typeof navigator !== 'undefined' && navigator.sendBeacon) {
       try { navigator.sendBeacon(ENDPOINT, new Blob([text], { type: 'application/json' })); return; }
       catch (e) { /* fall through and try it the ordinary way */ }
@@ -355,10 +297,7 @@ LG.save = (function () {
     return shot;
   }
 
-  /* Called from the game loop every frame. Doesn't try to detect whether
-     anything actually changed since the last save — the village is always
-     changing (villagers walking, thinking) — an unconditional save every
-     EVERY seconds is cheaper than tracking dirty state. */
+  // Every frame from the loop; saves every EVERY seconds, since the village is always changing anyway.
   function tick(dt) {
     since += dt;
     if (since < EVERY) return;
@@ -367,12 +306,8 @@ LG.save = (function () {
   }
 
   /* ---------------------------------------------------------- the reading
-     Loads the local copy first (synchronous, immediately available), then
-     asynchronously checks the server copy and switches to it only if its
-     timestamp is strictly newer — the case where the player last played
-     in a different browser, or cleared this one's storage. Since both
-     backends are written together, they're usually identical and the
-     server check is a no-op. */
+     The local copy restores at once; the server's is then fetched and used
+     only if it's newer (played in another browser, or storage cleared). */
   function resume(say) {
     const local = fromLocal();
     const wrote = writes;
@@ -387,10 +322,7 @@ LG.save = (function () {
     fromServer().then(remote => {
       if (!remote || !remote.saved) return;
       if (have && remote.saved <= have) return;         // same save, or an older one — skip
-      /* The server response may arrive after the game has already moved on
-         (e.g. a new village was rolled and saved while this request was in
-         flight). If any save has been written since this request started,
-         trust that instead, regardless of what timestamp the server sent. */
+      // Anything saved since this was asked for is newer, whatever the server's timestamp.
       if (writes !== wrote) return;
       const why = restore(remote);
       if (why) say('¤ The server\'s saved village would not load: ' + why + '.');

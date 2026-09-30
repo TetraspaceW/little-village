@@ -42,8 +42,7 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
 - **On a phone or tablet:** put a finger anywhere on the village and **drag** —
   a joystick appears under it and follows your thumb. **Tap** a villager you're
   standing beside to talk to them, and tap anything else worth picking up; a tap
-  out of reach tells you to walk over rather than going quiet. Signs are
-  tap-to-reveal, the same as click-to-reveal. On a narrow screen the two HUD
+  out of reach tells you to walk over rather than going quiet. On a narrow screen the two HUD
   boxes fold away when you tap their headings. In a conversation, tapping the
   message box collapses the phrase trays so the room goes to what the villager
   said; tap the conversation to put the keyboard down and bring them back. The
@@ -88,9 +87,8 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
   chain.
 - **Interiors.** Walking through a door lifts the roof off that building, and
   villagers who went inside are visible to you but not to anyone outside.
-- **Signs.** Every shop and the hall has a sign out front, in the village's
-  language; click it for the English underneath. Building names and the
-  overhead place labels are in that language too.
+- **Signs.** Every building, the noticeboard and the station platform has a
+  sign, in the village's language only — no English underneath.
 - **The noticeboard**, by the hall, is written entirely by the villagers: any
   of them may wander over and decide they have something worth pinning up —
   their own errand, somebody else's, or nothing to do with the chain at all.

@@ -84,9 +84,23 @@ function settingsFromEnv() {
   };
 }
 
+/* A loopback connection isn't enough on its own: any page open in the
+   same browser connects from 127.0.0.1 too. Two more checks keep other
+   sites out:
+     - Host must name this machine, which stops DNS rebinding (a hostile
+       domain re-pointed at 127.0.0.1 would otherwise read /env as if it
+       were the game);
+     - Origin, which browsers send on cross-site requests, must be this
+       server -- a no-cors POST from any page could otherwise overwrite
+       the save. Requests with no Origin (curl, same-origin GETs) pass. */
+const LOOPBACK = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
 function isLocal(req) {
   const a = req.socket.remoteAddress || '';
-  return a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1';
+  if (a !== '127.0.0.1' && a !== '::1' && a !== '::ffff:127.0.0.1') return false;
+  const host = req.headers.host || '';
+  if (!LOOPBACK.test(host)) return false;
+  const origin = req.headers.origin;
+  return !origin || origin === 'http://' + host;
 }
 
 fs.mkdirSync(LOGS, { recursive: true });
@@ -105,7 +119,10 @@ const TYPES = {
 };
 
 function serve(req, res) {
-  let rel = decodeURIComponent(req.url.split('?')[0]);
+  let rel;
+  // A malformed escape (GET /%) throws, and a throw here would take the server down.
+  try { rel = decodeURIComponent(req.url.split('?')[0]); }
+  catch (e) { res.writeHead(400).end('bad path'); return; }
   if (rel === '/') rel = '/index.html';
   const file = path.join(ROOT, path.normalize(rel).replace(/^(\.\.[/\\])+/, ''));
   if (!file.startsWith(ROOT)) { res.writeHead(403).end('no'); return; }
@@ -128,6 +145,7 @@ function serve(req, res) {
 
 const server = http.createServer((req, res) => {
   if (req.method === 'POST' && req.url === '/log') {
+    if (!isLocal(req)) { res.writeHead(403).end('local connections only'); return; }
     let body = '';
     req.on('data', c => { body += c; if (body.length > 8e6) req.destroy(); });
     req.on('end', () => {

@@ -379,7 +379,9 @@ LG.game = (function () {
        non-zero price for it (which used to charge the player for a
        purchase nobody intended to make). A missing/unspecified price
        still falls back to the item's normal value. */
-    if (Number(price) === 0 && String(price) !== '') {
+    // `null` is how the reply schema says "no price given" -- missing, not zero.
+    const named = price != null && String(price).trim() !== '';
+    if (named && Number(price) === 0) {
       return refuse('Nothing was actually exchanged, so nothing happened.',
                     'No price was named, so nothing changed hands.');
     }
@@ -444,7 +446,7 @@ LG.game = (function () {
     }
 
     const base = priced.reduce((n, w) => n + w.base, 0);
-    let cost = Math.round(Number(price));
+    let cost = named ? Math.round(Number(price)) : base;
     if (!isFinite(cost) || cost < 0) cost = base;
 
     // Clamps price to a reasonable haggle range (not a scam); when the
@@ -688,8 +690,10 @@ LG.game = (function () {
     log('\u00a4 Read ' + got.join(' and ') + ' from .env.');
   }
 
-  /* Generates a fresh errand chain and resets all state that depends on it. */
-  function newVillage(seed, quiet) {
+  /* Generates a fresh errand chain and resets all state that depends on it.
+     `restoring` is set by LG.save.restore, which lays a save over the
+     result and must not have the bare village saved over it first. */
+  function newVillage(seed, quiet, restoring) {
     plan = LG.chain.generate({ level: settings.level, seed: seed || null });
 
     /* A new village rolls a fresh calendar too: a random day of the
@@ -760,6 +764,8 @@ LG.game = (function () {
     /* Saved immediately rather than waiting for the next autosave, so
        closing the tab within the first ~20 seconds doesn't bring back
        the old village on reload. */
+    if (restoring) return;
+    LG.save.keep();
     if (saving()) LG.save.write();
   }
 
@@ -1048,10 +1054,9 @@ LG.game = (function () {
     });
     window.addEventListener('blur', () => { for (const k in held) held[k] = false; });
 
-    /* A sign's English gloss is click-to-reveal, same as a notebook
-       note -- so any canvas click must first be tested against whatever
-       signs are currently on screen, before being handled as anything
-       else. */
+    /* A click landing on a signboard is swallowed rather than read as a
+       click on the ground beneath it, so it's tested against whatever
+       signs are on screen first. */
     const toWorld = e => {
       const r = canvas.getBoundingClientRect();
       return { x: (e.clientX - r.left) + cam.x, y: (e.clientY - r.top) + cam.y };
@@ -1099,7 +1104,8 @@ LG.game = (function () {
       log('\u00a4 The saved village has been forgotten. This one goes on until you start another.');
       showSaveNote();
     };
-    document.getElementById('setSave').onclick = submitSettings;
+    // Not `= submitSettings`: the click event would arrive as a truthy forceNewVillage.
+    document.getElementById('setSave').onclick = () => submitSettings(false);
     document.getElementById('setProvider').onchange = () => { swapKeyField(); refreshModelList(); refreshHelperList(); };
     document.getElementById('setModel').onchange = syncModelBox;
     document.getElementById('setHelper').onchange = syncHelperBox;
@@ -1263,6 +1269,7 @@ LG.game = (function () {
     if (!note || !btn) return;
     const have = LG.save.has();
     btn.disabled = !have;
+    if (!have && LG.save.forgotten) { note.textContent = 'Forgotten — this village is no longer being saved. A new village will be.'; return; }
     if (!have) { note.textContent = 'Nothing saved yet — the village is written down every few seconds once you are in it.'; return; }
     const when = LG.save.lastAt
       ? 'last written ' + new Date(LG.save.lastAt).toLocaleTimeString()
@@ -1653,9 +1660,9 @@ LG.game = (function () {
   }
 
   function decideWhereToGo(n, green) {
+    if (n.decideCool > 0) { n.deciding = false; return false; }   // rate limit -- decided too recently
     const opts = placesFor(n);
     const done = () => { n.deciding = false; n.decideCool = DECIDE_COOL; };
-    if (n.decideCool > 0) { n.deciding = false; return false; }   // rate limit -- decided too recently
     think(n, 'wonders where to be', LG.view.where(n) + ', ' + LG.time.phase().name);
     /* Uses the same LG.view assembly the player-facing prompt uses, so
        the villager deciding where to walk is reasoning from the same

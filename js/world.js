@@ -559,29 +559,15 @@ LG.world = (function () {
      tops) are drawn white; walls, doors, and windows keep their normal
      colors.
 
-     Coverage builds up tile by tile rather than fading in uniformly
-     everywhere at once — uniform fading reads as a lighting change, while
-     patchy accumulation reads as weather. `LG.time.snow` gives the
-     overall depth (0-1); each tile has its own noise-derived threshold it
-     must clear before it shows snow, so coverage advances unevenly. */
+     Where snow lies comes from one continuous noise field over the whole
+     map, not from anything per-tile: `LG.time.snow` (0-1) sets a level,
+     and wherever the field is under it there's snow. Deepening snow grows
+     the patches until they join; melting shrinks them back into drifts.
+     Any per-tile shape — a blob, a rounded square — prints the tile grid
+     back onto a half-melted snowfield as polka dots and lattice lines. */
   let lying = 0;                              // current snow depth, re-read from LG.time each frame
-  /* `lying` changes by a tiny fraction each tick, so caching keyed on its
-     exact value would essentially never hit. Instead it's quantized into
-     buckets fine enough that bucket edges are imperceptible (the alpha
-     value it drives is rounded to 3 decimals anyway) — so a tile computed
-     once is reused across all frames within the same bucket, which for
-     snow that's finished falling and just sitting there is effectively
-     every frame. */
-  let snowBucket = -1;
-  let snowCache = null;                       // Float32Array(W*H), -1 = not yet computed
   function readSnow() {
     lying = (LG.time && typeof LG.time.snow === 'number') ? LG.time.snow : 0;
-    const b = Math.round(lying * 400);
-    if (b !== snowBucket) {
-      snowBucket = b;
-      if (!snowCache) snowCache = new Float32Array(W * H);
-      snowCache.fill(-1);
-    }
   }
   /* Smooth value noise so snow depth varies over stretches of the map
      rather than randomly per-tile — independent per-tile randomness
@@ -597,87 +583,154 @@ LG.world = (function () {
     return top + (bot - top) * v;
   }
 
-  /* Computes snow coverage (0-1) for one tile. Each tile has its own
-     noise-derived threshold, so thin overall snow shows as scattered
-     drifts on bare ground rather than an even dusting, and drifts merge
-     together as depth increases. Memoized per `lying` bucket (see
-     readSnow) — this is called twice per tile per frame (ground blob,
-     then any prop on top) and again on every subsequent frame the tile
-     stays on screen, and the underlying noise never changes. */
-  function snowAt(x, y) {
-    if (lying <= 0) return 0;
-    const inBounds = x >= 0 && y >= 0 && x < W && y < H;
-    const i = inBounds ? idx(x, y) : -1;
-    if (i >= 0) {
-      const c = snowCache[i];
-      if (c >= 0) return c;
+  /* The field is sampled on a grid SUB times finer than the tiles, fine
+     enough that the edge traced through it (see snowField) reads as a
+     curve rather than a polygon. The noise never changes — only the level
+     does — so each sample is worked out the first time it's on screen and
+     kept. */
+  const SUB = 8, STEP = TILE / SUB, SW = W * SUB + 1;
+  let drift = null;                           // Float32Array, NaN = not yet computed
+  function driftAt(i, j) {
+    if (!drift) drift = new Float32Array(SW * (H * SUB + 1)).fill(NaN);
+    const k = j * SW + i;
+    let n = drift[k];
+    if (n !== n) {
+      const fx = i / SUB, fy = j / SUB;
+      n = drift[k] = vnoise(fx, fy, 6) * 0.6 + vnoise(fx, fy, 2.5) * 0.28 + vnoise(fx, fy, 1.1) * 0.12;
     }
-    const n = vnoise(x, y, 6) * 0.6 + vnoise(x, y, 2.5) * 0.28 + hash(x * 5 + 1, y * 7 + 3) * 0.12;
-    // Sharpened toward 0 or 1 rather than a soft gradient, so a covered
-    // area is fully covered and only its border tiles are half-and-half —
-    // a soft gradient everywhere would leave every tile partially white,
-    // which at the fixed tile spacing reads as a repeating pattern rather
-    // than as snow.
-    const v = Math.max(0, Math.min(1, (lying * 2.4 - n * 1.55) * 2.2));
-    if (i >= 0) snowCache[i] = v;
-    return v;
+    return n;
+  }
+  // How far under the snow a point with noise `n` is: positive is snow, negative bare.
+  function depth(n) { return lying * 2.4 - n * 1.55; }
+  function depthAt(i, j) { return depth(driftAt(i, j)); }
+  /* Each tile's lowest and highest sample, so a tile wholly under snow or
+     wholly clear (most of them, at any depth) is settled without going
+     through its samples at all. */
+  let lo = null, hi = null;
+  function survey(x, y) {
+    if (!lo) { lo = new Float32Array(W * H).fill(NaN); hi = new Float32Array(W * H); }
+    const t = idx(x, y);
+    if (lo[t] === lo[t]) return t;
+    let a = Infinity, b = -Infinity;
+    for (let j = 0; j <= SUB; j++)
+      for (let i = 0; i <= SUB; i++) {
+        const n = driftAt(x * SUB + i, y * SUB + j);
+        if (n < a) a = n;
+        if (n > b) b = n;
+      }
+    lo[t] = a; hi[t] = b;
+    return t;
   }
 
-  /* Draws snow over already-drawn ground on one tile, as a blob rather
-     than a square fill — a square fill would give every patch of
-     half-melted snow a hard tile-aligned edge, making the village look
-     like a chessboard. The blob is jittered and sized larger than its own
-     tile so neighboring drifts overlap and stack whiter where they
-     overlap, matching how real snow accumulates. Needs its own draw pass
-     separate from the base tile — see drawGround. */
-  function snowOnTile(ctx, x, y, px, py) {
-    const t = get(x, y);
-    if (t === T.FLOOR || t === T.CAVE) return;          // snow doesn't reach indoors
-    /* Paths/streets get thin, even, packed snow — never a drift — since
-       they're walked constantly. Deliberately capped well short of white:
-       even under heavy snowfall, the roads need to stay visually distinct
-       so the village's layout still reads. Filled flat edge-to-edge (no
-       blob), so packed snow has no seams or gaps.
-       Platform and rail get the same treatment as streets, since both are
-       kept clear/used regularly. */
-    if (t === T.PATH || t === T.FOUNTAIN || t === T.PLATFORM || t === T.RAIL) {
-      const p = Math.min(0.5, lying * 0.62);
-      if (p <= 0.02) return;
-      ctx.fillStyle = 'rgba(250,251,255,' + p.toFixed(3) + ')';
-      ctx.fillRect(px, py, TILE, TILE);
+  /* Snow depth (0-1) at the middle of one tile, for whatever stands on it
+     — a tree's crown, a fence rail, the fountain. Read off the same field
+     the ground is drawn from, so a tree in a drift is capped and a tree on
+     bare grass isn't. Sharpened toward 0 or 1, since the ground under it
+     is either white or it isn't. */
+  function snowAt(x, y) {
+    if (lying <= 0 || x < 0 || y < 0 || x >= W || y >= H) return 0;
+    return Math.max(0, Math.min(1, depthAt(x * SUB + SUB / 2, y * SUB + SUB / 2) * 2.2));
+  }
+  /* Ponds freeze over as one sheet rather than tile by tile — patchy ice
+     on open water is the same chessboard as patchy snow. */
+  function iceOnWater() { return Math.min(1, lying * 2) * 0.75; }
+
+  /* Tiles that hold a drift. Streets and the station get packed snow
+     instead, water gets ice, and indoors gets none. */
+  function holdsDrift(t) {
+    return t !== T.PATH && t !== T.FOUNTAIN && t !== T.PLATFORM && t !== T.RAIL &&
+           t !== T.WATER && t !== T.FLOOR && t !== T.CAVE;
+  }
+
+  /* One cell of the fine grid, given the depth at its corners (clockwise
+     from top left), as marching squares: walk the cell's edge, taking the
+     corners under snow and the points between corners where the snowline
+     crosses. A cell with two opposite corners under snow and a bare middle
+     is two separate corners, not one band across it.
+     Each piece is left open: fill() closes it anyway, and in Chrome an
+     explicit closePath() costs over a hundred times what a lineTo() does,
+     which across a screenful of snowline was most of a repaint. */
+  let pen = 0;
+  function to(ctx, x, y) { if (pen++) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
+  function snowCell(ctx, px, py, a, b, c, d) {
+    const A = a > 0, B = b > 0, C = c > 0, D = d > 0, s = STEP;
+    const top = px + s * a / (a - b), right = py + s * b / (b - c);
+    const bottom = px + s * d / (d - c), left = py + s * a / (a - d);
+    pen = 0;
+    if (A === C && B === D && A !== B && a + b + c + d <= 0) {
+      if (A) {
+        to(ctx, px, py); to(ctx, top, py); to(ctx, px, left);
+        pen = 0; to(ctx, px + s, py + s); to(ctx, bottom, py + s); to(ctx, px + s, right);
+      } else {
+        to(ctx, top, py); to(ctx, px + s, py); to(ctx, px + s, right);
+        pen = 0; to(ctx, bottom, py + s); to(ctx, px, py + s); to(ctx, px, left);
+      }
       return;
     }
-    const a = snowAt(x, y);
-    if (a <= 0.02) return;
-    if (t === T.WATER) {                                // renders as a skin of ice, not a drift
-      ctx.fillStyle = 'rgba(206,228,240,' + (a * 0.75).toFixed(3) + ')';
-      ctx.fillRect(px, py, TILE, TILE);
-      return;
+    if (A) to(ctx, px, py);
+    if (A !== B) to(ctx, top, py);
+    if (B) to(ctx, px + s, py);
+    if (B !== C) to(ctx, px + s, right);
+    if (C) to(ctx, px + s, py + s);
+    if (C !== D) to(ctx, bottom, py + s);
+    if (D) to(ctx, px, py + s);
+    if (D !== A) to(ctx, px, left);
+  }
+
+  /* Draws the snow for tiles x0..x1, y0..y1 over already-drawn ground.
+     Drifts are the snowline traced through the fine grid, all in one
+     path and one fill — separate fills would leave hairline seams where
+     neighbouring pieces meet. They stop square at a street's edge, the
+     way a cleared road leaves a bank. The fill's shadow is a thin
+     blue-grey lip under each drift, which is what makes a white patch
+     read as snow lying on the grass rather than a hole cut in it. */
+  const corners = new Float32Array((SUB + 1) * (SUB + 1));
+  function snowField(ctx, x0, y0, x1, y1, dpr) {
+    /* Streets get thin, even, packed snow, never a drift, since they're
+       walked constantly. Deliberately capped well short of white: even
+       under heavy snowfall, the roads need to stay visually distinct so
+       the village's layout still reads. */
+    const packed = Math.min(0.5, lying * 0.62), ice = iceOnWater();
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      const t = get(x, y);
+      if (t === T.WATER) {
+        if (ice <= 0.02) continue;
+        ctx.fillStyle = 'rgba(206,228,240,' + ice.toFixed(3) + ')';
+      } else if (t === T.PATH || t === T.FOUNTAIN || t === T.PLATFORM || t === T.RAIL) {
+        if (packed <= 0.02) continue;
+        ctx.fillStyle = 'rgba(250,251,255,' + packed.toFixed(3) + ')';
+      } else continue;
+      ctx.fillRect(x * TILE, y * TILE, TILE, TILE);
     }
-    /* `a` (depth) controls the *size* of the drawn patch, not its
-       opacity — a fixed-size patch fading in place would look like a
-       transparency filter over the grass, whereas patches growing and
-       merging into each other is what actually reads as snow. Nearly
-       opaque throughout, so overlapping patches don't visibly stack into rings. */
-    const r = hash(x * 3 + 7, y * 9 + 1), r2 = hash(x * 11 + 2, y * 5 + 6);
-    /* Reaches near-full opacity well before depth is at its max. Leaving
-       it more transparent at moderate depth would let the ground show
-       through differently under one overlapping shape vs. two, which
-       prints the tile grid back onto the snowfield as a faint lattice. */
-    ctx.fillStyle = 'rgba(252,253,255,' + Math.min(1, 0.55 + a * 0.75).toFixed(3) + ')';
-    /* Once in a full drift (a > 0.42), fills the whole tile — with
-       corners cut, since a square fill is the shape that most reveals the
-       tile grid — plus a jittered ellipse that bulges past the tile edge
-       for a ragged border. Both shapes go in one path so the overlap
-       between them is filled once, not doubled up. */
+
+    const R = SUB + 1;
+    ctx.save();
+    ctx.fillStyle = '#fbfcff';
+    ctx.shadowColor = 'rgba(90,112,140,.32)';
+    ctx.shadowOffsetY = 2 * (dpr || 1);       // shadow offsets ignore the transform, so these are device pixels
     ctx.beginPath();
-    if (a > 0.42) {
-      if (ctx.roundRect) ctx.roundRect(px - 2, py - 2, TILE + 4, TILE + 4, 8);
-      else ctx.rect(px, py, TILE, TILE);
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      if (!holdsDrift(get(x, y))) continue;
+      const t = survey(x, y), px = x * TILE, py = y * TILE;
+      if (depth(lo[t]) <= 0) continue;                                    // clear
+      if (depth(hi[t]) > 0) { ctx.rect(px, py, TILE, TILE); continue; }   // buried
+      for (let j = 0, k = 0; j <= SUB; j++)
+        for (let i = 0; i <= SUB; i++, k++) corners[k] = depthAt(x * SUB + i, y * SUB + j);
+      for (let j = 0; j < SUB; j++) {
+        let run = -1;                         // where a run of wholly snowed-over cells began
+        for (let i = 0; i <= SUB; i++) {
+          const k = j * R + i;
+          if (i < SUB && corners[k] > 0 && corners[k + 1] > 0 && corners[k + R] > 0 && corners[k + R + 1] > 0) {
+            if (run < 0) run = i;
+            continue;
+          }
+          if (run >= 0) { ctx.rect(px + run * STEP, py + j * STEP, (i - run) * STEP, STEP); run = -1; }
+          if (i < SUB) snowCell(ctx, px + i * STEP, py + j * STEP, corners[k], corners[k + 1], corners[k + R + 1], corners[k + R]);
+        }
+      }
     }
-    ctx.ellipse(px + 8 + r * 16, py + 8 + r2 * 16,
-                5 + a * (20 + r * 18), 4 + a * (16 + r2 * 16), 0, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
   }
 
   /* ------------------------------------------------------------- drawing */
@@ -1330,8 +1383,7 @@ LG.world = (function () {
     // Snow drawn after all ground tiles, as a separate pass --
     // drawing it tile-by-tile alongside the ground would let each
     // drift's spillover get clipped again by the following tile's grass.
-    if (lying > 0)
-      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) snowOnTile(ctx, x, y, x * TILE, y * TILE);
+    if (lying > 0) snowField(ctx, x0, y0, x1, y1, dpr);
     drawPropsPass(ctx, x0, y0, x1, y1, dpr);
   }
 
@@ -1349,7 +1401,7 @@ LG.world = (function () {
       const r = hash(x, y);
       if ((t + r * 6) % 4 >= 1) continue;
       // Drawn over the ice rather than under it now, so fade it by as much as the ice would.
-      const ice = lying > 0 ? snowAt(x, y) * 0.75 : 0;
+      const ice = iceOnWater();
       ctx.fillStyle = 'rgba(255,255,255,' + (0.22 * (1 - ice)).toFixed(3) + ')';
       ctx.fillRect(x * TILE + 6, y * TILE + 10 + (r * 8 | 0), 12, 2);
     }

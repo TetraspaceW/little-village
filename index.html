@@ -104,7 +104,9 @@
       </div></div>
 
       <div class="composer">
-        <textarea id="dlgInput" rows="1" placeholder="Say something…"></textarea>
+        <!-- autocomplete off: otherwise Firefox asks its main process for form
+             history on every keystroke (82 lookups in one short chat). -->
+        <textarea id="dlgInput" rows="1" placeholder="Say something…" autocomplete="off"></textarea>
         <button id="dlgSend">Say it</button>
       </div>
     </div>

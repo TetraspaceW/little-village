@@ -204,10 +204,15 @@
         translations and furigana, writing what a villager takes away from a
         conversation, and (on Logfare, which has no Jev) checking what they actually
         told you and confirming a trade was agreed. Cheap and literal-minded beats
-        clever here. On OpenRouter, TypeSafe's Jev handles movement decisions, trade
+        clever here. On OpenRouter, TypeSafe's Jev handles movement decisions by default, trade
         confirmation, and fact-checking instead — a fixed set of options in, a typed
         choice and a probability out, no prose, cheaper than asking the helper model.</small>
       </label>
+
+      <label class="check"><input type="checkbox" id="setNeedleMovement"> Try Needle for movement decisions
+        <small>Cactus Needle 3 chooses where villagers go locally instead of using Jev or the
+        helper model. If it makes no choice, villagers follow their habits.
+        About 35MB downloads on first use. A provider key is still required for dialogue.</small></label>
 
       <div id="setError"></div>
 
@@ -294,6 +299,7 @@
 <script src="js/time.js"></script>
 <script src="js/data.js"></script>
 <script src="js/chain.js"></script>
+<script src="js/needle.js"></script>
 <script src="js/llm.js"></script>
 <script src="js/tts.js"></script>
 <script src="js/world.js"></script>

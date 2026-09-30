@@ -787,7 +787,7 @@ LG.dialogue = (function () {
       // One session per villager: each has their own stable prefix, so
       // it's each villager's turns that are worth keeping on one provider.
       reply = await LG.llm.speak(cfg, built.text, msgs, built.schema,
-                                 { cachePrefixes: [built.core, built.stable], session: 'npc-' + npc.id });
+                                 { who: npc.def.name, cachePrefixes: [built.core, built.stable], session: 'npc-' + npc.id });
     } catch (err) {
       say('⚠ ' + err.message, 'error');
       busy = false; el.dlgSend.disabled = false;
@@ -939,7 +939,7 @@ LG.dialogue = (function () {
     const L = LG.LANGUAGES[LG.game.settings.lang];
     try {
       const got = await LG.llm.gloss(LG.game.llmConfig(), spoken,
-        { langName: L.name, romanLabel: (L.romanize && !have.roman) ? L.romanLabel : null });
+        { who: npc.def.name, langName: L.name, romanLabel: (L.romanize && !have.roman) ? L.romanLabel : null });
       if (!got) return;
       const turn = npc.history[npc.history.length - 1];
       if (!have.translation && got.translation) {
@@ -1022,7 +1022,7 @@ LG.dialogue = (function () {
     let last = null;
     for (let attempt = 0; attempt < 2; attempt++) {
       let got = null;
-      try { got = await LG.llm.furigana(LG.game.llmConfig(), spoken, attempt); }
+      try { got = await LG.llm.furigana(LG.game.llmConfig(), spoken, attempt, npc.def.name); }
       catch (e) { got = null; }
       last = got;
       const ok = usableRuby(got, spoken);
@@ -1055,7 +1055,7 @@ LG.dialogue = (function () {
     const L = LG.LANGUAGES[LG.game.settings.lang];
     try {
       const confirmed = await LG.llm.judge(LG.game.llmConfig(), spoken, reply.translation, candidates,
-                                           { langName: L.name, furigana: !!L.furigana, diacritics: !!L.diacritics });
+                                           { who: npc.def.name, langName: L.name, furigana: !!L.furigana, diacritics: !!L.diacritics });
       confirmed.forEach(c => {
         // fall back to the line as spoken, so a note is never in the wrong language
         const note = c.note || spoken;

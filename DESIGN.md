@@ -162,8 +162,11 @@ OpenRouter's decisions endpoint (`decisionPost`/`askJev` in `js/llm.js`), not
 
 - All API traffic goes through two functions in `js/llm.js`. Each call is logged in
   full: system prompt, messages, **raw reply**, reasoning (both providers return it in
-  a separate field), model, latency, usage, and errors. It prints as a collapsed console
-  group and goes to `logs/` via the log server.
+  a separate field), model, latency, usage, and errors. It prints as one console line
+  with the record attached, and goes to `logs/` via the log server.
+- **Each caller names its call** (`kind`: villager, chatter, intent, notebook, trade, …;
+  `who`: the villager). Reading it back off the system prompt needed a table kept in step
+  with every prompt, twice, and misfiled the Jev calls, which have no prompt.
 - **Cost is tracked as villager vs helper.** Over 2.8 h of play, the main model made
   ~60 calls/h and the helper ~1,200/h, which put 3.5× more cost on the helper side.
   `tools/latency-report.js` uses the same split, by which model answered, so chatter

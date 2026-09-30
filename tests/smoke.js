@@ -780,6 +780,39 @@ async function jevPicksThePlace() {
   ok(sent.length === 1 && sent[0].url.indexOf('logfare.ai') !== -1,
      'on Logfare, which has no route to Jev, the helper model is asked');
   ok(!!onLF && onLF.go === 'the bakery' && onLF.why === 'hungry', 'and still says why');
+
+  section('each call is logged as what it is for, and who it is about');
+  const L = s4.LG.llm;
+  const or = { provider: 'openrouter', apiKey: 'k', model: 'deepseek/deepseek-v4.1-flash' };
+  const lf = { provider: 'logfare', apiKey: 'k', model: 'logfare/auto' };
+  const logged = async (what, run, kind, who) => {
+    await run();
+    const e = L.transcript[L.transcript.length - 1];
+    ok(e.kind === kind && e.who === who,
+       what + ' is logged as ' + kind + ', about ' + who + ' (got ' + e.kind + ', ' + e.who + ')');
+  };
+  const deal = { npcName: 'Mira', wants: 'a pie', gives: 'a shell' };
+  const facts = [{ id: 'f0', text: 'Mira has a shell.' }];
+  for (const cfg of [or, lf]) {
+    const on = cfg === or ? ', by Jev' : ', on Logfare';
+    await logged('a trade check' + on, () => L.confirmTrade(cfg, 'Da.', 'Yes.', deal), 'trade', 'Mira');
+    await logged('a fact check' + on, () => L.judge(cfg, 'Da.', 'Yes.', facts, { who: 'Mira' }), 'notebook', 'Mira');
+    await logged('a movement decision' + on, () => L.intent(cfg, opts), 'intent', 'Petra');
+  }
+  await logged('a line to the traveller',
+    () => L.speak(or, 'You are Mira.', [{ role: 'user', content: 'hi' }], null, { who: 'Mira' }), 'villager', 'Mira');
+  await logged('a gloss', () => L.gloss(or, 'Da.', { who: 'Mira' }), 'gloss', 'Mira');
+  await logged('furigana', () => L.furigana(or, '村', 0, 'Mira'), 'furigana', 'Mira');
+  await logged('a revision', () => L.revise(or, { who: 'Mira', held: ['a line'], fresh: 'news' }), 'revise', 'Mira');
+  await logged('a line between villagers',
+    () => L.converse(or, { me: opts.me, them: { name: 'Olo', job: 'the fisher' }, langName: 'Russian' }),
+    'chatter', 'Petra');
+  await logged('what two villagers took away',
+    () => L.recall(or, { transcript: [], a: { name: 'Mira', facts: [] }, b: { name: 'Olo', facts: [] } }),
+    'recall', 'Mira & Olo');
+  await logged('a notice', () => L.notice(or, { me: opts.me, langName: 'Russian' }), 'notice', 'Petra');
+  ok(L.transcript.filter(e => e.model === 'typesafe/jev-1.13').every(e => e.system === null),
+     'and a Jev call, which takes no system prompt, is logged without an invented one');
 }
 
 /* ------------------------------------------------------- what they believe now

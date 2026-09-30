@@ -1811,7 +1811,7 @@ LG.game = (function () {
     if (!claimed.length) return;
     const candidates = claimed.map(id => ({ id, text: plan.facts[id].text }));
     const L = LG.LANGUAGES[settings.lang];
-    LG.llm.judge(llmConfig(), text, entry.translation, candidates, { langName: L.name })
+    LG.llm.judge(llmConfig(), text, entry.translation, candidates, { who: n.def.name, langName: L.name })
       .then(confirmed => { confirmed.forEach(c => entry.factIds.push(c.id)); })
       .catch(() => {});
   }

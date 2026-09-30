@@ -131,7 +131,13 @@ LG.actors = (function () {
       if (decide && decide(a, green)) { a.deciding = true; a.decideSince = a.lived; return; }
       want = byDice(a, green);
     }
-    if (!want || want === a.patch) return;
+    /* Picking the patch they already have only means "stay put" if
+       they're actually standing in it. A route cut short (two villagers
+       stopping to chat, the player talking to them, a chase, a reload)
+       leaves `patch` pointing at where they were headed; without the
+       inRect check, choosing that place again would leave them standing
+       in the street for good, since wander() won't step outside it. */
+    if (!want || (want === a.patch && W.inRect(a, want))) return;
 
     /* Find a walkable point inside the target patch — "open" tile isn't
        the same as "reachable": e.g. the woodcutter Ilya's home patch is in

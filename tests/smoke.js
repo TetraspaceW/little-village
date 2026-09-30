@@ -245,6 +245,38 @@ for (const n of npcs) {
   ok(typeof LG.view.where(n) === 'string', n.def.name + ' can still say where they are');
 }
 
+/* A walk cut short -- two villagers stopping to chat, the player talking
+   to them, a reload -- clears the route but leaves `patch` set to where
+   they were headed. Regression test for villagers left standing in the
+   street for good: picking that same building again read as "already
+   there", so they never set off. */
+section('a walk cut short is taken up again');
+{
+  const A = LG.actors, W = LG.world, n = npcs[0];
+  const keep = ['px', 'py', 'tx', 'ty', 'patch', 'route', 'thought', 'routeCool',
+                'wantsGo', 'frozen', 'lived'].map(k => [k, n[k]]);
+  const far = b => Math.abs(b.doorX - n.tx) + Math.abs(b.doorY - n.ty);
+  const b = W.buildings.slice().sort((p, q) => far(q) - far(p))[0];
+  const choose = () => { n.routeCool = 0; n.wantsGo = b.inside; A.routine(n, 0.1, LG.GREEN, null); };
+  const walkOn = until => { for (let i = 0; i < 20000 && n.route && n.route.length > until; i++) A.walk(n, 0.05, 34); };
+
+  n.frozen = false; n.route = null;
+  choose();
+  const half = n.route ? n.route.length >> 1 : 0;
+  ok(half > 2, n.def.name + ' sets off for the ' + b.label);
+  walkOn(half);
+  n.route = null;                                    // as meet() does
+  ok(W.buildingUnder(n) !== b, 'and is stopped in the street, not yet inside');
+  choose();
+  ok(!!(n.route && n.route.length), 'choosing the ' + b.label + ' again sets them walking');
+  walkOn(0);
+  ok(W.buildingUnder(n) === b, 'and they end up inside it');
+  choose();
+  ok(!(n.route && n.route.length), 'once inside, choosing it again keeps them where they are');
+
+  keep.forEach(([k, v]) => { n[k] = v; });
+}
+
 /* "Open" isn't the same as "reachable" -- a forest is where that gap
    matters most, since chain.js can leave the errand's terminal item in
    any glade, and a glade sealed off by trees would make the errand

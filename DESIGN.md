@@ -46,6 +46,9 @@ the game made of it, or in a prompt sentence that did something other than what 
   villager tries several random spots in the target patch before giving up. A test
   checks that every villager can reach every patch they can be sent to, and every
   generated village is flood-filled to check each door has a path to it.
+- **Headed there is not there.** `patch` is set when a walk starts, and a chat, the
+  player, a chase or a reload can clear the route partway. Picking the same place again
+  only counts as staying put if they're standing in it (`routine()` in `js/npc.js`).
 - Mikhalych's rice hut exists because a villager once hallucinated it (`OLD-LI.md`).
 
 ## Jev: fixed-choice questions (OpenRouter only)

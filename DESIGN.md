@@ -385,6 +385,10 @@ everything at every level. The README has the table.
   rasterises on the call. Chrome hid a 45–70 ms snowy repaint that Firefox felt. The
   vignette is a CSS gradient over the canvas: filled into it every frame it cost Firefox
   ~5 ms at 1900×1350.
+- **Keep the console light.** A Floorp profile showed the game's frames stalling for
+  1.8 s while the browser's parent process collected garbage; the game's own frame was a
+  few ms. The LLM audit printed ~6 messages a call with the whole prompt, which the console
+  keeps in that process; it now prints one line per call with the record attached.
 
 ## Touch and mobile layout
 

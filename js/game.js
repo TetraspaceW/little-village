@@ -1690,7 +1690,7 @@ LG.game = (function () {
     }
 
     ctx.restore();
-    LG.sky.draw(ctx, vw, vh, W.roofRects(cam, vw, vh, dpr), dpr);
+    LG.sky.draw(ctx, vw, vh, W.roofRects(cam, vw, vh, dpr, room), dpr);
 
     // Drawn on top of the weather -- it's a UI control, not part of the scenery.
     LG.touch.draw(ctx);

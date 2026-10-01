@@ -77,9 +77,10 @@ LG.sky = (function () {
     if (flash > 0) flash = Math.max(0, flash - dt * 2.2);
   }
 
-  /* Rain, snow and sand stop at the roofs: the roofs' screen rectangles are
-     cut out with an even-odd clip. Fog and haze drift round buildings
-     instead, and a hard cut-out in a soft cloud looks worse than overlap. */
+  /* Rain, snow and sand fall over the roofs, but not inside the building the
+     player is in: its roof (world.roofRects) is cut out with an even-odd
+     clip. Fog and haze never are: a hard cut-out in a soft cloud looks
+     worse than the overlap. */
   function shelterClip(ctx, vw, vh, roofs) {
     if (!roofs || !roofs.length) return false;
     ctx.save();

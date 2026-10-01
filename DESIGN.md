@@ -351,8 +351,9 @@ everything at every level. The README has the table.
   screen, which leaves it clean about 83% of the time (asserted in tests).
   Villager sheltering is a separate switch from darkness, because drizzle is worth
   sheltering from but barely shows.
-- Rain and snow are clipped out of building footprints (even-odd clip). Fog and haze are
-  not.
+- Rain, snow and sand fall over every roof (seen from above, they're in the air over it),
+  and are clipped out only of the building the player is in (even-odd clip). Fog and
+  haze are never clipped.
 - **Snow depth is its own state.** It builds while snowing, holds in a hard frost, and
   melts at a seasonal rate. It's drawn on ground, canopies, fence tops, and roofs; the
   pond freezes and the fountain stops. Streets hold the least snow so paths stay

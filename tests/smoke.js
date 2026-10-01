@@ -444,6 +444,19 @@ section('the woods and the fog are stamped, not drawn');
   LG.time.setWeather(wasWeather || 'clear', 999);
 }
 
+section('the weather falls over the roofs, and stays out of the room you are in');
+{
+  const cam = { x: 0, y: 0 }, T = LG.world.TILE;
+  const fullW = LG.world.W * T, fullH = LG.world.H * T;
+  ok(LG.world.roofRects(cam, fullW, fullH, 1, null).length === 0,
+     'outside, nothing is cut out of the falling snow');
+  const hall = LG.world.buildings[0];
+  const r = LG.world.roofRects(cam, fullW, fullH, 1, hall);
+  ok(r.length === 1 && r[0].x <= hall.x * T && r[0].x + r[0].w >= (hall.x + hall.w) * T &&
+     r[0].y <= hall.y * T && r[0].y + r[0].h >= (hall.y + hall.h) * T,
+     'inside, the building you are in is, eaves and all, and no other');
+}
+
 section('a speech bubble wraps in Chinese and Japanese too');
 {
   let measured = 0;

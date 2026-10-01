@@ -76,15 +76,17 @@ LG.world = (function () {
     return buildingAt((a.px / TILE) | 0, ((a.py + 8) / TILE) | 0);
   }
 
-  /* Returns building roofs in screen space, used by sky.js to clip
-     precipitation. Includes the roof overhang, so rain/snow stops at the
-     eaves rather than at the wall line. */
-  function roofRects(cam, vw, vh, dpr) {
+  /* The roof over `room`, the building the player is in, in screen space,
+     for sky.js to keep the weather out from under; none when the player is
+     outside, since rain and snow fall past every roof seen from above.
+     Includes the overhang, so the weather stops at the eaves. */
+  function roofRects(cam, vw, vh, dpr, room) {
     const out = [];
     // The same whole-device-pixel offset draw() uses, or the weather clip drifts off the roof.
     const d = dpr || 1;
     const ox = Math.round(cam.x * d) / d, oy = Math.round(cam.y * d) / d;
     for (const b of buildings) {
+      if (b !== room) continue;
       const x = b.x * TILE - 6 - ox, y = b.y * TILE - 10 - oy;
       const w = b.w * TILE + 12, h = b.h * TILE + 10;
       if (x > vw || y > vh || x + w < 0 || y + h < 0) continue;

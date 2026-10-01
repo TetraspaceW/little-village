@@ -503,10 +503,14 @@ LG.game = (function () {
     let got = [];
     if ({ openrouter: env.openrouterKey, logfare: env.logfareKey }[settings.provider]) got.push('the model key');
     if (env.ttsKey) { settings.ttsKey = env.ttsKey; settings.voices = true; got.push('a voice key'); }
-    if (env.model) settings.model = env.model;
-    if (env.helper) settings.helper = env.helper;
+    /* Under the log server .env decides the models: left blank they are the
+       defaults, not whatever this browser last used. A blank helper is the
+       provider's default (LG.llm.helperModel). */
+    settings.model = env.model || LG.llm.MODELS[settings.provider][0].id;
+    settings.helper = env.helper || '';
     if (env.lang && LG.LANGUAGES[env.lang]) settings.lang = env.lang;
     if (env.level && LG.LEVELS[env.level]) settings.level = env.level;
+    if (gated) openSettings(true);            // the gate was drawn before .env was read
     if (!got.length && was.lang === settings.lang && was.level === settings.level) return;
 
     fromEnv = true;

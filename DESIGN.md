@@ -491,6 +491,9 @@ over `.env` keys, and stores the save.
   proxy API calls, so the game still works as a plain static page.
 - It binds to `127.0.0.1` only, refuses `/env` to non-local connections, and won't serve
   dotfiles or `logs/`.
+- Under it, `.env` decides the models on every load (`useEnv`). Blank `LG_MODEL` /
+  `LG_HELPER` mean the defaults in `js/llm.js`, not what `lg-settings` last held; a model
+  picked in the panel lasts the session. Blank `LG_LANG` / `LG_LEVEL` leave the browser's.
 
 ## Voices
 

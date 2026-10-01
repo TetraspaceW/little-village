@@ -794,6 +794,49 @@ async function keysPerProvider() {
   ok(el('setKey').value === 'or-not-real', 'and the OpenRouter one is there too');
 }
 
+/* Under the log server, .env decides the models on every load: left
+   blank there, they are the defaults, whatever this browser last used.
+   Each case is a fresh sandbox served over http, whose fetch plays the
+   log server's /env. */
+async function envDecidesTheModels() {
+  section('under the log server, .env decides the models');
+  const MAIN = LG.llm.MODELS.openrouter[0].id, HELPER = LG.llm.HELPERS.openrouter[0].id;
+  async function load(stored, env) {
+    const kept = { 'lg-settings': JSON.stringify(stored) };
+    const sb = makeSandbox(kept);
+    sb.location = { protocol: 'http:', origin: 'http://localhost:8787' };
+    sb.fetch = async url => {
+      if (url !== '/env') throw new Error('no network in the smoke test');
+      return { ok: true, json: async () => Object.assign({
+        provider: '', openrouterKey: '', logfareKey: '', ttsKey: '',
+        model: '', helper: '', lang: '', level: '' }, env) };
+    };
+    for (const f of files) {
+      vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sb, { filename: f });
+    }
+    sb.LG.game.init();
+    sb.LG.game.thoughts = false;
+    await new Promise(r => setTimeout(r, 0));          // /env has answered
+    return { sb, set: sb.LG.game.settings, kept };
+  }
+  const stale = { provider: 'openrouter', model: 'old/main', helper: 'old/helper' };
+  const keyed = Object.assign({ apiKey: 'or-stored', keys: { openrouter: 'or-stored' } }, stale);
+
+  let g = await load(keyed, { openrouterKey: 'or-env' });
+  ok(g.set.model === MAIN && g.set.helper === '',
+     'blank in .env, a browser that last used other models is back on the defaults');
+  ok(g.sb.LG.llm.helperModel(g.sb.LG.game.llmConfig()) === HELPER, 'the helper being the provider’s default');
+  ok(JSON.parse(g.kept['lg-settings']).model === MAIN, 'and that is what it now has stored');
+
+  g = await load(keyed, { openrouterKey: 'or-env', model: 'env/main', helper: 'env/helper' });
+  ok(g.set.model === 'env/main' && g.set.helper === 'env/helper', 'set in .env, they are the ones used');
+
+  g = await load(stale, {});
+  const el = id => g.sb.document.getElementById(id);
+  ok(el('settings').classList.contains('open') && el('setModel').value === MAIN && el('setHelper').value === HELPER,
+     'with no key anywhere, the front door offers the defaults too');
+}
+
 /* One click listener for every blurred gloss, wherever it was rendered,
    rather than handlers re-attached each time a box is redrawn. */
 function glossesClearWhenClicked() {
@@ -1598,6 +1641,7 @@ async function villagersTalking() {
 
   await promptCached();
   await keysPerProvider();
+  await envDecidesTheModels();
   glossesClearWhenClicked();
   await jevPicksThePlace();
   await schemasWhereTaken();

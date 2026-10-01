@@ -77,12 +77,10 @@ LG.sky = (function () {
     if (flash > 0) flash = Math.max(0, flash - dt * 2.2);
   }
 
-  /* Clips rain/snow/sand so they don't render through roofs. Roofs arrive
-     as screen-space rectangles and are punched out of the particle layer
-     with an even-odd clip (one path per frame). Fog and haze skip this:
-     they drift around buildings rather than falling onto them, and a hard
-     rectangular cutout in a soft cloud looks worse than the overlap it
-     would fix. */
+  /* Rain, snow and sand fall over the roofs, but not inside the building the
+     player is in: its roof (world.roofRects) is cut out with an even-odd
+     clip. Fog and haze never are: a hard cut-out in a soft cloud looks
+     worse than the overlap. */
   function shelterClip(ctx, vw, vh, roofs) {
     if (!roofs || !roofs.length) return false;
     ctx.save();
@@ -93,10 +91,9 @@ LG.sky = (function () {
     return true;
   }
 
-  /* Caches one pre-rendered wisp sprite per weather kind, at the
-     largest size a wisp is ever drawn, invalidated when the pixel ratio
-     changes. Returns null when there's no canvas to render into, which
-     signals the caller to fall back to drawing live ellipses instead. */
+  /* One wisp sprite per kind, at the largest size a wisp is drawn, rebuilt
+     when the pixel ratio changes. Null with no canvas to draw it on, and
+     the wisps are drawn live. */
   const WISP = { fog: 260, haze: 260 };
   let wisps = {}, wispDpr = 0;
   function wisp(kind, dpr) {
@@ -120,6 +117,32 @@ LG.sky = (function () {
     }
     wisps[kind] = made;
     return made;
+  }
+
+  /* Snowflake sprites: FLAKE_SIZES radii across the flakes' 1.4-3.2 px
+     range, drawn one texel per device pixel. Null without a pixel ratio or
+     a canvas to draw them on, and the flakes are drawn live instead. */
+  const FLAKE = 'rgba(255,255,255,.85)', FLAKE_SIZES = 6;
+  let flakeSprites = null, flakeDpr = 0;
+  function flakes(dpr) {
+    if (!dpr) return null;
+    if (flakeDpr === dpr) return flakeSprites;
+    flakeDpr = dpr; flakeSprites = null;
+    const out = [];
+    for (let i = 0; i < FLAKE_SIZES; i++) {
+      const r = 1.4 + (i + 0.5) / FLAKE_SIZES * 1.8, size = Math.ceil(r + 1) * 2;
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = Math.round(size * dpr);
+      const g = canvas.getContext && canvas.getContext('2d');
+      if (!g || typeof g.arc !== 'function') return null;
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.fillStyle = FLAKE;
+      g.beginPath();
+      g.arc(size / 2, size / 2, r, 0, Math.PI * 2);
+      g.fill();
+      out.push({ canvas, half: size / 2, side: canvas.width / dpr });
+    }
+    return (flakeSprites = out);
   }
 
   function draw(ctx, vw, vh, roofs, dpr) {
@@ -151,24 +174,36 @@ LG.sky = (function () {
       for (const p of parts) { ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + 4, p.y + 16 + p.v * 10); }
       ctx.stroke();
     } else if (kind === 'snow') {
-      ctx.fillStyle = 'rgba(255,255,255,.85)';
-      for (const p of parts) { ctx.beginPath(); ctx.arc(p.x, p.y, 1.4 + p.s * 1.8, 0, Math.PI * 2); ctx.fill(); }
+      /* Stamped from a sprite per size, like the trees and the fog: a
+         blizzard is ~380 flakes, and as a path each that was well past the
+         rate at which Firefox for Android stops honouring beginPath. */
+      const sizes = flakes(dpr);
+      if (sizes) {
+        for (const p of parts) {
+          const f = sizes[Math.min(FLAKE_SIZES - 1, (p.s * FLAKE_SIZES) | 0)];
+          ctx.drawImage(f.canvas, Math.round((p.x - f.half) * dpr) / dpr,
+                        Math.round((p.y - f.half) * dpr) / dpr, f.side, f.side);
+        }
+      } else {
+        ctx.fillStyle = FLAKE;
+        ctx.beginPath();
+        for (const p of parts) {
+          const r = 1.4 + p.s * 1.8;
+          ctx.moveTo(p.x + r, p.y);                 // a new subpath, not joined to the last flake
+          ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+        }
+        ctx.fill();
+      }
     } else if (kind === 'sand') {
       ctx.strokeStyle = 'rgba(214,180,120,.5)'; ctx.lineWidth = 1.6;
       ctx.beginPath();
       for (const p of parts) { ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - 26 - p.v * 20, p.y + 2); }
       ctx.stroke();
     } else if (kind === 'fog' || kind === 'haze') {
-      /* A wisp is a large filled ellipse, drawn ~26 times per frame across
-         the screen. Rain/snow/sand are strokes, which barely load the
-         path rasterizer, which is why fog/haze specifically trigger the
-         same Firefox flashing bug as trees — see the disc-sprite notes
-         in world.js. Stamping from a pre-rendered sprite avoids that
-         load. The sprite is rendered at the largest wisp size and only
-         ever scaled down per-particle (never up), so nothing looks
-         softer than the original; image smoothing is explicitly
-         re-enabled here since the canvas has it disabled for crisp tile
-         rendering elsewhere. */
+      /* ~26 large filled ellipses a frame, the load that smeared trees in
+         Firefox (see the disc sprites in world.js), so they're stamped from
+         a sprite drawn at the largest size and only ever scaled down, with
+         smoothing on for it (the canvas has it off for crisp tiles). */
       const w = wisp(kind, dpr);
       ctx.globalAlpha = kind === 'fog' ? 0.10 : 0.05;
       if (w) {

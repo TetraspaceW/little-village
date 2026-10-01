@@ -344,8 +344,7 @@ section('the whole map draws');
       LG.time.setSnow(snow);
       LG.world.drawGround(ctx2d, cam, fullW, fullH);
       LG.world.drawBuildings(ctx2d, LG.world.buildings[0], cam, fullW, fullH);
-      LG.world.drawSigns(ctx2d, cam, fullW, fullH, lang, false);
-      LG.world.drawSigns(ctx2d, cam, fullW, fullH, lang, true);
+      LG.world.drawSigns(ctx2d, cam, fullW, fullH, lang);
       LG.world.drawAnimated(ctx2d, cam, fullW, fullH);
       drew++;
     }
@@ -362,11 +361,17 @@ section('the whole map draws');
   ok(present.has(LG.world.T.TREE) && present.has(LG.world.T.WATER),
      'and the ordinary ground it used to have');
 
-  // A sign is only clickable if its draw call registered a hit-box for it.
-  LG.world.drawSigns(ctx2d, cam, fullW, fullH, 'ru', false);
-  const st = LG.world._signs().find(s => s.key === 'Station');
-  ok(st && LG.world.overSign(st.x, st.y - 10), 'the station nameboard can be clicked');
-  ok(!LG.world.overSign(0, 0), 'and the empty corner of the map cannot');
+  // A sign is the village's name for the place and nothing else: no English line under it.
+  const written = [];
+  ctx2d.fillText = t => { written.push(t); };
+  LG.world.drawSigns(ctx2d, cam, fullW, fullH, 'ru');
+  delete ctx2d.fillText;
+  const english = LG.world._signs().map(s => LG.placeName(s.key, 'en'))
+    .filter(en => LG.world._signs().every(s => LG.placeName(s.key, 'ru') !== en));
+  ok(written.length === LG.world._signBoxes().length && written.every(t => english.indexOf(t) === -1),
+     'every sign has one line on it, in the village’s language');
+  const helpText = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  ok(!/sign[^<]*<\/b>[^.]*English/.test(helpText), 'and the help panel does not promise English on them');
 
   /* Sign boards are sized by measureText, unlike everything else here
      which is sized by the tile grid — making a board the one element
@@ -378,7 +383,7 @@ section('the whole map draws');
   const measured = ctx2d.measureText;
   ctx2d.measureText = () => ({ width: 37.3183 });
   for (const dpr of [1, 1.25, 1.5, 2, 2.625, 3]) {
-    LG.world.drawSigns(ctx2d, cam, fullW, fullH, 'ja', false, dpr);
+    LG.world.drawSigns(ctx2d, cam, fullW, fullH, 'ja', dpr);
     const boxes = LG.world._signBoxes();
     const adrift = boxes.filter(b => [b.x, b.y, b.x + b.w, b.y + b.h]
       .some(v => Math.abs(v * dpr - Math.round(v * dpr)) > 1e-6));
@@ -428,7 +433,53 @@ section('the woods and the fog are stamped, not drawn');
   ok(fogDrawn >= 20, 'fog is a screenful of big ellipses (' + fogDrawn + ')');
   ok(fogStamped <= 1, 'and one sprite once it has a pixel ratio (' + fogStamped + ')');
   console.log('   fog: ' + fogDrawn + ' ellipses a frame, ' + fogStamped + ' when stamped');
+
+  LG.time.setWeather('blizzard', 999);
+  for (let i = 0; i < 60; i++) LG.sky.step(1 / 60, 900, 640);
+  const flakesDrawn = curves(() => LG.sky.draw(ctx2d, 900, 640, null));
+  curves(() => LG.sky.draw(ctx2d, 900, 640, null, 2));          // renders the sprites, once
+  const flakesStamped = curves(() => LG.sky.draw(ctx2d, 900, 640, null, 2));
+  ok(flakesDrawn >= 300, 'a blizzard is hundreds of flakes (' + flakesDrawn + ')');
+  ok(flakesStamped === 0, 'stamped from sprites once it has a pixel ratio (' + flakesStamped + ' curves)');
   LG.time.setWeather(wasWeather || 'clear', 999);
+}
+
+section('the weather falls over the roofs, and stays out of the room you are in');
+{
+  const cam = { x: 0, y: 0 }, T = LG.world.TILE;
+  const fullW = LG.world.W * T, fullH = LG.world.H * T;
+  ok(LG.world.roofRects(cam, fullW, fullH, 1, null).length === 0,
+     'outside, nothing is cut out of the falling snow');
+  const hall = LG.world.buildings[0];
+  const r = LG.world.roofRects(cam, fullW, fullH, 1, hall);
+  ok(r.length === 1 && r[0].x <= hall.x * T && r[0].x + r[0].w >= (hall.x + hall.w) * T &&
+     r[0].y <= hall.y * T && r[0].y + r[0].h >= (hall.y + hall.h) * T,
+     'inside, the building you are in is, eaves and all, and no other');
+}
+
+section('a speech bubble wraps in Chinese and Japanese too');
+{
+  let measured = 0;
+  const wide = { measureText: t => { measured++; return { width: Array.from(t).length * 13 }; } };
+  const ja = '村の人はみんな、パン屋のミラさんが「今日は特別なパンがある」と言っていました。';
+  const lines = LG.actors._wrap(wide, ja);
+  ok(lines.length > 1, 'a long Japanese line takes more than one line (' + lines.length + ')');
+  ok(lines.every(l => Array.from(l).length * 13 <= 190), 'and none is wider than the bubble');
+  ok(lines.join('') === ja, 'without losing or reordering anything');
+  ok(lines.every(l => !/^[、。」』）]/.test(l)), 'no line starts with closing punctuation');
+  ok(lines.every(l => !/[「『（]$/.test(l)), 'or ends on an opening bracket');
+  const zh = '面包师米拉说今天有特别的面包，你要不要去看看？她的店就在广场旁边。';
+  ok(LG.actors._wrap(wide, zh).length > 1, 'Chinese wraps the same way');
+  const en = 'The quick brown fox jumps over the lazy dog and keeps on running far away';
+  const enLines = LG.actors._wrap(wide, en);
+  ok(enLines.length > 1 && enLines.join(' ') === en, 'and English still breaks between words');
+
+  const talker = { px: 100, py: 100, bubble: ja, bubbleT: 3 };
+  const g = Object.assign(Object.create(ctx2d), wide);
+  LG.actors.drawBubble(g, talker, 'serif');
+  measured = 0;
+  LG.actors.drawBubble(g, talker, 'serif');
+  ok(measured === 0, 'a bubble is wrapped once per line said, not measured again every frame');
 }
 
 section('every building says what it is, in the language you are learning');
@@ -701,7 +752,9 @@ async function keysPerProvider() {
   section('an old Anthropic setup, and a key per provider');
   const kept = {
     'lg-settings': JSON.stringify({ provider: 'anthropic', apiKey: 'sk-ant-not-real',
-                                    model: 'claude-sonnet-5', helper: 'claude-haiku-4-5' })
+                                    model: 'claude-sonnet-5', helper: 'claude-haiku-4-5',
+                                    showTranslation: true, npcChatter: false,
+                                    voiceQuality: 'any', voiceSpeed: 'fast' })
   };
   const s3 = makeSandbox(kept);
   for (const f of files) {
@@ -714,6 +767,8 @@ async function keysPerProvider() {
   ok(set.apiKey === '' && !set.keys.openrouter && !set.keys.logfare,
      'without the Anthropic key, which OpenRouter was never meant to see');
   ok(set.model === 'deepseek/deepseek-v4.1-flash' && set.helper === '', 'and on the default models');
+  ok(['showTranslation', 'npcChatter', 'voiceQuality', 'voiceSpeed'].every(k => !(k in set)),
+     'and the settings that are no longer choices are dropped, not carried along');
 
   const el = id => s3.document.getElementById(id);
   const pick = prov => { el('setProvider').value = prov; el('setProvider').onchange(); };
@@ -737,6 +792,71 @@ async function keysPerProvider() {
   ok(el('setKey').value === 'lf-not-real', 'so switching back to Logfare finds its key still there');
   pick('openrouter');
   ok(el('setKey').value === 'or-not-real', 'and the OpenRouter one is there too');
+}
+
+/* Under the log server, .env decides the models on every load: left
+   blank there, they are the defaults, whatever this browser last used.
+   Each case is a fresh sandbox served over http, whose fetch plays the
+   log server's /env. */
+async function envDecidesTheModels() {
+  section('under the log server, .env decides the models');
+  const MAIN = LG.llm.MODELS.openrouter[0].id, HELPER = LG.llm.HELPERS.openrouter[0].id;
+  async function load(stored, env) {
+    const kept = { 'lg-settings': JSON.stringify(stored) };
+    const sb = makeSandbox(kept);
+    sb.location = { protocol: 'http:', origin: 'http://localhost:8787' };
+    sb.fetch = async url => {
+      if (url !== '/env') throw new Error('no network in the smoke test');
+      return { ok: true, json: async () => Object.assign({
+        provider: '', openrouterKey: '', logfareKey: '', ttsKey: '',
+        model: '', helper: '', lang: '', level: '' }, env) };
+    };
+    for (const f of files) {
+      vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sb, { filename: f });
+    }
+    sb.LG.game.init();
+    sb.LG.game.thoughts = false;
+    await new Promise(r => setTimeout(r, 0));          // /env has answered
+    return { sb, set: sb.LG.game.settings, kept };
+  }
+  const stale = { provider: 'openrouter', model: 'old/main', helper: 'old/helper' };
+  const keyed = Object.assign({ apiKey: 'or-stored', keys: { openrouter: 'or-stored' } }, stale);
+
+  let g = await load(keyed, { openrouterKey: 'or-env' });
+  ok(g.set.model === MAIN && g.set.helper === '',
+     'blank in .env, a browser that last used other models is back on the defaults');
+  ok(g.sb.LG.llm.helperModel(g.sb.LG.game.llmConfig()) === HELPER, 'the helper being the provider’s default');
+  ok(JSON.parse(g.kept['lg-settings']).model === MAIN, 'and that is what it now has stored');
+
+  g = await load(keyed, { openrouterKey: 'or-env', model: 'env/main', helper: 'env/helper' });
+  ok(g.set.model === 'env/main' && g.set.helper === 'env/helper', 'set in .env, they are the ones used');
+
+  g = await load(stale, {});
+  const el = id => g.sb.document.getElementById(id);
+  ok(el('settings').classList.contains('open') && el('setModel').value === MAIN && el('setHelper').value === HELPER,
+     'with no key anywhere, the front door offers the defaults too');
+}
+
+/* One click listener for every blurred gloss, wherever it was rendered,
+   rather than handlers re-attached each time a box is redrawn. */
+function glossesClearWhenClicked() {
+  section('a blurred gloss clears when clicked, wherever it is');
+  const s6 = makeSandbox({});
+  const clicks = [];
+  s6.document.addEventListener = (type, fn) => { if (type === 'click') clicks.push(fn); };
+  for (const f of files) {
+    vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), s6, { filename: f });
+  }
+  s6.LG.game.init();
+  s6.LG.game.thoughts = false;
+  const blurred = s6.document.createElement('span');
+  blurred.classList.add('hidden-tr');
+  const click = target => clicks.forEach(fn => fn({ target: target }));
+  click({ closest: sel => sel === '.hidden-tr' ? blurred : null });
+  ok(clicks.length === 1 && !blurred.classList.contains('hidden-tr'), 'one listener on the page clears it');
+  blurred.classList.add('hidden-tr');
+  click({ closest: () => null });
+  ok(blurred.classList.contains('hidden-tr'), 'and a click anywhere else leaves it be');
 }
 
 /* ---------------------------------------------------------- Jev, always
@@ -780,6 +900,143 @@ async function jevPicksThePlace() {
   ok(sent.length === 1 && sent[0].url.indexOf('logfare.ai') !== -1,
      'on Logfare, which has no route to Jev, the helper model is asked');
   ok(!!onLF && onLF.go === 'the bakery' && onLF.why === 'hungry', 'and still says why');
+
+  section('each call is logged as what it is for, and who it is about');
+  const L = s4.LG.llm;
+  const or = { provider: 'openrouter', apiKey: 'k', model: 'deepseek/deepseek-v4.1-flash' };
+  const lf = { provider: 'logfare', apiKey: 'k', model: 'logfare/auto' };
+  const logged = async (what, run, kind, who) => {
+    await run();
+    const e = L.transcript[L.transcript.length - 1];
+    ok(e.kind === kind && e.who === who,
+       what + ' is logged as ' + kind + ', about ' + who + ' (got ' + e.kind + ', ' + e.who + ')');
+  };
+  const deal = { npcName: 'Mira', wants: 'a pie', gives: 'a shell' };
+  const facts = [{ id: 'f0', text: 'Mira has a shell.' }];
+  for (const cfg of [or, lf]) {
+    const on = cfg === or ? ', by Jev' : ', on Logfare';
+    await logged('a trade check' + on, () => L.confirmTrade(cfg, 'Da.', 'Yes.', deal), 'trade', 'Mira');
+    await logged('a fact check' + on, () => L.judge(cfg, 'Da.', 'Yes.', facts, { who: 'Mira' }), 'notebook', 'Mira');
+    await logged('a movement decision' + on, () => L.intent(cfg, opts), 'intent', 'Petra');
+  }
+  await logged('a line to the traveller',
+    () => L.speak(or, 'You are Mira.', [{ role: 'user', content: 'hi' }], null, { who: 'Mira' }), 'villager', 'Mira');
+  await logged('a gloss', () => L.gloss(or, 'Da.', { who: 'Mira' }), 'gloss', 'Mira');
+  await logged('furigana', () => L.furigana(or, '村', 0, 'Mira'), 'furigana', 'Mira');
+  await logged('a revision', () => L.revise(or, { who: 'Mira', held: ['a line'], fresh: 'news' }), 'revise', 'Mira');
+  await logged('a line between villagers',
+    () => L.converse(or, { me: opts.me, them: { name: 'Olo', job: 'the fisher' }, langName: 'Russian' }),
+    'chatter', 'Petra');
+  await logged('what two villagers took away',
+    () => L.recall(or, { transcript: [], a: { name: 'Mira', facts: [] }, b: { name: 'Olo', facts: [] } }),
+    'recall', 'Mira & Olo');
+  await logged('a notice', () => L.notice(or, { me: opts.me, langName: 'Russian' }), 'notice', 'Petra');
+  ok(L.transcript.filter(e => e.model === 'typesafe/jev-1.13').every(e => e.system === null),
+     'and a Jev call, which takes no system prompt, is logged without an invented one');
+}
+
+/* ------------------------------------------------------- a schema where it's taken
+   Every call that wants a structured reply sends its JSON Schema whenever
+   the model takes one (the catalogue says so), and never otherwise. */
+async function schemasWhereTaken() {
+  section('a reply schema goes with every call whose model takes one');
+  // A fresh game whose fetch plays OpenRouter: `net.catalogue` is 'up' or 'down', `net.reply` the model's answer.
+  const realNow = Date.now;
+  function fakeOpenRouter() {
+    const sb = makeSandbox({});
+    for (const f of files) {
+      vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sb, { filename: f });
+    }
+    const net = { catalogue: 'up', reply: '{}', lookups: 0, later: 0, sent: [] };
+    sb.Date = class extends Date { static now() { return realNow.call(Date) + net.later; } };
+    sb.fetch = async (url, init) => {
+      if (!init || !init.body) {                    // OpenRouter's model catalogue
+        net.lookups++;
+        if (net.catalogue === 'down') throw new Error('offline');
+        return { ok: true, json: async () => ({ data: [
+          { id: 'deepseek/deepseek-v4.1-flash', supported_parameters: ['structured_outputs'] },
+          { id: 'z-ai/glm-5.3-flash', supported_parameters: ['structured_outputs'] },
+          { id: 'late/model', supported_parameters: ['structured_outputs'] },
+          { id: 'plain/model', supported_parameters: ['temperature'] }] }) };
+      }
+      net.sent.push({ url: url, body: JSON.parse(init.body) });
+      return { ok: true, status: 200, json: async () => ({
+        choices: [{ message: { content: net.reply }, finish_reason: 'stop' }] }) };
+    };
+    sb.LG.llm.audit = false;
+    return { L: sb.LG.llm, net: net };
+  }
+  const { L, net } = fakeOpenRouter();
+  const sent = net.sent;
+  const or = { provider: 'openrouter', apiKey: 'k', model: 'deepseek/deepseek-v4.1-flash' };
+  const lf = { provider: 'logfare', apiKey: 'k', model: 'logfare/auto' };
+  const schemaOf = r => r.body.response_format ? r.body.response_format.json_schema.schema : null;
+  const lastSchema = () => schemaOf(sent[sent.length - 1]);
+  const me = { name: 'Petra', job: 'the gossip', persona: 'Nosy.' };
+
+  await Promise.all([L.gloss(or, 'Da.', { langName: 'Russian' }), L.gloss(or, 'Net.', { langName: 'Russian' })]);
+  ok(sent.length === 2 && sent.every(r => !!schemaOf(r)),
+     'the first calls to a model wait for its lookup, and both go with their schema');
+  ok(net.lookups === 1, 'from one look at the catalogue between them');
+  const gl = schemaOf(sent[0]);
+  ok(gl && gl.required.join() === 'translation' && gl.additionalProperties === false &&
+     sent[0].body.response_format.json_schema.strict === true,
+     'a gloss is held to its one field, strictly');
+  ok(sent[0].body.messages[1].content.indexOf('{"translation": "a plain English translation of the line"}') !== -1,
+     'and the prompt shows the same shape the schema enforces');
+
+  await L.revise(or, { who: 'Mira', held: ['a line'], fresh: 'news' });
+  ok((lastSchema() || {}).properties.n.type === 'integer', 'a revision goes with its schema');
+  await L.recall(or, { transcript: [], a: { name: 'Mira', facts: [] }, b: { name: 'Olo', facts: [] } });
+  const rc = lastSchema() || { properties: {}, required: [] };
+  ok(rc.required.join() === 'Mira,Olo' && rc.properties.Mira && rc.properties.Mira.required.join() === 'remembers,said',
+     'so does what two villagers took away, an object for each');
+  await L.notice(or, { me: me, langName: 'Chinese', romanLabel: 'pinyin' });
+  ok((lastSchema() || { required: [] }).required.join() === 'post,text,translation,roman,revealed',
+     'and a notice, with the romanisation the language has');
+  await L.converse(or, { me: me, them: { name: 'Olo', job: 'the fisher' }, langName: 'Russian' });
+  ok((lastSchema() || { required: [] }).required.join() === 'say,translation', 'and a line between villagers');
+
+  const main = { type: 'object', properties: { say: { type: 'string' } }, required: ['say'], additionalProperties: false };
+  net.reply = '{"say": "Hm."}';
+  await L.speak(or, 'You are Mira.', [{ role: 'user', content: 'hi' }], main, { who: 'Mira' });
+  ok(JSON.stringify(lastSchema()) === JSON.stringify(main), 'the villager’s own reply goes with its schema');
+  await L.speak(Object.assign({}, or, { model: 'plain/model' }), 'You are Mira.', [{ role: 'user', content: 'hi' }], main);
+  ok(!lastSchema(), 'but not to a model the catalogue says cannot take one');
+  await L.speak(lf, 'You are Mira.', [{ role: 'user', content: 'hi' }], main);
+  ok(!lastSchema(), 'nor on Logfare, which has no catalogue to ask');
+
+  // On Logfare the fact check and trade check go to the helper model, without a schema;
+  // their replies are read whether or not the model kept to the JSON shape.
+  const facts = [{ id: 'f0', text: 'Mira has a shell.' }];
+  net.reply = '{"told": [{"tag": "f0", "note": "a shell"}]}';
+  const told = await L.judge(lf, 'Da.', 'Yes.', facts, { langName: 'Russian' });
+  ok(told.length === 1 && told[0].id === 'f0' && told[0].note === 'a shell', 'a fact check reads its "told" list');
+  net.reply = '[{"tag": "f0"}]';
+  ok((await L.judge(lf, 'Da.', 'Yes.', facts, {})).length === 1, 'and a bare list, from a model that dropped the wrapper');
+  const deal = { npcName: 'Mira', wants: 'a pie', gives: 'a shell' };
+  net.reply = '{"answer": "yes"}';
+  ok(await L.confirmTrade(lf, 'Da.', 'Yes.', deal) === true, 'a trade check reads its answer');
+  net.reply = '{"answer": "no"}';
+  ok(await L.confirmTrade(lf, 'Da.', 'Yes.', deal) === false, 'no included');
+  net.reply = 'Yes.';
+  ok(await L.confirmTrade(lf, 'Da.', 'Yes.', deal) === true, 'and a plain yes, from a model that answered in a word');
+
+  // A lookup that fails (no network at startup, say) is tried again later, not taken as a no for good.
+  const off = fakeOpenRouter();
+  const offSchema = () => schemaOf(off.net.sent[off.net.sent.length - 1]);
+  const late = Object.assign({}, or, { helper: 'late/model' });
+  off.net.catalogue = 'down';
+  await off.L.gloss(late, 'Da.', { langName: 'Russian' });
+  ok(off.net.sent.length === 1 && !offSchema(),
+     'a model whose lookup failed goes without, rather than risk a rejected request');
+  off.net.catalogue = 'up';
+  const before = off.net.lookups;
+  await off.L.gloss(late, 'Da.', { langName: 'Russian' });
+  ok(!offSchema() && off.net.lookups === before, 'and is not looked up again on every call');
+  off.net.later = 61000;
+  await off.L.gloss(late, 'Da.', { langName: 'Russian' });
+  ok(!!offSchema(), 'but is a minute later, and from then on gets its schema');
 }
 
 /* ------------------------------------------------------- what they believe now
@@ -956,8 +1213,8 @@ section('a village, written down and read back');
 
   const after = LG.game;
   ok(after.plan.seed === before.seed, 'the same village came back');
-  ok(LG.save.digestOf(after.plan) === shot.village.digest,
-     'and the generator built the same chain from the seed');
+  ok(JSON.stringify(after.plan) === JSON.stringify(shot.village.plan),
+     'and the errand is the one that was saved');
   ok(LG.time.day === before.day && Math.abs(LG.time.frac - before.frac) < 1e-9,
      'on the same day, at the same hour');
   ok(LG.time.weather === before.weather && Math.abs(LG.time.snow - before.snow) < 1e-9,
@@ -1024,6 +1281,35 @@ section('a village, written down and read back');
     ok(LG.save.restore(JSON.parse(text)) === null, 'and the newer save loads again after it');
   }
 
+  /* The generator draws from these lists, so a seed alone would build a
+     different village once any of them grew. The save carries its plan. */
+  section('content added since a village was saved does not lose it');
+  {
+    const hold = Object.keys(LG.ITEMS).find(k => LG.ITEMS[k].tags.indexOf('hold') !== -1);
+    LG.ITEMS.teacup = Object.assign({}, LG.ITEMS[hold], { en: 'teacup', full: 'a teacup' });
+    LG.OPINIONS.push('whistles too much');
+    LG.BEAST_NAMES.push('Dora');
+    const why = LG.save.restore(JSON.parse(text));
+    ok(why === null, 'a new item, opinion and beast name later, the save still loads' + (why ? ': ' + why : ''));
+    ok(JSON.stringify(LG.game.plan) === JSON.stringify(shot.village.plan), 'as the same errand');
+    delete LG.ITEMS.teacup; LG.OPINIONS.pop(); LG.BEAST_NAMES.pop();
+
+    const moved = JSON.parse(text);
+    const place = LG.PLACES.find(p => p.id === moved.village.plan.terminal.placeId);
+    moved.village.plan.terminal.rect = { x: 0, y: 0, w: 1, h: 1 };
+    ok(LG.save.restore(moved) === null && LG.game.plan.terminal.rect === place.rect,
+       'and where its errand ends is read off today\'s map, not the file');
+
+    const fewer = JSON.parse(text);
+    const bystander = LG.NPCS.find(n => !fewer.village.plan.links.some(lk => lk.npcId === n.id));
+    delete fewer.village.plan.roles[bystander.id];
+    delete fewer.village.plan.npcFacts[bystander.id];
+    ok(LG.save.restore(fewer) === null, 'a villager who moved in since the save is no reason to refuse it');
+    ok(/^Your own work/.test(LG.game.plan.roles[bystander.id].goal),
+       'and they get on with their own work, having no part in the errand');
+    ok(LG.save.restore(JSON.parse(text)) === null, 'the save loads as it was afterwards');
+  }
+
   section('a save this version cannot use is refused, out loud');
   ok(typeof LG.save.check({}) === 'string', 'something that is not a village');
   ok(typeof LG.save.check(Object.assign({}, shot, { v: shot.v + 1 })) === 'string',
@@ -1031,13 +1317,16 @@ section('a village, written down and read back');
   ok(typeof LG.save.check(Object.assign({}, shot, { village: Object.assign({}, shot.village, { level: 'impossible' }) })) === 'string',
      'a difficulty this version does not have');
   const tampered = JSON.parse(text);
-  tampered.village.digest = 'notthedigest';
+  tampered.village.plan.prize = 'unobtainium';
   const standing = LG.game.plan.seed;
   const refused = LG.save.restore(tampered);
-  ok(typeof refused === 'string' && refused.indexOf('generator') !== -1,
-     'and a village the generator would no longer build the same way');
+  ok(typeof refused === 'string' && refused.indexOf('unobtainium') !== -1,
+     'and a village whose errand needs something this version does not have');
   ok(LG.game.plan.seed === standing,
      'and being refused leaves the village you were in standing');
+  const planless = JSON.parse(text);
+  delete planless.village.plan;
+  ok(typeof LG.save.restore(planless) === 'string', 'and a current save with no errand in it');
   ok(LG.save.restore(JSON.parse(text)) === null, 'the good save still loads afterwards');
 
   /* A version-1 save is from the map before the forest and station
@@ -1057,7 +1346,7 @@ section('a village, written down and read back');
     // than from the original request.
     const v1Plan = LG.saveMigrate.withPlaces(LG.saveMigrate.PLACES_V1_IDS, () =>
       LG.chain.generate({ level: 'beginner', seed: 'migration-check-' + plan.seed }));
-    const v1Digest = LG.save.digestOf(v1Plan);
+    const v1Digest = LG.saveMigrate.digestOf(v1Plan);
 
     const mira = LG.NPCS.find(n => n.id === 'mira');
     const oldHome = { x: mira.home.x, y: mira.home.y - 40, w: mira.home.w, h: mira.home.h };
@@ -1090,17 +1379,14 @@ section('a village, written down and read back');
     ok(back.patch === back.def.home,
        'and her old home rectangle resolves to her actual, current home — not a lookalike copy');
 
-    /* The village now saves as version 2 (its coordinates really are
-       v2), but its seed only ever produced this plan under the *old*
-       LG.PLACES list, which has since grown again (the platform and six
-       glades were added in this same change). Losing track of that
-       would make the *second* close-and-reopen of a migrated village
-       fail in exactly the way this whole migration feature exists to
-       prevent: a still-correct save being refused over an unrelated change. */
+    /* Its seed only builds this plan against the old place list. Written
+       back, the save carries the plan itself, so the second reopening
+       doesn't depend on replaying that draw. */
     const resaved = LG.save.snapshot();
     ok(resaved.v === LG.save.VERSION, 'the next save this village writes is tagged current');
-    ok(JSON.stringify(resaved.village.placesSnapshot) === JSON.stringify(LG.saveMigrate.PLACES_V1_IDS),
-       'and still says which place list its seed has to be replayed against');
+    ok(JSON.stringify(resaved.village.plan.links) === JSON.stringify(v1Plan.links) &&
+       resaved.village.plan.terminal.placeId === v1Plan.terminal.placeId,
+       'and carries the errand the old place list built, rather than a seed to replay');
     ok(LG.save.restore(JSON.parse(JSON.stringify(resaved))) === null,
        'so closing and reopening it a second time still works');
     ok(LG.game.plan.seed === v1Plan.seed, 'as the same village, not a refusal or a new one');
@@ -1120,7 +1406,7 @@ section('a village, written down and read back');
     const oldStyleSave = {
       v: 2, game: 'little-village', saved: new Date().toISOString(),
       village: { seed: oldPlan.seed, level: 'beginner', lang: 'en',
-                 digest: LG.save.digestOf(oldPlan), placesV1: true },
+                 digest: LG.saveMigrate.digestOf(oldPlan), placesV1: true },
       time: { day: 1, frac: 0.5, weather: 'clear', hold: 0, snow: 0 },
       player: { x: 100, y: 100, dir: 'down' },
       inventory: { coins: 3 },
@@ -1130,6 +1416,29 @@ section('a village, written down and read back');
     ok(LG.save.restore(oldStyleSave) === null,
        'a village saved under the old boolean flag, before snapshots existed, still loads');
     ok(LG.game.plan.seed === oldPlan.seed, 'as the same village the flag named');
+  }
+
+  section('a version-2 save, a seed and the place list it was drawn from, still loads');
+  {
+    const v2Plan = LG.chain.generate({ level: 'beginner', seed: 'snapshot-check-' + plan.seed });
+    const v2save = {
+      v: 2, game: 'little-village', saved: new Date().toISOString(),
+      village: { seed: v2Plan.seed, level: 'beginner', lang: 'en',
+                 digest: LG.saveMigrate.digestOf(v2Plan), placesSnapshot: LG.PLACES.map(p => p.id) },
+      time: { day: 1, frac: 0.5, weather: 'clear', hold: 0, snow: 0 },
+      player: { x: 100, y: 100, dir: 'down' },
+      inventory: { coins: 3 },
+      notes: [], deeds: [], board: [], won: false,
+      terminal: null, villagers: {}
+    };
+    ok(LG.save.restore(v2save) === null, 'it loads');
+    ok(JSON.stringify(LG.game.plan.links) === JSON.stringify(v2Plan.links), 'as the errand its seed built');
+    ok(LG.save.snapshot().village.plan, 'and is written back with that errand in it');
+    const drifted = JSON.parse(JSON.stringify(v2save));
+    drifted.village.digest = 'notthedigest';
+    const refused = LG.save.restore(drifted);
+    ok(typeof refused === 'string' && refused.indexOf('generator') !== -1,
+       'but one whose seed the generator no longer builds the same way is refused');
   }
 
   section('a save this version cannot read backwards is still refused');
@@ -1190,7 +1499,7 @@ section('closing the tab and opening it again');
   }
   s2.LG.game.init();
   s2.LG.game.thoughts = false;                     // suppress console narration during tests
-  s2.LG.game.settings.npcChatter = false;          // and ensure no requests are sent regardless of key presence
+  s2.LG.game.settings.apiKey = '';                 // and no requests are sent
 
   ok(s2.LG.save.resumed, 'a fresh browser came back into the saved village');
   ok(s2.LG.game.plan.seed === written.village.seed,
@@ -1210,7 +1519,7 @@ section('closing the tab and opening it again');
      'and it carries on from there without anyone walking into a wall');
 
   const again = s2.LG.save.snapshot();
-  ok(again.village.digest === written.village.digest,
+  ok(JSON.stringify(again.village.plan) === JSON.stringify(written.village.plan),
      'a save of the resumed village is a save of the same village');
 }
 
@@ -1286,7 +1595,6 @@ async function villagersTalking() {
   const cast = LG.game.npcs;
   const a = cast[0], b = cast[1];
   LG.game.settings.apiKey = 'not-a-real-key';       // both stubs above, so nothing is sent
-  LG.game.settings.npcChatter = true;
   LG.dialogue.turnHold = 0;
   LG.dialogue._chatReset();
   a.frozen = b.frozen = false;
@@ -1333,8 +1641,12 @@ async function villagersTalking() {
 
   await promptCached();
   await keysPerProvider();
+  await envDecidesTheModels();
+  glossesClearWhenClicked();
   await jevPicksThePlace();
+  await schemasWhereTaken();
   await namesUnknownUntilTold();
+  await historyInFull();
   await touchControls();
   await roomForTheComposer();
   whatYouCanSee();
@@ -1360,6 +1672,16 @@ async function namesUnknownUntilTold() {
   // A name learned from a third party must not set nameKnown -- only the villager telling you themself counts.
   g.remember(npc, 'somebody else told the traveller this villager\'s name is ' + npc.def.name, 'a bystander');
   ok(!npc.nameKnown, 'hearsay about their name is not the same as being told it');
+
+  // The till's messages name them the same way as everything else.
+  const foreign = Object.keys(LG.ITEMS).find(k => k !== 'coins' &&
+    !(npc.def.sells || []).some(w => w.i === k) && !(npc.stock || {})[k] &&
+    !(npc.def.sellsTags || []).some(t => (LG.ITEMS[k].tags || []).indexOf(t) !== -1));
+  ok(!g.commerce(npc, 'sell', foreign, 1), 'a sale of something they do not deal in is refused');
+  const logged = sandbox.document.getElementById('log').innerHTML;
+  const lastLine = logged.slice(logged.lastIndexOf('<div>'));
+  ok(lastLine.indexOf(npc.def.name) === -1 && lastLine.indexOf(npc.def.job) !== -1,
+     'and the refusal calls them by their job, not a name you were never told: ' + lastLine);
 
   const real = LG.llm.speak;
 
@@ -1394,6 +1716,47 @@ async function namesUnknownUntilTold() {
   ok(back.nameKnown === true, 'and a name once learned is not forgotten on reload');
 
   LG.llm.speak = real;
+}
+
+/* The villager's past turns go back to the model as whole replies, in the
+   current reply format, not as a bare {"say"} -- the shape the prompt tells
+   it never to use. */
+async function historyInFull() {
+  section('a villager’s past replies go back to them whole');
+  const g = LG.game, npc = g.npcs[1];
+  const real = LG.llm.speak, lang = g.settings.lang, audit = LG.llm.audit;
+  const seen = [];
+  LG.llm.audit = false;                       // the reply's `remember` sets off a revise that has nowhere to go
+  LG.llm.speak = async (cfg, system, msgs, schema) => {
+    seen.push({ msgs: msgs, schema: schema });
+    return { say: '<ruby>村<rt>むら</rt></ruby>です', translation: 'It is the village.',
+             understood: 'partial', revealed: ['f0'], remember: 'The traveller is looking for rope.',
+             action: 'none' };
+  };
+  try {
+    g.settings.lang = 'ja';
+    npc.history = [];
+    LG.dialogue.open(npc);
+    await LG.dialogue.send('こんにちは');
+    await LG.dialogue.send('もう一度');
+    LG.dialogue.close();
+    await LG.dialogue.settled();              // the checks each reply sets off in the background
+  } finally {
+    LG.llm.speak = real;
+    g.settings.lang = lang;
+    LG.llm.audit = audit;
+  }
+  const second = seen[1];
+  const past = second && second.msgs.filter(m => m.role === 'assistant');
+  ok(past && past.length === 1, 'the second turn carries the first reply');
+  if (!past || !past.length) return;
+  const was = JSON.parse(past[0].content);
+  ok(JSON.stringify(Object.keys(was)) === JSON.stringify(second.schema.required),
+     'with every field the reply format has, in its order');
+  ok(was.understood === 'partial' && was.revealed[0] === 'f0' && was.action === 'none' &&
+     was.remember === 'The traveller is looking for rope.' && was.translation === 'It is the village.',
+     'as the villager actually gave them');
+  ok(was.say.indexOf('<ruby>') !== -1, 'and a Japanese line keeps the furigana the prompt asks for');
 }
 
 /* Tests touch/mobile input handling. No PointerEvent is dispatched here

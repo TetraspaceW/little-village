@@ -265,16 +265,18 @@ cat saves/village.json | python3 -m json.tool | head
 
 From the console: `LG.save.restore(JSON.parse(text))` to load a save someone
 sent you, `LG.save.snapshot()` to export the current one. There's no
-separate import/export format. Saves store the village's seed rather than
-its full state, and are rejected (with an explanation) if the generator has
-changed since the save was made.
+separate import/export format. A save carries its whole errand, so new
+items, places or villagers added to the game since don't invalidate it; it's
+rejected (with an explanation) only if its errand needs something the game no
+longer has.
 
-Save format is at version 2. Version 1 saves — from before the map grew a
-forest and a railway and the village shifted south to make room — are
-migrated automatically rather than refused: every coordinate moves by the
-same amount the village did, and the errand itself is unchanged, right down
-to which fact is which. You'll see a line in the log the first time an old
-save comes back saying so.
+Save format is at version 3. Version 2 saves stored only the village's seed;
+they're rebuilt from it once and written back with the errand in them.
+Version 1 saves — from before the map grew a forest and a railway and the
+village shifted south to make room — are migrated too: every coordinate
+moves by the same amount the village did, and the errand itself is
+unchanged, right down to which fact is which. You'll see a line in the log
+the first time a version 1 save comes back saying so.
 
 ⚙ → **Forget the saved village** clears both copies. **Start a new village**
 overwrites them immediately.

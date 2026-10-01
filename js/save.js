@@ -1,53 +1,25 @@
 /* save.js — persists and restores village state (localStorage + server).
 
-   A village's full state — its errand chain, calendar, purse, notebook,
-   and 13 villagers' memories — lives only in memory otherwise, so nothing
-   survives closing the tab. That matters because an errand is meant to
-   span multiple in-game days and a villager's memory of the player is
-   meant to persist.
+   One format: a versioned JSON object built by `snapshot` and read by
+   `restore`, written as the same bytes to localStorage and to the log
+   server's saves/village.json, so either loads in the other.
 
-   One format, in one place. Every save is a plain versioned JSON object,
-   built by exactly one function (`snapshot`) and restored by exactly one
-   function (`restore`). Both storage backends — this browser's
-   localStorage, and the log server's `saves/` directory — store and
-   return the identical bytes, so a save written by either is readable by
-   the other with no conversion step. That symmetry is the reason for
-   this design, rather than having the server maintain its own
-   representation of a village.
+   API keys never go in a save; they stay in `lg-settings`. Language and
+   difficulty do, since the village is built from them.
 
-   What's excluded: API keys. Saves may end up written to disk and copied
-   around, so keys stay only in `lg-settings` with the rest of the
-   settings. Language and difficulty ARE included, since the village is
-   generated from them — loading a save under a different language/
-   difficulty would produce a different village despite the same seed.
-
-   The village itself isn't stored — only its generation seed. The
-   generator is deterministic: the same seed + difficulty always
-   regenerates the same chain, facts (with the same ids), and cast. So a
-   save stores the seed plus a digest of what the generator produced, and
-   `restore` regenerates the village from the seed and checks the digest
-   matches. If a newer version of the generator produces something
-   different from the same seed, the save is refused explicitly rather
-   than being loaded against a chain whose fact ids no longer mean what
-   the notebook thinks they mean.
-
-   Exception: differences this version knows how to migrate. When the map
-   was shifted south to make room for the forest, that changed what a
-   save's stored coordinates mean without changing the village they
-   describe — `save-migrate.js`'s `migrateV1` handles that one specific,
-   known case. This is a one-off compatibility shim for that change, not a
-   general guarantee that saves stay loadable across all future versions. */
+   The generated errand (the plan: links, facts and their ids, roles) is
+   stored whole, so adding items, places or lines to data.js, or changing
+   the generator, leaves existing saves loadable. A save is refused only
+   if its plan names an item, villager or place this version doesn't have.
+   Saves from before version 3 held only the seed; save-migrate.js
+   regenerates their plan once, and they're written back with it. */
 window.LG = window.LG || {};
 
 LG.save = (function () {
-  /* Version 2: the map grew (forest to the north, railway halt to the
-     east), shifting the whole village south. Version 1 saves aren't
-     refused for this alone — save-migrate.js's `migrateV1` shifts every
-     coordinate field by the same fixed amount the village moved. The one
-     non-coordinate exception is where the errand's terminal item ended
-     up, which gets re-derived under the old place list instead (see
-     `migrateV1` / `LG.saveMigrate.withPlaces`). */
-  const VERSION = 2;
+  /* Version 3: the plan is in the save. Version 2 held a seed and digest;
+     version 1 also predates the map moving south. Both are migrated (see
+     save-migrate.js). */
+  const VERSION = 3;
   const KEY = 'lg-save';                 // localStorage
   const ENDPOINT = '/save';              // the log server, when there is one
   const EVERY = 20;                      // seconds between autosaves
@@ -68,29 +40,40 @@ LG.save = (function () {
            typeof location !== 'undefined' && /^https?:/.test(location.protocol);
   }
 
-  /* ------------------------------------------------------------- digest
-     Cheap fingerprint of the generated village (cast, trades, fact ids —
-     not the save file itself), used to detect when a seed no longer
-     regenerates the same village the notebook was built against. */
-  function digestOf(plan) {
-    if (!plan) return '';
-    const parts = [plan.seed, plan.level, plan.prize, plan.terminal.item, plan.terminal.placeId];
-    plan.links.forEach(lk => parts.push(lk.npcId + '>' + lk.wants + ':' + lk.wantsCount +
-                                        '>' + lk.gives + ':' + lk.givesCount));
-    Object.keys(plan.facts).forEach(id => parts.push(id + '=' + plan.facts[id].text));
-    let h = 2166136261;
-    const s = parts.join('|');
-    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
-    return (h >>> 0).toString(36);
+  /* ---------------------------------------------------------------- plans
+     Why a saved plan can't be used, or null. Only references to things
+     this version might not have are checked; everything else in the plan
+     is the save's own record. */
+  function planProblem(p) {
+    if (!p || !Array.isArray(p.links) || !p.links.length || !p.facts || !p.roles || !p.terminal)
+      return 'it does not say what the errand was';
+    const items = [p.prize, p.terminal.item];
+    p.links.forEach(lk => items.push(lk.wants, lk.gives));
+    const item = items.find(id => !LG.ITEMS[id]);
+    if (item !== undefined) return 'its errand needs ' + item + ', which this version does not have';
+    const who = p.links.map(lk => lk.npcId).find(id => !LG.NPCS.some(n => n.id === id));
+    if (who !== undefined) return 'its errand needs ' + who + ', who does not live here in this version';
+    if (!LG.PLACES.some(pl => pl.id === p.terminal.placeId))
+      return 'its errand ends at ' + p.terminal.placeId + ', which this version does not have';
+    return null;
+  }
+
+  /* Ties a saved plan back to this version's world: where its place is on
+     today's map, and a plain role for any villager added since it was saved. */
+  function settle(p) {
+    p.terminal.rect = LG.PLACES.find(pl => pl.id === p.terminal.placeId).rect;
+    p.npcFacts = p.npcFacts || {};
+    LG.NPCS.forEach(n => {
+      if (!p.roles[n.id]) p.roles[n.id] = { goal: LG.chain.plainGoal(n.id), trade: null, link: -1 };
+      if (!p.npcFacts[n.id]) p.npcFacts[n.id] = [];
+    });
+    return p;
   }
 
   /* --------------------------------------------------------------- rects
-     A villager's `patch` is a reference to one of the game's actual
-     rectangle objects (their home, a shop interior, the green). Saved as
-     plain {x,y,w,h} numbers and, on load, matched back to the real
-     rectangle object with the same bounds — needed because npc.js does
-     identity comparisons (`want === a.patch`) that a freshly-deserialized
-     plain object with matching coordinates wouldn't pass. */
+     A villager's `patch` is one of the game's rectangle objects, and npc.js
+     compares them by identity, so a saved {x,y,w,h} is matched back to the
+     real rectangle with those bounds. */
   function rectOut(r) { return r ? { x: r.x, y: r.y, w: r.w, h: r.h } : null; }
   function sameRect(a, b) {
     return a && b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
@@ -123,29 +106,15 @@ LG.save = (function () {
         history: (n.history || []).slice(),
         met: !!n.metPlayer, traded: !!n.tradeDone, named: !!n.nameKnown,
         patch: rectOut(n.patch),
-        /* Saves who this villager is chasing (if anyone) and why -- not
-           the route itself (in-progress routes are transient state,
-           dropped on reload; see `restore`), but the underlying reason,
-           which persists even after arrival: a villager standing next to
-           the player still has a reason for being there.
-
-           This must be saved explicitly because `restore` calls
-           `newVillage` to regenerate the village before applying the
-           save on top, and `newVillage` always triggers Petra's
-           train-greeting behavior (see game.js) as if it were a fresh
-           arrival. Without this saved per-villager chase state, reloading
-           a week-old village would incorrectly make Petra rush to greet
-           a train that arrived days ago. */
+        /* Who they're chasing and why (the route itself is recomputed).
+           newVillage always sets Petra off to meet the train, so without
+           this a week-old village would have her run to a train long gone. */
         chasing: !!n.followingPlayer, after: n.wentAfter || null, why: n.why || ''
       };
     });
 
     const t = g.beast
-      /* `home` is the area the creature wanders when unheld, and it can
-         change during play (e.g. returning the goat updates its home from
-         the hillside it strayed to, to the farmer's yard). Must be saved
-         explicitly — saving only its current position would put it back
-         at the old home area on reload. */
+      // `home` changes in play (a returned goat lives in the farmer's yard), so it's saved too.
       ? { kind: 'beast', x: round(g.beast.px), y: round(g.beast.py),
           tx: g.beast.tx, ty: g.beast.ty, home: rectOut(g.beast.home),
           caught: !!g.beast.caught, following: !!g.beast.following }
@@ -159,10 +128,8 @@ LG.save = (function () {
       game: 'little-village',
       saved: new Date().toISOString(),
       village: { seed: plan.seed, level: g.settings.level, lang: g.settings.lang,
-                 digest: digestOf(plan), placesSnapshot: plan.placesSnapshot },
-      /* Weather affects villager behavior (see byDice() in npc.js) and
-         accumulated snow depth takes multiple in-game days to build up —
-         both must be restored exactly, not re-randomized on load. */
+                 plan: JSON.parse(JSON.stringify(plan)) },
+      // The sky and the snow lying come back as they were, not re-rolled.
       time: { day: LG.time.day, frac: LG.time.frac, weather: LG.time.weather,
               hold: LG.time.weatherLeft, snow: LG.time.snow },
       player: { x: round(p.px), y: round(p.py), dir: p.dir },
@@ -182,60 +149,27 @@ LG.save = (function () {
   function round(n) { return Math.round(Number(n) * 10) / 10; }
 
   /* ------------------------------------------------------------- restore
-     Returns null on success, or a human-readable string explaining the
-     failure — callers display this rather than failing silently, so a
-     rejected save is distinguishable from one that was simply never
-     written. */
+     Null on success, or why the save can't be used, which callers show. */
   function restore(data) {
     const why = check(data);
     if (why) return why;
     const g = LG.game;
 
-    /* Two distinct questions, easy to conflate since one file can answer
-       both: (1) "is this a raw v1 file?" — determines whether coordinates
-       need shifting (a one-time operation; the result is always written
-       back as v2), and (2) "which place ids was this village's plan
-       actually drawn against?" — determines how to regenerate that plan
-       (see `LG.saveMigrate.withPlaces`). Every plan generated since this
-       field existed records its own `placesSnapshot`, so (2) only needs
-       falling back to the frozen `PLACES_V1_IDS` for a save old enough to
-       predate it: a raw v1 file, or a v2 resave written back when this
-       was still a boolean flag rather than a list. `data` itself isn't
-       mutated by any of this — it may have come from the server, and
-       mutating the caller's object would be a surprise. */
-    const isRawV1 = data.v === 1;
-    data = isRawV1 ? LG.saveMigrate.migrateV1(data, VERSION) : data;
-    const placesSnapshot = (data.village && data.village.placesSnapshot) ||
-      (isRawV1 || (data.village && data.village.placesV1) ? LG.saveMigrate.PLACES_V1_IDS : null);
-    const withPlaces = fn => placesSnapshot ? LG.saveMigrate.withPlaces(placesSnapshot, fn) : fn();
+    /* Everything is checked before any game state is touched, so a refused
+       save (possibly from the server, mid-session) leaves the village
+       being played standing. `data` itself is never mutated. */
+    if (data.v === 1) data = LG.saveMigrate.migrateV1(data, VERSION);
+    let plan = data.village.plan ? JSON.parse(JSON.stringify(data.village.plan))
+             : data.village.digest ? LG.saveMigrate.regenerate(data.village) : null;
+    if (typeof plan === 'string') return plan;
+    const bad = planProblem(plan);
+    if (bad) return bad;
+    plan = settle(plan);
 
-    /* All validation happens before any game state is touched. The
-       generator runs once here purely to check the digest still matches —
-       validating only after mutating state would risk discarding the
-       currently-running village on a rejected load, which matters since
-       this can be called with a save arriving from the server mid-session. */
-    let candidate = null;
-    try {
-      candidate = withPlaces(() => LG.chain.generate({ level: data.village.level, seed: data.village.seed }));
-    }
-    catch (e) { return 'the generator could not rebuild that village at all'; }
-    if (digestOf(candidate) !== data.village.digest) {
-      return 'that village was built by a different version of the generator';
-    }
-
-    /* Difficulty/language must be set before newVillage() runs, since the
-       village is generated from them. newVillage() builds its own plan
-       from the seed rather than reusing `candidate` above, so it needs the
-       same place-list restriction applied — otherwise it could build a
-       different plan from the same seed than the one just verified
-       against the digest. The resulting plan records its own
-       `placesSnapshot` (see chain.js's `attempt()`), so future saves of
-       this village keep replaying the same list without restore() having
-       to remember anything about it itself. */
     g.settings.lang = data.village.lang;
     g.settings.level = data.village.level;
-    // `restoring`: newVillage must not save the bare village before the save is laid over it.
-    withPlaces(() => g.newVillage(data.village.seed, true, true));
+    // Lays the save over a village built from its own plan; newVillage doesn't save it bare first.
+    g.newVillage(plan.seed, true, plan);
 
     const tm = data.time || {};
     LG.time.start(tm.day, tm.frac);
@@ -248,12 +182,7 @@ LG.save = (function () {
 
     const st = g.state;
     st.inv = Object.assign({}, data.inventory);
-    /* Enforces at most one note per fact id, same guarantee `learn`
-       provides during live play (via the `hasNote` check in game.js) --
-       but a save file bypasses that guard entirely, so nothing stops a
-       hand-edited or buggy save from listing the same fact id twice.
-       Deduplicates on restore rather than trusting the file's shape;
-       first occurrence wins, matching what would happen during live play. */
+    // One note per fact, first one kept, as `learn` guarantees in play; a file can say otherwise.
     const noted = new Set();
     st.notes = (data.notes || [])
       .filter(n => g.plan.facts[n.id] && !noted.has(n.id) && noted.add(n.id))
@@ -271,10 +200,7 @@ LG.save = (function () {
       if (!s) return;
       n.px = s.x; n.py = s.y; n.tx = s.tx; n.ty = s.ty; n.dir = s.dir || 'down';
       n.facts = (s.facts || []).filter(id => g.plan.facts[id]);
-      /* Older saves stored memory entries as bare strings, before they
-         gained `at`/`from` fields. Normalize on load so older saves still
-         work — an undated entry is treated as one the villager has simply
-         had for a while. */
+      // Older saves kept memories as bare strings: undated, as if long held.
       n.memory = (s.memory || []).map(m =>
         typeof m === 'string' ? { at: null, text: m, from: null } : m).filter(m => m && m.text);
       n.factAt = Object.assign({}, s.factAt);
@@ -286,22 +212,12 @@ LG.save = (function () {
       n.history = (s.history || []).slice();
       n.metPlayer = !!s.met; n.tradeDone = !!s.traded; n.nameKnown = !!s.named;
       n.patch = rectIn(n, s.patch);
-      /* Any in-progress state (route, pending decision, active bubble/
-         conversation) is discarded rather than restored — it refers to a
-         moment that's now over, and the villager will simply reconsider
-         on the next tick, same as they normally would. */
+      // Nothing in progress comes back (routes, decisions, bubbles, conversations); they think again.
       n.route = null; n.wantsGo = null; n.deciding = false; n.thought = null;
       n.chatting = false; n.frozen = false; n.bubble = null; n.bubbleT = 0;
-      /* Unlike the transient state cleared above, chase state (who a
-         villager is following and why) is explicitly restored from the
-         save for every villager, overriding whatever `newVillage`
-         initialized a few lines earlier -- so Petra only keeps chasing
-         the player if the save says she still was when it was written.
-         An older save with no chase data defaults to nobody chasing,
-         which is correct: any train-greeting `newVillage` initialized
-         happened long before that save was written. Any restored chase
-         restarts its pathing fresh from the current position, with a
-         full new timeout window to catch up. */
+      /* A chase does come back, from the save, overriding the one newVillage
+         gave Petra; a save without chase data has nobody chasing. Its route
+         and timeout start afresh. */
       n.followingPlayer = !!s.chasing; n.followFor = 0; n.followCool = 0;
       n.wentAfter = s.after || null;
       n.why = s.why || '';
@@ -323,17 +239,13 @@ LG.save = (function () {
     return null;
   }
 
-  /* Validates a save file's basic shape before it's used.
-
-     Version 1 is deliberately accepted here (restore() migrates it rather
-     than rejecting it) — this is the one place where "current version"
-     and "loadable version" differ. Anything older, or from a future
-     version this code can't read, is rejected: migration support is
-     added deliberately per-version, not owed indefinitely. */
+  /* Validates a save file's basic shape before it's used. Versions 1 and 2
+     are accepted and migrated by restore(); anything older, or newer than
+     this code, is refused. */
   function check(data) {
     if (!data || typeof data !== 'object') return 'there was nothing readable in it';
     if (data.game !== 'little-village') return 'that is not a village';
-    if (data.v !== VERSION && data.v !== 1) {
+    if (data.v !== VERSION && data.v !== 2 && data.v !== 1) {
       return 'that save is from version ' + data.v + ', and this is version ' + VERSION;
     }
     const v = data.village || {};
@@ -345,9 +257,8 @@ LG.save = (function () {
   }
 
   /* ---------------------------------------------------------------- sinks
-     Both backends are given the identical serialized string. Neither is a
-     hard requirement — no localStorage (e.g. a private window) and no
-     server are both handled gracefully; the game keeps working either way. */
+     Both get the same string, and neither is required: no localStorage (a
+     private window) or no server, the game goes on. */
   function toLocal(text) {
     try { localStorage.setItem(KEY, text); return true; } catch (e) { return false; }
   }
@@ -356,10 +267,7 @@ LG.save = (function () {
   }
   function toServer(text, leaving) {
     if (!server || !http()) return;
-    /* A normal fetch started as the tab is closing is usually aborted
-       mid-flight. sendBeacon is guaranteed by the browser to complete, so
-       the server's copy doesn't end up lagging localStorage by up to one
-       autosave interval. */
+    // A fetch started as the tab closes is usually cut off; a beacon gets there.
     if (leaving && typeof navigator !== 'undefined' && navigator.sendBeacon) {
       try { navigator.sendBeacon(ENDPOINT, new Blob([text], { type: 'application/json' })); return; }
       catch (e) { /* fall through and try it the ordinary way */ }
@@ -389,10 +297,7 @@ LG.save = (function () {
     return shot;
   }
 
-  /* Called from the game loop every frame. Doesn't try to detect whether
-     anything actually changed since the last save — the village is always
-     changing (villagers walking, thinking) — an unconditional save every
-     EVERY seconds is cheaper than tracking dirty state. */
+  // Every frame from the loop; saves every EVERY seconds, since the village is always changing anyway.
   function tick(dt) {
     since += dt;
     if (since < EVERY) return;
@@ -401,12 +306,8 @@ LG.save = (function () {
   }
 
   /* ---------------------------------------------------------- the reading
-     Loads the local copy first (synchronous, immediately available), then
-     asynchronously checks the server copy and switches to it only if its
-     timestamp is strictly newer — the case where the player last played
-     in a different browser, or cleared this one's storage. Since both
-     backends are written together, they're usually identical and the
-     server check is a no-op. */
+     The local copy restores at once; the server's is then fetched and used
+     only if it's newer (played in another browser, or storage cleared). */
   function resume(say) {
     const local = fromLocal();
     const wrote = writes;
@@ -421,10 +322,7 @@ LG.save = (function () {
     fromServer().then(remote => {
       if (!remote || !remote.saved) return;
       if (have && remote.saved <= have) return;         // same save, or an older one — skip
-      /* The server response may arrive after the game has already moved on
-         (e.g. a new village was rolled and saved while this request was in
-         flight). If any save has been written since this request started,
-         trust that instead, regardless of what timestamp the server sent. */
+      // Anything saved since this was asked for is newer, whatever the server's timestamp.
       if (writes !== wrote) return;
       const why = restore(remote);
       if (why) say('¤ The server\'s saved village would not load: ' + why + '.');
@@ -454,7 +352,7 @@ LG.save = (function () {
     window.addEventListener('pagehide', bye);
   }
 
-  return { VERSION, snapshot, restore, check, write, tick, resume, forget, keep, digestOf,
+  return { VERSION, snapshot, restore, check, write, tick, resume, forget, keep,
            has: () => !!fromLocal(),
            get forgotten() { return off; },
            get lastAt() { return lastAt; },

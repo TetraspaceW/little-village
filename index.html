@@ -105,8 +105,9 @@
 
       <div class="composer">
         <!-- autocomplete off: otherwise Firefox asks its main process for form
-             history on every keystroke (82 lookups in one short chat). -->
-        <textarea id="dlgInput" rows="1" placeholder="Say something…" autocomplete="off"></textarea>
+             history on every keystroke (82 lookups in one short chat).
+             enterkeyhint: Enter sends, so the phone keyboard should say so. -->
+        <textarea id="dlgInput" rows="1" placeholder="Say something…" autocomplete="off" enterkeyhint="send"></textarea>
         <button id="dlgSend">Say it</button>
       </div>
     </div>

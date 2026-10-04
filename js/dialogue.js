@@ -725,7 +725,9 @@ LG.dialogue = (function () {
       b.lang = LG.LANGUAGES[s.lang].tag;
       b.style.fontFamily = LG.LANGUAGES[s.lang].fontStack;
       b.title = p.en;
-      b.onclick = () => { el.dlgInput.value = p[s.lang] || p.en; el.dlgInput.focus(); };
+      /* On touch, focusing would raise the keyboard over the card when
+         the player most likely just wants to send the phrase as is. */
+      b.onclick = () => { el.dlgInput.value = p[s.lang] || p.en; if (!LG.touch.on) el.dlgInput.focus(); };
       el.dlgPhrases.appendChild(b);
     });
   }
@@ -1245,6 +1247,11 @@ LG.dialogue = (function () {
   function init() {
     bind();
     el.dlgSend.onclick = () => send(el.dlgInput.value);
+    /* Pressing the button would move focus off the input, so the next
+       line needs another tap on the box first. Cancelling mousedown keeps
+       focus where it is; the click still fires. On touch this is the
+       compatibility mousedown that follows the tap. */
+    el.dlgSend.addEventListener('mousedown', e => { if (document.activeElement === el.dlgInput) e.preventDefault(); });
     el.dlgClose.onclick = close;
     /* Focusing the text input signals the player wants to focus on
        typing, so the phrase tray gives up its space to the conversation.

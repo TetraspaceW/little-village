@@ -414,8 +414,10 @@ inside the narrow-screen media query, and gestures bind only to non-mouse pointe
 - **Overlay sizing uses `visualViewport`** (`trackViewport`, `js/game.js`), because
   keyboards overlay the page rather than resizing it. It sets `cramped`/`tight` classes
   on `<body>` by visible height (`CRAMPED` 460, `TIGHT` 320). Size is decided by height,
-  not focus: tapping **Say it** blurs the input while the keyboard stays up. The canvas
-  isn't resized.
+  not focus: the keyboard can be up with nothing focused. The canvas isn't resized.
+- **Sending keeps the keyboard.** **Say it** cancels its `mousedown` so the input keeps
+  focus, and the textarea has `enterkeyhint="send"`. A phrase chip fills the input
+  without focusing it on touch, so it doesn't raise the keyboard.
 - **When cramped, the composer never shrinks.** The chrome and conversation give up
   space first, then the phrase trays drop to one scrolling row, then they're hidden.
 - Focusing the input on touch **only collapses** the trays, never expands them, so it

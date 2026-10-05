@@ -127,8 +127,8 @@ LG.save = (function () {
       v: VERSION,
       game: 'little-village',
       saved: new Date().toISOString(),
-      village: { seed: plan.seed, level: g.settings.level, lang: g.settings.lang,
-                 plan: JSON.parse(JSON.stringify(plan)) },
+      // The plan itself, not a copy: nothing changes it once it's built.
+      village: { seed: plan.seed, level: g.settings.level, lang: g.settings.lang, plan },
       // The sky and the snow lying come back as they were, not re-rolled.
       time: { day: LG.time.day, frac: LG.time.frac, weather: LG.time.weather,
               hold: LG.time.weatherLeft, snow: LG.time.snow },

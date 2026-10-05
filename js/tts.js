@@ -1,10 +1,8 @@
-/* tts.js — text-to-speech for villager dialogue, via ElevenLabs.
+/* tts.js — villagers' lines spoken aloud, via ElevenLabs.
 
-   Lines are generated fresh every turn, so nothing is cached — time to
-   first sound is what matters. Uses Flash v2.5, the fastest model that's
-   properly multilingual; its voices are cross-lingual, so one voice id
-   works across all six supported languages (a villager keeps the same
-   voice when the player switches, say, Russian to Japanese). */
+   Every line is new, so nothing is cached, and time to first sound is what
+   matters: Flash v2.5, the fastest properly multilingual model. Its voices
+   are cross-lingual, so a villager keeps their voice in every language. */
 window.LG = window.LG || {};
 
 LG.tts = (function () {
@@ -27,10 +25,9 @@ LG.tts = (function () {
     return String(l[key] || '').toLowerCase();
   }
 
-  /* Voice quality varies a lot within an account. Scores voices using
-     whatever signals the API's voice list actually provides; every field
-     is read defensively (missing = 0 contribution, not disqualification),
-     since not every voice has every field populated. */
+  /* Voice quality varies a lot within an account. Scored from whatever the
+     voice list provides, each field read defensively: missing counts
+     nothing, it doesn't disqualify. */
   const CURATED = { premade: 1, professional: 1 };
 
   function isCurated(v) {
@@ -65,9 +62,7 @@ LG.tts = (function () {
     return q;
   }
 
-  /* Order matters: "female" contains the substring "male", so a naive
-     substring test for "male" would match every "female" voice too. Test
-     for "female" first. */
+  // "female" contains "male", so it's tested first.
   function normGender(raw) {
     const g = String(raw || '').toLowerCase();
     if (/female|woman|girl/.test(g)) return 'female';
@@ -75,11 +70,9 @@ LG.tts = (function () {
     return g;
   }
 
-  /* Scores a voice against one villager's desired gender/age. Gender is
-     weighted more than age (a mismatched gender is jarring; a young voice
-     for an old farmer is just odd), but both are worth less than the
-     quality score range above — a voice that's a slight persona mismatch
-     is acceptable, a voice that's unpleasant to listen to is not. */
+  /* A voice against a villager's gender and age: gender counts more than
+     age, and both less than quality. A slight mismatch is fine; a voice
+     unpleasant to listen to isn't. */
   function score(voice, want, lang) {
     let s = quality(voice, lang);
     const g = normGender(label(voice, 'gender')), a = label(voice, 'age');
@@ -100,13 +93,9 @@ LG.tts = (function () {
     const o = opts || {};
     const lang = o.lang ? String(o.lang).toLowerCase() : '';
 
-    // Prefer curated voices, but fall back to the full list rather than
-    // leaving villagers without voices if filtering leaves too few.
-    let pool = list;
-    if (o.curatedOnly) {
-      const curated = list.filter(isCurated);
-      if (curated.length >= Math.min(npcs.length, 2)) pool = curated;
-    }
+    // Curated voices, falling back to the full list rather than leave villagers mute.
+    const curated = list.filter(isCurated);
+    const pool = curated.length >= Math.min(npcs.length, 2) ? curated : list;
 
     const taken = {};
     npcs.forEach(npc => {
@@ -149,10 +138,7 @@ LG.tts = (function () {
   }
 
   /* --------------------------------------------------------- the catalogue */
-  /* Formats an error response's body for display. A 401 from ElevenLabs
-     includes a `detail` field explaining the specific problem (wrong key,
-     missing permission, wrong key type) — surface it instead of just the
-     status code, or there's nothing for the user to act on. */
+  // An error for display, with ElevenLabs' `detail` (wrong key, missing permission), not just the status.
   async function describe(res) {
     let body = '';
     try { body = await res.text(); } catch (e) {}
@@ -167,9 +153,7 @@ LG.tts = (function () {
     return res.status + (detail ? ' — ' + detail : '');
   }
 
-  /* Must use the xi-api-key header, not Authorization: Bearer — Authorization
-     is a non-simple header and ElevenLabs' CORS preflight rejects it, so a
-     bearer-token request fails regardless of whether the key is valid. */
+  // xi-api-key, not Authorization: Bearer, which ElevenLabs' CORS preflight rejects.
   function tryList(key) {
     return fetch(API + '/voices', { headers: { 'xi-api-key': key } });
   }
@@ -194,7 +178,7 @@ LG.tts = (function () {
     try {
       const data = await res.json();
       catalogue = data.voices || data || [];
-      voices = assign(catalogue, LG.NPCS, { lang: cfg.lang, curatedOnly: cfg.curatedOnly });
+      voices = assign(catalogue, LG.NPCS, { lang: cfg.lang });
       state = Object.keys(voices).length ? 'ready' : 'error';
       lastError = state === 'ready'
         ? 'Cast ' + Object.keys(voices).length + ' voices from ' + catalogue.length +
@@ -234,10 +218,9 @@ LG.tts = (function () {
         body: JSON.stringify({
           text: text,
           model_id: MODEL,
-          // If left unset, the voice guesses language from the text alone,
-          // which is unreliable on short lines (e.g. French read with an
-          // English accent). Flash v2.5 lets us force it explicitly; our
-          // language keys are already ISO 639-1 (fr, ru, ja, es, ar, zh, en).
+          // Unset, the language is guessed from the text, badly on short lines
+          // (French read with an English accent). Our keys are ISO 639 codes;
+          // toki pona's `tok` is ISO 639-3.
           language_code: cfg.lang || undefined,
           voice_settings: { speed: clampSpeed(cfg.speed) }
         })

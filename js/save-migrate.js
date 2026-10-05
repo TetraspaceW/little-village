@@ -1,62 +1,31 @@
 /* save-migrate.js — turning an old save into the shape this version reads.
 
-   `save.js` refuses a save that no longer matches what the generator would
-   build from its seed — see the digest check there — except for the one
-   difference it knows how to undo on purpose: the map moving south for the
-   forest. That translation, and the historical fact about the place list it
-   depends on, live here rather than in `save.js` itself or in `data.js`
-   alongside the current places, because neither of those files should have
-   to know the shape of every save this version has ever stopped writing. */
+   Saves before version 3 held only the village's seed, plus a digest of
+   what the generator built from it; version 1 also predates the map moving
+   south for the forest. Everything that knows those shapes lives here, so
+   save.js only ever deals with the current one. */
 window.LG = window.LG || {};
 
 LG.saveMigrate = (function () {
   /* ------------------------------------------------------- migrating v1
-     The village moved 40 tiles south, as a block, to make room for the
-     forest — nothing rotated or resized, so "migrate" is only ever "add the
-     same number to every y". `V1_SHIFT_TILES` is that number, and it is a
-     historical fact about how v1 became v2: it must stay 40 forever, however
-     LG.NORTH_WOODS (which happens to be 40 today too) goes on to change.
-
-     A save has exactly three shapes of coordinate in it — a pixel point, a
-     tile point, and a rectangle — and every one of them gets the same
-     treatment regardless of which villager or object it belongs to, which is
-     the point of pulling it out to one place rather than shifting fields by
-     hand wherever they turn up. */
+     The village moved 40 tiles south as a block, so migrating a v1 save is
+     adding the same number to every y. This is a fact about how v1 became
+     v2 and stays 40 whatever LG.NORTH_WOODS becomes. */
   const V1_SHIFT_TILES = 40;
   function shiftPx(n) { return n + V1_SHIFT_TILES * LG.world.TILE; }
   function shiftTile(n) { return n + V1_SHIFT_TILES; }
   function shiftRectV1(r) { return r ? { x: r.x, y: r.y + V1_SHIFT_TILES, w: r.w, h: r.h } : null; }
 
-  /* The order and membership `LG.PLACES` had before the forest and the
-     station joined it — a historical fact about what the list *used to be*,
-     not a mirror of what it is. It must never be "kept in sync" with the
-     array in data.js. Kept only as the snapshot for a raw version-1 file,
-     which predates plans recording their own (see `placesSnapshot` below,
-     and `LG.chain.generate`'s `attempt()`) — everything generated since
-     carries the list it actually needs replayed against, so this one stays
-     frozen at exactly 17 entries rather than growing a `PLACES_V2_IDS`
-     beside it. */
+  /* LG.PLACES as it was before the forest and station joined it: what a v1
+     save's seed was drawn against. Frozen; never keep it in step with
+     data.js. */
   const PLACES_V1_IDS = ['pond', 'mine', 'fields', 'green', 'hall', 'woods', 'behind', 'road',
                           'orchard', 'beeyard', 'mill', 'school', 'chapel', 'graves', 'woodpile',
                           'smithy', 'hut'];
 
-  /* `LG.chain.generate` reads `LG.PLACES` only for its length and the order
-     of ids in it — see `pick` in chain.js — so a longer list is on its own
-     enough to send an unchanged seed's terminal item somewhere else, exactly
-     as if the generator's logic had changed. It hasn't; only the list it
-     draws from has grown. Replaying the old draw means asking with the same
-     list of ids the plan was actually drawn against, which every plan now
-     records as its own `placesSnapshot` at generation time — this function
-     just restricts `LG.PLACES` to whichever `ids` it's handed for the one
-     synchronous call that needs it, so `save.js`'s `restore()` can replay
-     any village's original draw this way, new or years old, rather than
-     every list-growing change needing its own hardcoded frozen array and
-     its own flag to say so (`PLACES_V1_IDS` above is what's left of that,
-     kept only for saves too old to carry a `placesSnapshot` at all).
-
-     This is the only place the global gets touched, and only for the one
-     synchronous call passed in — put back in a `finally` whether or not
-     that call throws. */
+  /* Runs `fn` with LG.PLACES restricted to `ids`, in that order: the
+     generator's pick() reads only the list's length and order, so this
+     replays an old draw. Put back in `finally` whatever happens. */
   function withPlaces(ids, fn) {
     const real = LG.PLACES;
     const byId = {};
@@ -65,11 +34,12 @@ LG.saveMigrate = (function () {
     try { return fn(); } finally { LG.PLACES = real; }
   }
 
-  /* Everything else in a save — notes, deeds, the till, the board, who knows
-     what — is not shaped like a place, and is left exactly as it was. */
+  /* Shifts the coordinates, and notes that the seed was drawn against the v1
+     place list. Notes, deeds, tills and the rest are left as they were. */
   function migrateV1(data, version) {
     const out = JSON.parse(JSON.stringify(data));
     out.v = version;
+    if (out.village && !out.village.plan) out.village.placesV1 = true;
     if (out.player) out.player.y = shiftPx(out.player.y);
     Object.keys(out.villagers || {}).forEach(id => {
       const v = out.villagers[id];
@@ -86,5 +56,35 @@ LG.saveMigrate = (function () {
     return out;
   }
 
-  return { PLACES_V1_IDS, withPlaces, migrateV1 };
+  /* ------------------------------------------------- saves without a plan
+     The fingerprint a pre-v3 save kept of its generated village (cast,
+     trades, fact ids and text). */
+  function digestOf(plan) {
+    if (!plan) return '';
+    const parts = [plan.seed, plan.level, plan.prize, plan.terminal.item, plan.terminal.placeId];
+    plan.links.forEach(lk => parts.push(lk.npcId + '>' + lk.wants + ':' + lk.wantsCount +
+                                        '>' + lk.gives + ':' + lk.givesCount));
+    Object.keys(plan.facts).forEach(id => parts.push(id + '=' + plan.facts[id].text));
+    let h = 2166136261;
+    const s = parts.join('|');
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return (h >>> 0).toString(36);
+  }
+
+  /* Rebuilds the plan a pre-v3 save's seed produced, against the place list
+     it was drawn from: its own `placesSnapshot`, or the v1 list for a v1
+     save or one flagged `placesV1`. Returns the plan, or why it can't: if
+     the generator or its content has changed since, the seed no longer
+     builds the village the notebook refers to. */
+  function regenerate(village) {
+    const list = village.placesSnapshot || (village.placesV1 ? PLACES_V1_IDS : null);
+    const build = () => LG.chain.generate({ level: village.level, seed: village.seed });
+    let plan;
+    try { plan = list ? withPlaces(list, build) : build(); }
+    catch (e) { return 'the generator could not rebuild that village at all'; }
+    if (digestOf(plan) !== village.digest) return 'that village was built by a different version of the generator';
+    return plan;
+  }
+
+  return { PLACES_V1_IDS, withPlaces, migrateV1, digestOf, regenerate };
 })();

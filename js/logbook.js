@@ -1,14 +1,8 @@
-/* logbook.js — sends game events to a log file for later inspection
-   (the console only shows them live).
-
-   Posts to `tools/logserver.js`, which also serves the page itself, so
-   there's no CORS to configure and nothing to enable manually. If that
-   server isn't running (e.g. the page was opened from a plain file
-   server), the first POST fails, logging turns itself off, and the game
-   continues normally.
-
-   Entries are batched rather than sent one at a time: a busy village can
-   fire several LLM calls a second, and each entry carries a full prompt. */
+/* logbook.js — sends game events to tools/logserver.js, which writes them
+   to logs/ (the console shows them only live). Same origin as the page,
+   so nothing to configure; with no log server, the first failed POST
+   turns logging off and the game carries on. Batched, since a busy
+   village makes several calls a second, each with its whole prompt. */
 window.LG = window.LG || {};
 
 LG.logbook = (function () {

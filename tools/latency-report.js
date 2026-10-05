@@ -51,11 +51,11 @@ function readCalls(files) {
 
 /* -------------------------------------------------------------- grouping
 
-   The same system-prompt prefix table as js/llm.js's `KINDS`, applied
-   again here rather than trusting each entry's `kind` field: logs
-   written before llm.js knew the noticeboard, belief-revision and
-   after-conversation calls filed all three under a catch-all "call". */
-const KINDS = [
+   Each call's `kind` is named by its caller in js/llm.js. Logs written
+   before that worked the kind out from the system prompt and filed
+   several under a catch-all "call"; for those, the kind is read off the
+   prompt the way llm.js used to. */
+const OLD_KINDS = [
   ['You decide what a villager does next', 'intent'],
   ['You play one villager', 'chatter'],
   ['You verify claims', 'notebook'],
@@ -65,10 +65,13 @@ const KINDS = [
   ['You decide whether a villager posts a notice', 'notice'],
   ["You keep one person's beliefs up to date", 'revise'],
   ['You note what people took away from a conversation', 'recall'],
+  ['You decide whether a line of dialogue completed a trade', 'trade'],
+  ['You check whether a line of dialogue stated each fact', 'notebook'],
 ];
 function kindOf(e) {
+  if (e.kind && e.kind !== 'call') return e.kind;
   const sys = String(e.system || '');
-  for (const [head, name] of KINDS) if (sys.indexOf(head) === 0) return name;
+  for (const [head, name] of OLD_KINDS) if (sys.indexOf(head) === 0) return name;
   const t = sys + '\n' + (e.messages || []).map(m => m.content || '').join('\n');
   if (t.indexOf('# Your character') !== -1) return 'villager';
   return 'other';

@@ -47,10 +47,8 @@ LG.world = (function () {
     return b;
   }
 
-  /* Is this character's tile position inside rectangle r? Villager
-     patches, the green, and building interiors are all rectangles in
-     tile space; centralized here since this check used to be duplicated
-     with slightly different logic across three files. */
+  /* Is this character's tile inside rectangle r? Patches, the green and
+     building interiors are all tile rectangles. */
   function inRect(a, r) {
     return !!r && a.tx >= r.x && a.tx < r.x + r.w && a.ty >= r.y && a.ty < r.y + r.h;
   }
@@ -71,28 +69,24 @@ LG.world = (function () {
     }
     return null;
   }
-  /* Which building is this *character* standing in? Uses feet position
-     (py+8), not the character's raw anchor point (collision uses
-     py+4..py+10) — using the raw anchor would read as outside the room
-     for the first few pixels of entering, making the roof appear to snap
-     shut while visibly standing indoors. */
+  /* Which building a character is standing in, by their feet (py+8): by
+     their anchor, the roof would shut on the player's first steps inside. */
   function buildingUnder(a) {
     if (!a) return null;
     return buildingAt((a.px / TILE) | 0, ((a.py + 8) / TILE) | 0);
   }
 
-  /* Returns building roofs in screen space, used by sky.js to clip
-     precipitation. Includes the roof overhang, so rain/snow stops at the
-     eaves rather than at the wall line. */
-  function roofRects(cam, vw, vh, dpr) {
+  /* The roof over `room`, the building the player is in, in screen space,
+     for sky.js to keep the weather out from under; none when the player is
+     outside, since rain and snow fall past every roof seen from above.
+     Includes the overhang, so the weather stops at the eaves. */
+  function roofRects(cam, vw, vh, dpr, room) {
     const out = [];
-    /* Must round to the exact same offset draw() itself uses, or the
-       weather clip drifts off the roof by up to a device pixel at
-       fractional dpr. Snapping to whole *device* pixels (not re-rounding
-       to whole CSS pixels) is what keeps this in sync with draw(). */
+    // The same whole-device-pixel offset draw() uses, or the weather clip drifts off the roof.
     const d = dpr || 1;
     const ox = Math.round(cam.x * d) / d, oy = Math.round(cam.y * d) / d;
     for (const b of buildings) {
+      if (b !== room) continue;
       const x = b.x * TILE - 6 - ox, y = b.y * TILE - 10 - oy;
       const w = b.w * TILE + 12, h = b.h * TILE + 10;
       if (x > vw || y > vh || x + w < 0 || y + h < 0) continue;
@@ -194,13 +188,8 @@ LG.world = (function () {
     for (let x = 74; x <= 76; x += 2) props.push({ type: 'hive', x: x, y: 52 });
 
     /* ---- the woodcutter's clearing
-       Only plants trees on tiles that are still plain grass (checks
-       get(x,y) === T.GRASS first). This stand overlaps the pond's eastern
-       shore, and without that check it would scatter trees into the water
-       wherever the hash landed — which it did the moment the village
-       coordinates shifted and every tile's hash value changed. This is the
-       one place in build() that risks overwriting deliberately-placed
-       terrain, hence the guard. */
+       Trees only on plain grass: the stand overlaps the pond's shore, and
+       this is the one pass that could otherwise paint over placed terrain. */
     for (let y = 64; y <= 70; y++) for (let x = 16; x <= 22; x++)
       if (get(x, y) === T.GRASS && hash(x * 3, y * 5) < 0.32) set(x, y, T.TREE);
     set(18, 67, T.CAVE); set(19, 67, T.CAVE);
@@ -224,12 +213,8 @@ LG.world = (function () {
     northWoods();
     station();
 
-    // Terrain painted after buildings can overwrite more than just a
-    // doorway -- the orchard and fields both extend far enough to plow
-    // over a whole wall (the mill's and farmhouse's), leaving a gap in
-    // the side of the building. Re-stamps every wall and floor tile
-    // exactly as addBuilding() originally laid them, then clears the
-    // door and its step, all after every other terrain pass has run.
+    // The orchard and fields are painted after the buildings and reach over
+    // whole walls, so every building is stamped again last, door and step clear.
     for (const b of buildings) {
       rect(b.x, b.y, b.w, b.h, T.WALL);
       rect(b.inside.x, b.inside.y, b.inside.w, b.inside.h, T.FLOOR);
@@ -242,17 +227,11 @@ LG.world = (function () {
   }
 
   /* ------------------------------------------------------------- the woods
-     Generates a large forest area north of the village, big enough that
-     an item can plausibly be "lost" there — several of LG.PLACES sit up
-     here rather than immediately next to whoever's looking for them.
-
-     Tree density is generated as noise layered on noise rather than a
-     flat probability, because a flat probability produces an even
-     stipple that reads as an orchard, not a forest. A real forest has
-     dense stands with clearer patches between them. `vnoise` generates
-     those stands, `hash` adds fine-grained roughness to their edges, and
-     density tapers over the last few rows near the village so the
-     treeline reads as a fringe of scattered trees rather than a wall. */
+     The forest north of the village, big enough to lose things in. Tree
+     density is noise on noise, not a flat rate (a flat rate is an even
+     stipple, an orchard): `vnoise` makes the stands and clearings, `hash`
+     roughens their edges, and density tapers over the last rows into the
+     village so the treeline is a fringe, not a wall. */
   function northWoods() {
     const edgeOfTown = LG.NORTH_WOODS;                 // where the trees give out
     for (let y = 2; y < edgeOfTown; y++) {
@@ -260,11 +239,7 @@ LG.world = (function () {
         // Density tapers over the last 8 rows near the village edge.
         const deep = Math.min(1, (edgeOfTown - y) / 8);
         const stand = vnoise(x, y, 11) * 0.62 + vnoise(x, y, 4) * 0.38;
-        /* Multiplying density by `stand` (rather than using a flat
-           probability) is what produces actual thickets and clearings —
-           near-zero density where the noise is low, near-total density
-           where it's high. A flat probability, however high, would just
-           give an even stipple with no thickets and no light gaps. */
+        // Scaled by `stand`: near nothing where the noise is low, near solid where it's high.
         const d = (0.10 + 0.50 * deep) * (0.20 + 1.30 * stand);
         if (hash(x * 5 + 3, y * 7 + 11) < d) set(x, y, T.TREE);
         else if (hash(x * 13 + 1, y * 3 + 5) > 0.986) set(x, y, T.FLOWER);
@@ -274,11 +249,8 @@ LG.world = (function () {
     for (const [bx, by, bw, bh] of [[8, 24, 3, 2], [58, 16, 2, 3], [37, 32, 3, 2]])
       rect(bx, by, bw, bh, T.ROCK);
 
-    /* Glade clearings: cleared outright rather than left to the tree
-       noise. A named place needs to be a fully walkable rectangle a
-       villager can stand in and an animal can wander within — leaving
-       trees inside it is what used to strand Ilya inside his own home
-       patch (see the `patch` field on villagers in npc.js). */
+    /* Named clearings are cleared outright: a place villagers are sent and
+       animals wander has to be walkable throughout. */
     const glades = (LG.PLACES || []).filter(p => p.woods);
     glades.forEach(p => {
       const r = p.rect;
@@ -296,10 +268,8 @@ LG.world = (function () {
     const pit = glades.find(p => p.id === 'charcoal');
     if (pit) { set(pit.rect.x + 2, pit.rect.y + 2, T.CAVE); set(pit.rect.x + 3, pit.rect.y + 2, T.CAVE); }
 
-    /* Tracks through the woods. Meant to make the forest disorienting but
-       not actually impassable — each track leads somewhere if followed.
-       Each run is a chain of orthogonal segments; every glade connects to
-       one. */
+    /* Tracks through the woods: easy to get turned around on, but each
+       leads somewhere, and every clearing is on one. */
     [
       [[24, 44], [24, 38], [21, 38], [21, 33], [24, 33], [24, 30], [26, 30]],   // up out of the village to the spring
       [[24, 33], [28, 33], [28, 28], [32, 28], [32, 25], [34, 23]],             // on into the big clearing
@@ -311,17 +281,10 @@ LG.world = (function () {
     ].forEach(track);
   }
 
-  /* Draws one track as a chain of straight orthogonal segments between
-     the given points.
-
-     The underlying path is straight between corners, which is what makes
-     the network's connectivity provably correct (checked in
-     openTheWay(), not just assumed) — every glade connects via a run
-     that reaches back to the village. What's actually drawn isn't the
-     straight spine, though: each tile has a chance to fray a step to one
-     side, so the track reads as walked through trees rather than
-     surveyed. Fraying only ever *adds* walkable tiles alongside the
-     spine, so it can't break the connectivity it's decorating. */
+  /* One track, as straight orthogonal runs between the points. Each tile
+     may fray a step to one side, so it reads as walked, not surveyed;
+     fraying only adds walkable tiles, so it can't break the connections
+     openTheWay checks. */
   function track(points) {
     for (let i = 1; i < points.length; i++) {
       const [x0, y0] = points[i - 1], [x1, y1] = points[i];
@@ -340,11 +303,9 @@ LG.world = (function () {
   }
 
   /* ----------------------------------------------------------- the station
-     Builds the unmanned railway halt at the end of the high street: a
-     platform, a nameboard, a shelter with a bench, and a single track
-     running north-south through the trees. No trains ever run, and it's
-     unstaffed — it's simply where the player character arrived, which is
-     the in-fiction reason they don't already speak the local language. */
+     The unmanned halt at the end of the high street, where the player
+     arrives: platform, nameboard, shelter and bench, and a line north to
+     south through the trees. No trains run. */
   function station() {
     const p = (LG.PLACES || []).find(s => s.id === 'platform');
     if (!p) return;
@@ -371,16 +332,10 @@ LG.world = (function () {
   }
 
   /* --------------------------------------------------- nowhere is sealed off
-     Ensures every place the game can send the player or a villager to is
-     actually reachable. Checks every LG.PLACES rectangle against a flood
-     fill from the platform, and cuts a path to anywhere unreachable
-     rather than leaving an errand impossible to complete.
-
-     This is a correctness guarantee, not primarily a generator — the
-     hand-placed tracks above should already connect everything. It runs
-     regardless, because a "should" here previously produced an
-     unreachable NPC (the rice merchant, see OLD-LI.md) that went
-     unnoticed until a player got stuck. */
+     Flood-fills from the platform and cuts a path to any LG.PLACES
+     rectangle it can't reach. The tracks should already connect
+     everything; this runs anyway, since a "should" once left a villager
+     unreachable (OLD-LI.md). */
   function openTheWay() {
     const start = nearestOpen(LG.START.x, LG.START.y);
     for (let pass = 0; pass < 4; pass++) {
@@ -458,10 +413,8 @@ LG.world = (function () {
 
   const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
-  /* Binary min-heap keyed by .f, used as A*'s open set in pathTo(). A
-     tile can end up pushed more than once with a stale (higher) f-score;
-     rather than removing the stale copy, pathTo() just skips it via
-     `closed` when popped — cheaper than maintaining heap uniqueness. */
+  /* Binary min-heap keyed by .f, A*'s open set. A tile can be pushed again
+     with a better score; the stale copy is skipped via `closed`. */
   function heapPush(heap, item) {
     heap.push(item);
     let i = heap.length - 1;
@@ -490,19 +443,12 @@ LG.world = (function () {
     return top;
   }
 
-  /* Finds a walkable path between two tiles using A*, run each time a
-     villager picks a new destination. Manhattan distance is an exact
-     lower bound for 4-directional movement, so this finds the same
-     shortest path a flood-fill would, while examining far fewer tiles at
-     longer distances — a flood-fill's search area grows with the
-     *square* of the distance, while this heuristic keeps the search
-     focused toward the target. */
+  /* A walkable path between two tiles, by A* with Manhattan distance
+     (exact for four directions): the flood fill's shortest path, from far
+     fewer tiles. */
   function pathTo(sx, sy, tx, ty, limit) {
     if (sx === tx && sy === ty) return [];
-    /* Node-visit cap, scaled to map size rather than a fixed number —
-       fixed caps set when the map was smaller became too tight once the
-       forest was added (a platform-to-far-glade walk is now a long path
-       through trees, and A* has to explore more to find it). */
+    // Visit cap scaled to the map: a walk from the platform to a far clearing explores a lot.
     const max = limit || W * H;
     const h = (x, y) => Math.abs(x - tx) + Math.abs(y - ty);
 
@@ -962,66 +908,25 @@ LG.world = (function () {
     }
   }
 
-  /* Draws all ground-standing props (trees, flowers, fences) for a
-     region in one batched pass, rather than one call per tile.
-
-     Previously each tree drew 2-3 separate beginPath/arc/fill calls, and
-     standing in the woods that added up to a couple hundred paths per
-     frame — thousands per second. On Firefox for Android, this wasn't
-     just slow: canopies visibly broke apart, with circles rendering as
-     horizontal bands smeared across the screen while trunks stayed in
-     place. This is the known symptom of `beginPath` calls between arcs
-     not taking effect — each `arc` then joins to the previous one with a
-     straight line instead of starting a new subpath, and the whole
-     accumulated shape gets filled as one.
-
-     The fix here is to batch: circles of one color go into a single path
-     (one beginPath, one fill), with an explicit `moveTo` to each circle's
-     rim before its `arc` call, which keeps them as separate subpaths
-     rather than chained together. Both parts matter — batching means far
-     fewer beginPath calls for the bug to trigger on, and the `moveTo`
-     means that even if it does trigger, circles still won't chain into bands.
-
-     Reordering draw calls across tiles is safe here because nothing
-     drawn for one tile overlaps another tile's drawing: a tree canopy is
-     13px wide on a 32px tile and extends from just above its own tile to
-     just short of the next row, and the trunk sits within that. The
-     original within-tile draw order (trunk, canopy, highlight, snow) is
-     preserved by keeping each pass in that order. */
+  /* Trees, flowers and fences for a region, in batched passes: one path per
+     colour, with a moveTo onto each circle's rim before its arc, so a
+     dropped beginPath can't join circles into bands (Firefox for Android
+     did, see DESIGN.md). Tiles don't overlap, so passes can be reordered
+     across tiles; within a tile the order is trunk, canopy, highlight, snow. */
   const FLOWER_COLS = ['#f2c14e', '#e5798f', '#c8a2f2', '#f5f0e6'];
 
   /* ----------------------------------------------------------- disc sprites
-     Batching (above) reduced the number of fill calls, but didn't fully
-     fix the Firefox flashing bug, because fill-call count wasn't the
-     actual determining factor. Firefox's accelerated canvas rasterizes a
-     filled path on the GPU and caches the resulting triangle geometry in
-     its own buffer; fillRect, fillText, and drawImage don't use that
-     path at all. That distinction lines up exactly with the observed
-     bug: in foggy forest scenes, canopies/heads/shadows (filled arcs)
-     would drop frames or smear, while trunks, walls, paths, and text
-     (rects/images/text) stayed correct. Batching a hundred circles into
-     one path still produces a hundred circles' worth of vertices — it
-     only reduces the number of draw calls, not the vertex-buffer usage
-     that triggers the bug.
-
-     A drawImage blit has no vertices at all, so the fix is to pre-render
-     each disc once into its own small offscreen canvas (at device
-     resolution) and blit that instead of drawing an arc live — moving
-     the work off the buggy vertex-buffer path entirely and onto the one
-     that works correctly. Sprites are cached per color+radius and
-     invalidated if the device pixel ratio changes.
-
-     Falls back to the original live-arc drawing when no dpr is given
-     (mainly in the test environment, which has no real canvas to render
-     sprites into), so the drawing code path is still exercised there. */
+     Round things are stamped from a sprite rendered once per colour and
+     radius, at device resolution: Firefox rasterises filled paths through a
+     vertex buffer that smeared them in foggy woods, and a drawImage blit
+     has no vertices. Without a pixel ratio (the tests) they're drawn as
+     arcs. Rebuilt when the pixel ratio changes. */
   const spriteFor = new Map();
   let spriteDpr = 0;
   /* A tree's snow crown at depth step b (of 10): the cap over the canopy
-     and the puff on top of it, in tile coordinates from (3, -3). It's
-     blitted one texel to one device pixel, at a whole device pixel: a
-     sprite stretched by a fraction of a pixel drops a different edge
-     column depending on where the layer sits, which put a green rim
-     round the cap on one repaint and not the next. */
+     and the puff on top, in tile coordinates from (3, -3). Blitted one
+     texel to one device pixel, at a whole device pixel: stretched by a
+     fraction, which edge column survived varied from repaint to repaint. */
   function crownColour(a) { return 'rgba(250,252,255,' + (a * 0.92).toFixed(3) + ')'; }
   function crownSprite(b, d) {
     if (d !== spriteDpr) { spriteFor.clear(); spriteDpr = d; }
@@ -1071,10 +976,7 @@ LG.world = (function () {
     if (!at.length) return;
     const s = dpr ? discSprite(colour, r, dpr) : null;
     if (s) {
-      /* One texel to one device pixel, at a whole device pixel (see
-         crownSprite): drawn at the half pixel a tree's canopy lands on,
-         which way a rim pixel rounded came down to floating-point noise in
-         the layer's position, so repaints disagreed along a strip's edge. */
+      // One texel per device pixel, at a whole device pixel, as crownSprite.
       const side = s.canvas.width / dpr;
       for (let i = 0; i < at.length; i += 2)
         ctx.drawImage(s.canvas, Math.round((at[i] - s.half) * dpr) / dpr, Math.round((at[i + 1] - s.half) * dpr) / dpr, side, side);
@@ -1123,13 +1025,9 @@ LG.world = (function () {
     for (let i = 0; i < trunks.length; i += 2) lit.push(trunks[i] + 12, trunks[i + 1] + 8);
     discs(ctx, lit, 6, 'rgba(255,255,255,.10)', dpr);
 
-    /* Snow drawn only on top of the canopy -- the green rim showing
-       below a white crown is what makes it read as a snow-laden tree
-       rather than a dead/bare one. Crowns come in ten steps of depth and
-       are stamped from one sprite per step, like the canopies under them:
-       drawn live, a snowed-in forest was two fills, a closePath() and two
-       curves a tree, over a thousand trees a screen, and the slowest
-       thing to walk into on the whole map. */
+    /* Snow on top of the canopy only: the green rim below a white crown is
+       what reads as snow-laden rather than dead. Stamped from one sprite
+       per tenth of depth, like the canopies. */
     const byDepth = [];
     for (let i = 0; i < crowns.length; i += 3) {
       const b = Math.round(crowns[i + 2] * 10);
@@ -1336,13 +1234,9 @@ LG.world = (function () {
     capSnow(ctx, p, () => { ctx.beginPath(); ctx.arc(cx, cy - 20, 6, Math.PI, 0); ctx.closePath(); ctx.fill(); });
   }
 
-  /* Frustum check: is this world-space box within `margin` of the
-     camera's view? Ground tiles are already culled per-tile in
-     drawGround; buildings, props, and signs are drawn from flat arrays
-     instead and need this explicit check per item — without it, render
-     cost would scale with total village size rather than what's
-     currently visible. `margin` accounts for roofs, signs, and shadows
-     that extend past a building's own tile footprint. */
+  /* Is this world-space box within `margin` of the view? Buildings, props
+     and signs are in flat lists, so each is checked; `margin` covers roofs,
+     signs and shadows past a footprint. */
   function inView(px, py, w, h, cam, vw, vh, margin) {
     return px + w + margin > cam.x && px - margin < cam.x + vw &&
            py + h + margin > cam.y && py - margin < cam.y + vh;
@@ -1378,11 +1272,8 @@ LG.world = (function () {
       ctx.fillRect(px - 6, py - 10, pw + 12, TILE * 2);
       ctx.fillStyle = 'rgba(0,0,0,.15)'; ctx.fillRect(px - 6, py + TILE * 2 - 16, pw + 12, 6);
       ctx.fillStyle = 'rgba(255,255,255,.16)'; ctx.fillRect(px - 6, py - 10, pw + 12, 4);
-      /* Roofs accumulate snow faster and retain it longer than the
-         ground, since they're the one surface nobody walks on. Still
-         capped well short of full white, though — a roof's own color is
-         what distinguishes one building from the next at a glance, and
-         every building turning uniformly white would erase that. */
+      /* Roofs hold more snow than the ground, but never go fully white: a
+         roof's colour is how one building is told from the next. */
       if (lying > 0.02) {
         ctx.globalAlpha = (open ? 0.16 : 1) * Math.min(0.72, lying * 1.2);
         ctx.fillStyle = 'rgba(250,252,255,1)';
@@ -1476,15 +1367,10 @@ LG.world = (function () {
   }
 
   /* ------------------------------------------------------------------ signs
-     Draws a readable sign at every building's door plus the noticeboard:
-     the name in the village's language, with an English gloss underneath.
-     The gloss is shown or hidden globally, following the same "reveal
-     translation" setting used elsewhere — unlike the notebook and
-     overheard speech, a sign has no per-sign reveal state of its own, so
-     with the setting off it stays monolingual. `signBoxes` is rebuilt in
-     world-space coordinates on every draw call; game.js hit-tests click
-     position against it since it's the one that knows the actual mouse
-     position. */
+     A sign at every building's door, the noticeboard and the station, in
+     the village's language only: no English underneath, and nothing to
+     click. `signBoxes` is where each board was last drawn, in world
+     coordinates, for the tests. */
   let signBoxes = [];
 
   /* Non-building signposted locations (noticeboard, station). Populated
@@ -1504,35 +1390,21 @@ LG.world = (function () {
     return out.concat(signposts);
   }
 
-  function drawSigns(ctx, cam, vw, vh, lang, revealAll, dpr) {
+  function drawSigns(ctx, cam, vw, vh, lang, dpr) {
     signBoxes = [];
     const L = LG.LANGUAGES && LG.LANGUAGES[lang];
     const nativeFont = '600 11px ' + ((L && L.fontStack) || 'system-ui');
-    const glossFont = '10px system-ui';
-    /* Sign boards are the one thing here sized by text measurement
-       rather than the tile grid — measureText returns a fractional
-       width, and centering the board on that width would land its edges
-       between device pixels. Since draw() snaps the camera to a fixed
-       grid, an unsnapped board would sit at a consistent-but-off-grid
-       offset every frame (not flickering, just permanently blurry — its
-       1.5px border would render across ~4 device pixels while the tile
-       seam beside it renders across 1). Snapping the board to whole
-       *device* pixels (not CSS pixels), using the same dpr draw()
-       translates by, aligns it back onto the same pixel grid as
-       everything else — same reasoning as roofRects, since at a
-       fractional dpr, device and CSS pixel grids don't coincide. */
+    /* A board is sized by measureText, so its edges are snapped to whole
+       device pixels, as draw() snaps the camera: off the grid, its border
+       blurs across several. */
     const d = dpr || 1;
     const snap = v => Math.round(v * d) / d;
     ctx.textAlign = 'center';
     for (const s of signSpots()) {
       if (!inView(s.x - 40, s.y - 40, 80, 40, cam, vw, vh, TILE)) continue;
       const native = LG.placeName(s.key, lang);
-      const gloss = (lang === 'en' || !revealAll) ? null : LG.placeName(s.key, 'en');
       ctx.font = nativeFont;
-      let w = ctx.measureText(native).width;
-      if (gloss) { ctx.font = glossFont; w = Math.max(w, ctx.measureText(gloss).width); }
-      w = snap(w + 16);
-      const h = snap(gloss ? 34 : 20);
+      const w = snap(ctx.measureText(native).width + 16), h = snap(20);
       const bx = snap(s.x - w / 2), by = snap(s.y - h);
 
       ctx.fillStyle = '#6b4a2f';                        // the post
@@ -1543,34 +1415,12 @@ LG.world = (function () {
       ctx.strokeRect(bx + 0.75, by + 0.75, w - 1.5, h - 1.5);
 
       ctx.fillStyle = '#3a2e1f';
-      ctx.font = nativeFont;
       ctx.fillText(native, s.x, by + 15);
-      if (gloss) {
-        ctx.fillStyle = '#6d5b45';
-        ctx.font = glossFont;
-        ctx.fillText(gloss, s.x, by + 29);
-      }
       signBoxes.push({ x: bx, y: by, w, h, key: s.key });
     }
   }
 
-  /* Signs no longer have per-sign reveal state to toggle (the gloss is
-     shown/hidden globally via the "reveal translation" setting), but a
-     click/tap on a signboard should still be consumed rather than also
-     treated as a click on the ground beneath it. */
-  function overSign(wx, wy) {
-    return signBoxes.some(b => wx >= b.x && wx <= b.x + b.w && wy >= b.y && wy <= b.y + b.h);
-  }
-  function hitSign(wx, wy) {
-    return overSign(wx, wy);
-  }
-
-  /* Called only when game.js repaints its cached ground layer, so the
-     snow is drawn straight into that. (It had an offscreen canvas of its
-     own from before that cache existed, keyed on the tile range and snow
-     bucket — the same things that make the ground layer repaint, so it
-     almost never hit, and it was drawn at 1x, which left drifts blocky
-     on a high-density screen.) */
+  /* Drawn only into game.js's cached ground layer, snow included. */
   function drawGround(ctx, cam, vw, vh, dpr) {
     readSnow();
     const x0 = Math.max(0, (cam.x / TILE) | 0), y0 = Math.max(0, (cam.y / TILE) | 0);
@@ -1584,10 +1434,9 @@ LG.world = (function () {
     drawPropsPass(ctx, x0, y0, x1, y1, dpr);
   }
 
-  /* What moves on its own and isn't a character: water glints and the
-     fountain. game.js paints everything else once into a cached layer and
-     keeps it until the camera leaves it, so these are drawn fresh on top
-     every frame instead. Nothing in that layer overlaps them. */
+  /* What moves by itself and isn't a character, water glints and the
+     fountain, drawn each frame over the cached layer; nothing in the layer
+     overlaps them. */
   function drawAnimated(ctx, cam, vw, vh) {
     readSnow();
     const x0 = Math.max(0, (cam.x / TILE) | 0), y0 = Math.max(0, (cam.y / TILE) | 0);
@@ -1609,7 +1458,7 @@ LG.world = (function () {
 
   return { TILE, W, H, T, build, get, isSolid, isWalkable, nearestOpen, pathTo,
            buildingAt, buildingUnder, roofRects, buildingByLabel, inRect, nearRect,
-           drawGround, drawBuildings, drawSigns, drawAnimated, hitSign, overSign, buildings,
+           drawGround, drawBuildings, drawSigns, drawAnimated, buildings,
            // for the tests: what got placed, and where you can get to from here
            _props: () => props, _signs: () => signSpots(), _flood: flood,
            _signBoxes: () => signBoxes };

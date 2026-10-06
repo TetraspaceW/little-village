@@ -321,11 +321,12 @@ js/sky.js            hour/season colour, precipitation
 js/view.js           per-villager prompt assembly (single source of truth)
 js/touch.js          the joystick and the tap: touch gestures, on a canvas
 js/npc.js            villager movement, meetings, beliefs and naming, rendering
+js/village.js        the village as it stands: chain, cast, traveller, the thing to find
 js/ledger.js         the traveller's pockets, notebook, deeds and log, and the HUD
 js/trade.js          buying and selling for coin: prices, refunds, the till
 js/dialogue.js       prompt building, conversation UI
 js/save.js           save format: snapshot/restore, both storage locations
-js/game.js           world state, main loop, input, settings panel, noticeboard, errand trades
+js/game.js           main loop and drawing, input, settings panel, noticeboard, errand trades
 tools/logserver.js   serves the game, exposes .env, collects logs, keeps the save
 tests/smoke.js       headless test of the full game
 ```

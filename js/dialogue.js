@@ -756,7 +756,7 @@ LG.dialogue = (function () {
     // it, never just because an item was held out at them. If they agree
     // in words but the model forgets to set the field, a second check
     // catches that — see confirmOffer.
-    const trade = npc.tradeDone ? null : (LG.game.plan.roles[npc.def.id] || {}).trade;
+    const trade = npc.tradeDone ? null : (LG.village.plan.roles[npc.def.id] || {}).trade;
     if (trade) {
       const need = trade.wantsCount || 1;
       const haveEnough = LG.ledger.count(trade.wants) >= need;
@@ -899,7 +899,7 @@ LG.dialogue = (function () {
   }
 
   async function verifyRevealed(npc, reply, spoken, ruby) {
-    const plan = LG.game.plan;
+    const plan = LG.village.plan;
     const claimed = reply.revealed
       .map(id => String(id).replace(/[^\w]/g, ''))
       .filter(id => plan.facts[id] && npc.facts.indexOf(id) !== -1 && !LG.ledger.hasNote(id));
@@ -1010,7 +1010,7 @@ LG.dialogue = (function () {
         // to observe villager-to-villager conversation the player didn't witness.
         LG.actors.think(me, 'says', plain +
           (turn.translation ? '  \u2014 ' + turn.translation : ''));
-        if (LG.game.canOverhear(a, b)) {
+        if (LG.village.canOverhear(a, b)) {
           const ruby = (L.furigana && plain !== turn.say) ? turn.say : null;
           LG.ledger.logSpeech(LG.actors.displayName(me), plain, ruby, turn.roman, turn.translation);
         }
@@ -1066,7 +1066,7 @@ LG.dialogue = (function () {
       if (listener.facts.indexOf(id) !== -1) return;   // already knew
       listener.facts.push(id);
       LG.actors.noteFactSource(listener, id, speaker.def.name);
-      LG.actors.think(listener, 'now knows', LG.game.factText(id) || id);
+      LG.actors.think(listener, 'now knows', LG.village.factText(id) || id);
     });
   }
 

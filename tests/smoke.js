@@ -709,7 +709,7 @@ async function keysPerProvider() {
   }
   s3.LG.game.init();
   s3.LG.game.thoughts = false;
-  const set = s3.LG.game.settings;
+  const set = s3.LG.config.settings;
   ok(set.provider === 'openrouter', 'a saved Anthropic setup comes back as OpenRouter');
   ok(set.apiKey === '' && !set.keys.openrouter && !set.keys.logfare,
      'without the Anthropic key, which OpenRouter was never meant to see');
@@ -886,8 +886,8 @@ section('an opinion never reaches the notebook');
 section('a village, written down and read back');
 {
   const g = LG.game;
-  g.settings.apiKey = 'sk-not-a-real-key';        // must not reach the file
-  g.settings.ttsKey = 'sk_not-a-real-voice-key';
+  LG.config.settings.apiKey = 'sk-not-a-real-key';        // must not reach the file
+  LG.config.settings.ttsKey = 'sk_not-a-real-voice-key';
   g.state.deeds.push('Gave Mira a pie, got a shell.');
   g.give('coins', 7);
   const someFact = Object.keys(plan.facts)[0];
@@ -934,8 +934,8 @@ section('a village, written down and read back');
   ok(shot && shot.v === LG.save.VERSION && shot.game === 'little-village',
      'a snapshot is a versioned little-village save');
   ok(LG.save.check(shot) === null, 'and it is one this version will take back');
-  ok(shot.village.seed === plan.seed && shot.village.level === g.settings.level &&
-     shot.village.lang === g.settings.lang,
+  ok(shot.village.seed === plan.seed && shot.village.level === LG.config.settings.level &&
+     shot.village.lang === LG.config.settings.lang,
      'it carries the seed, the difficulty and the language the village was built from');
   ok(Object.keys(shot.villagers).length === npcs.length, 'and every villager');
 
@@ -1182,7 +1182,7 @@ section('closing the tab and opening it again');
   const written = LG.save.write();                 // simulates what the autosave would have written
   const store2 = {
     'lg-save': JSON.stringify(written),
-    'lg-settings': JSON.stringify(LG.game.settings)
+    'lg-settings': JSON.stringify(LG.config.settings)
   };
   const s2 = makeSandbox(store2);
   for (const f of files) {
@@ -1190,7 +1190,7 @@ section('closing the tab and opening it again');
   }
   s2.LG.game.init();
   s2.LG.game.thoughts = false;                     // suppress console narration during tests
-  s2.LG.game.settings.npcChatter = false;          // and ensure no requests are sent regardless of key presence
+  s2.LG.config.settings.npcChatter = false;          // and ensure no requests are sent regardless of key presence
 
   ok(s2.LG.save.resumed, 'a fresh browser came back into the saved village');
   ok(s2.LG.game.plan.seed === written.village.seed,
@@ -1285,8 +1285,8 @@ async function villagersTalking() {
   // rather than trusting the reference captured at the top of the file.
   const cast = LG.game.npcs;
   const a = cast[0], b = cast[1];
-  LG.game.settings.apiKey = 'not-a-real-key';       // both stubs above, so nothing is sent
-  LG.game.settings.npcChatter = true;
+  LG.config.settings.apiKey = 'not-a-real-key';       // both stubs above, so nothing is sent
+  LG.config.settings.npcChatter = true;
   LG.dialogue.turnHold = 0;
   LG.dialogue._chatReset();
   a.frozen = b.frozen = false;
@@ -1556,12 +1556,12 @@ async function touchControls() {
 
     // The "always run" setting is a third way to trigger running,
     // independent of any touch gesture -- verifies it works with no gesture at all.
-    g.settings.autorun = true;
+    LG.config.settings.autorun = true;
     const autorunFrame = covered(false);   // no gesture this time, just the setting
     ok(autorunFrame > walkFrame * 1.3,
        'switching on "always run" runs you with no gesture at all (' +
        autorunFrame.toFixed(2) + 'px)');
-    g.settings.autorun = false;            // leave it as it was found
+    LG.config.settings.autorun = false;            // leave it as it was found
   }
 }
 

@@ -158,7 +158,7 @@ LG.save = (function () {
       v: VERSION,
       game: 'little-village',
       saved: new Date().toISOString(),
-      village: { seed: plan.seed, level: g.settings.level, lang: g.settings.lang,
+      village: { seed: plan.seed, level: LG.config.settings.level, lang: LG.config.settings.lang,
                  digest: digestOf(plan), placesSnapshot: plan.placesSnapshot },
       /* Weather affects villager behavior (see byDice() in npc.js) and
          accumulated snow depth takes multiple in-game days to build up —
@@ -232,8 +232,8 @@ LG.save = (function () {
        `placesSnapshot` (see chain.js's `attempt()`), so future saves of
        this village keep replaying the same list without restore() having
        to remember anything about it itself. */
-    g.settings.lang = data.village.lang;
-    g.settings.level = data.village.level;
+    LG.config.settings.lang = data.village.lang;
+    LG.config.settings.level = data.village.level;
     // `restoring`: newVillage must not save the bare village before the save is laid over it.
     withPlaces(() => g.newVillage(data.village.seed, true, true));
 

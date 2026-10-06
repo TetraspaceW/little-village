@@ -13,7 +13,7 @@ LG.dialogue = (function () {
   }
 
   function chatterLine() {
-    const arr = LG.CHATTER[LG.game.settings.lang] || LG.CHATTER.en;
+    const arr = LG.CHATTER[LG.config.settings.lang] || LG.CHATTER.en;
     return arr[(Math.random() * arr.length) | 0];
   }
 
@@ -177,7 +177,7 @@ LG.dialogue = (function () {
      `systemPrompt` below is a string-only wrapper around this, used by
      tests and the prompt dump. */
   function buildReply(npc, offered) {
-    const s = LG.game.settings;
+    const s = LG.config.settings;
     const L = LG.LANGUAGES[s.lang];
     const lvl = LG.LEVELS[s.level];
     /* Uses the same villager-assembly function that also drives where
@@ -592,7 +592,7 @@ LG.dialogue = (function () {
      had deliberately come to find you. `why` is `undefined` in the
      ordinary case, where the player always speaks first. */
   function open(npc, why) {
-    const L = LG.LANGUAGES[LG.game.settings.lang];
+    const L = LG.config.language();
     current = npc;
     npc.frozen = true;
     npc.metPlayer = true;
@@ -652,12 +652,12 @@ LG.dialogue = (function () {
   }
 
   function speakLine(npc, text) {
-    if (!npc || !LG.game.settings.voices) return;
-    LG.tts.speak(LG.game.ttsConfig(), npc.def.id, text);
+    if (!npc || !LG.config.settings.voices) return;
+    LG.tts.speak(LG.config.tts(), npc.def.id, text);
   }
 
   function addLine(who, text, translation, roman, ruby, npc) {
-    const s = LG.game.settings;
+    const s = LG.config.settings;
     const L = LG.LANGUAGES[s.lang];
     const row = document.createElement('div');
     row.className = 'line ' + who;
@@ -715,7 +715,7 @@ LG.dialogue = (function () {
   }
 
   function renderPhrases() {
-    const s = LG.game.settings;
+    const s = LG.config.settings;
     el.dlgPhrases.innerHTML = '';
     LG.PHRASES.forEach(p => {
       const b = document.createElement('button');
@@ -733,7 +733,7 @@ LG.dialogue = (function () {
   }
 
   function renderItems() {
-    const s = LG.game.settings;
+    const s = LG.config.settings;
     el.dlgItems.innerHTML = '';
     const inv = LG.game.state.inv;
     const keys = Object.keys(inv).filter(k => inv[k] > 0);
@@ -782,7 +782,7 @@ LG.dialogue = (function () {
 
     let reply;
     try {
-      const cfg = LG.game.llmConfig();
+      const cfg = LG.config.llm();
       const msgs = historyMessages(npc);
       msgs.push({ role: 'user', content: shown || '[says nothing, just holds out the item]' });
       const built = buildReply(npc, offered);
@@ -806,7 +806,7 @@ LG.dialogue = (function () {
     // For a furigana language, the villager annotates readings inline
     // as part of "say" — the spoken text itself is whatever remains once
     // the readings are stripped back out.
-    const L = LG.LANGUAGES[LG.game.settings.lang];
+    const L = LG.config.language();
     let spoken = reply.say, ruby = null;
     if (L.furigana) {
       const written = normaliseFurigana(reply.say);
@@ -938,9 +938,9 @@ LG.dialogue = (function () {
   /* Fills in a missing translation or romanization via the helper model,
      rather than leaving the player with a bare, ungloseed sentence. */
   async function repairGloss(npc, spoken, row, have) {
-    const L = LG.LANGUAGES[LG.game.settings.lang];
+    const L = LG.config.language();
     try {
-      const got = await LG.llm.gloss(LG.game.llmConfig(), spoken,
+      const got = await LG.llm.gloss(LG.config.llm(), spoken,
         { langName: L.name, romanLabel: (L.romanize && !have.roman) ? L.romanLabel : null });
       if (!got) return;
       const turn = npc.history[npc.history.length - 1];
@@ -972,7 +972,7 @@ LG.dialogue = (function () {
       const v = LG.view.of(npc, 'player');
       const entries = LG.view.heldEntries(v);
       if (entries.length < 1) return;
-      const got = await LG.llm.revise(LG.game.llmConfig(), {
+      const got = await LG.llm.revise(LG.config.llm(), {
         who: npc.def.name, held: LG.view.held(v), fresh: fresh
       });
       if (!got) return;
@@ -991,7 +991,7 @@ LG.dialogue = (function () {
      out later all count as "no". */
   async function confirmRefund(npc, id, price, spoken, translation) {
     try {
-      const yes = await LG.llm.confirmTrade(LG.game.llmConfig(), spoken, translation, {
+      const yes = await LG.llm.confirmTrade(LG.config.llm(), spoken, translation, {
         npcName: npc.def.name,
         wants: LG.ITEMS[id].full,
         gives: 'the ' + price + (price === 1 ? ' coin' : ' coins') + ' they paid for it, back'
@@ -1005,7 +1005,7 @@ LG.dialogue = (function () {
      actually declined, or agreed but the model just omitted the field. */
   async function confirmOffer(npc, trade, spoken, translation) {
     try {
-      const yes = await LG.llm.confirmTrade(LG.game.llmConfig(), spoken, translation, {
+      const yes = await LG.llm.confirmTrade(LG.config.llm(), spoken, translation, {
         npcName: npc.def.name,
         wants: trade.wantsCount > 1 ? trade.wantsCount + ' coins' : LG.ITEMS[trade.wants].full,
         gives: trade.givesCount > 1 ? trade.givesCount + ' coins' : LG.ITEMS[trade.gives].full
@@ -1024,7 +1024,7 @@ LG.dialogue = (function () {
     let last = null;
     for (let attempt = 0; attempt < 2; attempt++) {
       let got = null;
-      try { got = await LG.llm.furigana(LG.game.llmConfig(), spoken, attempt); }
+      try { got = await LG.llm.furigana(LG.config.llm(), spoken, attempt); }
       catch (e) { got = null; }
       last = got;
       const ok = usableRuby(got, spoken);
@@ -1054,9 +1054,9 @@ LG.dialogue = (function () {
       .filter(id => plan.facts[id] && npc.facts.indexOf(id) !== -1 && !LG.game.hasNote(id));
     if (!claimed.length) return;
     const candidates = claimed.map(id => ({ id, text: plan.facts[id].text }));
-    const L = LG.LANGUAGES[LG.game.settings.lang];
+    const L = LG.config.language();
     try {
-      const confirmed = await LG.llm.judge(LG.game.llmConfig(), spoken, reply.translation, candidates,
+      const confirmed = await LG.llm.judge(LG.config.llm(), spoken, reply.translation, candidates,
                                            { langName: L.name, furigana: !!L.furigana, diacritics: !!L.diacritics });
       confirmed.forEach(c => {
         // fall back to the line as spoken, so a note is never in the wrong language
@@ -1108,7 +1108,7 @@ LG.dialogue = (function () {
   async function startChat(job) {
     const a = job.a, b = job.b;
     chatBusy++;
-    const s = LG.game.settings;
+    const s = LG.config.settings;
     const L = LG.LANGUAGES[s.lang];
     const turns = 4 + ((Math.random() * 3) | 0);        // 4–6 lines between them
     const transcript = [];
@@ -1123,7 +1123,7 @@ LG.dialogue = (function () {
         if (a.frozen || b.frozen) break;
         const me = (t % 2 === 0) ? a : b, them = (t % 2 === 0) ? b : a;
         const vMe = view[me.def.id] || {}, vThem = view[them.def.id] || {};
-        const turn = await LG.llm.converse(LG.game.llmConfig(), {
+        const turn = await LG.llm.converse(LG.config.llm(), {
           me: vMe,
           them: vThem,
           /* No topic is assigned — the villager just has what's on
@@ -1181,7 +1181,7 @@ LG.dialogue = (function () {
        form rather than either villager's own voice — "X thinks Y talks
        too much," never "You think...". */
     const told = v => (v.knows || []).map(f => ({ id: f.id, text: f.plain }));
-    LG.llm.recall(LG.game.llmConfig(), {
+    LG.llm.recall(LG.config.llm(), {
       transcript: transcript,
       a: { name: ctx.a.name, facts: told(ctx.a) },
       b: { name: ctx.b.name, facts: told(ctx.b) }

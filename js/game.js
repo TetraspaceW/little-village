@@ -4,23 +4,7 @@ window.LG = window.LG || {};
 LG.game = (function () {
   const W = LG.world, A = LG.actors, TILE = 32;
 
-  const settings = {
-    lang: 'ru', level: 'beginner', autorun: false,
-    provider: 'openrouter', apiKey: '', model: 'deepseek/deepseek-v4.1-flash', helper: '',
-    /* One key per provider, so switching provider and back doesn't lose
-       the other one. `apiKey` is always the current provider's entry. */
-    keys: { openrouter: '', logfare: '' },
-    /* These four are no longer exposed as player-facing settings —
-       villager gossip is always on, translations always start blurred
-       (click to reveal), voices are always cast from the curated
-       library, and speech speed always matches difficulty. Kept as
-       fields since other code still reads settings.npcChatter etc.;
-       loadSettings() below force-resets them on load so an old
-       localStorage save with different values can't reintroduce the
-       removed choice. */
-    showTranslation: false, npcChatter: true,
-    voices: false, ttsKey: '', voiceSpeed: 'auto', voiceQuality: 'curated'
-  };
+  const C = LG.config, settings = C.settings;
 
   // `gated` blocks input until settings (incl. API key) are confirmed via the front-door panel.
   let gated = true, gateMode = false, lastValidated = '';
@@ -96,49 +80,6 @@ LG.game = (function () {
   let nudge = '', nudgeT = 0;
   const logLines = [];
 
-  /* ------------------------------------------------------------ settings */
-  function loadSettings() {
-    try {
-      const raw = localStorage.getItem('lg-settings');
-      if (raw) Object.assign(settings, JSON.parse(raw));
-    } catch (e) { /* ignore */ }
-    /* The Anthropic provider is gone. A save still pointing at it holds
-       an Anthropic key and Claude model ids, neither of which means
-       anything to OpenRouter -- drop them rather than send that key
-       somewhere it was never meant for. */
-    if (!LG.llm.MODELS[settings.provider]) {
-      settings.provider = 'openrouter';
-      settings.apiKey = '';
-      settings.model = LG.llm.MODELS.openrouter[0].id;
-      settings.helper = '';
-    }
-    // Keys used to be one field shared by every provider; file an old one under the provider it was saved with.
-    settings.keys = Object.assign({ openrouter: '', logfare: '' }, settings.keys);
-    if (settings.apiKey && !settings.keys[settings.provider]) settings.keys[settings.provider] = settings.apiKey;
-    settings.apiKey = settings.keys[settings.provider] || '';
-    // No longer configurable -- force these even if an old save has different values stored.
-    settings.npcChatter = true;
-    settings.showTranslation = false;
-    settings.voiceQuality = 'curated';
-    settings.voiceSpeed = 'auto';
-    // Jev used to be opt-in; it's now always used on OpenRouter, so nothing reads these.
-    delete settings.jevMovement;
-    delete settings.jevValidation;
-  }
-  function saveSettings() {
-    try { localStorage.setItem('lg-settings', JSON.stringify(settings)); } catch (e) {}
-  }
-  function ttsConfig() {
-    // Talking speed is always derived from difficulty, not separately configurable.
-    const speed = (LG.LEVELS[settings.level] || {}).speed || 0.85;
-    return { key: settings.ttsKey.trim(), speed: speed,
-             lang: settings.lang, curatedOnly: settings.voiceQuality === 'curated' };
-  }
-  function llmConfig() {
-    return { provider: settings.provider, apiKey: settings.apiKey.trim(),
-             model: settings.model, helper: settings.helper };
-  }
-
   /* ---------------------------------------------------------- inventory */
   function count(id) { return state.inv[id] || 0; }
   function give(id, n) { state.inv[id] = (state.inv[id] || 0) + (n || 1); renderHUD(); }
@@ -197,7 +138,7 @@ LG.game = (function () {
   function txnLog(icon, key, native, english) {
     const set = LG.TXN[key];
     if (!set) return;
-    const L = LG.LANGUAGES[settings.lang];
+    const L = C.language();
     const line = fillTemplate(set[settings.lang] || set.en, native);
     const gloss = fillTemplate(set.en, english);
     const hide = settings.showTranslation ? '' : ' hidden-tr';
@@ -260,7 +201,7 @@ LG.game = (function () {
      with translations turned on globally — showing it by default would
      let the player skip understanding the overheard language entirely. */
   function logSpeech(name, said, ruby, roman, gloss) {
-    const L = LG.LANGUAGES[settings.lang];
+    const L = C.language();
     const heard = (ruby && L.furigana) ? LG.dialogue.rubyHTML(ruby) : escapeHTML(said);
     let html = '<span class="who">\uD83D\uDC42 ' + escapeHTML(name) + ':</span> ' +
                '<span class="heard" lang="' + L.tag + '"' +
@@ -281,7 +222,7 @@ LG.game = (function () {
     const purse = document.getElementById('purse');
     if (purse) purse.textContent = '\u00a4' + (state.inv.coins || 0);
     const inv = document.getElementById('inv');
-    const L = LG.LANGUAGES[settings.lang];
+    const L = C.language();
     const ks = Object.keys(state.inv).filter(k => state.inv[k] > 0 && k !== 'coins');
     inv.innerHTML = ks.length
       ? ks.map(k => '<span class="pill" title="' + LG.ITEMS[k].en + '">' + LG.ITEMS[k].icon +
@@ -609,7 +550,7 @@ LG.game = (function () {
 
   /* ------------------------------------------------------------- startup */
   function init() {
-    loadSettings();
+    C.load();
     canvas = document.getElementById('game');
     ctx = canvas.getContext('2d');
     W.build();
@@ -627,7 +568,7 @@ LG.game = (function () {
     window.addEventListener('resize', resize);
     trackViewport();
 
-    if (settings.apiKey) { gated = false; LG.llm.probe(llmConfig()); }
+    if (settings.apiKey) { gated = false; LG.llm.probe(C.llm()); }
     else { openSettings(true); }
     showChrome();
     loadVoices();
@@ -669,7 +610,7 @@ LG.game = (function () {
     if (!got.length && was.lang === settings.lang && was.level === settings.level) return;
 
     fromEnv = true;
-    saveSettings();
+    C.save();
     /* The village is generated from language + difficulty, so changing
        either normally means regenerating it -- fine, since nothing has
        happened yet in a fresh session. Except when a village was already
@@ -1189,9 +1130,9 @@ LG.game = (function () {
     const levelChanged = next.level !== settings.level;
     const voiceChanged = next.voices !== settings.voices || next.ttsKey !== settings.ttsKey;
     Object.assign(settings, next);
-    saveSettings();
+    C.save();
     // Structured-output support depends on the provider/model pair -- re-probe on any settings change.
-    LG.llm.probe(llmConfig());
+    LG.llm.probe(C.llm());
     document.getElementById('settings').classList.remove('open');
     btn.textContent = 'Save';
     renderHUD();
@@ -1216,7 +1157,7 @@ LG.game = (function () {
     } else if (forceNewVillage) {
       newVillage();
     } else {
-      log('The villagers now speak ' + LG.LANGUAGES[settings.lang].name + '.');
+      log('The villagers now speak ' + C.language().name + '.');
     }
   }
 
@@ -1225,7 +1166,7 @@ LG.game = (function () {
      until they first talk to a villager. */
   function loadVoices() {
     if (!settings.voices || !settings.ttsKey) return;
-    LG.tts.load(ttsConfig()).then(ok => {
+    LG.tts.load(C.tts()).then(ok => {
       if (ok) log('🔊 The villagers have found their voices.');
       else log('🔊 No voices: ' + LG.tts.error);
     });
@@ -1679,7 +1620,7 @@ LG.game = (function () {
        since "what they know" and "what they decide" were reading from
        different, disconnected data. */
     const v = LG.view.of(n, 'intent');
-    LG.llm.intent(llmConfig(), {
+    LG.llm.intent(C.llm(), {
       me: v,
       goal: v.goal,
       when: v.when,
@@ -1769,10 +1710,10 @@ LG.game = (function () {
     if (n.boardCool > 0) return;
     n.boardCool = 90 + Math.random() * 150;
     const v = LG.view.of(n, 'board');
-    const L = LG.LANGUAGES[settings.lang];
+    const L = C.language();
     const lvl = LG.LEVELS[settings.level] || {};
     think(n, 'wonders whether to pin anything up', '');
-    LG.llm.notice(llmConfig(), {
+    LG.llm.notice(C.llm(), {
       me: v, goal: v.goal, when: v.when,
       held: LG.view.held(v),
       board: (state.board || []).map(b => b.translation || b.text),
@@ -1809,8 +1750,8 @@ LG.game = (function () {
       : [];
     if (!claimed.length) return;
     const candidates = claimed.map(id => ({ id, text: plan.facts[id].text }));
-    const L = LG.LANGUAGES[settings.lang];
-    LG.llm.judge(llmConfig(), text, entry.translation, candidates, { langName: L.name })
+    const L = C.language();
+    LG.llm.judge(C.llm(), text, entry.translation, candidates, { langName: L.name })
       .then(confirmed => { confirmed.forEach(c => entry.factIds.push(c.id)); })
       .catch(() => {});
   }
@@ -1831,7 +1772,7 @@ LG.game = (function () {
   }
 
   function renderBoard() {
-    const L = LG.LANGUAGES[settings.lang];
+    const L = C.language();
     const box = document.getElementById('boardList');
     const rows = (state.board || []).slice().reverse().map(entry => {
       const hide = settings.showTranslation ? '' : ' hidden-tr';
@@ -2199,7 +2140,7 @@ LG.game = (function () {
       }
     }
     for (const a of drawables) {
-      if (a.bubble) A.drawBubble(ctx, a, LG.LANGUAGES[settings.lang].fontStack);
+      if (a.bubble) A.drawBubble(ctx, a, C.language().fontStack);
     }
 
     ctx.restore();
@@ -2218,7 +2159,7 @@ LG.game = (function () {
     requestAnimationFrame(loop);
   }
 
-  return { init, settings, state, llmConfig, ttsConfig, log, learn, hasNote, give, take, count,
+  return { init, state, log, learn, hasNote, give, take, count,
            remember, noteFactSource, factSpent, displayName, nameOrEmoji,
            _moveDir: moveDir, _isInteract: isInteract, _tapAt: tapAt,
            get cam() { return cam; },

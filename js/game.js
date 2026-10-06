@@ -3,6 +3,7 @@ window.LG = window.LG || {};
 
 LG.game = (function () {
   const W = LG.world, A = LG.actors, TILE = 32;
+  const { displayName, nameOrEmoji, remember, noteFactSource, think } = A;
 
   const C = LG.config, settings = C.settings;
 
@@ -99,29 +100,6 @@ LG.game = (function () {
                        (state.inv[k] > 1 ? ' x' + state.inv[k] : '')).join(', ');
   }
   function itemLabel(id) { return LG.itemName(id, settings.lang); }
-
-  /* A villager's name is unknown to the player until that villager
-     actually states it — same rule the notebook applies to every other
-     fact a villager knows, extended to cover names, which used to be
-     shown for free. Every place that would otherwise print
-     `npc.def.name` directly to the player goes through this function
-     instead. Doesn't affect what the model itself is told (its own name
-     in its system prompt) — only what the *player* has been told.
-     `nameKnown` is set only when a villager's own reply states their
-     name — see the check in dialogue.js — never by a fact arriving via
-     any other source, however reliable, since that isn't the villager
-     telling the player their name. */
-  function displayName(n) {
-    return (n.nameKnown && n.def.name) || n.def.job;
-  }
-  /* Like displayName, but for text written *in the village's language*
-     — an English job description there would read as an out-of-place
-     foreign word. Uses the emoji instead, matching how every character
-     is already marked on screen (see drawCharacter): identifiable, if
-     not yet named. */
-  function nameOrEmoji(n) {
-    return (n.nameKnown && n.def.name) || n.def.emoji;
-  }
 
   /* Narrates a completed deal ("you hand over the rope") in the
      village's language rather than English — see LG.TXN. `native` and
@@ -1431,47 +1409,6 @@ LG.game = (function () {
   /* Reuses world.js's rectangle-proximity check. */
   const nearRect = W.nearRect;
 
-  /* Adds a memory entry for `npc`.
-
-     This is the only entry point for anything a villager comes to
-     believe, so every memory carries the same two fields: when it was
-     learned (`at`) and who told them (`from`, null for something they
-     witnessed themselves). No memory is inherently more authoritative
-     than another -- a chain fact dealt at game start and a rumor picked
-     up on the green are structurally the same kind of entry, only
-     distinguished by recency and source.
-
-     Memories used to be stored as bare strings, with no way to compare
-     two of them. A villager could end up holding two contradictory bare
-     strings (e.g. "X is looking for shoes" and "X received shoes") with
-     no way to determine which was more current -- they could only notice
-     the contradiction, not resolve it. Dating and sourcing every entry
-     fixes that.
-
-     Note: below (noticeItemGone) covers the one fact in the errand that
-     can become false during play -- an item lying in the world getting
-     picked up. Since chain facts are only dealt once, at game start,
-     without that separate handling a villager could keep directing
-     people to an item's location long after it's gone. Walking there
-     and finding nothing is what corrects that (see noticeItemGone). */
-  function remember(npc, text, from) {
-    if (!text || typeof text !== 'string' || text.length < 3) return false;
-    npc.memory = npc.memory || [];
-    if (npc.memory.some(m => (m && m.text) === text)) return false;
-    npc.memory.push({ at: LG.time.clock(), text: text, from: from || null });
-    if (npc.memory.length > 24) npc.memory.shift();
-    return true;
-  }
-
-  /* Records when/from-whom a chain fact was learned, same as `remember`
-     does for memories. Facts dealt at game start are left unstamped,
-     which is what makes them read as something the villager has simply
-     always known. */
-  function noteFactSource(npc, id, from) {
-    npc.factAt = npc.factAt || {};
-    if (!npc.factAt[id]) npc.factAt[id] = { at: LG.time.clock(), from: from || null };
-  }
-
   function noticeItemGone(n) {
     if (!whereFact || !haveTerminal()) return;
     const i = n.facts.indexOf(whereFact);
@@ -1515,25 +1452,6 @@ LG.game = (function () {
      a saw walks toward wherever she last heard one was. */
   const DECIDE_COOL = 25;
 
-  /* Logs each villager decision with its stated reason to the console.
-     Without this, there was no way to tell from the outside whether a
-     villager's movement decision was reasoned or effectively random.
-     Tagged in the villager's own color so a busy village stays readable.
-     `LG.game.thoughts = false` disables this. */
-  let thoughts = true;
-  function think(n, what, detail) {
-    // The log keeps these whether or not the console is printing them.
-    if (LG.logbook) LG.logbook.note('villager', n.def ? n.def.name : '?', what,
-      { detail: detail || '', where: n.px !== undefined ? LG.view.where(n) : '',
-        clock: LG.time && LG.time.clock ? LG.time.clock() : '' });
-    if (!thoughts || typeof console === 'undefined' || !console.log) return;
-    const c = (n.def && n.def.color) || '#888';
-    console.log('%c ' + (n.def ? n.def.name : '?') + ' %c ' + what +
-                (detail ? '%c  ' + detail : ''),
-      'background:' + c + ';color:#fff;border-radius:3px;font-weight:600',
-      'color:inherit',
-      'color:#888;font-style:italic');
-  }
   /* Builds the list of everywhere a villager could plausibly walk to,
      including toward other villagers they can see.
 
@@ -2160,13 +2078,11 @@ LG.game = (function () {
   }
 
   return { init, state, log, learn, hasNote, give, take, count,
-           remember, noteFactSource, factSpent, displayName, nameOrEmoji,
+           factSpent,
            _moveDir: moveDir, _isInteract: isInteract, _tapAt: tapAt,
            get cam() { return cam; },
-           canOverhear, logSpeech, think,
+           canOverhear, logSpeech,
            factText: id => (plan && plan.facts[id]) ? plan.facts[id].text : null,
-           set thoughts(v) { thoughts = !!v; },
-           get thoughts() { return thoughts; },
            _debugPlayerAt: (x, y) => {
              player.px = x; player.py = y;
              player.tx = (x / TILE) | 0; player.ty = (y / TILE) | 0;

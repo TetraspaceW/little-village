@@ -129,7 +129,7 @@ const LG = sandbox.LG;
 
 /* Starts the game exactly as index.html does. No API key is set, so no request is ever sent. */
 sandbox.LG.game.init();
-if (LG.game.thoughts !== undefined) LG.game.thoughts = false;   // no narration in a test
+if (LG.actors.thoughts !== undefined) LG.actors.thoughts = false;   // no narration in a test
 
 /* `node tests/smoke.js --prompts` prints every villager's system prompt
    for one fixed village and exits. Diffing this output between two
@@ -708,7 +708,7 @@ async function keysPerProvider() {
     vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), s3, { filename: f });
   }
   s3.LG.game.init();
-  s3.LG.game.thoughts = false;
+  s3.LG.actors.thoughts = false;
   const set = s3.LG.config.settings;
   ok(set.provider === 'openrouter', 'a saved Anthropic setup comes back as OpenRouter');
   ok(set.apiKey === '' && !set.keys.openrouter && !set.keys.logfare,
@@ -792,7 +792,7 @@ async function jevPicksThePlace() {
 section('everything they hold says when it arrived and who from');
 {
   const n = npcs.find(x => x.facts.length > 0) || npcs[0];
-  LG.game.remember(n, 'the traveller is looking for a saw', 'the traveller');
+  LG.actors.remember(n, 'the traveller is looking for a saw', 'the traveller');
   const v = LG.view.of(n, 'player');
   const lines = LG.view.held(v), entries = LG.view.heldEntries(v);
   ok(lines.length === entries.length, 'the lines and the things they name line up');
@@ -894,7 +894,7 @@ section('a village, written down and read back');
   const holder = npcs.find(n => n.facts.indexOf(someFact) !== -1);
   if (holder) {
     g.learn(someFact, holder);
-    LG.game.remember(holder, 'the traveller cannot say much yet', 'the traveller');
+    LG.actors.remember(holder, 'the traveller cannot say much yet', 'the traveller');
   }
   npcs[0].coins = 41;
   npcs[0].stock.apple = 2;
@@ -1189,7 +1189,7 @@ section('closing the tab and opening it again');
     vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), s2, { filename: f });
   }
   s2.LG.game.init();
-  s2.LG.game.thoughts = false;                     // suppress console narration during tests
+  s2.LG.actors.thoughts = false;                     // suppress console narration during tests
   s2.LG.config.settings.npcChatter = false;          // and ensure no requests are sent regardless of key presence
 
   ok(s2.LG.save.resumed, 'a fresh browser came back into the saved village');
@@ -1354,11 +1354,11 @@ async function namesUnknownUntilTold() {
   const g = LG.game, npc = g.npcs.find(n => !n.nameKnown) || g.npcs[0];
   npc.nameKnown = false;                              // in case an earlier section set it
 
-  ok(g.displayName(npc) === npc.def.job, 'unmet, the game calls them by their job');
-  ok(g.nameOrEmoji(npc) === npc.def.emoji, 'and a native-language line uses the emoji, not English');
+  ok(LG.actors.displayName(npc) === npc.def.job, 'unmet, the game calls them by their job');
+  ok(LG.actors.nameOrEmoji(npc) === npc.def.emoji, 'and a native-language line uses the emoji, not English');
 
   // A name learned from a third party must not set nameKnown -- only the villager telling you themself counts.
-  g.remember(npc, 'somebody else told the traveller this villager\'s name is ' + npc.def.name, 'a bystander');
+  LG.actors.remember(npc, 'somebody else told the traveller this villager\'s name is ' + npc.def.name, 'a bystander');
   ok(!npc.nameKnown, 'hearsay about their name is not the same as being told it');
 
   const real = LG.llm.speak;
@@ -1382,8 +1382,8 @@ async function namesUnknownUntilTold() {
   ok(npc.nameKnown, 'stating their own name in the translation is what teaches it');
   ok(sandbox.document.getElementById('dlgName').textContent === npc.def.name,
      'and the panel already open updates mid-conversation, without being reopened');
-  ok(g.displayName(npc) === npc.def.name, 'from here on the game uses their name');
-  ok(g.nameOrEmoji(npc) === npc.def.name, 'in every language, not only English');
+  ok(LG.actors.displayName(npc) === npc.def.name, 'from here on the game uses their name');
+  ok(LG.actors.nameOrEmoji(npc) === npc.def.name, 'in every language, not only English');
   LG.dialogue.close();
 
   // It survives a save and comes back, the same as anything else about them.

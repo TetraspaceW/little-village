@@ -265,7 +265,7 @@ Each of these was a bug first:
 
 ## Names
 
-- `LG.game.displayName` returns the villager's job until `nameKnown` is set. It's set
+- `LG.actors.displayName` returns the villager's job until `nameKnown` is set. It's set
   only when **that villager** states their own name. Hearsay doesn't count.
 - Detection is a regex over `reply.translation` (guaranteed English), run before any
   non-English blanking. There's no schema field or extra call, because a wrong answer

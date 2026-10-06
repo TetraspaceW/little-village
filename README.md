@@ -300,7 +300,7 @@ group, and each villager's decisions print in their own colour.
 LG.llm.transcript          // full call records, newest last
 LG.llm.dump()               // all of it as plain text
 LG.llm.audit = false         // stop console logging (recording continues)
-LG.game.thoughts = false     // stop printing villager decisions
+LG.actors.thoughts = false     // stop printing villager decisions
 ```
 
 ## Project structure

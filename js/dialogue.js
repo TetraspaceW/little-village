@@ -772,7 +772,7 @@ LG.dialogue = (function () {
       ? (text ? text + '  ' : '') + '[holds out the ' + LG.ITEMS[offered].en + ']'
       : text);
     if (!prompt) { addLine('player', shown); el.dlgInput.value = ''; }
-    status(LG.game.displayName(npc) + ' is thinking…', 'thinking');
+    status(LG.actors.displayName(npc) + ' is thinking…', 'thinking');
 
     /* The reply is awaited, and by the time it lands the player may have
        walked off -- or be talking to someone else, whose card must not
@@ -797,7 +797,7 @@ LG.dialogue = (function () {
     }
 
     if (!reply || !reply.say) {
-      if (!prompt) say('⚠ ' + LG.game.displayName(npc) + ' said something the game could not read. Try again.', 'error');
+      if (!prompt) say('⚠ ' + LG.actors.displayName(npc) + ' said something the game could not read. Try again.', 'error');
       else say(LG.touch.on ? 'Say hello — or tap a phrase below.' : 'Say hello — or click a phrase below.');
       busy = false; el.dlgSend.disabled = false;
       return;
@@ -822,7 +822,7 @@ LG.dialogue = (function () {
     if (npc.history.length > 20) npc.history.shift();
     const gotIt = String(reply.understood || 'full').toLowerCase() !== 'none';
 
-    /* Name-known detection — see LG.game.displayName. Deliberately not
+    /* Name-known detection — see LG.actors.displayName. Deliberately not
        a schema field: it would be one more field a model could hedge on
        and drop (the same failure mode the "always-fields" fix above
        addressed), for something that can be checked for free against a
@@ -843,8 +843,8 @@ LG.dialogue = (function () {
       pending.push(verifyRevealed(npc, reply, spoken, ruby));   // deliberately not awaited
     }
     if (gotIt && reply.remember && typeof reply.remember === 'string' && reply.remember.length > 3) {
-      if (LG.game.remember(npc, reply.remember, 'the traveller')) {
-        LG.game.log(LG.game.displayName(npc) + ' will remember: "' + reply.remember + '"');
+      if (LG.actors.remember(npc, reply.remember, 'the traveller')) {
+        LG.game.log(LG.actors.displayName(npc) + ' will remember: "' + reply.remember + '"');
         /* The new memory may supersede something already held — only
            checked (reviseHeld) when something new was actually recorded,
            so a turn that taught the villager nothing costs nothing. */
@@ -873,8 +873,8 @@ LG.dialogue = (function () {
     npc.bubble = spoken; npc.bubbleT = 6;   // the canvas bubble stays plain text
 
     const u = String(reply.understood || '').toLowerCase();
-    if (u === 'none') say(LG.game.displayName(npc) + ' did not understand you at all.', 'miss');
-    else if (u === 'partial') say(LG.game.displayName(npc) + ' only caught part of that.', 'miss');
+    if (u === 'none') say(LG.actors.displayName(npc) + ' did not understand you at all.', 'miss');
+    else if (u === 'partial') say(LG.actors.displayName(npc) + ' only caught part of that.', 'miss');
     else say('');
 
     /* Shopkeeping: the villager's reply claims a sale happened; the
@@ -916,10 +916,10 @@ LG.dialogue = (function () {
       } else if (offered === trade.wants && haveEnough) {
         pending.push(confirmOffer(npc, trade, spoken, reply.translation));
       } else if (offered) {
-        say(LG.game.displayName(npc) + ' does not want your ' + LG.ITEMS[offered].en + '.');
+        say(LG.actors.displayName(npc) + ' does not want your ' + LG.ITEMS[offered].en + '.');
       }
     } else if (offered) {
-      say(LG.game.displayName(npc) + ' has no use for that.');
+      say(LG.actors.displayName(npc) + ' has no use for that.');
     }
 
     busy = false;
@@ -980,8 +980,8 @@ LG.dialogue = (function () {
       if (!e || e.text === got.line) return;
       if (e.id) { npc.factNote = npc.factNote || {}; npc.factNote[e.id] = got.line; }
       else e.text = got.line;                       // the view hands back the object itself
-      if (LG.game.think) LG.game.think(npc, 'thinks again', e.text + ' \u2192 ' + got.line);
-      LG.game.log(LG.game.displayName(npc) + ' now reckons: "' + got.line + '"');
+      LG.actors.think(npc, 'thinks again', e.text + ' \u2192 ' + got.line);
+      LG.game.log(LG.actors.displayName(npc) + ' now reckons: "' + got.line + '"');
     } catch (err) { /* they go on believing what they believed */ }
   }
 
@@ -1157,11 +1157,11 @@ LG.dialogue = (function () {
 
         // Most of this happens off-screen; the console is the only way
         // to observe villager-to-villager conversation the player didn't witness.
-        if (LG.game.think) LG.game.think(me, 'says', plain +
+        LG.actors.think(me, 'says', plain +
           (turn.translation ? '  \u2014 ' + turn.translation : ''));
         if (LG.game.canOverhear(a, b)) {
           const ruby = (L.furigana && plain !== turn.say) ? turn.say : null;
-          LG.game.logSpeech(LG.game.displayName(me), plain, ruby, turn.roman, turn.translation);
+          LG.game.logSpeech(LG.actors.displayName(me), plain, ruby, turn.roman, turn.translation);
         }
         await sleep(turnHold);
       }
@@ -1197,9 +1197,9 @@ LG.dialogue = (function () {
     let landed = null;
     (took.remembers || []).slice(0, 4).forEach(m => {
       if (typeof m !== 'string' || m.length < 4) return;
-      if (LG.game.remember(speaker, m, listener.def.name)) {
+      if (LG.actors.remember(speaker, m, listener.def.name)) {
         landed = m;
-        if (LG.game.think) LG.game.think(speaker, 'remembers', m);
+        LG.actors.think(speaker, 'remembers', m);
       }
     });
     /* Applies the same reviseHeld() check used for player conversations
@@ -1214,8 +1214,8 @@ LG.dialogue = (function () {
       if (ids.indexOf(id) === -1) return;              // not theirs to tell
       if (listener.facts.indexOf(id) !== -1) return;   // already knew
       listener.facts.push(id);
-      LG.game.noteFactSource(listener, id, speaker.def.name);
-      if (LG.game.think) LG.game.think(listener, 'now knows', LG.game.factText(id) || id);
+      LG.actors.noteFactSource(listener, id, speaker.def.name);
+      LG.actors.think(listener, 'now knows', LG.game.factText(id) || id);
     });
   }
 

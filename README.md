@@ -326,7 +326,8 @@ js/ledger.js         the traveller's pockets, notebook, deeds and log, and the H
 js/trade.js          buying and selling for coin: prices, refunds, the till
 js/dialogue.js       prompt building, conversation UI
 js/save.js           save format: snapshot/restore, both storage locations
-js/game.js           main loop and drawing, input, settings panel, noticeboard, errand trades
+js/settings-panel.js the settings panel and front-door gate, keys from .env
+js/game.js           main loop and drawing, input, noticeboard, errand trades
 tools/logserver.js   serves the game, exposes .env, collects logs, keeps the save
 tests/smoke.js       headless test of the full game
 ```

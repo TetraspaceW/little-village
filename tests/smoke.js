@@ -718,7 +718,7 @@ async function keysPerProvider() {
   const el = id => s3.document.getElementById(id);
   const pick = prov => { el('setProvider').value = prov; el('setProvider').onchange(); };
   s3.LG.llm.validate = async () => true;             // nothing is sent
-  s3.LG.game.openSettings(false);
+  s3.LG.settingsPanel.open(false);
   pick('logfare');
   el('setKey').value = 'lf-not-real';
   pick('openrouter');
@@ -732,7 +732,7 @@ async function keysPerProvider() {
   ok(stored.logfare === 'lf-not-real' && stored.openrouter === 'or-not-real',
      'and keeps the other provider\u2019s key alongside it');
 
-  s3.LG.game.openSettings(false);
+  s3.LG.settingsPanel.open(false);
   pick('logfare');
   ok(el('setKey').value === 'lf-not-real', 'so switching back to Logfare finds its key still there');
   pick('openrouter');

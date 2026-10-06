@@ -137,7 +137,7 @@ OpenRouter's decisions endpoint (`decisionPost`/`askJev` in `js/llm.js`), not
 - The parser strips fences, repairs common breakage, and falls back to pulling out
   fields by hand. It **never shows raw text**. An unreadable reply becomes a failed
   turn, never a brace in a speech bubble.
-- If the translation contains non-Latin script (`looksEnglish`, `js/dialogue.js`), it's
+- If the translation contains non-Latin script (`looksEnglish`, `js/text.js`), it's
   discarded and the helper model re-glosses the line.
 
 ## Furigana
@@ -260,7 +260,7 @@ Each of these was a bug first:
   world facts (item collected, trade completed), and the notebook has no `done` field
   or saved flag. There used to be three separate answers, which disagreed. Spent leads
   are struck through, not deleted.
-- **One note per fact.** `learn` guards with `hasNote` (`js/game.js`), and `restore`
+- **One note per fact.** `learn` guards with `hasNote` (`js/ledger.js`), and `restore`
   applies the same rule when loading a save, keeping the first occurrence.
 
 ## Names

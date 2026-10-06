@@ -1,10 +1,15 @@
-/* game.js — core game state, main loop, input handling, notebook, and settings. */
+/* game.js — the village's world state (plan, villagers, player, the thing
+   to be found), the main loop and drawing, input, the settings panel, the
+   noticeboard, and the errand's own trades. The player's record lives in
+   ledger.js, coin sales in trade.js, and the settings values in config.js. */
 window.LG = window.LG || {};
 
 LG.game = (function () {
   const W = LG.world, A = LG.actors, TILE = 32;
-  const { displayName, nameOrEmoji, remember, noteFactSource, think } = A;
-  const { escapeHTML, rubyHTML } = LG.text;
+  const { displayName, nameOrEmoji, remember, think } = A;
+  const { escapeHTML } = LG.text;
+  const { give, take, learn, log, txn } = LG.ledger;
+  const renderHUD = LG.ledger.render;
 
   const C = LG.config, settings = C.settings;
 
@@ -14,7 +19,7 @@ LG.game = (function () {
   // The settings panel's unsaved key per provider, and which provider the key box is showing right now.
   let draftKeys = {}, keyProvider = '';
 
-  const state = { inv: {}, notes: [], deeds: [], won: false, board: [] };
+  const state = LG.ledger.state;
 
   let plan = null;                 // the generated errand chain (chain.js)
   let canvas, ctx, cam = { x: 0, y: 0 }, vw = 0, vh = 0, dpr = 1;
@@ -38,7 +43,6 @@ LG.game = (function () {
   const groundSeen = { x: NaN, y: NaN, roomX: NaN, roomY: NaN, snow: -1, night: false, lang: '', trans: false };
   let player, npcs = [], beast = null, worldItem = null;
   let whereFact = null;             // the fact saying where the world thing is lying
-  let chainNeeds = {};              // items the errand cannot be finished without
   /* Bound to physical key positions (e.code), not the characters they
      produce (e.key) — on a Russian keyboard, e.key for WASD is цфыв and
      for E is у. Falls back to e.key only when e.code is unavailable. */
@@ -80,369 +84,6 @@ LG.game = (function () {
      recomputed from scratch every tick, which would erase a tap response
      before it could be read. */
   let nudge = '', nudgeT = 0;
-  const logLines = [];
-
-  /* ---------------------------------------------------------- inventory */
-  function count(id) { return state.inv[id] || 0; }
-  function give(id, n) { state.inv[id] = (state.inv[id] || 0) + (n || 1); renderHUD(); }
-  function take(id, n) {
-    state.inv[id] = Math.max(0, (state.inv[id] || 0) - (n || 1));
-    if (!state.inv[id]) delete state.inv[id];
-    renderHUD();
-  }
-  /* `exclude` omits one item from the list entirely -- used for a
-     caught animal following the player, which isn't really "in a
-     pocket" and is described separately (see LG.view.companion). */
-  function inventoryList(exclude) {
-    const ks = Object.keys(state.inv).filter(k => state.inv[k] > 0 && k !== exclude);
-    if (!ks.length) return '';
-    // Used only in the villager's prompt, so names items the way the rest of that prompt does -- see LG.itemSaid.
-    return ks.map(k => LG.itemSaid(k, settings.lang, true) +
-                       (state.inv[k] > 1 ? ' x' + state.inv[k] : '')).join(', ');
-  }
-  function itemLabel(id) { return LG.itemName(id, settings.lang); }
-
-  /* Narrates a completed deal ("you hand over the rope") in the
-     village's language rather than English — see LG.TXN. `native` and
-     `english` fill the same template's placeholders in each language;
-     the English fill doubles as the click-to-reveal gloss, matching
-     everything else the notebook shows. */
-  function itemsPhrase(ids, lang) {
-    const conj = ' ' + (LG.CONJ[lang] || LG.CONJ.en) + ' ';
-    return ids.map(id => (LG.ITEMS[id] && (LG.ITEMS[id][lang] || LG.ITEMS[id].en)) || id).join(conj);
-  }
-  function fillTemplate(tpl, vars) {
-    return tpl.replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null ? vars[k] : ''));
-  }
-  function txnLog(icon, key, native, english) {
-    const set = LG.TXN[key];
-    if (!set) return;
-    const L = C.language();
-    const line = fillTemplate(set[settings.lang] || set.en, native);
-    const gloss = fillTemplate(set.en, english);
-    const hide = settings.showTranslation ? '' : ' hidden-tr';
-    pushLog(icon + ' <span class="heard" lang="' + L.tag + '">' + escapeHTML(line) + '</span>' +
-            '<span class="gloss' + hide + '" lang="en" title="click to read">' + escapeHTML(gloss) + '</span>');
-  }
-
-  /* ------------------------------------------------------------ notebook
-     The notebook only contains facts a villager has actually told the
-     player — villagers self-report which facts they revealed, and those
-     reports are recorded here (see `learn` below).
-
-     Not every learnable fact belongs here, though: `opinion` facts (the
-     gossip chain.js generates so villagers have something to talk
-     about) are real, checkable, learnable facts just like errand facts,
-     but they aren't part of the errand. Including them would turn the
-     one page meant to say "what to do next" into something the player
-     has to sift through for the facts that actually matter. */
-  function hasNote(factId) {
-    return state.notes.some(n => n.id === factId);
-  }
-  function learn(factId, fromNpc, note, ruby) {
-    if (!plan || !plan.facts[factId]) return;
-    if (plan.facts[factId].type === 'opinion') return;   // gossip, not the errand
-    if (hasNote(factId)) return;
-    if (fromNpc && fromNpc.facts.indexOf(factId) === -1) return;   // they can't tell you what they don't know
-    /* A note records only that the player was told something — not
-       whether it's still actionable. That state was previously cached
-       and could go stale: e.g. a note about an item's location used to
-       still display as a live lead even after the item was already in
-       the player's inventory. `factSpent` (see renderHUD) now reads that
-       status live from current game state at render time instead, so
-       there's no cached flag that can be wrong. */
-    state.notes.push({ id: factId, text: note || plan.facts[factId].text,
-                       ruby: ruby || null });
-    log('📓 ' + (note || plan.facts[factId].text));
-    renderHUD();
-  }
-
-  /* ----------------------------------------------------------------- log */
-  function pushLog(html) {
-    logLines.push(html);
-    if (logLines.length > 5) logLines.shift();
-    const box = document.getElementById('log');
-    box.innerHTML = logLines.map(l => '<div>' + l + '</div>').join('');
-    Array.prototype.forEach.call(box.querySelectorAll('.gloss.hidden-tr'), el => {
-      el.onclick = () => el.classList.remove('hidden-tr');
-    });
-  }
-
-  function log(msg) { pushLog(escapeHTML(msg)); }
-
-  /* Logs a line overheard between two villagers.
-
-     Villagers speak to each other only in their own language — no
-     English shown by default, matching the exchange itself. The line
-     shown carries furigana/romanization like any other displayed line.
-     The English gloss is available to self-check against but stays
-     blurred until clicked, and unlike other lines it stays blurred even
-     with translations turned on globally — showing it by default would
-     let the player skip understanding the overheard language entirely. */
-  function logSpeech(name, said, ruby, roman, gloss) {
-    const L = C.language();
-    const heard = (ruby && L.furigana) ? rubyHTML(ruby) : escapeHTML(said);
-    let html = '<span class="who">\uD83D\uDC42 ' + escapeHTML(name) + ':</span> ' +
-               '<span class="heard" lang="' + L.tag + '"' +
-               (ruby && L.furigana ? ' style="line-height:2"' : '') +
-               '>' + heard + '</span>';
-    if (roman && L.romanize) html += '<span class="roman" lang="' + L.romanTag + '">' +
-                                     escapeHTML(roman) + '</span>';
-    if (gloss) html += '<span class="gloss hidden-tr" lang="en" title="click to read">' +
-                       escapeHTML(gloss) + '</span>';
-    pushLog(html);
-  }
-
-  /* ----------------------------------------------------------------- HUD */
-  function renderHUD() {
-    const purse = document.getElementById('purse');
-    if (purse) purse.textContent = '\u00a4' + (state.inv.coins || 0);
-    const inv = document.getElementById('inv');
-    const L = C.language();
-    const ks = Object.keys(state.inv).filter(k => state.inv[k] > 0 && k !== 'coins');
-    inv.innerHTML = ks.length
-      ? ks.map(k => '<span class="pill" title="' + LG.ITEMS[k].en + '">' + LG.ITEMS[k].icon +
-          ' <span lang="' + L.tag + '">' + escapeHTML(itemLabel(k)) +
-          (state.inv[k] > 1 ? ' ×' + state.inv[k] : '') + '</span></span>').join('')
-      : '<span class="muted">empty pockets</span>';
-
-    const nb = document.getElementById('notebook');
-    const rows = state.deeds.map(d => '<div class="q done">✔ ' + escapeHTML(d) + '</div>')
-      .concat(state.notes.map(n => {
-        const heard = (n.ruby && L.furigana) ? rubyHTML(n.ruby) : escapeHTML(n.text);
-        const gloss = plan.facts[n.id].text;
-        const hide = settings.showTranslation ? '' : ' hidden-tr';
-        const done = factSpent(n.id);          // read off the world, never stored
-        return '<div class="q' + (done ? ' done' : '') + '"><span class="heard" lang="' +
-               L.tag + '"' + (L.furigana && n.ruby ? ' style="line-height:2"' : '') +
-               '>' + (done ? '\u2714 ' : '\u2022 ') + heard + '</span>' +
-               '<span class="gloss' + hide + '" lang="en" title="' + escapeHTML(gloss) + '">' +
-               escapeHTML(gloss) + '</span></div>';
-      }));
-    nb.innerHTML = rows.length ? rows.join('')
-      : '<div class="q muted">Nothing yet. Try asking around!</div>';
-    Array.prototype.forEach.call(nb.querySelectorAll('.gloss.hidden-tr'), el => {
-      el.onclick = () => el.classList.remove('hidden-tr');
-    });
-  }
-
-  /* --------------------------------------------------------------- shops */
-
-  /* Set of every item id involved anywhere in the errand chain (wants,
-     gives, the terminal item, the prize). Computed once per village
-     rather than per sale, since it's fixed for the whole playthrough. */
-  function chainItems() {
-    const out = {};
-    if (!plan) return out;
-    plan.links.forEach(lk => { out[lk.wants] = true; out[lk.gives] = true; });
-    out[plan.terminal.item] = true;
-    out[plan.prize] = true;
-    delete out.coins;
-    return out;
-  }
-  function neededForChain(id) { return !!chainNeeds[id]; }
-
-  /* Processes a sale (single or multi-item) or its reverse (a refund).
-
-     The villager's reply claims a sale happened; this function verifies
-     and applies it, or explains why it can't. Their stated price is
-     accepted as long as it isn't unreasonable — haggling is intentional
-     and allowed.
-
-     `item` accepts a list (not just a single tag), since a villager might
-     narrate "beer and wine, that's six" as one sale. A single-tag-only
-     version of this used to ring up a two-item sale as one item at the
-     combined price — the player paid for both but only received one.
-
-     Also handles taking an item back for a refund. A villager's `buys`
-     list is only what they purchase as their trade (e.g. the innkeeper
-     buys fish and meat) — it doesn't include their own recently-sold
-     stock, so refunding a beer just poured a few minutes ago used to
-     silently fail (no listed price for it) while the villager narrated
-     agreeing to refund it. What was actually sold to the player is now
-     tracked separately, and a refund uses the price actually paid. */
-  function commerce(npc, act, itemId, price) {
-    const d = npc.def;
-    const coins = n => n + (n === 1 ? ' coin' : ' coins');
-
-    npc.sold = npc.sold || {};                 // index of what can be refunded, and at what price
-    npc.till = npc.till || [];                 // transaction log the villager's prompt can read
-    npc.stock = npc.stock || {};               // items currently held (bought from the player)
-
-    /* Blocks trading at night. Before the till existed, this was a bare
-       `return false` — a silent failure: the villager's reply had already
-       narrated handing over tea and taking payment, with nothing in the
-       game state or conversation ever contradicting it. */
-    if (!LG.view.open()) {
-      return refuse('It is the middle of the night and you are not trading, so nothing changed hands.',
-                    d.name + ' is not trading at this hour — nothing changed hands.');
-    }
-
-    /* A refusal must be visible to the villager via the till, not just
-       to the player — otherwise the villager narrates the refund as
-       completed with no way to know the game disagreed, then is
-       confused when the same item is offered again later. */
-    function refuse(note, shown) {
-      npc.till.push({ failed: true, note: note });
-      log('¤ ' + (shown || note));
-      renderHUD();
-      return false;
-    }
-
-    // `itemId` can arrive as a list, or as one string like "beer, wine" — both are handled.
-    /* An explicit price of zero means nothing was actually being sold —
-       just narration, not a real deal — and rejects it outright rather
-       than letting the haggle-band logic below silently invent a
-       non-zero price for it (which used to charge the player for a
-       purchase nobody intended to make). A missing/unspecified price
-       still falls back to the item's normal value. */
-    // `null` is how the reply schema says "no price given" -- missing, not zero.
-    const named = price != null && String(price).trim() !== '';
-    if (named && Number(price) === 0) {
-      return refuse('Nothing was actually exchanged, so nothing happened.',
-                    'No price was named, so nothing changed hands.');
-    }
-
-    const asked = (Array.isArray(itemId) ? itemId : String(itemId || '').split(/[,;+]|\band\b/))
-      .map(x => String(x || '').replace(/[^\w]/g, ''))
-      .filter(x => x && x !== 'coins' && LG.ITEMS[x]);
-    if (!asked.length) return false;
-
-    const back = id => npc.sold[id] && npc.sold[id].n > 0 ? npc.sold[id] : null;
-    const priced = asked.map(id => {
-      // An item they've bought from the player can be resold, whether or not it's normally part of their trade.
-      if (act === 'sell') {
-        const own = npc.stock[id] > 0 ? Math.max(1, Math.round(LG.priceOf(id))) : 0;
-        return { id: id, base: priceFrom(d.sells, d.sellsTags, id, 1) || own, fromStock: own > 0 };
-      }
-      const owed = back(id);                       // returning something they sold you
-      return owed ? { id: id, base: owed.price, refund: true }
-                  : { id: id, base: priceFrom(d.buys, d.buysTags, id, 0.5) };
-    }).filter(w => w.base > 0);
-
-    /* Check whether the villager actually holds the item before
-       checking whether it has a price — otherwise a villager who does
-       sell beer, but is out of stock, would incorrectly report not
-       dealing in beer at all. */
-    if (act === 'buy') {
-      const short = asked.filter(id => count(id) < 1);
-      if (short.length) {
-        const names = short.map(id => LG.ITEMS[id].en).join(' or ');
-        return refuse('The traveller does not actually have ' + names + ' to give you.',
-                      'You have no ' + names + ' to hand over.');
-      }
-    }
-
-    /* An item needed for the errand chain can't be sold to a villager
-       for plain coins — without this, e.g. the pie the baker is waiting
-       for could be sold to the innkeeper, breaking the chain with no way
-       to recover it short of buying it back at her price. Trading (via
-       doTrade, a different code path) still works normally — that's how
-       the chain is supposed to move.
-
-       The refusal note only states what the till did. It used to also
-       claim the traveller was "carrying it for somebody," which is a
-       fact this villager has no way of actually knowing. */
-    if (act === 'buy') {
-      const spoken = asked.filter(neededForChain);
-      if (spoken.length) {
-        const names = spoken.map(id => LG.ITEMS[id].en).join(' and ');
-        return refuse('The ' + names + ' did not change hands: that is not one you buy off them.',
-                      d.name + ' will not buy the ' + names + ' — it is part of the errand.');
-      }
-    }
-
-    if (!priced.length) {
-      const names = asked.map(id => LG.ITEMS[id].en).join(' and ');
-      const theirs = asked.filter(id => priceFrom(d.sells, d.sellsTags, id, 1) > 0);
-      return theirs.length
-        ? refuse('That is not one you sold them, so there is nothing to refund.',
-                 d.name + ' did not sell you that ' + LG.ITEMS[theirs[0]].en + '.')
-        : refuse('You do not deal in ' + names + ', and said so.',
-                 d.name + ' does not deal in ' + names + '.');
-    }
-
-    const base = priced.reduce((n, w) => n + w.base, 0);
-    let cost = named ? Math.round(Number(price)) : base;
-    if (!isFinite(cost) || cost < 0) cost = base;
-
-    // Clamps price to a reasonable haggle range (not a scam); when the
-    // clamp actually changes the price, that's logged so the player sees
-    // a number that wasn't spoken in the conversation. A refund is never
-    // haggled — it returns the exact price paid.
-    const refunding = priced.every(w => w.refund);
-    const asking = cost;
-    cost = refunding
-      ? Math.min(cost, base)                                   // never more than was paid
-      : Math.max(Math.ceil(base * 0.4), Math.min(Math.ceil(base * 2.5), cost));
-
-    const names = priced.map(w => LG.ITEMS[w.id].full).join(' and ');
-
-    /* Guards against one sale being processed twice. A villager could
-       set "action": "sell" on the turn they merely agreed to a price
-       ("two coins and it's yours" — a bargain being struck, not goods
-       actually changing hands), then set it again on the very next turn
-       when the player held out coins in response — resulting in the item
-       being sold and paid for twice. Prompting the model to only use
-       "sell" once goods actually change hands helps but relies on model
-       judgment; this check is a hard guarantee: an identical item, from
-       the same villager, on the very next turn after already being sold
-       and paid for, is rejected as a duplicate. A later repeat (e.g. the
-       next day) is allowed — wanting a second knife later is ordinary.
-       The rejection is recorded in the till, not silently absorbed as a
-       second payment. */
-    if (act === 'sell') {
-      const last = npc.till[npc.till.length - 1];
-      if (last && !last.failed && last.act === 'sell' && last.names === names &&
-          (npc.turns || 0) - (last.turn || 0) <= 1) {
-        return refuse('You had already handed over ' + names + ' and been paid for it, ' +
-                      'so nothing changed hands this time.',
-                      d.name + ' had already sold you ' + names + ' — nothing changed hands.');
-      }
-    }
-
-    if (act === 'sell') {
-      if (count('coins') < cost) {
-        return refuse('The traveller could not afford that — they have ' +
-          coins(count('coins')) + ', and you asked for ' + coins(cost) + '.',
-          'Not enough coins for ' + names + ' (' + cost + ').');
-      }
-      take('coins', cost);
-      priced.forEach(w => {
-        if (npc.stock[w.id] > 0) npc.stock[w.id]--;      // off their own shelf
-        give(w.id, 1);
-        const share = Math.max(1, Math.round(cost * w.base / base));
-        npc.sold[w.id] = { price: share, n: (npc.sold[w.id] ? npc.sold[w.id].n : 0) + 1 };
-      });
-    } else {
-      priced.forEach(w => {
-        take(w.id, 1);
-        if (w.refund && npc.sold[w.id]) npc.sold[w.id].n--;
-        /* The villager needs to actually hold the item now (unless it
-           was a refund reversing a prior sale) — without this, a bought
-           item would simply vanish from the game's state: the coin
-           changed hands but the item itself didn't appear anywhere the
-           villager could see, so they kept saying they had none. */
-        else npc.stock[w.id] = (npc.stock[w.id] || 0) + 1;
-      });
-      give('coins', cost);
-    }
-
-    if (asking !== cost) log('¤ ' + d.name + ' said ' + asking + ', the going rate is ' + cost + '.');
-    const dealKey = act === 'sell' ? 'buy' : refunding ? 'refund' : 'handOver';
-    const ids = priced.map(w => w.id);
-    txnLog('¤', dealKey, { items: itemsPhrase(ids, settings.lang), name: nameOrEmoji(npc), cost: cost },
-                          { items: itemsPhrase(ids, 'en'), name: displayName(npc), cost: cost });
-
-    /* What the villager's prompt sees (via the till) has to match what
-       the game actually did — otherwise the model does its own
-       arithmetic from an inconsistent memory and drifts (e.g. quoting
-       six, being paid five, then claiming the player has three left). */
-    npc.till.push({ act: act, refund: refunding, names: names, coins: cost,
-                    asked: asking, at: LG.time.clock(), turn: npc.turns || 0 });
-    renderHUD();
-    return true;
-  }
 
   /* ------------------------------------------------------------- trading */
   function doTrade(npc, trade) {
@@ -458,7 +99,7 @@ LG.game = (function () {
       const nm = (LG.ITEMS[id] && (LG.ITEMS[id][lang] || LG.ITEMS[id].en)) || id;
       return id === 'coins' ? n + ' ' + nm : nm;
     };
-    txnLog('✔', 'tradeReceive',
+    txn('✔', 'tradeReceive',
       { item: oneItem(trade.gives, giveN, settings.lang), name: nameOrEmoji(npc) },
       { item: oneItem(trade.gives, giveN, 'en'), name: displayName(npc) });
 
@@ -619,8 +260,8 @@ LG.game = (function () {
        around is a poor way to start a game. */
     LG.time.start();
 
-    state.inv = { coins: 10 };          // a little money to be going on with
-    state.notes = []; state.deeds = []; state.won = false; state.board = [];
+    LG.ledger.begin(plan, factSpent);
+    LG.trade.begin(plan);
 
     /* The player arrives by train. The platform is at the far east end
        of the high street, so the walk into the village covers its full
@@ -659,7 +300,6 @@ LG.game = (function () {
 
     // Find the "where" fact -- the location of the terminal (chain-ending) item.
     whereFact = Object.keys(plan.facts).find(id => plan.facts[id].type === 'where') || null;
-    chainNeeds = chainItems();
     beast = null; worldItem = null;
     const t = plan.terminal;
     if (t.isBeast) {
@@ -672,7 +312,6 @@ LG.game = (function () {
     }
 
     renderHUD();
-    logLines.length = 0;
     log(quiet ? (LG.touch.on
                   ? 'Drag anywhere to walk. Tap a villager you are beside to talk.'
                   : 'Use WASD or the arrow keys to walk. Press E next to someone to talk.')
@@ -1430,19 +1069,6 @@ LG.game = (function () {
      alongside everything else a villager can observe about their own
      state. */
 
-  /* Resolves what price (if any) this villager would sell/buy `id` at
-     -- checks their explicit wares list first, then their general trade
-     category tags. Returns 0 if they wouldn't deal in it at all. */
-  function priceFrom(list, tags, id, factor) {
-    const ware = (list || []).find(w => w.i === id);
-    if (ware) return ware.p;
-    const it = LG.ITEMS[id];
-    if (it && tags && tags.some(t => (it.tags || []).indexOf(t) !== -1)) {
-      return Math.max(1, Math.round(LG.priceOf(id) * (factor || 1)));
-    }
-    return 0;
-  }
-
   /* Where a villager goes is a decision made by the helper model from
      their own goal and memory, not a dice roll -- this function just
      supplies the options and records their choice. So e.g. the baker
@@ -2075,11 +1701,10 @@ LG.game = (function () {
     requestAnimationFrame(loop);
   }
 
-  return { init, state, log, learn, hasNote, give, take, count,
-           factSpent,
+  return { init, factSpent,
            _moveDir: moveDir, _isInteract: isInteract, _tapAt: tapAt,
            get cam() { return cam; },
-           canOverhear, logSpeech,
+           canOverhear,
            factText: id => (plan && plan.facts[id]) ? plan.facts[id].text : null,
            _debugPlayerAt: (x, y) => {
              player.px = x; player.py = y;
@@ -2103,7 +1728,7 @@ LG.game = (function () {
            _debugViewport: () => { readInsets(); measureViewport(); },
            // Returns the resulting visible-canvas band (see seen()).
            _debugSeen: seen,
-           inventoryList, doTrade, commerce, renderHUD, openSettings, uiBlocked, newVillage,
+           doTrade, openSettings, uiBlocked, newVillage,
            get plan() { return plan; },
            get npcs() { return npcs; },
            // what save.js reads and writes back; the rest of the world it can

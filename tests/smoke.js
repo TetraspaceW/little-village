@@ -464,24 +464,24 @@ chainItem[plan.terminal.item] = chainItem[plan.prize] = true;
 const shop = npcs.find(n => (n.def.sells || []).some(w => !chainItem[w.i]));
 if (shop) {
   const ware = shop.def.sells.find(w => !chainItem[w.i]);
-  LG.game.state.inv.coins = 20;
-  const sold = LG.game.commerce(shop, 'sell', ware.i, ware.p);
+  LG.ledger.state.inv.coins = 20;
+  const sold = LG.trade.commerce(shop, 'sell', ware.i, ware.p);
   ok(sold, shop.def.name + ' sold a ' + LG.ITEMS[ware.i].en);
-  ok(LG.game.count(ware.i) === 1, 'and the traveller is holding it');
-  ok(LG.game.commerce(shop, 'buy', ware.i, ware.p), 'and took it back when asked');
+  ok(LG.ledger.count(ware.i) === 1, 'and the traveller is holding it');
+  ok(LG.trade.commerce(shop, 'buy', ware.i, ware.p), 'and took it back when asked');
   // The reply schema says "no price given" with null, which is not the same as a price of nothing.
   shop.turns = (shop.turns || 0) + 5;
-  const purse = LG.game.count('coins');
-  ok(LG.game.commerce(shop, 'sell', ware.i, null), 'a sale with no price named still goes through');
-  ok(purse - LG.game.count('coins') === ware.p, 'at the usual price');
+  const purse = LG.ledger.count('coins');
+  ok(LG.trade.commerce(shop, 'sell', ware.i, null), 'a sale with no price named still goes through');
+  ok(purse - LG.ledger.count('coins') === ware.p, 'at the usual price');
 }
 
 /* What a villager buys they hold, know they hold, and can say so. */
 const buyer = npcs.find(n => (n.def.buys || []).some(w => !chainItem[w.i]));
 if (buyer) {
   const want = buyer.def.buys.find(w => !chainItem[w.i]);
-  LG.game.give(want.i, 1);
-  const bought = LG.game.commerce(buyer, 'buy', want.i, want.p);
+  LG.ledger.give(want.i, 1);
+  const bought = LG.trade.commerce(buyer, 'buy', want.i, want.p);
   ok(bought, buyer.def.name + ' bought a ' + LG.ITEMS[want.i].en + ' off the traveller');
   ok((buyer.stock[want.i] || 0) === 1, 'and is holding it now');
   const v = LG.view.of(buyer, 'player');
@@ -509,22 +509,22 @@ section('the same sale does not go through twice');
   if (who) {
     const ware = who.def.sells.find(w => !chainItem[w.i]);
     who.till = []; who.sold = {}; who.stock = {};
-    LG.game.state.inv.coins = 20;
-    const held = () => LG.game.count(ware.i);
-    const purse = () => LG.game.count('coins');
+    LG.ledger.state.inv.coins = 20;
+    const held = () => LG.ledger.count(ware.i);
+    const purse = () => LG.ledger.count('coins');
 
     who.turns = 1;
-    ok(LG.game.commerce(who, 'sell', ware.i, ware.p), 'the sale goes through');
+    ok(LG.trade.commerce(who, 'sell', ware.i, ware.p), 'the sale goes through');
     const after = purse(), got = held();
 
     who.turns = 2;                                   // the very next turn
-    ok(LG.game.commerce(who, 'sell', ware.i, ware.p) === false,
+    ok(LG.trade.commerce(who, 'sell', ware.i, ware.p) === false,
        'and the same one on the next turn is refused');
     ok(purse() === after && held() === got, 'nothing was taken and nothing handed over');
     ok(who.till[who.till.length - 1].failed, 'and the refusal is in the till where they can read it');
 
     who.turns = 9;                                   // later, on purpose
-    ok(LG.game.commerce(who, 'sell', ware.i, ware.p), 'wanting another one later still works');
+    ok(LG.trade.commerce(who, 'sell', ware.i, ware.p), 'wanting another one later still works');
     ok(held() === got + 1, 'and they have two of them now');
 
     /* Verifies the villager's held-stock summary includes the count --
@@ -536,7 +536,7 @@ section('the same sale does not go through twice');
     ok(LG.dialogue._debugPrompt(who, null).indexOf('2 \u00d7 ' + LG.ITEMS[ware.i].en) !== -1,
        'and the prompt says two, not one');
 
-    ok(LG.game.commerce(who, 'buy', ware.i, ware.p), 'one of them can be handed back');
+    ok(LG.trade.commerce(who, 'buy', ware.i, ware.p), 'one of them can be handed back');
     ok(held() === got, 'and only one went back');
     ok(LG.view.of(who, 'player').trade.sold.find(it => it.id === ware.i).n === 1,
        'leaving one still returnable');
@@ -564,7 +564,7 @@ section('a finished errand stops being what they want');
     });
     ok(mine.length > 0, who.def.name + ' holds the facts of their own link');
 
-    LG.game.give(lk.wants, lk.wantsCount || 1);
+    LG.ledger.give(lk.wants, lk.wantsCount || 1);
     LG.game.doTrade(who, role.trade);
 
     const after = LG.view.of(who, 'player').goal;
@@ -833,25 +833,25 @@ section('a spent lead cannot be written as a live one');
     const id = ownFacts(who)[0];
 
     ok(g.factSpent(id) === false, 'before the deal, the fact is live');
-    g.state.notes = [];
-    g.learn(id, null, 'told about it');
-    ok(g.hasNote(id), 'and a note can be taken about it');
+    LG.ledger.state.notes = [];
+    LG.ledger.learn(id, null, 'told about it');
+    ok(LG.ledger.hasNote(id), 'and a note can be taken about it');
     ok(g.factSpent(id) === false, 'which reads as live');
 
-    g.give(lk.wants, lk.wantsCount || 1);
+    LG.ledger.give(lk.wants, lk.wantsCount || 1);
     g.doTrade(who, plan.roles[who.def.id].trade);
 
     ok(g.factSpent(id) === true, 'once the deal is done the fact is spent');
-    ok(g.hasNote(id), 'and the note is still there — a line that vanishes reads as a bug');
+    ok(LG.ledger.hasNote(id), 'and the note is still there — a line that vanishes reads as a bug');
 
     /* Core assertion: writing the same note again after the fact is
        spent cannot produce a live lead -- there's no `learn` argument
        that can override this. */
-    g.state.notes = [];
-    g.learn(id, null, 'told about it again, too late');
-    ok(g.hasNote(id), 'you can still be told, and it is still recorded');
+    LG.ledger.state.notes = [];
+    LG.ledger.learn(id, null, 'told about it again, too late');
+    ok(LG.ledger.hasNote(id), 'you can still be told, and it is still recorded');
     ok(g.factSpent(id) === true, 'but it is spent the moment it is written');
-    ok(g.state.notes.every(n => !('done' in n)),
+    ok(LG.ledger.state.notes.every(n => !('done' in n)),
        'and the note carries no doneness of its own to disagree with the world');
   }
 }
@@ -870,10 +870,10 @@ section('an opinion never reaches the notebook');
   const holder = npcs.find(n => op && n.facts.indexOf(op) !== -1);
   ok(!!holder, 'somebody in earshot actually holds the opinion');
   if (op && holder) {
-    g.state.notes = [];
-    g.learn(op, holder, 'told about it');
-    ok(!g.hasNote(op), 'gossip does not get written down');
-    ok(g.state.notes.length === 0, 'the notebook stays a list of the errand, not the village talking');
+    LG.ledger.state.notes = [];
+    LG.ledger.learn(op, holder, 'told about it');
+    ok(!LG.ledger.hasNote(op), 'gossip does not get written down');
+    ok(LG.ledger.state.notes.length === 0, 'the notebook stays a list of the errand, not the village talking');
   }
 }
 
@@ -888,12 +888,12 @@ section('a village, written down and read back');
   const g = LG.game;
   LG.config.settings.apiKey = 'sk-not-a-real-key';        // must not reach the file
   LG.config.settings.ttsKey = 'sk_not-a-real-voice-key';
-  g.state.deeds.push('Gave Mira a pie, got a shell.');
-  g.give('coins', 7);
+  LG.ledger.state.deeds.push('Gave Mira a pie, got a shell.');
+  LG.ledger.give('coins', 7);
   const someFact = Object.keys(plan.facts)[0];
   const holder = npcs.find(n => n.facts.indexOf(someFact) !== -1);
   if (holder) {
-    g.learn(someFact, holder);
+    LG.ledger.learn(someFact, holder);
     LG.actors.remember(holder, 'the traveller cannot say much yet', 'the traveller');
   }
   npcs[0].coins = 41;
@@ -921,8 +921,8 @@ section('a village, written down and read back');
   const before = {
     seed: plan.seed, day: LG.time.day, frac: LG.time.frac,
     weather: LG.time.weather, snow: LG.time.snow,
-    inv: JSON.stringify(g.state.inv), notes: JSON.stringify(g.state.notes),
-    deeds: JSON.stringify(g.state.deeds),
+    inv: JSON.stringify(LG.ledger.state.inv), notes: JSON.stringify(LG.ledger.state.notes),
+    deeds: JSON.stringify(LG.ledger.state.deeds),
     px: Math.round(g.player.px * 10) / 10,
     facts: npcs.map(n => n.facts.join(',')).join('|'),
     memory: npcs.map(n => JSON.stringify(n.memory)).join('|'),
@@ -962,9 +962,9 @@ section('a village, written down and read back');
      'on the same day, at the same hour');
   ok(LG.time.weather === before.weather && Math.abs(LG.time.snow - before.snow) < 1e-9,
      'under the same sky, with the same snow lying');
-  ok(JSON.stringify(after.state.inv) === before.inv, 'with the same pockets');
-  ok(JSON.stringify(after.state.notes) === before.notes, 'the same notebook');
-  ok(JSON.stringify(after.state.deeds) === before.deeds, 'and the same deeds behind you');
+  ok(JSON.stringify(LG.ledger.state.inv) === before.inv, 'with the same pockets');
+  ok(JSON.stringify(LG.ledger.state.notes) === before.notes, 'the same notebook');
+  ok(JSON.stringify(LG.ledger.state.deeds) === before.deeds, 'and the same deeds behind you');
   ok(Math.round(after.player.px * 10) / 10 === before.px, 'standing where you were');
 
   const back = after.npcs;
@@ -1142,16 +1142,16 @@ section('a village, written down and read back');
      a duplicate fact id (from a hand-edited save, or a future bug). */
   section('a fact never ends up with two notes');
   {
-    ok(after.state.notes.length === new Set(after.state.notes.map(n => n.id)).size,
+    ok(LG.ledger.state.notes.length === new Set(LG.ledger.state.notes.map(n => n.id)).size,
        'the notebook restored above has no fact id twice');
-    ok(after.state.notes.every(n => !!plan.facts[n.id]),
+    ok(LG.ledger.state.notes.every(n => !!plan.facts[n.id]),
        'and every note in it names a fact that actually exists');
 
     const dupe = JSON.parse(text);
     dupe.notes = [{ id: someFact, text: 'first telling', ruby: null },
                   { id: someFact, text: 'second telling', ruby: null }];
     ok(LG.save.restore(dupe) === null, 'a save with the same fact noted twice still loads');
-    const mine = LG.game.state.notes.filter(n => n.id === someFact);
+    const mine = LG.ledger.state.notes.filter(n => n.id === someFact);
     ok(mine.length === 1, 'but only one note survives for that fact');
     ok(mine[0].text === 'first telling', 'and it is the first telling that wins, not the last');
 
@@ -1198,9 +1198,9 @@ section('closing the tab and opening it again');
   ok(s2.LG.time.day === written.time.day &&
      Math.abs(s2.LG.time.frac - written.time.frac) < 1e-9, 'on the same day and hour');
   ok(s2.LG.time.weather === written.time.weather, 'under the same sky');
-  ok(JSON.stringify(s2.LG.game.state.inv) === JSON.stringify(written.inventory),
+  ok(JSON.stringify(s2.LG.ledger.state.inv) === JSON.stringify(written.inventory),
      'with what you were carrying');
-  ok(s2.LG.game.state.notes.length === written.notes.length, 'and the notebook you had');
+  ok(s2.LG.ledger.state.notes.length === written.notes.length, 'and the notebook you had');
   ok(s2.LG.game.npcs.every(n => n.facts.join(',') === written.villagers[n.id].facts.join(',')),
      'and everyone still knows what they knew');
 

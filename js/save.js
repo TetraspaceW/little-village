@@ -106,7 +106,7 @@ LG.save = (function () {
   function snapshot() {
     const g = LG.game, plan = g.plan;
     if (!plan) return null;
-    const st = g.state, p = g.player;
+    const st = LG.ledger.state, p = g.player;
 
     const villagers = {};
     g.npcs.forEach(n => {
@@ -246,7 +246,7 @@ LG.save = (function () {
     p.px = data.player.x; p.py = data.player.y; p.dir = data.player.dir || 'down';
     p.tx = (p.px / LG.world.TILE) | 0; p.ty = (p.py / LG.world.TILE) | 0;
 
-    const st = g.state;
+    const st = LG.ledger.state;
     st.inv = Object.assign({}, data.inventory);
     /* Enforces at most one note per fact id, same guarantee `learn`
        provides during live play (via the `hasNote` check in game.js) --
@@ -319,7 +319,7 @@ LG.save = (function () {
     resumed = true;
     off = false;
     since = 0;
-    g.renderHUD();
+    LG.ledger.render();
     return null;
   }
 

@@ -35,7 +35,7 @@ LG.dialogue = (function () {
        they walk and what they say to other villagers — see view.js for
        why this used to be three separate, drifting implementations. */
     const v = LG.view.of(npc, 'player');
-    const inv = LG.game.inventoryList(v.companion && v.companion.item);
+    const inv = LG.ledger.inventoryList(v.companion && v.companion.item);
     const trade = v.trade.deal;
     // What they have to sell, when they are standing where they work —
     // computed here since both halves below need it (the trade section
@@ -180,7 +180,7 @@ LG.dialogue = (function () {
         v.trade.buys.forEach(w => volatile.push('- ' + LG.itemSaid(w.i, s.lang) + ' — you would pay about ' +
           coins(w.p) + ' [' + w.i + ']'));
       }
-      volatile.push('The traveller has ' + coins(LG.game.count('coins')) + ' on them.');
+      volatile.push('The traveller has ' + coins(LG.ledger.count('coins')) + ' on them.');
 
       volatile.push('Offer your goods the way you would to any customer, and haggle if it suits you.');
       /* Previously this instruction unconditionally said "that is them
@@ -586,7 +586,7 @@ LG.dialogue = (function () {
   function renderItems() {
     const s = LG.config.settings;
     el.dlgItems.innerHTML = '';
-    const inv = LG.game.state.inv;
+    const inv = LG.ledger.state.inv;
     const keys = Object.keys(inv).filter(k => inv[k] > 0);
     if (!keys.length) {
       el.dlgItems.innerHTML = '<span class="muted">(you are carrying nothing)</span>';
@@ -687,7 +687,7 @@ LG.dialogue = (function () {
           .test(reply.translation)) {
       npc.nameKnown = true;
       if (here()) el.dlgName.textContent = npc.def.name;
-      LG.game.log('You learn their name — ' + npc.def.name + '.');
+      LG.ledger.log('You learn their name — ' + npc.def.name + '.');
     }
 
     if (gotIt && Array.isArray(reply.revealed) && reply.revealed.length) {
@@ -695,7 +695,7 @@ LG.dialogue = (function () {
     }
     if (gotIt && reply.remember && typeof reply.remember === 'string' && reply.remember.length > 3) {
       if (LG.actors.remember(npc, reply.remember, 'the traveller')) {
-        LG.game.log(LG.actors.displayName(npc) + ' will remember: "' + reply.remember + '"');
+        LG.ledger.log(LG.actors.displayName(npc) + ' will remember: "' + reply.remember + '"');
         /* The new memory may supersede something already held — only
            checked (reviseHeld) when something new was actually recorded,
            so a turn that taught the villager nothing costs nothing. */
@@ -735,7 +735,7 @@ LG.dialogue = (function () {
        over tea, and nothing in the game state ever contradicted it. */
     const act = gotIt ? String(reply.action || '').toLowerCase() : '';
     if (act === 'sell' || act === 'buy') {
-      if (LG.game.commerce(npc, act, reply.item, reply.price)) renderItems();
+      if (LG.trade.commerce(npc, act, reply.item, reply.price)) renderItems();
       else say('That sale could not be squared up.', 'miss');
     }
 
@@ -759,7 +759,7 @@ LG.dialogue = (function () {
     const trade = npc.tradeDone ? null : (LG.game.plan.roles[npc.def.id] || {}).trade;
     if (trade) {
       const need = trade.wantsCount || 1;
-      const haveEnough = LG.game.count(trade.wants) >= need;
+      const haveEnough = LG.ledger.count(trade.wants) >= need;
       const modelSaysTrade = gotIt && String(reply.action || '').toLowerCase().indexOf('trade') !== -1;
       if (modelSaysTrade && haveEnough) {
         LG.game.doTrade(npc, trade);
@@ -832,7 +832,7 @@ LG.dialogue = (function () {
       if (e.id) { npc.factNote = npc.factNote || {}; npc.factNote[e.id] = got.line; }
       else e.text = got.line;                       // the view hands back the object itself
       LG.actors.think(npc, 'thinks again', e.text + ' \u2192 ' + got.line);
-      LG.game.log(LG.actors.displayName(npc) + ' now reckons: "' + got.line + '"');
+      LG.ledger.log(LG.actors.displayName(npc) + ' now reckons: "' + got.line + '"');
     } catch (err) { /* they go on believing what they believed */ }
   }
 
@@ -847,7 +847,7 @@ LG.dialogue = (function () {
         wants: LG.ITEMS[id].full,
         gives: 'the ' + price + (price === 1 ? ' coin' : ' coins') + ' they paid for it, back'
       });
-      if (yes && LG.game.commerce(npc, 'buy', id, price)) renderItems();
+      if (yes && LG.trade.commerce(npc, 'buy', id, price)) renderItems();
     } catch (e) { /* no refund on a failed check */ }
   }
 
@@ -862,7 +862,7 @@ LG.dialogue = (function () {
         gives: trade.givesCount > 1 ? trade.givesCount + ' coins' : LG.ITEMS[trade.gives].full
       });
       if (!yes || npc.tradeDone) return;
-      if (LG.game.count(trade.wants) < (trade.wantsCount || 1)) return;
+      if (LG.ledger.count(trade.wants) < (trade.wantsCount || 1)) return;
       LG.game.doTrade(npc, trade);
       renderItems();
     } catch (e) { /* no deal */ }
@@ -902,7 +902,7 @@ LG.dialogue = (function () {
     const plan = LG.game.plan;
     const claimed = reply.revealed
       .map(id => String(id).replace(/[^\w]/g, ''))
-      .filter(id => plan.facts[id] && npc.facts.indexOf(id) !== -1 && !LG.game.hasNote(id));
+      .filter(id => plan.facts[id] && npc.facts.indexOf(id) !== -1 && !LG.ledger.hasNote(id));
     if (!claimed.length) return;
     const candidates = claimed.map(id => ({ id, text: plan.facts[id].text }));
     const L = LG.config.language();
@@ -913,7 +913,7 @@ LG.dialogue = (function () {
         // fall back to the line as spoken, so a note is never in the wrong language
         const note = c.note || spoken;
         const nRuby = usableRuby(c.ruby, c.note) || (c.note ? null : ruby);
-        LG.game.learn(c.id, npc, note, nRuby);
+        LG.ledger.learn(c.id, npc, note, nRuby);
       });
     } catch (e) { /* an unwritten note is always better than a wrong one */ }
   }
@@ -1012,7 +1012,7 @@ LG.dialogue = (function () {
           (turn.translation ? '  \u2014 ' + turn.translation : ''));
         if (LG.game.canOverhear(a, b)) {
           const ruby = (L.furigana && plain !== turn.say) ? turn.say : null;
-          LG.game.logSpeech(LG.actors.displayName(me), plain, ruby, turn.roman, turn.translation);
+          LG.ledger.logSpeech(LG.actors.displayName(me), plain, ruby, turn.roman, turn.translation);
         }
         await sleep(turnHold);
       }

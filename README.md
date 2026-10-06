@@ -300,7 +300,7 @@ group, and each villager's decisions print in their own colour.
 LG.llm.transcript          // full call records, newest last
 LG.llm.dump()               // all of it as plain text
 LG.llm.audit = false         // stop console logging (recording continues)
-LG.game.thoughts = false     // stop printing villager decisions
+LG.actors.thoughts = false     // stop printing villager decisions
 ```
 
 ## Project structure
@@ -311,17 +311,23 @@ css/style.css
 js/logbook.js       ships everything the village does to the log server
 js/time.js           calendar: hours, seasons, weather
 js/data.js           languages, phrasebook, place names, ~140 items, 24 places, 13 villagers
+js/text.js           escaping, furigana and romanization checks (pure functions)
 js/chain.js          errand chain generator + associated facts
 js/llm.js            provider abstraction, key validation, reply parsing
+js/config.js         the player's settings, their storage, llm/tts call configs
 js/tts.js            ElevenLabs voice casting and playback
 js/world.js          tile map, forest, station, collision, pathfinding, interiors, rendering
 js/sky.js            hour/season colour, precipitation
 js/view.js           per-villager prompt assembly (single source of truth)
 js/touch.js          the joystick and the tap: touch gestures, on a canvas
-js/npc.js            villager movement, meetings, rendering
-js/dialogue.js       prompt building, conversation UI, trades
+js/npc.js            villager movement, meetings, beliefs and naming, rendering
+js/village.js        the village as it stands: chain, cast, traveller, the thing to find
+js/ledger.js         the traveller's pockets, notebook, deeds and log, and the HUD
+js/trade.js          buying and selling for coin: prices, refunds, the till
+js/dialogue.js       prompt building, conversation UI
 js/save.js           save format: snapshot/restore, both storage locations
-js/game.js           game state, main loop, input, notebook, settings
+js/settings-panel.js the settings panel and front-door gate, keys from .env
+js/game.js           main loop and drawing, input, noticeboard, errand trades
 tools/logserver.js   serves the game, exposes .env, collects logs, keeps the save
 tests/smoke.js       headless test of the full game
 ```

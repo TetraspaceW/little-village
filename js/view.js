@@ -43,7 +43,7 @@ LG.view = (function () {
   function firstOf(list, n) { return n ? list.slice(0, n) : list.slice(); }
   function lastOf(list, n) { return n ? list.slice(-n) : list.slice(); }
 
-  function plan() { return LG.game && LG.game.plan; }
+  function plan() { return LG.village.plan; }
   function roleOf(n) {
     const p = plan();
     return (p && p.roles[n.def.id]) || { goal: '', trade: null, link: -1 };
@@ -113,7 +113,7 @@ LG.view = (function () {
      villager can act on a fact like "Sanna has the cards" by saying where
      to find Sanna. */
   function folk(n) {
-    const all = (LG.game && LG.game.npcs) || [];
+    const all = LG.village.npcs;
     return all.filter(o => o !== n && near(n, o, SIGHT))
               .map(o => ({ id: o.def.id, name: o.def.name, job: o.def.job, where: where(o) }));
   }
@@ -130,7 +130,7 @@ LG.view = (function () {
      seen or been told, since knowing what someone is like isn't the same
      as knowing what they're currently doing. */
   function roster(n) {
-    const all = (LG.game && LG.game.npcs) || [];
+    const all = LG.village.npcs;
     return all.filter(o => o !== n)
       .map(o => ({ id: o.def.id, name: o.def.name, job: o.def.job, persona: o.def.persona }));
   }
@@ -152,7 +152,7 @@ LG.view = (function () {
      anyone they're talking to, the same way `where` is something a
      villager simply sees rather than something reported to them. */
   function companion() {
-    const beast = LG.game && LG.game.beast;
+    const beast = LG.village.beast;
     return (beast && beast.following) ? { name: beast.name, item: beast.item } : null;
   }
 

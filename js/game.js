@@ -1,36 +1,21 @@
-/* game.js — core game state, main loop, input handling, notebook, and settings. */
+/* game.js — the main loop and drawing, input, the noticeboard, and the
+   errand's own trades; it starts everything else up. The village itself
+   lives in village.js, the player's record in ledger.js, coin sales in
+   trade.js, the settings in config.js and their panel in settings-panel.js. */
 window.LG = window.LG || {};
 
 LG.game = (function () {
   const W = LG.world, A = LG.actors, TILE = 32;
+  const { displayName, nameOrEmoji, remember, think } = A;
+  const { escapeHTML } = LG.text;
+  const { give, take, learn, log, txn } = LG.ledger;
+  const renderHUD = LG.ledger.render;
 
-  const settings = {
-    lang: 'ru', level: 'beginner', autorun: false,
-    provider: 'openrouter', apiKey: '', model: 'deepseek/deepseek-v4.1-flash', helper: '',
-    /* One key per provider, so switching provider and back doesn't lose
-       the other one. `apiKey` is always the current provider's entry. */
-    keys: { openrouter: '', logfare: '' },
-    /* These four are no longer exposed as player-facing settings —
-       villager gossip is always on, translations always start blurred
-       (click to reveal), voices are always cast from the curated
-       library, and speech speed always matches difficulty. Kept as
-       fields since other code still reads settings.npcChatter etc.;
-       loadSettings() below force-resets them on load so an old
-       localStorage save with different values can't reintroduce the
-       removed choice. */
-    showTranslation: false, npcChatter: true,
-    voices: false, ttsKey: '', voiceSpeed: 'auto', voiceQuality: 'curated'
-  };
+  const C = LG.config, settings = C.settings;
+  const P = LG.settingsPanel;
 
-  // `gated` blocks input until settings (incl. API key) are confirmed via the front-door panel.
-  let gated = true, gateMode = false, lastValidated = '';
-  let fromEnv = false;             // true if keys came from the log server's .env, not typed by the user
-  // The settings panel's unsaved key per provider, and which provider the key box is showing right now.
-  let draftKeys = {}, keyProvider = '';
+  const state = LG.ledger.state;
 
-  const state = { inv: {}, notes: [], deeds: [], won: false, board: [] };
-
-  let plan = null;                 // the generated errand chain (chain.js)
   let canvas, ctx, cam = { x: 0, y: 0 }, vw = 0, vh = 0, dpr = 1;
 
   /* Caches the ground/buildings/signs layer to its own offscreen canvas
@@ -50,9 +35,14 @@ LG.game = (function () {
   const OVERSCAN = 96;
   let groundCanvas = null, groundCtx = null, spareCanvas = null, spareCtx = null;
   const groundSeen = { x: NaN, y: NaN, roomX: NaN, roomY: NaN, snow: -1, night: false, lang: '', trans: false };
-  let player, npcs = [], beast = null, worldItem = null;
-  let whereFact = null;             // the fact saying where the world thing is lying
-  let chainNeeds = {};              // items the errand cannot be finished without
+  /* The village itself lives in LG.village. These are this module's
+     handles on it, for brevity in the loop and drawing code below; only
+     adopt() rebinds them, straight after LG.village.create, so they can
+     never point at a different village than LG.village does. */
+  const V = LG.village;
+  let plan = null, player = null, npcs = [], beast = null, worldItem = null;
+  function adopt() { ({ plan, player, npcs, beast, worldItem } = V); }
+  const { factSpent, noticeItemGone } = V;
   /* Bound to physical key positions (e.code), not the characters they
      produce (e.key) — on a Russian keyboard, e.key for WASD is цфыв and
      for E is у. Falls back to e.key only when e.code is unavailable. */
@@ -94,438 +84,6 @@ LG.game = (function () {
      recomputed from scratch every tick, which would erase a tap response
      before it could be read. */
   let nudge = '', nudgeT = 0;
-  const logLines = [];
-
-  /* ------------------------------------------------------------ settings */
-  function loadSettings() {
-    try {
-      const raw = localStorage.getItem('lg-settings');
-      if (raw) Object.assign(settings, JSON.parse(raw));
-    } catch (e) { /* ignore */ }
-    /* The Anthropic provider is gone. A save still pointing at it holds
-       an Anthropic key and Claude model ids, neither of which means
-       anything to OpenRouter -- drop them rather than send that key
-       somewhere it was never meant for. */
-    if (!LG.llm.MODELS[settings.provider]) {
-      settings.provider = 'openrouter';
-      settings.apiKey = '';
-      settings.model = LG.llm.MODELS.openrouter[0].id;
-      settings.helper = '';
-    }
-    // Keys used to be one field shared by every provider; file an old one under the provider it was saved with.
-    settings.keys = Object.assign({ openrouter: '', logfare: '' }, settings.keys);
-    if (settings.apiKey && !settings.keys[settings.provider]) settings.keys[settings.provider] = settings.apiKey;
-    settings.apiKey = settings.keys[settings.provider] || '';
-    // No longer configurable -- force these even if an old save has different values stored.
-    settings.npcChatter = true;
-    settings.showTranslation = false;
-    settings.voiceQuality = 'curated';
-    settings.voiceSpeed = 'auto';
-    // Jev used to be opt-in; it's now always used on OpenRouter, so nothing reads these.
-    delete settings.jevMovement;
-    delete settings.jevValidation;
-  }
-  function saveSettings() {
-    try { localStorage.setItem('lg-settings', JSON.stringify(settings)); } catch (e) {}
-  }
-  function ttsConfig() {
-    // Talking speed is always derived from difficulty, not separately configurable.
-    const speed = (LG.LEVELS[settings.level] || {}).speed || 0.85;
-    return { key: settings.ttsKey.trim(), speed: speed,
-             lang: settings.lang, curatedOnly: settings.voiceQuality === 'curated' };
-  }
-  function llmConfig() {
-    return { provider: settings.provider, apiKey: settings.apiKey.trim(),
-             model: settings.model, helper: settings.helper };
-  }
-
-  /* ---------------------------------------------------------- inventory */
-  function count(id) { return state.inv[id] || 0; }
-  function give(id, n) { state.inv[id] = (state.inv[id] || 0) + (n || 1); renderHUD(); }
-  function take(id, n) {
-    state.inv[id] = Math.max(0, (state.inv[id] || 0) - (n || 1));
-    if (!state.inv[id]) delete state.inv[id];
-    renderHUD();
-  }
-  /* `exclude` omits one item from the list entirely -- used for a
-     caught animal following the player, which isn't really "in a
-     pocket" and is described separately (see LG.view.companion). */
-  function inventoryList(exclude) {
-    const ks = Object.keys(state.inv).filter(k => state.inv[k] > 0 && k !== exclude);
-    if (!ks.length) return '';
-    // Used only in the villager's prompt, so names items the way the rest of that prompt does -- see LG.itemSaid.
-    return ks.map(k => LG.itemSaid(k, settings.lang, true) +
-                       (state.inv[k] > 1 ? ' x' + state.inv[k] : '')).join(', ');
-  }
-  function itemLabel(id) { return LG.itemName(id, settings.lang); }
-
-  /* A villager's name is unknown to the player until that villager
-     actually states it — same rule the notebook applies to every other
-     fact a villager knows, extended to cover names, which used to be
-     shown for free. Every place that would otherwise print
-     `npc.def.name` directly to the player goes through this function
-     instead. Doesn't affect what the model itself is told (its own name
-     in its system prompt) — only what the *player* has been told.
-     `nameKnown` is set only when a villager's own reply states their
-     name — see the check in dialogue.js — never by a fact arriving via
-     any other source, however reliable, since that isn't the villager
-     telling the player their name. */
-  function displayName(n) {
-    return (n.nameKnown && n.def.name) || n.def.job;
-  }
-  /* Like displayName, but for text written *in the village's language*
-     — an English job description there would read as an out-of-place
-     foreign word. Uses the emoji instead, matching how every character
-     is already marked on screen (see drawCharacter): identifiable, if
-     not yet named. */
-  function nameOrEmoji(n) {
-    return (n.nameKnown && n.def.name) || n.def.emoji;
-  }
-
-  /* Narrates a completed deal ("you hand over the rope") in the
-     village's language rather than English — see LG.TXN. `native` and
-     `english` fill the same template's placeholders in each language;
-     the English fill doubles as the click-to-reveal gloss, matching
-     everything else the notebook shows. */
-  function itemsPhrase(ids, lang) {
-    const conj = ' ' + (LG.CONJ[lang] || LG.CONJ.en) + ' ';
-    return ids.map(id => (LG.ITEMS[id] && (LG.ITEMS[id][lang] || LG.ITEMS[id].en)) || id).join(conj);
-  }
-  function fillTemplate(tpl, vars) {
-    return tpl.replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null ? vars[k] : ''));
-  }
-  function txnLog(icon, key, native, english) {
-    const set = LG.TXN[key];
-    if (!set) return;
-    const L = LG.LANGUAGES[settings.lang];
-    const line = fillTemplate(set[settings.lang] || set.en, native);
-    const gloss = fillTemplate(set.en, english);
-    const hide = settings.showTranslation ? '' : ' hidden-tr';
-    pushLog(icon + ' <span class="heard" lang="' + L.tag + '">' + escapeHTML(line) + '</span>' +
-            '<span class="gloss' + hide + '" lang="en" title="click to read">' + escapeHTML(gloss) + '</span>');
-  }
-
-  /* ------------------------------------------------------------ notebook
-     The notebook only contains facts a villager has actually told the
-     player — villagers self-report which facts they revealed, and those
-     reports are recorded here (see `learn` below).
-
-     Not every learnable fact belongs here, though: `opinion` facts (the
-     gossip chain.js generates so villagers have something to talk
-     about) are real, checkable, learnable facts just like errand facts,
-     but they aren't part of the errand. Including them would turn the
-     one page meant to say "what to do next" into something the player
-     has to sift through for the facts that actually matter. */
-  function hasNote(factId) {
-    return state.notes.some(n => n.id === factId);
-  }
-  function learn(factId, fromNpc, note, ruby) {
-    if (!plan || !plan.facts[factId]) return;
-    if (plan.facts[factId].type === 'opinion') return;   // gossip, not the errand
-    if (hasNote(factId)) return;
-    if (fromNpc && fromNpc.facts.indexOf(factId) === -1) return;   // they can't tell you what they don't know
-    /* A note records only that the player was told something — not
-       whether it's still actionable. That state was previously cached
-       and could go stale: e.g. a note about an item's location used to
-       still display as a live lead even after the item was already in
-       the player's inventory. `factSpent` (see renderHUD) now reads that
-       status live from current game state at render time instead, so
-       there's no cached flag that can be wrong. */
-    state.notes.push({ id: factId, text: note || plan.facts[factId].text,
-                       ruby: ruby || null });
-    log('📓 ' + (note || plan.facts[factId].text));
-    renderHUD();
-  }
-
-  /* ----------------------------------------------------------------- log */
-  function pushLog(html) {
-    logLines.push(html);
-    if (logLines.length > 5) logLines.shift();
-    const box = document.getElementById('log');
-    box.innerHTML = logLines.map(l => '<div>' + l + '</div>').join('');
-    Array.prototype.forEach.call(box.querySelectorAll('.gloss.hidden-tr'), el => {
-      el.onclick = () => el.classList.remove('hidden-tr');
-    });
-  }
-
-  function log(msg) { pushLog(escapeHTML(msg)); }
-
-  /* Logs a line overheard between two villagers.
-
-     Villagers speak to each other only in their own language — no
-     English shown by default, matching the exchange itself. The line
-     shown carries furigana/romanization like any other displayed line.
-     The English gloss is available to self-check against but stays
-     blurred until clicked, and unlike other lines it stays blurred even
-     with translations turned on globally — showing it by default would
-     let the player skip understanding the overheard language entirely. */
-  function logSpeech(name, said, ruby, roman, gloss) {
-    const L = LG.LANGUAGES[settings.lang];
-    const heard = (ruby && L.furigana) ? LG.dialogue.rubyHTML(ruby) : escapeHTML(said);
-    let html = '<span class="who">\uD83D\uDC42 ' + escapeHTML(name) + ':</span> ' +
-               '<span class="heard" lang="' + L.tag + '"' +
-               (ruby && L.furigana ? ' style="line-height:2"' : '') +
-               '>' + heard + '</span>';
-    if (roman && L.romanize) html += '<span class="roman" lang="' + L.romanTag + '">' +
-                                     escapeHTML(roman) + '</span>';
-    if (gloss) html += '<span class="gloss hidden-tr" lang="en" title="click to read">' +
-                       escapeHTML(gloss) + '</span>';
-    pushLog(html);
-  }
-  function escapeHTML(s) {
-    return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  }
-
-  /* ----------------------------------------------------------------- HUD */
-  function renderHUD() {
-    const purse = document.getElementById('purse');
-    if (purse) purse.textContent = '\u00a4' + (state.inv.coins || 0);
-    const inv = document.getElementById('inv');
-    const L = LG.LANGUAGES[settings.lang];
-    const ks = Object.keys(state.inv).filter(k => state.inv[k] > 0 && k !== 'coins');
-    inv.innerHTML = ks.length
-      ? ks.map(k => '<span class="pill" title="' + LG.ITEMS[k].en + '">' + LG.ITEMS[k].icon +
-          ' <span lang="' + L.tag + '">' + escapeHTML(itemLabel(k)) +
-          (state.inv[k] > 1 ? ' ×' + state.inv[k] : '') + '</span></span>').join('')
-      : '<span class="muted">empty pockets</span>';
-
-    const nb = document.getElementById('notebook');
-    const rows = state.deeds.map(d => '<div class="q done">✔ ' + escapeHTML(d) + '</div>')
-      .concat(state.notes.map(n => {
-        const heard = (n.ruby && L.furigana) ? LG.dialogue.rubyHTML(n.ruby) : escapeHTML(n.text);
-        const gloss = plan.facts[n.id].text;
-        const hide = settings.showTranslation ? '' : ' hidden-tr';
-        const done = factSpent(n.id);          // read off the world, never stored
-        return '<div class="q' + (done ? ' done' : '') + '"><span class="heard" lang="' +
-               L.tag + '"' + (L.furigana && n.ruby ? ' style="line-height:2"' : '') +
-               '>' + (done ? '\u2714 ' : '\u2022 ') + heard + '</span>' +
-               '<span class="gloss' + hide + '" lang="en" title="' + escapeHTML(gloss) + '">' +
-               escapeHTML(gloss) + '</span></div>';
-      }));
-    nb.innerHTML = rows.length ? rows.join('')
-      : '<div class="q muted">Nothing yet. Try asking around!</div>';
-    Array.prototype.forEach.call(nb.querySelectorAll('.gloss.hidden-tr'), el => {
-      el.onclick = () => el.classList.remove('hidden-tr');
-    });
-  }
-
-  /* --------------------------------------------------------------- shops */
-
-  /* Set of every item id involved anywhere in the errand chain (wants,
-     gives, the terminal item, the prize). Computed once per village
-     rather than per sale, since it's fixed for the whole playthrough. */
-  function chainItems() {
-    const out = {};
-    if (!plan) return out;
-    plan.links.forEach(lk => { out[lk.wants] = true; out[lk.gives] = true; });
-    out[plan.terminal.item] = true;
-    out[plan.prize] = true;
-    delete out.coins;
-    return out;
-  }
-  function neededForChain(id) { return !!chainNeeds[id]; }
-
-  /* Processes a sale (single or multi-item) or its reverse (a refund).
-
-     The villager's reply claims a sale happened; this function verifies
-     and applies it, or explains why it can't. Their stated price is
-     accepted as long as it isn't unreasonable — haggling is intentional
-     and allowed.
-
-     `item` accepts a list (not just a single tag), since a villager might
-     narrate "beer and wine, that's six" as one sale. A single-tag-only
-     version of this used to ring up a two-item sale as one item at the
-     combined price — the player paid for both but only received one.
-
-     Also handles taking an item back for a refund. A villager's `buys`
-     list is only what they purchase as their trade (e.g. the innkeeper
-     buys fish and meat) — it doesn't include their own recently-sold
-     stock, so refunding a beer just poured a few minutes ago used to
-     silently fail (no listed price for it) while the villager narrated
-     agreeing to refund it. What was actually sold to the player is now
-     tracked separately, and a refund uses the price actually paid. */
-  function commerce(npc, act, itemId, price) {
-    const d = npc.def;
-    const coins = n => n + (n === 1 ? ' coin' : ' coins');
-
-    npc.sold = npc.sold || {};                 // index of what can be refunded, and at what price
-    npc.till = npc.till || [];                 // transaction log the villager's prompt can read
-    npc.stock = npc.stock || {};               // items currently held (bought from the player)
-
-    /* Blocks trading at night. Before the till existed, this was a bare
-       `return false` — a silent failure: the villager's reply had already
-       narrated handing over tea and taking payment, with nothing in the
-       game state or conversation ever contradicting it. */
-    if (!LG.view.open()) {
-      return refuse('It is the middle of the night and you are not trading, so nothing changed hands.',
-                    d.name + ' is not trading at this hour — nothing changed hands.');
-    }
-
-    /* A refusal must be visible to the villager via the till, not just
-       to the player — otherwise the villager narrates the refund as
-       completed with no way to know the game disagreed, then is
-       confused when the same item is offered again later. */
-    function refuse(note, shown) {
-      npc.till.push({ failed: true, note: note });
-      log('¤ ' + (shown || note));
-      renderHUD();
-      return false;
-    }
-
-    // `itemId` can arrive as a list, or as one string like "beer, wine" — both are handled.
-    /* An explicit price of zero means nothing was actually being sold —
-       just narration, not a real deal — and rejects it outright rather
-       than letting the haggle-band logic below silently invent a
-       non-zero price for it (which used to charge the player for a
-       purchase nobody intended to make). A missing/unspecified price
-       still falls back to the item's normal value. */
-    // `null` is how the reply schema says "no price given" -- missing, not zero.
-    const named = price != null && String(price).trim() !== '';
-    if (named && Number(price) === 0) {
-      return refuse('Nothing was actually exchanged, so nothing happened.',
-                    'No price was named, so nothing changed hands.');
-    }
-
-    const asked = (Array.isArray(itemId) ? itemId : String(itemId || '').split(/[,;+]|\band\b/))
-      .map(x => String(x || '').replace(/[^\w]/g, ''))
-      .filter(x => x && x !== 'coins' && LG.ITEMS[x]);
-    if (!asked.length) return false;
-
-    const back = id => npc.sold[id] && npc.sold[id].n > 0 ? npc.sold[id] : null;
-    const priced = asked.map(id => {
-      // An item they've bought from the player can be resold, whether or not it's normally part of their trade.
-      if (act === 'sell') {
-        const own = npc.stock[id] > 0 ? Math.max(1, Math.round(LG.priceOf(id))) : 0;
-        return { id: id, base: priceFrom(d.sells, d.sellsTags, id, 1) || own, fromStock: own > 0 };
-      }
-      const owed = back(id);                       // returning something they sold you
-      return owed ? { id: id, base: owed.price, refund: true }
-                  : { id: id, base: priceFrom(d.buys, d.buysTags, id, 0.5) };
-    }).filter(w => w.base > 0);
-
-    /* Check whether the villager actually holds the item before
-       checking whether it has a price — otherwise a villager who does
-       sell beer, but is out of stock, would incorrectly report not
-       dealing in beer at all. */
-    if (act === 'buy') {
-      const short = asked.filter(id => count(id) < 1);
-      if (short.length) {
-        const names = short.map(id => LG.ITEMS[id].en).join(' or ');
-        return refuse('The traveller does not actually have ' + names + ' to give you.',
-                      'You have no ' + names + ' to hand over.');
-      }
-    }
-
-    /* An item needed for the errand chain can't be sold to a villager
-       for plain coins — without this, e.g. the pie the baker is waiting
-       for could be sold to the innkeeper, breaking the chain with no way
-       to recover it short of buying it back at her price. Trading (via
-       doTrade, a different code path) still works normally — that's how
-       the chain is supposed to move.
-
-       The refusal note only states what the till did. It used to also
-       claim the traveller was "carrying it for somebody," which is a
-       fact this villager has no way of actually knowing. */
-    if (act === 'buy') {
-      const spoken = asked.filter(neededForChain);
-      if (spoken.length) {
-        const names = spoken.map(id => LG.ITEMS[id].en).join(' and ');
-        return refuse('The ' + names + ' did not change hands: that is not one you buy off them.',
-                      d.name + ' will not buy the ' + names + ' — it is part of the errand.');
-      }
-    }
-
-    if (!priced.length) {
-      const names = asked.map(id => LG.ITEMS[id].en).join(' and ');
-      const theirs = asked.filter(id => priceFrom(d.sells, d.sellsTags, id, 1) > 0);
-      return theirs.length
-        ? refuse('That is not one you sold them, so there is nothing to refund.',
-                 d.name + ' did not sell you that ' + LG.ITEMS[theirs[0]].en + '.')
-        : refuse('You do not deal in ' + names + ', and said so.',
-                 d.name + ' does not deal in ' + names + '.');
-    }
-
-    const base = priced.reduce((n, w) => n + w.base, 0);
-    let cost = named ? Math.round(Number(price)) : base;
-    if (!isFinite(cost) || cost < 0) cost = base;
-
-    // Clamps price to a reasonable haggle range (not a scam); when the
-    // clamp actually changes the price, that's logged so the player sees
-    // a number that wasn't spoken in the conversation. A refund is never
-    // haggled — it returns the exact price paid.
-    const refunding = priced.every(w => w.refund);
-    const asking = cost;
-    cost = refunding
-      ? Math.min(cost, base)                                   // never more than was paid
-      : Math.max(Math.ceil(base * 0.4), Math.min(Math.ceil(base * 2.5), cost));
-
-    const names = priced.map(w => LG.ITEMS[w.id].full).join(' and ');
-
-    /* Guards against one sale being processed twice. A villager could
-       set "action": "sell" on the turn they merely agreed to a price
-       ("two coins and it's yours" — a bargain being struck, not goods
-       actually changing hands), then set it again on the very next turn
-       when the player held out coins in response — resulting in the item
-       being sold and paid for twice. Prompting the model to only use
-       "sell" once goods actually change hands helps but relies on model
-       judgment; this check is a hard guarantee: an identical item, from
-       the same villager, on the very next turn after already being sold
-       and paid for, is rejected as a duplicate. A later repeat (e.g. the
-       next day) is allowed — wanting a second knife later is ordinary.
-       The rejection is recorded in the till, not silently absorbed as a
-       second payment. */
-    if (act === 'sell') {
-      const last = npc.till[npc.till.length - 1];
-      if (last && !last.failed && last.act === 'sell' && last.names === names &&
-          (npc.turns || 0) - (last.turn || 0) <= 1) {
-        return refuse('You had already handed over ' + names + ' and been paid for it, ' +
-                      'so nothing changed hands this time.',
-                      d.name + ' had already sold you ' + names + ' — nothing changed hands.');
-      }
-    }
-
-    if (act === 'sell') {
-      if (count('coins') < cost) {
-        return refuse('The traveller could not afford that — they have ' +
-          coins(count('coins')) + ', and you asked for ' + coins(cost) + '.',
-          'Not enough coins for ' + names + ' (' + cost + ').');
-      }
-      take('coins', cost);
-      priced.forEach(w => {
-        if (npc.stock[w.id] > 0) npc.stock[w.id]--;      // off their own shelf
-        give(w.id, 1);
-        const share = Math.max(1, Math.round(cost * w.base / base));
-        npc.sold[w.id] = { price: share, n: (npc.sold[w.id] ? npc.sold[w.id].n : 0) + 1 };
-      });
-    } else {
-      priced.forEach(w => {
-        take(w.id, 1);
-        if (w.refund && npc.sold[w.id]) npc.sold[w.id].n--;
-        /* The villager needs to actually hold the item now (unless it
-           was a refund reversing a prior sale) — without this, a bought
-           item would simply vanish from the game's state: the coin
-           changed hands but the item itself didn't appear anywhere the
-           villager could see, so they kept saying they had none. */
-        else npc.stock[w.id] = (npc.stock[w.id] || 0) + 1;
-      });
-      give('coins', cost);
-    }
-
-    if (asking !== cost) log('¤ ' + d.name + ' said ' + asking + ', the going rate is ' + cost + '.');
-    const dealKey = act === 'sell' ? 'buy' : refunding ? 'refund' : 'handOver';
-    const ids = priced.map(w => w.id);
-    txnLog('¤', dealKey, { items: itemsPhrase(ids, settings.lang), name: nameOrEmoji(npc), cost: cost },
-                          { items: itemsPhrase(ids, 'en'), name: displayName(npc), cost: cost });
-
-    /* What the villager's prompt sees (via the till) has to match what
-       the game actually did — otherwise the model does its own
-       arithmetic from an inconsistent memory and drifts (e.g. quoting
-       six, being paid five, then claiming the player has three left). */
-    npc.till.push({ act: act, refund: refunding, names: names, coins: cost,
-                    asked: asking, at: LG.time.clock(), turn: npc.turns || 0 });
-    renderHUD();
-    return true;
-  }
 
   /* ------------------------------------------------------------- trading */
   function doTrade(npc, trade) {
@@ -541,7 +99,7 @@ LG.game = (function () {
       const nm = (LG.ITEMS[id] && (LG.ITEMS[id][lang] || LG.ITEMS[id].en)) || id;
       return id === 'coins' ? n + ' ' + nm : nm;
     };
-    txnLog('✔', 'tradeReceive',
+    txn('✔', 'tradeReceive',
       { item: oneItem(trade.gives, giveN, settings.lang), name: nameOrEmoji(npc) },
       { item: oneItem(trade.gives, giveN, 'en'), name: displayName(npc) });
 
@@ -609,7 +167,7 @@ LG.game = (function () {
 
   /* ------------------------------------------------------------- startup */
   function init() {
-    loadSettings();
+    C.load();
     canvas = document.getElementById('game');
     ctx = canvas.getContext('2d');
     W.build();
@@ -618,83 +176,27 @@ LG.game = (function () {
        new village is only generated on first-ever arrival. `resume`
        restores the local save immediately and checks the log server's
        copy asynchronously in the background, so a missing or slow server
-       never blocks startup — same tradeoff adoptEnv makes below. */
+       never blocks startup — same tradeoff the settings panel makes
+       fetching keys from .env. */
     if (!LG.save.resume(log)) newVillage(null, true);
 
     LG.dialogue.init();
+    P.init({ newVillage });
     wireUI();
     resize();
     window.addEventListener('resize', resize);
     trackViewport();
 
-    if (settings.apiKey) { gated = false; LG.llm.probe(llmConfig()); }
-    else { openSettings(true); }
-    showChrome();
-    loadVoices();
+    P.start();
     requestAnimationFrame(loop);
-    adoptEnv();
-  }
-
-  /* Fetches API keys from the log server's .env, if it's running.
-
-     The settings panel normally requires the player to paste a key,
-     since a plain web page can't read a local file. The log server can,
-     though, so if it's running with a .env configured, this can populate
-     the key automatically and skip that step. Called after startup
-     rather than blocking on it, so a missing or slow server never delays
-     the game -- the settings gate stays up regardless, and closes itself
-     automatically if a key arrives. */
-  function adoptEnv() {
-    if (typeof fetch !== 'function') return;
-    if (typeof location === 'undefined' || !/^https?:/.test(location.protocol)) return;
-    fetch('/env', { cache: 'no-store' })
-      .then(r => (r.ok ? r.json() : null))
-      .then(env => { if (env) useEnv(env); })
-      .catch(() => {});                       // no server, or not that sort of server
-  }
-
-  function useEnv(env) {
-    const was = { lang: settings.lang, level: settings.level };
-    if (LG.llm.MODELS[env.provider]) settings.provider = env.provider;
-    if (env.openrouterKey) settings.keys.openrouter = env.openrouterKey;
-    if (env.logfareKey) settings.keys.logfare = env.logfareKey;
-    settings.apiKey = settings.keys[settings.provider] || '';
-    let got = [];
-    if ({ openrouter: env.openrouterKey, logfare: env.logfareKey }[settings.provider]) got.push('the model key');
-    if (env.ttsKey) { settings.ttsKey = env.ttsKey; settings.voices = true; got.push('a voice key'); }
-    if (env.model) settings.model = env.model;
-    if (env.helper) settings.helper = env.helper;
-    if (env.lang && LG.LANGUAGES[env.lang]) settings.lang = env.lang;
-    if (env.level && LG.LEVELS[env.level]) settings.level = env.level;
-    if (!got.length && was.lang === settings.lang && was.level === settings.level) return;
-
-    fromEnv = true;
-    saveSettings();
-    /* The village is generated from language + difficulty, so changing
-       either normally means regenerating it -- fine, since nothing has
-       happened yet in a fresh session. Except when a village was already
-       resumed from a save: that's an in-progress playthrough, and .env
-       settings arriving late shouldn't discard it. In that case, keep
-       the resumed village's own language/difficulty instead. */
-    if (was.lang !== settings.lang || was.level !== settings.level) {
-      if (LG.save.resumed) { settings.lang = was.lang; settings.level = was.level; }
-      else newVillage(null, true);
-    }
-    if (settings.apiKey && gated) {
-      gated = false; gateMode = false;
-      document.getElementById('settings').classList.remove('open');
-    }
-    showChrome();
-    renderHUD();
-    if (settings.voices && settings.ttsKey) loadVoices();
-    log('\u00a4 Read ' + got.join(' and ') + ' from .env.');
   }
 
   /* Generates a fresh errand chain and resets all state that depends on it.
      `restoring` is set by LG.save.restore, which lays a save over the
      result and must not have the bare village saved over it first. */
   function newVillage(seed, quiet, restoring) {
-    plan = LG.chain.generate({ level: settings.level, seed: seed || null });
+    V.create(seed, settings.level);
+    adopt();
 
     /* A new village rolls a fresh calendar too: a random day of the
        year, with whatever weather that day has. The hour of arrival is
@@ -702,60 +204,10 @@ LG.game = (function () {
        around is a poor way to start a game. */
     LG.time.start();
 
-    state.inv = { coins: 10 };          // a little money to be going on with
-    state.notes = []; state.deeds = []; state.won = false; state.board = [];
-
-    /* The player arrives by train. The platform is at the far east end
-       of the high street, so the walk into the village covers its full
-       length -- arriving somewhere nobody is expecting them. */
-    const p = W.nearestOpen(LG.START.x, LG.START.y);
-    player = { px: p.x * TILE + TILE / 2, py: p.y * TILE + TILE / 2, dir: 'left',
-               tx: p.x, ty: p.y, bubble: null, bubbleT: 0 };
-    npcs = LG.NPCS.map(d => A.makeNPC(d, plan.npcFacts[d.id]));
-    // Every villager gets an assigned workplace, and a fallback indoor shelter for bad weather.
-    const publics = ['Inn', 'Village Hall', 'Chapel']
-      .map(l => W.buildingByLabel(l)).filter(Boolean);
-    npcs.forEach((n, i) => {
-      const b = n.def.workplace ? W.buildingByLabel(n.def.workplace) : null;
-      n.work = b ? b.inside : (n.def.workRect || n.def.home);
-      n.workBuilding = b;
-      const refuge = b || publics[i % Math.max(1, publics.length)];
-      n.shelter = refuge ? refuge.inside : n.def.home;
-    });
-
-    /* Petra always greets a new arrival at the platform. This is scripted
-       rather than left to the model (contrast with the ordinary
-       "go find the player" behavior in placesFor/followPlayer) — she
-       starts in the already-decided "following the player" state
-       instead of arriving at it by an intent decision, since a village
-       character established as knowing everyone's business would
-       plausibly always meet a stranger immediately. */
-    const petra = npcs.find(n => n.def.id === 'petra');
-    if (petra) {
-      const spot = W.nearestOpen(p.x - 5, p.y + 1);
-      petra.tx = spot.x; petra.ty = spot.y;
-      petra.px = spot.x * TILE + TILE / 2; petra.py = spot.y * TILE + TILE / 2;
-      petra.followingPlayer = true;
-      petra.wentAfter = 'player';
-      petra.why = 'a traveller has just got off the train, and nobody has told them anything about the village yet';
-    }
-
-    // Find the "where" fact -- the location of the terminal (chain-ending) item.
-    whereFact = Object.keys(plan.facts).find(id => plan.facts[id].type === 'where') || null;
-    chainNeeds = chainItems();
-    beast = null; worldItem = null;
-    const t = plan.terminal;
-    if (t.isBeast) {
-      beast = A.makeCreature({ item: t.item, name: t.beastName,
-                               emoji: LG.ITEMS[t.item].icon, home: t.rect });
-    } else {
-      const r = t.rect;
-      const spot = W.nearestOpen(r.x + ((Math.random() * r.w) | 0), r.y + ((Math.random() * r.h) | 0));
-      worldItem = { item: t.item, px: spot.x * TILE + TILE / 2, py: spot.y * TILE + TILE / 2, taken: false };
-    }
+    LG.ledger.begin(plan, factSpent);
+    LG.trade.begin(plan);
 
     renderHUD();
-    logLines.length = 0;
     log(quiet ? (LG.touch.on
                   ? 'Drag anywhere to walk. Tap a villager you are beside to talk.'
                   : 'Use WASD or the arrow keys to walk. Press E next to someone to talk.')
@@ -1091,7 +543,6 @@ LG.game = (function () {
       h.onclick = () => h.parentElement.classList.toggle('folded');
     });
 
-    document.getElementById('btnSettings').onclick = () => openSettings(false);
     document.getElementById('btnHelp').onclick = () =>
       document.getElementById('help').classList.toggle('open');
     document.getElementById('helpClose').onclick = () =>
@@ -1104,244 +555,19 @@ LG.game = (function () {
       document.getElementById('ending').classList.remove('open');
       newVillage();
     };
-    document.getElementById('setNew').onclick = () => submitSettings(true);
-    document.getElementById('setForget').onclick = () => {
-      LG.save.forget();
-      log('\u00a4 The saved village has been forgotten. This one goes on until you start another.');
-      showSaveNote();
-    };
-    // Not `= submitSettings`: the click event would arrive as a truthy forceNewVillage.
-    document.getElementById('setSave').onclick = () => submitSettings(false);
-    document.getElementById('setProvider').onchange = () => { swapKeyField(); refreshModelList(); refreshHelperList(); };
-    document.getElementById('setModel').onchange = syncModelBox;
-    document.getElementById('setHelper').onchange = syncHelperBox;
-  }
-
-  /* Tucks away whatever is in the key box under the provider it was
-     typed for, and shows the newly picked provider's key instead -- so
-     a Logfare key survives a detour through OpenRouter and back. */
-  function swapKeyField() {
-    const field = document.getElementById('setKey');
-    draftKeys[keyProvider] = field.value.trim();
-    keyProvider = document.getElementById('setProvider').value;
-    field.value = draftKeys[keyProvider] || '';
   }
 
   /* Whether there's a real playthrough worth saving. Before the
      settings gate is passed, the village visible behind it is only a
      decorative backdrop for the title screen -- saving it would
      overwrite a real save with a village nobody has actually played. */
-  function saving() { return !gated && !!plan; }
+  function saving() { return !P.gated && !!plan; }
 
   function panelOpen() { return !!document.querySelector('.panel.open'); }
-  function uiBlocked() { return gated || panelOpen() || LG.dialogue.isOpen(); }
+  function uiBlocked() { return P.gated || panelOpen() || LG.dialogue.isOpen(); }
   function closePanels() {
-    if (gated) return;   // Escape does not close the front-door settings panel
+    if (P.gated) return;   // Escape does not close the front-door settings panel
     document.querySelectorAll('.panel.open').forEach(p => p.classList.remove('open'));
-  }
-
-  async function submitSettings(forceNewVillage) {
-    const btn = document.getElementById('setSave');
-    const newBtn = document.getElementById('setNew');
-    const err = document.getElementById('setError');
-    swapKeyField();                // files the key box under its provider; a no-op swap otherwise
-    const next = {
-      lang: document.getElementById('setLang').value,
-      level: document.getElementById('setLevel').value,
-      autorun: document.getElementById('setAutorun').checked,
-      provider: document.getElementById('setProvider').value,
-      apiKey: document.getElementById('setKey').value.trim(),
-      keys: Object.assign({}, draftKeys),
-      model: readModel() || settings.model,
-      helper: readHelper(),
-      // No longer player-configurable: gossip is always on, translations
-      // always start blurred, voices are always curated, and speech
-      // speed always matches difficulty.
-      showTranslation: false,
-      npcChatter: true,
-      voices: document.getElementById('setVoices').checked,
-      ttsKey: document.getElementById('setTtsKey').value.trim(),
-      voiceSpeed: 'auto',
-      voiceQuality: 'curated'
-    };
-    err.textContent = '';
-
-    // Skip re-validating the key when the provider/key/model haven't changed.
-    const stamp = next.provider + '|' + next.apiKey + '|' + next.model;
-    if (stamp !== lastValidated) {
-      btn.disabled = true;
-      newBtn.disabled = true;
-      btn.textContent = 'Checking your key…';
-      try {
-        await LG.llm.validate({ provider: next.provider, apiKey: next.apiKey, model: next.model });
-        lastValidated = stamp;
-      } catch (e) {
-        err.textContent = e.message;
-        btn.disabled = false;
-        newBtn.disabled = false;
-        btn.textContent = gateMode ? 'Enter the village' : 'Save';
-        return;
-      }
-      btn.disabled = false;
-      newBtn.disabled = false;
-    }
-
-    const levelChanged = next.level !== settings.level;
-    const voiceChanged = next.voices !== settings.voices || next.ttsKey !== settings.ttsKey;
-    Object.assign(settings, next);
-    saveSettings();
-    // Structured-output support depends on the provider/model pair -- re-probe on any settings change.
-    LG.llm.probe(llmConfig());
-    document.getElementById('settings').classList.remove('open');
-    btn.textContent = 'Save';
-    renderHUD();
-
-    if (voiceChanged) { LG.tts.stop(); loadVoices(); }
-
-    if (gateMode) {
-      gated = false;
-      gateMode = false;
-      showChrome();
-      /* Passing through the front door used to always roll a new
-         village -- correct on a first visit, but wrong when resuming a
-         save: the player would return to their saved village, type in
-         their key, and watch it get replaced. A changed difficulty is a
-         genuinely different village, so that still rolls a new one. */
-      if (LG.save.resumed && !levelChanged) LG.save.write();
-      else newVillage(null, true);
-      document.getElementById('help').classList.add('open');
-    } else if (levelChanged) {
-      log('A different sort of errand, then.');
-      newVillage();
-    } else if (forceNewVillage) {
-      newVillage();
-    } else {
-      log('The villagers now speak ' + LG.LANGUAGES[settings.lang].name + '.');
-    }
-  }
-
-  /* Casting villager voices takes one API request -- done here, while
-     the player is likely reading the help panel, rather than waiting
-     until they first talk to a villager. */
-  function loadVoices() {
-    if (!settings.voices || !settings.ttsKey) return;
-    LG.tts.load(ttsConfig()).then(ok => {
-      if (ok) log('🔊 The villagers have found their voices.');
-      else log('🔊 No voices: ' + LG.tts.error);
-    });
-  }
-
-  /* Hides the HUD while gated -- it's just visual noise behind the title screen. */
-  function showChrome() {
-    document.getElementById('hud').style.display = gated ? 'none' : '';
-  }
-
-  function openSettings(asGate) {
-    gateMode = !!asGate;
-    const s = document.getElementById('settings');
-    document.getElementById('setTitle').textContent = gateMode ? 'Little Village' : 'Settings';
-    document.getElementById('setLede').style.display = gateMode ? '' : 'none';
-    document.getElementById('setNew').style.display = gateMode ? 'none' : '';
-    document.getElementById('setSave').textContent = gateMode ? 'Enter the village' : 'Save';
-    document.getElementById('setError').textContent = '';
-    document.getElementById('setLang').value = settings.lang;
-    document.getElementById('setLevel').value = settings.level;
-    document.getElementById('setAutorun').checked = settings.autorun;
-    document.getElementById('setProvider').value = settings.provider;
-    draftKeys = Object.assign({}, settings.keys);
-    keyProvider = settings.provider;
-    document.getElementById('setKey').value = draftKeys[keyProvider] || '';
-    // Shows where the key came from, so a pre-filled field isn't a mystery to the player.
-    const note = document.getElementById('setKeyNote');
-    if (note) {
-      note.textContent = fromEnv ? 'filled from .env — type over it to change it for this session' : '';
-      note.style.display = fromEnv ? '' : 'none';
-    }
-    document.getElementById('setVoices').checked = settings.voices;
-    document.getElementById('setTtsKey').value = settings.ttsKey;
-    refreshModelList();
-    refreshHelperList();
-    showSaveNote();
-    s.classList.add('open');
-  }
-
-  /* Displays the current save status in one line. Autosaving is
-     silent by design (a message every 20 seconds would be noisy) --
-     this is the only place that tells the player their progress is
-     being saved, and where. */
-  function showSaveNote() {
-    const note = document.getElementById('setSaveNote');
-    const btn = document.getElementById('setForget');
-    if (!note || !btn) return;
-    const have = LG.save.has();
-    btn.disabled = !have;
-    if (!have && LG.save.forgotten) { note.textContent = 'Forgotten — this village is no longer being saved. A new village will be.'; return; }
-    if (!have) { note.textContent = 'Nothing saved yet — the village is written down every few seconds once you are in it.'; return; }
-    const when = LG.save.lastAt
-      ? 'last written ' + new Date(LG.save.lastAt).toLocaleTimeString()
-      : 'kept from an earlier session';
-    note.textContent = 'This village is saved in this browser (' + when +
-      ')' + (LG.save.onServer ? ' and in saves/village.json' : '') + '.';
-  }
-
-  /* "Other" reveals a free-text box, so a model newer than this
-     picker's hardcoded list can still be used without editing the
-     source. */
-  function readModel() {
-    const sel = document.getElementById('setModel');
-    if (sel.value !== 'other') return sel.value;
-    return document.getElementById('setModelCustom').value.trim();
-  }
-
-  function readHelper() {
-    const sel = document.getElementById('setHelper');
-    if (sel.value !== 'other') return sel.value;
-    return document.getElementById('setHelperCustom').value.trim();
-  }
-
-  function refreshHelperList() {
-    const prov = document.getElementById('setProvider').value;
-    const sel = document.getElementById('setHelper');
-    const list = LG.llm.HELPERS[prov] || [];
-    // Logfare has exactly one model and always picks it — nothing to override.
-    const fixed = prov === 'logfare';
-    sel.innerHTML = list.map(m => '<option value="' + m.id + '">' + m.label + '</option>').join('')
-      + (fixed ? '' : '<option value="other">Other — type an id below</option>');
-    sel.disabled = fixed;
-    const known = list.some(m => m.id === settings.helper);
-    sel.value = fixed ? list[0].id
-              : settings.helper && !known ? 'other' : (settings.helper || (list[0] && list[0].id) || 'other');
-    document.getElementById('setHelperCustom').value = fixed || known ? '' : settings.helper;
-    syncHelperBox();
-  }
-
-  function syncHelperBox() {
-    const other = document.getElementById('setHelper').value === 'other';
-    document.getElementById('setHelperCustom').style.display = other ? '' : 'none';
-  }
-
-  function refreshModelList() {
-    const prov = document.getElementById('setProvider').value;
-    const sel = document.getElementById('setModel');
-    const list = LG.llm.MODELS[prov] || [];
-    // Logfare has exactly one model and always picks it — nothing to override.
-    const fixed = prov === 'logfare';
-    sel.innerHTML = list.map(m => '<option value="' + m.id + '">' + m.label + '</option>').join('')
-      + (fixed ? '' : '<option value="other">Other — type an id below</option>');
-    sel.disabled = fixed;
-    const known = list.some(m => m.id === settings.model);
-    sel.value = fixed ? list[0].id
-              : settings.model && !known ? 'other' : (settings.model || (list[0] && list[0].id) || 'other');
-    document.getElementById('setModelCustom').value = fixed || known ? '' : settings.model;
-    syncModelBox();
-    document.getElementById('keyHint').textContent = prov === 'logfare'
-      ? 'From logfare.ai/register — free and instant, no email needed.'
-      : 'From openrouter.ai/keys.';
-  }
-
-  function syncModelBox() {
-    const other = document.getElementById('setModel').value === 'other';
-    document.getElementById('setModelCustom').style.display = other ? '' : 'none';
   }
 
   /* A villager who sought out the player speaks first when the
@@ -1433,41 +659,6 @@ LG.game = (function () {
     }
   }
 
-  /* Whether the terminal (chain-ending) item has been collected --
-     tracked as a one-way, once-ever flag. Trading it away afterward
-     doesn't put it back where it was lying. */
-  function haveTerminal() {
-    return !!((worldItem && worldItem.taken) || (beast && beast.caught));
-  }
-
-  /* Has this fact already been resolved by the world state?
-
-     Previously this check was implemented three separate times, each
-     covering only one case: `learn` had its own logic that only knew
-     about the world-item location fact; `doTrade` had inline logic that
-     only knew about its own link and just deleted the note; picking up
-     the terminal item had a third, separate flag. As a result, a
-     villager could state a want that had already been fulfilled (e.g.
-     the goal item already delivered) and it would still show in the
-     notebook as an active lead, since whichever completion path had
-     actually happened wasn't checked by the note-writing code.
-
-     Now there's one function used everywhere, reading from two sources
-     that are both guaranteed one-way: `haveTerminal` is explicitly
-     once-ever, and a completed trade (`tradeDone`) never reverts. That
-     one-wayness is what makes this check safe to rely on globally. */
-  function factSpent(id) {
-    const f = plan && plan.facts[id];
-    if (!f || f.type === 'opinion') return false;      // an opinion is never spent
-    if (f.type === 'where') return haveTerminal();
-    if (typeof f.link === 'number' && f.link >= 0) {
-      const lk = plan.links[f.link];
-      const owner = lk && npcs.find(n => n.def.id === lk.npcId);
-      return !!(owner && owner.tradeDone);
-    }
-    return false;
-  }
-
   function catchBeast() {
     beast.caught = true; beast.following = true;
     give(beast.item);
@@ -1490,82 +681,9 @@ LG.game = (function () {
   /* Reuses world.js's rectangle-proximity check. */
   const nearRect = W.nearRect;
 
-  /* Adds a memory entry for `npc`.
-
-     This is the only entry point for anything a villager comes to
-     believe, so every memory carries the same two fields: when it was
-     learned (`at`) and who told them (`from`, null for something they
-     witnessed themselves). No memory is inherently more authoritative
-     than another -- a chain fact dealt at game start and a rumor picked
-     up on the green are structurally the same kind of entry, only
-     distinguished by recency and source.
-
-     Memories used to be stored as bare strings, with no way to compare
-     two of them. A villager could end up holding two contradictory bare
-     strings (e.g. "X is looking for shoes" and "X received shoes") with
-     no way to determine which was more current -- they could only notice
-     the contradiction, not resolve it. Dating and sourcing every entry
-     fixes that.
-
-     Note: below (noticeItemGone) covers the one fact in the errand that
-     can become false during play -- an item lying in the world getting
-     picked up. Since chain facts are only dealt once, at game start,
-     without that separate handling a villager could keep directing
-     people to an item's location long after it's gone. Walking there
-     and finding nothing is what corrects that (see noticeItemGone). */
-  function remember(npc, text, from) {
-    if (!text || typeof text !== 'string' || text.length < 3) return false;
-    npc.memory = npc.memory || [];
-    if (npc.memory.some(m => (m && m.text) === text)) return false;
-    npc.memory.push({ at: LG.time.clock(), text: text, from: from || null });
-    if (npc.memory.length > 24) npc.memory.shift();
-    return true;
-  }
-
-  /* Records when/from-whom a chain fact was learned, same as `remember`
-     does for memories. Facts dealt at game start are left unstamped,
-     which is what makes them read as something the villager has simply
-     always known. */
-  function noteFactSource(npc, id, from) {
-    npc.factAt = npc.factAt || {};
-    if (!npc.factAt[id]) npc.factAt[id] = { at: LG.time.clock(), from: from || null };
-  }
-
-  function noticeItemGone(n) {
-    if (!whereFact || !haveTerminal()) return;
-    const i = n.facts.indexOf(whereFact);
-    if (i === -1) return;
-    if (!nearRect(n, plan.terminal.rect, 3)) return;
-    n.facts.splice(i, 1);
-    /* States only what the villager directly observed. An earlier
-       version said "somebody has had it away" -- implying a theft they
-       didn't actually witness, which would then get repeated as
-       established fact. This version only states that they looked and
-       found nothing; any interpretation of that is left to the model. */
-    const t = plan.terminal;
-    const line = t.isBeast
-      ? 'You went ' + t.placeText + ' yourself and ' + t.beastName + ' was not there.'
-      : 'You went ' + t.placeText + ' yourself and there was no ' +
-        LG.ITEMS[t.item].en + ' there.';
-    remember(n, line);                       // seen with their own eyes: no source to name
-    think(n, 'finds nothing there', t.placeText);
-  }
   /* Trading hours and counter-proximity checks now live in LG.view,
      alongside everything else a villager can observe about their own
      state. */
-
-  /* Resolves what price (if any) this villager would sell/buy `id` at
-     -- checks their explicit wares list first, then their general trade
-     category tags. Returns 0 if they wouldn't deal in it at all. */
-  function priceFrom(list, tags, id, factor) {
-    const ware = (list || []).find(w => w.i === id);
-    if (ware) return ware.p;
-    const it = LG.ITEMS[id];
-    if (it && tags && tags.some(t => (it.tags || []).indexOf(t) !== -1)) {
-      return Math.max(1, Math.round(LG.priceOf(id) * (factor || 1)));
-    }
-    return 0;
-  }
 
   /* Where a villager goes is a decision made by the helper model from
      their own goal and memory, not a dice roll -- this function just
@@ -1574,25 +692,6 @@ LG.game = (function () {
      a saw walks toward wherever she last heard one was. */
   const DECIDE_COOL = 25;
 
-  /* Logs each villager decision with its stated reason to the console.
-     Without this, there was no way to tell from the outside whether a
-     villager's movement decision was reasoned or effectively random.
-     Tagged in the villager's own color so a busy village stays readable.
-     `LG.game.thoughts = false` disables this. */
-  let thoughts = true;
-  function think(n, what, detail) {
-    // The log keeps these whether or not the console is printing them.
-    if (LG.logbook) LG.logbook.note('villager', n.def ? n.def.name : '?', what,
-      { detail: detail || '', where: n.px !== undefined ? LG.view.where(n) : '',
-        clock: LG.time && LG.time.clock ? LG.time.clock() : '' });
-    if (!thoughts || typeof console === 'undefined' || !console.log) return;
-    const c = (n.def && n.def.color) || '#888';
-    console.log('%c ' + (n.def ? n.def.name : '?') + ' %c ' + what +
-                (detail ? '%c  ' + detail : ''),
-      'background:' + c + ';color:#fff;border-radius:3px;font-weight:600',
-      'color:inherit',
-      'color:#888;font-style:italic');
-  }
   /* Builds the list of everywhere a villager could plausibly walk to,
      including toward other villagers they can see.
 
@@ -1679,7 +778,7 @@ LG.game = (function () {
        since "what they know" and "what they decide" were reading from
        different, disconnected data. */
     const v = LG.view.of(n, 'intent');
-    LG.llm.intent(llmConfig(), {
+    LG.llm.intent(C.llm(), {
       me: v,
       goal: v.goal,
       when: v.when,
@@ -1723,13 +822,6 @@ LG.game = (function () {
     return true;
   }
 
-  /* Whether the player is close enough to overhear this conversation
-     -- only affects whether it's logged; the conversation itself happens
-     regardless. */
-  function canOverhear(a, b) {
-    return dist(player, a) < TILE * 11 || dist(player, b) < TILE * 11;
-  }
-
   /* Starts a conversation between two villagers who've met. Nothing
      about what will be said is pre-decided -- each has their own goal,
      memory, and current weather/situation, and what they each take away
@@ -1769,10 +861,10 @@ LG.game = (function () {
     if (n.boardCool > 0) return;
     n.boardCool = 90 + Math.random() * 150;
     const v = LG.view.of(n, 'board');
-    const L = LG.LANGUAGES[settings.lang];
+    const L = C.language();
     const lvl = LG.LEVELS[settings.level] || {};
     think(n, 'wonders whether to pin anything up', '');
-    LG.llm.notice(llmConfig(), {
+    LG.llm.notice(C.llm(), {
       me: v, goal: v.goal, when: v.when,
       held: LG.view.held(v),
       board: (state.board || []).map(b => b.translation || b.text),
@@ -1809,8 +901,8 @@ LG.game = (function () {
       : [];
     if (!claimed.length) return;
     const candidates = claimed.map(id => ({ id, text: plan.facts[id].text }));
-    const L = LG.LANGUAGES[settings.lang];
-    LG.llm.judge(llmConfig(), text, entry.translation, candidates, { langName: L.name })
+    const L = C.language();
+    LG.llm.judge(C.llm(), text, entry.translation, candidates, { langName: L.name })
       .then(confirmed => { confirmed.forEach(c => entry.factIds.push(c.id)); })
       .catch(() => {});
   }
@@ -1831,7 +923,7 @@ LG.game = (function () {
   }
 
   function renderBoard() {
-    const L = LG.LANGUAGES[settings.lang];
+    const L = C.language();
     const box = document.getElementById('boardList');
     const rows = (state.board || []).slice().reverse().map(entry => {
       const hide = settings.showTranslation ? '' : ' hidden-tr';
@@ -2199,7 +1291,7 @@ LG.game = (function () {
       }
     }
     for (const a of drawables) {
-      if (a.bubble) A.drawBubble(ctx, a, LG.LANGUAGES[settings.lang].fontStack);
+      if (a.bubble) A.drawBubble(ctx, a, C.language().fontStack);
     }
 
     ctx.restore();
@@ -2218,14 +1310,9 @@ LG.game = (function () {
     requestAnimationFrame(loop);
   }
 
-  return { init, settings, state, llmConfig, ttsConfig, log, learn, hasNote, give, take, count,
-           remember, noteFactSource, factSpent, displayName, nameOrEmoji,
+  return { init,
            _moveDir: moveDir, _isInteract: isInteract, _tapAt: tapAt,
            get cam() { return cam; },
-           canOverhear, logSpeech, think,
-           factText: id => (plan && plan.facts[id]) ? plan.facts[id].text : null,
-           set thoughts(v) { thoughts = !!v; },
-           get thoughts() { return thoughts; },
            _debugPlayerAt: (x, y) => {
              player.px = x; player.py = y;
              player.tx = (x / TILE) | 0; player.ty = (y / TILE) | 0;
@@ -2235,11 +1322,7 @@ LG.game = (function () {
            // to test anything behind it. Also un-hides the HUD (not just
            // clearing the gate flag), since the HUD stays hidden while
            // gated -- an invisible village would be a useless test result.
-           _debugOpenTheDoor: () => {
-             gated = false;
-             document.getElementById('settings').classList.remove('open');
-             showChrome();
-           },
+           _debugOpenTheDoor: () => P.openTheDoor(),
            // one turn of the world by hand, for poking at it from the console
            // (and for tests, which cannot rely on requestAnimationFrame)
            _debugTick: dt => update(dt || 1 / 60),
@@ -2248,14 +1331,7 @@ LG.game = (function () {
            _debugViewport: () => { readInsets(); measureViewport(); },
            // Returns the resulting visible-canvas band (see seen()).
            _debugSeen: seen,
-           inventoryList, doTrade, commerce, renderHUD, openSettings, uiBlocked, newVillage,
-           get plan() { return plan; },
-           get npcs() { return npcs; },
-           // what save.js reads and writes back; the rest of the world it can
-           // reach through the exports above
-           get player() { return player; },
-           get beast() { return beast; },
-           get worldItem() { return worldItem; },
+           doTrade, uiBlocked, newVillage,
            get saving() { return saving(); },
            get canvas() { return canvas; } };
 })();

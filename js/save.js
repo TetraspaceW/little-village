@@ -104,12 +104,12 @@ LG.save = (function () {
 
   /* ------------------------------------------------------------ snapshot */
   function snapshot() {
-    const g = LG.game, plan = g.plan;
+    const V = LG.village, plan = V.plan;
     if (!plan) return null;
-    const st = g.state, p = g.player;
+    const st = LG.ledger.state, p = V.player;
 
     const villagers = {};
-    g.npcs.forEach(n => {
+    V.npcs.forEach(n => {
       villagers[n.id] = {
         x: round(n.px), y: round(n.py), tx: n.tx, ty: n.ty, dir: n.dir,
         facts: n.facts.slice(),
@@ -140,25 +140,25 @@ LG.save = (function () {
       };
     });
 
-    const t = g.beast
+    const t = V.beast
       /* `home` is the area the creature wanders when unheld, and it can
          change during play (e.g. returning the goat updates its home from
          the hillside it strayed to, to the farmer's yard). Must be saved
          explicitly — saving only its current position would put it back
          at the old home area on reload. */
-      ? { kind: 'beast', x: round(g.beast.px), y: round(g.beast.py),
-          tx: g.beast.tx, ty: g.beast.ty, home: rectOut(g.beast.home),
-          caught: !!g.beast.caught, following: !!g.beast.following }
-      : g.worldItem
-        ? { kind: 'item', x: round(g.worldItem.px), y: round(g.worldItem.py),
-            taken: !!g.worldItem.taken }
+      ? { kind: 'beast', x: round(V.beast.px), y: round(V.beast.py),
+          tx: V.beast.tx, ty: V.beast.ty, home: rectOut(V.beast.home),
+          caught: !!V.beast.caught, following: !!V.beast.following }
+      : V.worldItem
+        ? { kind: 'item', x: round(V.worldItem.px), y: round(V.worldItem.py),
+            taken: !!V.worldItem.taken }
         : null;
 
     return {
       v: VERSION,
       game: 'little-village',
       saved: new Date().toISOString(),
-      village: { seed: plan.seed, level: g.settings.level, lang: g.settings.lang,
+      village: { seed: plan.seed, level: LG.config.settings.level, lang: LG.config.settings.lang,
                  digest: digestOf(plan), placesSnapshot: plan.placesSnapshot },
       /* Weather affects villager behavior (see byDice() in npc.js) and
          accumulated snow depth takes multiple in-game days to build up —
@@ -189,7 +189,7 @@ LG.save = (function () {
   function restore(data) {
     const why = check(data);
     if (why) return why;
-    const g = LG.game;
+    const g = LG.game, V = LG.village;
 
     /* Two distinct questions, easy to conflate since one file can answer
        both: (1) "is this a raw v1 file?" — determines whether coordinates
@@ -232,8 +232,8 @@ LG.save = (function () {
        `placesSnapshot` (see chain.js's `attempt()`), so future saves of
        this village keep replaying the same list without restore() having
        to remember anything about it itself. */
-    g.settings.lang = data.village.lang;
-    g.settings.level = data.village.level;
+    LG.config.settings.lang = data.village.lang;
+    LG.config.settings.level = data.village.level;
     // `restoring`: newVillage must not save the bare village before the save is laid over it.
     withPlaces(() => g.newVillage(data.village.seed, true, true));
 
@@ -242,11 +242,11 @@ LG.save = (function () {
     LG.time.setWeather(tm.weather, tm.hold);
     LG.time.setSnow(tm.snow);
 
-    const p = g.player;
+    const p = V.player;
     p.px = data.player.x; p.py = data.player.y; p.dir = data.player.dir || 'down';
     p.tx = (p.px / LG.world.TILE) | 0; p.ty = (p.py / LG.world.TILE) | 0;
 
-    const st = g.state;
+    const st = LG.ledger.state;
     st.inv = Object.assign({}, data.inventory);
     /* Enforces at most one note per fact id, same guarantee `learn`
        provides during live play (via the `hasNote` check in game.js) --
@@ -256,21 +256,21 @@ LG.save = (function () {
        first occurrence wins, matching what would happen during live play. */
     const noted = new Set();
     st.notes = (data.notes || [])
-      .filter(n => g.plan.facts[n.id] && !noted.has(n.id) && noted.add(n.id))
+      .filter(n => V.plan.facts[n.id] && !noted.has(n.id) && noted.add(n.id))
       .map(n => ({ id: n.id, text: n.text, ruby: n.ruby || null }));
     st.deeds = (data.deeds || []).slice();
     st.board = (data.board || []).map(b => ({
       npcId: b.npcId, name: b.name, text: b.text,
       translation: b.translation || '', roman: b.roman || '',
-      factIds: (b.factIds || []).filter(id => g.plan.facts[id]), at: b.at || ''
+      factIds: (b.factIds || []).filter(id => V.plan.facts[id]), at: b.at || ''
     }));
     st.won = !!data.won;
 
-    g.npcs.forEach(n => {
+    V.npcs.forEach(n => {
       const s = (data.villagers || {})[n.id];
       if (!s) return;
       n.px = s.x; n.py = s.y; n.tx = s.tx; n.ty = s.ty; n.dir = s.dir || 'down';
-      n.facts = (s.facts || []).filter(id => g.plan.facts[id]);
+      n.facts = (s.facts || []).filter(id => V.plan.facts[id]);
       /* Older saves stored memory entries as bare strings, before they
          gained `at`/`from` fields. Normalize on load so older saves still
          work — an undated entry is treated as one the villager has simply
@@ -308,18 +308,18 @@ LG.save = (function () {
     });
 
     const t = data.terminal;
-    if (t && t.kind === 'beast' && g.beast) {
-      g.beast.px = t.x; g.beast.py = t.y; g.beast.tx = t.tx; g.beast.ty = t.ty;
-      g.beast.caught = !!t.caught; g.beast.following = !!t.following;
-      if (t.home) g.beast.home = rectOut(t.home);
-    } else if (t && t.kind === 'item' && g.worldItem) {
-      g.worldItem.px = t.x; g.worldItem.py = t.y; g.worldItem.taken = !!t.taken;
+    if (t && t.kind === 'beast' && V.beast) {
+      V.beast.px = t.x; V.beast.py = t.y; V.beast.tx = t.tx; V.beast.ty = t.ty;
+      V.beast.caught = !!t.caught; V.beast.following = !!t.following;
+      if (t.home) V.beast.home = rectOut(t.home);
+    } else if (t && t.kind === 'item' && V.worldItem) {
+      V.worldItem.px = t.x; V.worldItem.py = t.y; V.worldItem.taken = !!t.taken;
     }
 
     resumed = true;
     off = false;
     since = 0;
-    g.renderHUD();
+    LG.ledger.render();
     return null;
   }
 

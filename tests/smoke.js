@@ -1337,6 +1337,7 @@ async function villagersTalking() {
   await namesUnknownUntilTold();
   await touchControls();
   await roomForTheComposer();
+  escapeCloses();
   whatYouCanSee();
 
   console.log('\n' + (failures ? failures + ' of ' + checks + ' CHECKS FAILED'
@@ -1749,6 +1750,57 @@ function whatYouCanSee() {
   g._debugViewport();
   const back = g._debugSeen();
   ok(back.top === 0 && back.bottom === vh, 'and it all comes back');
+}
+
+/* Escape closes whatever is in the way -- a panel, else the
+   conversation -- but never the front-door settings panel, which is
+   the only way into the village. Its own sandbox, since the shared one
+   ignores window listeners and never finds an open panel. */
+function escapeCloses() {
+  section('Escape closes a panel, but not the front door');
+  const s5 = makeSandbox({});
+  const keydowns = [];
+  s5.addEventListener = (type, fn) => { if (type === 'keydown') keydowns.push(fn); };
+  const panels = ['settings', 'help', 'board', 'ending'];
+  const open = () => panels.map(id => s5.document.getElementById(id))
+                           .filter(p => p.classList.contains('open'));
+  s5.document.querySelector = sel => sel === '.panel.open' ? (open()[0] || null) : null;
+  s5.document.querySelectorAll = sel => sel === '.panel.open' ? open() : [];
+  for (const f of files) {
+    vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), s5, { filename: f });
+  }
+  s5.LG.game.init();
+  s5.LG.game.thoughts = false;
+  const el = id => s5.document.getElementById(id);
+  const esc = () => keydowns.forEach(fn => fn({ code: 'Escape', key: 'Escape', preventDefault() {} }));
+  ok(keydowns.length > 0, 'the game listens for keys');
+
+  ok(el('settings').classList.contains('open'), 'with no key, the front door is up');
+  esc();
+  ok(el('settings').classList.contains('open'), 'and Escape does not close it while gated');
+  ok(s5.LG.game.uiBlocked(), 'so the village stays out of reach');
+
+  s5.LG.game._debugOpenTheDoor();
+  el('btnSettings').onclick();
+  ok(el('settings').classList.contains('open'), 'past the door, the settings button opens settings');
+  esc();
+  ok(!el('settings').classList.contains('open'), 'and Escape closes them');
+
+  el('btnHelp').onclick();
+  ok(el('help').classList.contains('open'), 'the help button opens help');
+  esc();
+  ok(!el('help').classList.contains('open'), 'and Escape closes it');
+  ok(!s5.LG.game.uiBlocked(), 'leaving the village free to walk in again');
+
+  const n = s5.LG.village.npcs[0];
+  s5.LG.dialogue.open(n);
+  ok(s5.LG.dialogue.isOpen(), 'a conversation opens');
+  el('btnHelp').onclick();
+  esc();
+  ok(!el('help').classList.contains('open') && s5.LG.dialogue.isOpen(),
+     'Escape over a conversation closes the panel on top first');
+  esc();
+  ok(!s5.LG.dialogue.isOpen(), 'and then the conversation');
 }
 
 beliefsRevised().then(villagersTalking);

@@ -235,7 +235,7 @@ LG.actors = (function () {
      the contradiction, not resolve it. Dating and sourcing every entry
      fixes that.
 
-     Note: noticeItemGone in game.js covers the one fact in the errand that
+     Note: noticeItemGone in village.js covers the one fact in the errand that
      can become false during play -- an item lying in the world getting
      picked up. Since chain facts are only dealt once, at game start,
      without that separate handling a villager could keep directing

@@ -1122,7 +1122,7 @@ LG.dialogue = (function () {
     keepTheEnd();
     el.dlgInput.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(el.dlgInput.value); }
-      if (e.key === 'Escape') close();
+      // Escape is handled by game.js's window keydown, which this bubbles up to.
     });
   }
 

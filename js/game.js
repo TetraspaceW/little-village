@@ -4,6 +4,7 @@ window.LG = window.LG || {};
 LG.game = (function () {
   const W = LG.world, A = LG.actors, TILE = 32;
   const { displayName, nameOrEmoji, remember, noteFactSource, think } = A;
+  const { escapeHTML, rubyHTML } = LG.text;
 
   const C = LG.config, settings = C.settings;
 
@@ -180,7 +181,7 @@ LG.game = (function () {
      let the player skip understanding the overheard language entirely. */
   function logSpeech(name, said, ruby, roman, gloss) {
     const L = C.language();
-    const heard = (ruby && L.furigana) ? LG.dialogue.rubyHTML(ruby) : escapeHTML(said);
+    const heard = (ruby && L.furigana) ? rubyHTML(ruby) : escapeHTML(said);
     let html = '<span class="who">\uD83D\uDC42 ' + escapeHTML(name) + ':</span> ' +
                '<span class="heard" lang="' + L.tag + '"' +
                (ruby && L.furigana ? ' style="line-height:2"' : '') +
@@ -190,9 +191,6 @@ LG.game = (function () {
     if (gloss) html += '<span class="gloss hidden-tr" lang="en" title="click to read">' +
                        escapeHTML(gloss) + '</span>';
     pushLog(html);
-  }
-  function escapeHTML(s) {
-    return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   }
 
   /* ----------------------------------------------------------------- HUD */
@@ -211,7 +209,7 @@ LG.game = (function () {
     const nb = document.getElementById('notebook');
     const rows = state.deeds.map(d => '<div class="q done">✔ ' + escapeHTML(d) + '</div>')
       .concat(state.notes.map(n => {
-        const heard = (n.ruby && L.furigana) ? LG.dialogue.rubyHTML(n.ruby) : escapeHTML(n.text);
+        const heard = (n.ruby && L.furigana) ? rubyHTML(n.ruby) : escapeHTML(n.text);
         const gloss = plan.facts[n.id].text;
         const hide = settings.showTranslation ? '' : ' hidden-tr';
         const done = factSpent(n.id);          // read off the world, never stored

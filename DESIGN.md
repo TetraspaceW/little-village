@@ -53,7 +53,7 @@ the game made of it, or in a prompt sentence that did something other than what 
 
 ## Jev: fixed-choice questions (OpenRouter only)
 
-TypeSafe's Jev (`typesafe/jev-1.13`) takes `{state, questions}` and returns one named
+TypeSafe's Jev (`~typesafe/jev-latest`, which OpenRouter redirects to the newest Jev) takes `{state, questions}` and returns one named
 option per question, with a probability. It's billed on input tokens only. It uses
 OpenRouter's decisions endpoint (`decisionPost`/`askJev` in `js/llm.js`), not
 `/chat/completions`, so it can't be offered as a main or helper model.

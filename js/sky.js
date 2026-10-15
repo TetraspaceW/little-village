@@ -122,6 +122,30 @@ LG.sky = (function () {
     return made;
   }
 
+  /* Snowflakes are stamped from one sprite per step of size (five steps
+     across the range), at whole device pixels. Drawn live, a blizzard was
+     384 fills a frame, ~0.7 ms in Firefox; one batched path saved nothing.
+     Like wisp(), null with no canvas, and the caller draws live arcs. */
+  const FLAKE_STEPS = 4;
+  let flakes = [], flakeDpr = 0;
+  function flake(step, dpr) {
+    if (dpr !== flakeDpr) { flakes = []; flakeDpr = dpr; }
+    if (step in flakes) return flakes[step];
+    let made = null;
+    const r = 1.4 + step / FLAKE_STEPS * 1.8, size = Math.ceil(r + 1) * 2;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = Math.round(size * dpr);
+    const g = canvas.getContext && canvas.getContext('2d');
+    if (g && typeof g.arc === 'function') {
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.fillStyle = 'rgba(255,255,255,.85)';
+      g.beginPath(); g.arc(size / 2, size / 2, r, 0, Math.PI * 2); g.fill();
+      made = { canvas, half: size / 2, side: canvas.width / dpr };
+    }
+    flakes[step] = made;
+    return made;
+  }
+
   function draw(ctx, vw, vh, roofs, dpr) {
     const info = LG.time.info || {};
     const s = LG.time.season();
@@ -152,7 +176,11 @@ LG.sky = (function () {
       ctx.stroke();
     } else if (kind === 'snow') {
       ctx.fillStyle = 'rgba(255,255,255,.85)';
-      for (const p of parts) { ctx.beginPath(); ctx.arc(p.x, p.y, 1.4 + p.s * 1.8, 0, Math.PI * 2); ctx.fill(); }
+      for (const p of parts) {
+        const f = dpr ? flake(Math.round(p.s * FLAKE_STEPS), dpr) : null;
+        if (f) ctx.drawImage(f.canvas, Math.round((p.x - f.half) * dpr) / dpr, Math.round((p.y - f.half) * dpr) / dpr, f.side, f.side);
+        else { ctx.beginPath(); ctx.arc(p.x, p.y, 1.4 + p.s * 1.8, 0, Math.PI * 2); ctx.fill(); }
+      }
     } else if (kind === 'sand') {
       ctx.strokeStyle = 'rgba(214,180,120,.5)'; ctx.lineWidth = 1.6;
       ctx.beginPath();

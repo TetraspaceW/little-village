@@ -378,14 +378,24 @@ everything at every level. The README has the table.
 - **Sprites blit one texel per device pixel, at whole device pixels.** Stretched by a
   fraction, which edge column survived depended on float noise in the layer's position,
   so two paints of the same tree disagreed.
+- **Characters, bubbles and snowflakes are sprites** (`drawCharacter`/`drawBubble` in
+  `js/npc.js`, `flake` in `js/sky.js`). Drawn live, the village cost ~0.4 ms a frame in
+  Firefox, four bubbles ~0.5 ms, and a blizzard's 384 flakes ~0.7 ms. A body has a sprite
+  per quarter device pixel of its bob; a smoothed fractional blit made walking villagers
+  half again as costly. One batched path for the flakes saved nothing.
+- **The screen canvas is opaque and cleared before the ground copy** (`draw()` in
+  `js/game.js`): the copy fell from ~2.4 to ~1.4 ms in Firefox. Keep the ground layer
+  transparent. Opaque, it saved Firefox another ~0.3 ms, but gave headless Chrome a steady
+  run of 11 ms frames. Firefox also gives text on an opaque canvas colour-fringed subpixel
+  antialiasing; the screen canvas gets only emoji and sprites.
 - **The ground layer scrolls.** When the camera leaves it, the painted layer is slid onto
   a spare canvas and only the newly exposed strip is painted, clipped, from two tiles
   further out (`scrollGroundLayer` in `js/game.js`). Full repaints every 96 px were the
   walking stutter, worst in the forest. A snow-depth change (every ~0.6 s while it
   snows) repaints one band a frame over six frames. Anything the layer draws must depend
   only on `refreshGroundLayer`'s keys, or a strip will disagree with what's beside it.
-- **Profile in Firefox, not just Chrome.** The user plays in Floorp, whose software canvas
-  rasterises on the call. Chrome hid a 45–70 ms snowy repaint that Firefox felt. The
+- **Profile in Firefox, not just Chrome.** The user plays in Firefox (Floorp before
+  2026-10), whose software canvas rasterises on the call. Chrome hid a 45–70 ms snowy repaint that Firefox felt. The
   vignette is a CSS gradient over the canvas: filled into it every frame it cost Firefox
   ~5 ms at 1900×1350.
 - **Keep the console light.** A Floorp profile showed the game's frames stalling for

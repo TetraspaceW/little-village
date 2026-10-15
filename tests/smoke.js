@@ -713,7 +713,7 @@ async function keysPerProvider() {
   ok(set.provider === 'openrouter', 'a saved Anthropic setup comes back as OpenRouter');
   ok(set.apiKey === '' && !set.keys.openrouter && !set.keys.logfare,
      'without the Anthropic key, which OpenRouter was never meant to see');
-  ok(set.model === 'deepseek/deepseek-v4.1-flash' && set.helper === '', 'and on the default models');
+  ok(set.model === '~z-ai/glm-flash-latest' && set.helper === '', 'and on the default models');
 
   const el = id => s3.document.getElementById(id);
   const pick = prov => { el('setProvider').value = prov; el('setProvider').onchange(); };

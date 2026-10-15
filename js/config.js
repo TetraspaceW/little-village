@@ -17,7 +17,7 @@ LG.config = (function () {
 
   const settings = {
     lang: 'ru', level: 'beginner', autorun: false,
-    provider: 'openrouter', apiKey: '', model: 'deepseek/deepseek-v4.1-flash', helper: '',
+    provider: 'openrouter', apiKey: '', model: '~z-ai/glm-flash-latest', helper: '',
     /* One key per provider, so switching provider and back doesn't lose
        the other one. `apiKey` is always the current provider's entry. */
     keys: { openrouter: '', logfare: '' },

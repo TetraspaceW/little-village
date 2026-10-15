@@ -124,9 +124,8 @@ client-side either way.
   has no Jev (see below), it also confirms which facts a villager actually
   revealed, confirms trades, and chooses where each villager goes.
 
-On OpenRouter the main model is DeepSeek V4.1 Flash
-(`deepseek/deepseek-v4.1-flash`) and the helper is GLM-5.3 Flash
-(`z-ai/glm-5.3-flash`); any other OpenRouter model ID can be typed into the
+On OpenRouter both the main model and the helper default to GLM Flash
+(`~z-ai/glm-flash-latest`, which OpenRouter redirects to the newest GLM Flash); any other OpenRouter model ID can be typed into the
 **Other** field for either. Typing `openrouter/auto` lets OpenRouter pick the
 underlying model per request, sent at `reasoning.effort: "high"` for the main
 model and `"medium"` for the helper. Both models are `logfare/auto` on

@@ -31,7 +31,7 @@ LG.llm = (function () {
      is: movement decisions, and the bookkeeping checks (a trade
      completing, a fact actually stated) the helper model otherwise makes
      (see DESIGN.md). No setting turns it off. */
-  const JEV_MODEL = "typesafe/jev-1.13";
+  const JEV_MODEL = "~typesafe/jev-latest";
   const DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions";
 
   /* One offered model per role on OpenRouter; anything else goes in the

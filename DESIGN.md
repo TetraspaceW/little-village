@@ -53,7 +53,7 @@ the game made of it, or in a prompt sentence that did something other than what 
 
 ## Jev: fixed-choice questions (OpenRouter only)
 
-TypeSafe's Jev (`typesafe/jev-1.13`) takes `{state, questions}` and returns one named
+TypeSafe's Jev (`~typesafe/jev-latest`, which OpenRouter redirects to the newest Jev) takes `{state, questions}` and returns one named
 option per question, with a probability. It's billed on input tokens only. It uses
 OpenRouter's decisions endpoint (`decisionPost`/`askJev` in `js/llm.js`), not
 `/chat/completions`, so it can't be offered as a main or helper model.
@@ -137,7 +137,7 @@ OpenRouter's decisions endpoint (`decisionPost`/`askJev` in `js/llm.js`), not
 - The parser strips fences, repairs common breakage, and falls back to pulling out
   fields by hand. It **never shows raw text**. An unreadable reply becomes a failed
   turn, never a brace in a speech bubble.
-- If the translation contains non-Latin script (`looksEnglish`, `js/dialogue.js`), it's
+- If the translation contains non-Latin script (`looksEnglish`, `js/text.js`), it's
   discarded and the helper model re-glosses the line.
 
 ## Furigana
@@ -260,12 +260,12 @@ Each of these was a bug first:
   world facts (item collected, trade completed), and the notebook has no `done` field
   or saved flag. There used to be three separate answers, which disagreed. Spent leads
   are struck through, not deleted.
-- **One note per fact.** `learn` guards with `hasNote` (`js/game.js`), and `restore`
+- **One note per fact.** `learn` guards with `hasNote` (`js/ledger.js`), and `restore`
   applies the same rule when loading a save, keeping the first occurrence.
 
 ## Names
 
-- `LG.game.displayName` returns the villager's job until `nameKnown` is set. It's set
+- `LG.actors.displayName` returns the villager's job until `nameKnown` is set. It's set
   only when **that villager** states their own name. Hearsay doesn't count.
 - Detection is a regex over `reply.translation` (guaranteed English), run before any
   non-English blanking. There's no schema field or extra call, because a wrong answer

@@ -13,161 +13,12 @@ LG.dialogue = (function () {
   }
 
   function chatterLine() {
-    const arr = LG.CHATTER[LG.game.settings.lang] || LG.CHATTER.en;
+    const arr = LG.CHATTER[LG.config.settings.lang] || LG.CHATTER.en;
     return arr[(Math.random() * arr.length) | 0];
   }
 
-  /* Furigana arrives as HTML markup from the model, so all HTML is
-     escaped except the ruby tag family (ruby/rb/rt/rtc/rp), which is let
-     back through with attributes stripped. */
-  const KANJI = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
-  const KANJI_G = new RegExp(KANJI.source, 'g');  // same ranges, for counting rather than testing
-  // <rb> and <rtc> are part of the ruby family and models do emit them
-  const RUBY_TAG = /^(?:ruby|rb|rt|rtc|rp)$/;
-
-  /* Strips ruby markup back to plain text, permissively (any casing,
-     attributes, or tag from the ruby family). Feeds only the comparison
-     in rubyMatches() below — never rendered to the page. */
-  function stripRuby(html) {
-    return String(html)
-      .replace(/<rp\b[^>]*>[\s\S]*?<\/rp>/gi, '')
-      .replace(/<rtc\b[^>]*>[\s\S]*?<\/rtc>/gi, '')
-      .replace(/<rt\b[^>]*>[\s\S]*?<\/rt>/gi, '')
-      .replace(/<\/?(?:ruby|rb|rt|rtc|rp)\b[^>]*>/gi, '');
-  }
-  /* Normalizes for comparison: loose enough to tolerate width/spacing
-     differences, strict enough that we never show the player words the
-     villager didn't actually say. */
-  function normText(str) {
-    let t = String(str);
-    try { t = t.normalize('NFKC'); } catch (e) {}
-    return t.replace(/\s/g, '');
-  }
-  function rubyMatches(ruby, say) {
-    if (!ruby) return false;
-    return normText(stripRuby(ruby)) === normText(say);
-  }
-
-  /* A reply may arrive wrapped in a code fence or quotes. Tries each
-     plausible unwrapping and returns the first that passes validation —
-     nothing unvalidated is ever accepted. */
-  function usableRuby(raw, say) {
-    if (!raw) return null;
-    const t = String(raw).trim();
-    const tries = [t];
-    const unfenced = t.replace(/^```[a-zA-Z]*\s*/, '').replace(/\s*```$/, '').trim();
-    tries.push(unfenced);
-    tries.push(unfenced.replace(/^["'`\u300c\u300e]+/, '').replace(/["'`\u300d\u300f]+$/, '').trim());
-    tries.slice().forEach(c => tries.push(normaliseFurigana(c)));
-    for (const cand of tries) if (rubyMatches(cand, say)) return cand;
-    return null;
-  }
-  /* Converts bracket-style furigana (e.g. 糸[いと]) into ruby tags.
-
-     This is a common, legitimate plain-text furigana convention, so a
-     model producing it isn't malfunctioning — accepting it is simpler
-     than trying to prevent it. Only converts a run of kanji immediately
-     followed by a bracket containing pure kana; anything else (including
-     ordinary brackets in running text) is left untouched. */
-  const KANJI_RUN = '[\\u3400-\\u4dbf\\u4e00-\\u9fff\\u3005\\u3007\\u30f6]';
-  const KANA_RUN  = '[\\u3040-\\u309f\\u30a0-\\u30ff\\u30fc]';
-  const BRACKETED = new RegExp(
-    '(' + KANJI_RUN + '+)' +               // the kanji
-    '(' + '[\\u3040-\\u309f]{0,3}' + ')' +  // okurigana, if the word has a tail
-    '\\s*[\\[\\uff3b(\\uff08\\u3010]' +   // an opening bracket of any flavour
-    '(' + KANA_RUN + '+)' +                // the reading
-    '[\\]\\uff3d)\\uff09\\u3011]', 'g');    // and its closer
-
-  function normaliseFurigana(str) {
-    if (!str) return str;
-    return String(str).replace(BRACKETED, (m, kanji, okuri, reading) => {
-      /* This bracket form covers the whole word including okurigana —
-         e.g. \u7d50\u3076[\u3080\u3059\u3076] means \u7d50\u3076 is read \u3080\u3059\u3076. Ruby annotation only
-         goes on the kanji itself, so the okurigana needs stripping back
-         off the reading: \u7d50 gets \u3080\u3059, and \u3076 is left unannotated. If the
-         reading doesn't end with the okurigana text, the split can't be
-         done safely, so the whole word+okurigana gets wrapped instead. */
-      if (okuri && reading.length > okuri.length &&
-          reading.slice(-okuri.length) === okuri) {
-        return '<ruby>' + kanji + '<rt>' + reading.slice(0, -okuri.length) + '</rt></ruby>' + okuri;
-      }
-      return '<ruby>' + kanji + okuri + '<rt>' + reading + '</rt></ruby>';
-    });
-  }
-
-  function needsFurigana(say) { return KANJI.test(String(say)); }
-
-  /* Detects when a villager's reply mistakenly put the target-language
-     text into the English translation field. A translation full of hanzi,
-     kana, or Cyrillic is worse than no translation, so it's treated as
-     missing and a real one is fetched separately. */
-  const NOT_LATIN = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\u0400-\u04ff\u0600-\u06ff]/;
-  function looksEnglish(str) {
-    const t = String(str || '').trim();
-    if (!t) return false;
-    if (NOT_LATIN.test(t)) return false;
-    return /[a-z]{2}/i.test(t);
-  }
-
-  /* Detects pinyin that's the wrong length for the hanzi it's supposed
-     to gloss. Pinyin is genuinely Latin text — looksEnglish alone can't
-     tell a well-formed roman field from one that's missing a syllable or
-     has two run together, which happens without the field looking broken
-     in any other way. Tone marks are stripped, then syllables are
-     counted as maximal runs of vowel letters (a run like "iao" is one
-     syllable, however many vowel letters it contains) — this counts
-     fine whether or not multi-syllable words are joined without spaces,
-     which is the normal way to write most disyllabic Mandarin words
-     (e.g. "xièxie", "shénme"). Splitting on non-letters instead, so a
-     word boundary counted as a syllable boundary, would misfire on
-     exactly those. Mirrors tools/format-stats.js's syllableCount /
-     hanziCount / erhuaCount.
-
-     Not exact — erhua ("一点儿" -> "yìdiǎnr", one fewer syllable than
-     characters, corrected for below) that's actually its own word
-     ("儿子" -> "érzi", a syllable of its own instead) and reduplicated
-     measure words can legitimately come out uneven — but those are rare
-     enough that an occasional unnecessary repair call costs less than
-     leaving a genuinely wrong count on screen. Only meaningful for a
-     language pinyin actually gets checked against; callers gate on
-     L.romanize (Chinese is the only one). */
-  const ERHUA = /儿/g;
-  function pinyinWrongLength(spoken, roman) {
-    const say = String(spoken);
-    const hanzi = (say.match(KANJI_G) || []).length;
-    if (!hanzi) return false;
-    const erhua = (say.match(ERHUA) || []).length;
-    const toneless = String(roman || '')
-      .normalize('NFD').replace(/[̀-ͯ]/g, '')
-      .toLowerCase().replace(/ü/g, 'v');
-    const syllables = (toneless.match(/[aeiouv]+/g) || []).length;
-    return Math.abs((hanzi - erhua) - syllables) > 1;
-  }
-  function rubyHTML(str) {
-    return String(str)
-      // Keeps only ruby-family tags, stripped down to their bare form
-      // (removing attributes but preserving structure); strips everything
-      // else that looks like a tag.
-      .replace(/<(\/?)([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/g, (m, slash, name) => {
-        const n = name.toLowerCase();
-        return RUBY_TAG.test(n) ? '<' + slash + n + '>' : '';
-      })
-      .replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
-      .replace(/&lt;(\/?)(ruby|rb|rt|rtc|rp)&gt;/g, '<$1$2>')
-      .replace(/<ruby>([\s\S]*?)<\/ruby>/g, dropKanaRuby);
-  }
-
-  /* Drops furigana readings over kana (katakana/hiragana already show
-     their own pronunciation, so a reading there is redundant clutter) —
-     keeps the base text, removes the annotation. */
-  function dropKanaRuby(match, inner) {
-    const base = String(inner)
-      .replace(/<rt>[\s\S]*?<\/rt>/g, '')
-      .replace(/<rp>[\s\S]*?<\/rp>/g, '')
-      .replace(/<rtc>[\s\S]*?<\/rtc>/g, '')
-      .replace(/<\/?(?:rb|rt|rtc|rp)>/g, '');
-    return KANJI.test(base) ? match : base;
-  }
+  const { stripRuby, rubyMatches, usableRuby, normaliseFurigana, needsFurigana,
+          looksEnglish, pinyinWrongLength, rubyHTML } = LG.text;
 
   function itemName(id, lang) { return LG.itemName(id, lang); }
 
@@ -177,14 +28,14 @@ LG.dialogue = (function () {
      `systemPrompt` below is a string-only wrapper around this, used by
      tests and the prompt dump. */
   function buildReply(npc, offered) {
-    const s = LG.game.settings;
+    const s = LG.config.settings;
     const L = LG.LANGUAGES[s.lang];
     const lvl = LG.LEVELS[s.level];
     /* Uses the same villager-assembly function that also drives where
        they walk and what they say to other villagers — see view.js for
        why this used to be three separate, drifting implementations. */
     const v = LG.view.of(npc, 'player');
-    const inv = LG.game.inventoryList(v.companion && v.companion.item);
+    const inv = LG.ledger.inventoryList(v.companion && v.companion.item);
     const trade = v.trade.deal;
     // What they have to sell, when they are standing where they work —
     // computed here since both halves below need it (the trade section
@@ -329,7 +180,7 @@ LG.dialogue = (function () {
         v.trade.buys.forEach(w => volatile.push('- ' + LG.itemSaid(w.i, s.lang) + ' — you would pay about ' +
           coins(w.p) + ' [' + w.i + ']'));
       }
-      volatile.push('The traveller has ' + coins(LG.game.count('coins')) + ' on them.');
+      volatile.push('The traveller has ' + coins(LG.ledger.count('coins')) + ' on them.');
 
       volatile.push('Offer your goods the way you would to any customer, and haggle if it suits you.');
       /* Previously this instruction unconditionally said "that is them
@@ -592,7 +443,7 @@ LG.dialogue = (function () {
      had deliberately come to find you. `why` is `undefined` in the
      ordinary case, where the player always speaks first. */
   function open(npc, why) {
-    const L = LG.LANGUAGES[LG.game.settings.lang];
+    const L = LG.config.language();
     current = npc;
     npc.frozen = true;
     npc.metPlayer = true;
@@ -652,12 +503,12 @@ LG.dialogue = (function () {
   }
 
   function speakLine(npc, text) {
-    if (!npc || !LG.game.settings.voices) return;
-    LG.tts.speak(LG.game.ttsConfig(), npc.def.id, text);
+    if (!npc || !LG.config.settings.voices) return;
+    LG.tts.speak(LG.config.tts(), npc.def.id, text);
   }
 
   function addLine(who, text, translation, roman, ruby, npc) {
-    const s = LG.game.settings;
+    const s = LG.config.settings;
     const L = LG.LANGUAGES[s.lang];
     const row = document.createElement('div');
     row.className = 'line ' + who;
@@ -715,7 +566,7 @@ LG.dialogue = (function () {
   }
 
   function renderPhrases() {
-    const s = LG.game.settings;
+    const s = LG.config.settings;
     el.dlgPhrases.innerHTML = '';
     LG.PHRASES.forEach(p => {
       const b = document.createElement('button');
@@ -733,9 +584,9 @@ LG.dialogue = (function () {
   }
 
   function renderItems() {
-    const s = LG.game.settings;
+    const s = LG.config.settings;
     el.dlgItems.innerHTML = '';
-    const inv = LG.game.state.inv;
+    const inv = LG.ledger.state.inv;
     const keys = Object.keys(inv).filter(k => inv[k] > 0);
     if (!keys.length) {
       el.dlgItems.innerHTML = '<span class="muted">(you are carrying nothing)</span>';
@@ -772,7 +623,7 @@ LG.dialogue = (function () {
       ? (text ? text + '  ' : '') + '[holds out the ' + LG.ITEMS[offered].en + ']'
       : text);
     if (!prompt) { addLine('player', shown); el.dlgInput.value = ''; }
-    status(LG.game.displayName(npc) + ' is thinking…', 'thinking');
+    status(LG.actors.displayName(npc) + ' is thinking…', 'thinking');
 
     /* The reply is awaited, and by the time it lands the player may have
        walked off -- or be talking to someone else, whose card must not
@@ -782,7 +633,7 @@ LG.dialogue = (function () {
 
     let reply;
     try {
-      const cfg = LG.game.llmConfig();
+      const cfg = LG.config.llm();
       const msgs = historyMessages(npc);
       msgs.push({ role: 'user', content: shown || '[says nothing, just holds out the item]' });
       const built = buildReply(npc, offered);
@@ -797,7 +648,7 @@ LG.dialogue = (function () {
     }
 
     if (!reply || !reply.say) {
-      if (!prompt) say('⚠ ' + LG.game.displayName(npc) + ' said something the game could not read. Try again.', 'error');
+      if (!prompt) say('⚠ ' + LG.actors.displayName(npc) + ' said something the game could not read. Try again.', 'error');
       else say(LG.touch.on ? 'Say hello — or tap a phrase below.' : 'Say hello — or click a phrase below.');
       busy = false; el.dlgSend.disabled = false;
       return;
@@ -806,7 +657,7 @@ LG.dialogue = (function () {
     // For a furigana language, the villager annotates readings inline
     // as part of "say" — the spoken text itself is whatever remains once
     // the readings are stripped back out.
-    const L = LG.LANGUAGES[LG.game.settings.lang];
+    const L = LG.config.language();
     let spoken = reply.say, ruby = null;
     if (L.furigana) {
       const written = normaliseFurigana(reply.say);
@@ -822,7 +673,7 @@ LG.dialogue = (function () {
     if (npc.history.length > 20) npc.history.shift();
     const gotIt = String(reply.understood || 'full').toLowerCase() !== 'none';
 
-    /* Name-known detection — see LG.game.displayName. Deliberately not
+    /* Name-known detection — see LG.actors.displayName. Deliberately not
        a schema field: it would be one more field a model could hedge on
        and drop (the same failure mode the "always-fields" fix above
        addressed), for something that can be checked for free against a
@@ -836,15 +687,15 @@ LG.dialogue = (function () {
           .test(reply.translation)) {
       npc.nameKnown = true;
       if (here()) el.dlgName.textContent = npc.def.name;
-      LG.game.log('You learn their name — ' + npc.def.name + '.');
+      LG.ledger.log('You learn their name — ' + npc.def.name + '.');
     }
 
     if (gotIt && Array.isArray(reply.revealed) && reply.revealed.length) {
       pending.push(verifyRevealed(npc, reply, spoken, ruby));   // deliberately not awaited
     }
     if (gotIt && reply.remember && typeof reply.remember === 'string' && reply.remember.length > 3) {
-      if (LG.game.remember(npc, reply.remember, 'the traveller')) {
-        LG.game.log(LG.game.displayName(npc) + ' will remember: "' + reply.remember + '"');
+      if (LG.actors.remember(npc, reply.remember, 'the traveller')) {
+        LG.ledger.log(LG.actors.displayName(npc) + ' will remember: "' + reply.remember + '"');
         /* The new memory may supersede something already held — only
            checked (reviseHeld) when something new was actually recorded,
            so a turn that taught the villager nothing costs nothing. */
@@ -873,8 +724,8 @@ LG.dialogue = (function () {
     npc.bubble = spoken; npc.bubbleT = 6;   // the canvas bubble stays plain text
 
     const u = String(reply.understood || '').toLowerCase();
-    if (u === 'none') say(LG.game.displayName(npc) + ' did not understand you at all.', 'miss');
-    else if (u === 'partial') say(LG.game.displayName(npc) + ' only caught part of that.', 'miss');
+    if (u === 'none') say(LG.actors.displayName(npc) + ' did not understand you at all.', 'miss');
+    else if (u === 'partial') say(LG.actors.displayName(npc) + ' only caught part of that.', 'miss');
     else say('');
 
     /* Shopkeeping: the villager's reply claims a sale happened; the
@@ -884,7 +735,7 @@ LG.dialogue = (function () {
        over tea, and nothing in the game state ever contradicted it. */
     const act = gotIt ? String(reply.action || '').toLowerCase() : '';
     if (act === 'sell' || act === 'buy') {
-      if (LG.game.commerce(npc, act, reply.item, reply.price)) renderItems();
+      if (LG.trade.commerce(npc, act, reply.item, reply.price)) renderItems();
       else say('That sale could not be squared up.', 'miss');
     }
 
@@ -905,10 +756,10 @@ LG.dialogue = (function () {
     // it, never just because an item was held out at them. If they agree
     // in words but the model forgets to set the field, a second check
     // catches that — see confirmOffer.
-    const trade = npc.tradeDone ? null : (LG.game.plan.roles[npc.def.id] || {}).trade;
+    const trade = npc.tradeDone ? null : (LG.village.plan.roles[npc.def.id] || {}).trade;
     if (trade) {
       const need = trade.wantsCount || 1;
-      const haveEnough = LG.game.count(trade.wants) >= need;
+      const haveEnough = LG.ledger.count(trade.wants) >= need;
       const modelSaysTrade = gotIt && String(reply.action || '').toLowerCase().indexOf('trade') !== -1;
       if (modelSaysTrade && haveEnough) {
         LG.game.doTrade(npc, trade);
@@ -916,10 +767,10 @@ LG.dialogue = (function () {
       } else if (offered === trade.wants && haveEnough) {
         pending.push(confirmOffer(npc, trade, spoken, reply.translation));
       } else if (offered) {
-        say(LG.game.displayName(npc) + ' does not want your ' + LG.ITEMS[offered].en + '.');
+        say(LG.actors.displayName(npc) + ' does not want your ' + LG.ITEMS[offered].en + '.');
       }
     } else if (offered) {
-      say(LG.game.displayName(npc) + ' has no use for that.');
+      say(LG.actors.displayName(npc) + ' has no use for that.');
     }
 
     busy = false;
@@ -938,9 +789,9 @@ LG.dialogue = (function () {
   /* Fills in a missing translation or romanization via the helper model,
      rather than leaving the player with a bare, ungloseed sentence. */
   async function repairGloss(npc, spoken, row, have) {
-    const L = LG.LANGUAGES[LG.game.settings.lang];
+    const L = LG.config.language();
     try {
-      const got = await LG.llm.gloss(LG.game.llmConfig(), spoken,
+      const got = await LG.llm.gloss(LG.config.llm(), spoken,
         { langName: L.name, romanLabel: (L.romanize && !have.roman) ? L.romanLabel : null });
       if (!got) return;
       const turn = npc.history[npc.history.length - 1];
@@ -972,7 +823,7 @@ LG.dialogue = (function () {
       const v = LG.view.of(npc, 'player');
       const entries = LG.view.heldEntries(v);
       if (entries.length < 1) return;
-      const got = await LG.llm.revise(LG.game.llmConfig(), {
+      const got = await LG.llm.revise(LG.config.llm(), {
         who: npc.def.name, held: LG.view.held(v), fresh: fresh
       });
       if (!got) return;
@@ -980,8 +831,8 @@ LG.dialogue = (function () {
       if (!e || e.text === got.line) return;
       if (e.id) { npc.factNote = npc.factNote || {}; npc.factNote[e.id] = got.line; }
       else e.text = got.line;                       // the view hands back the object itself
-      if (LG.game.think) LG.game.think(npc, 'thinks again', e.text + ' \u2192 ' + got.line);
-      LG.game.log(LG.game.displayName(npc) + ' now reckons: "' + got.line + '"');
+      LG.actors.think(npc, 'thinks again', e.text + ' \u2192 ' + got.line);
+      LG.ledger.log(LG.actors.displayName(npc) + ' now reckons: "' + got.line + '"');
     } catch (err) { /* they go on believing what they believed */ }
   }
 
@@ -991,12 +842,12 @@ LG.dialogue = (function () {
      out later all count as "no". */
   async function confirmRefund(npc, id, price, spoken, translation) {
     try {
-      const yes = await LG.llm.confirmTrade(LG.game.llmConfig(), spoken, translation, {
+      const yes = await LG.llm.confirmTrade(LG.config.llm(), spoken, translation, {
         npcName: npc.def.name,
         wants: LG.ITEMS[id].full,
         gives: 'the ' + price + (price === 1 ? ' coin' : ' coins') + ' they paid for it, back'
       });
-      if (yes && LG.game.commerce(npc, 'buy', id, price)) renderItems();
+      if (yes && LG.trade.commerce(npc, 'buy', id, price)) renderItems();
     } catch (e) { /* no refund on a failed check */ }
   }
 
@@ -1005,13 +856,13 @@ LG.dialogue = (function () {
      actually declined, or agreed but the model just omitted the field. */
   async function confirmOffer(npc, trade, spoken, translation) {
     try {
-      const yes = await LG.llm.confirmTrade(LG.game.llmConfig(), spoken, translation, {
+      const yes = await LG.llm.confirmTrade(LG.config.llm(), spoken, translation, {
         npcName: npc.def.name,
         wants: trade.wantsCount > 1 ? trade.wantsCount + ' coins' : LG.ITEMS[trade.wants].full,
         gives: trade.givesCount > 1 ? trade.givesCount + ' coins' : LG.ITEMS[trade.gives].full
       });
       if (!yes || npc.tradeDone) return;
-      if (LG.game.count(trade.wants) < (trade.wantsCount || 1)) return;
+      if (LG.ledger.count(trade.wants) < (trade.wantsCount || 1)) return;
       LG.game.doTrade(npc, trade);
       renderItems();
     } catch (e) { /* no deal */ }
@@ -1024,7 +875,7 @@ LG.dialogue = (function () {
     let last = null;
     for (let attempt = 0; attempt < 2; attempt++) {
       let got = null;
-      try { got = await LG.llm.furigana(LG.game.llmConfig(), spoken, attempt); }
+      try { got = await LG.llm.furigana(LG.config.llm(), spoken, attempt); }
       catch (e) { got = null; }
       last = got;
       const ok = usableRuby(got, spoken);
@@ -1048,21 +899,21 @@ LG.dialogue = (function () {
   }
 
   async function verifyRevealed(npc, reply, spoken, ruby) {
-    const plan = LG.game.plan;
+    const plan = LG.village.plan;
     const claimed = reply.revealed
       .map(id => String(id).replace(/[^\w]/g, ''))
-      .filter(id => plan.facts[id] && npc.facts.indexOf(id) !== -1 && !LG.game.hasNote(id));
+      .filter(id => plan.facts[id] && npc.facts.indexOf(id) !== -1 && !LG.ledger.hasNote(id));
     if (!claimed.length) return;
     const candidates = claimed.map(id => ({ id, text: plan.facts[id].text }));
-    const L = LG.LANGUAGES[LG.game.settings.lang];
+    const L = LG.config.language();
     try {
-      const confirmed = await LG.llm.judge(LG.game.llmConfig(), spoken, reply.translation, candidates,
+      const confirmed = await LG.llm.judge(LG.config.llm(), spoken, reply.translation, candidates,
                                            { langName: L.name, furigana: !!L.furigana, diacritics: !!L.diacritics });
       confirmed.forEach(c => {
         // fall back to the line as spoken, so a note is never in the wrong language
         const note = c.note || spoken;
         const nRuby = usableRuby(c.ruby, c.note) || (c.note ? null : ruby);
-        LG.game.learn(c.id, npc, note, nRuby);
+        LG.ledger.learn(c.id, npc, note, nRuby);
       });
     } catch (e) { /* an unwritten note is always better than a wrong one */ }
   }
@@ -1108,7 +959,7 @@ LG.dialogue = (function () {
   async function startChat(job) {
     const a = job.a, b = job.b;
     chatBusy++;
-    const s = LG.game.settings;
+    const s = LG.config.settings;
     const L = LG.LANGUAGES[s.lang];
     const turns = 4 + ((Math.random() * 3) | 0);        // 4–6 lines between them
     const transcript = [];
@@ -1123,7 +974,7 @@ LG.dialogue = (function () {
         if (a.frozen || b.frozen) break;
         const me = (t % 2 === 0) ? a : b, them = (t % 2 === 0) ? b : a;
         const vMe = view[me.def.id] || {}, vThem = view[them.def.id] || {};
-        const turn = await LG.llm.converse(LG.game.llmConfig(), {
+        const turn = await LG.llm.converse(LG.config.llm(), {
           me: vMe,
           them: vThem,
           /* No topic is assigned — the villager just has what's on
@@ -1157,11 +1008,11 @@ LG.dialogue = (function () {
 
         // Most of this happens off-screen; the console is the only way
         // to observe villager-to-villager conversation the player didn't witness.
-        if (LG.game.think) LG.game.think(me, 'says', plain +
+        LG.actors.think(me, 'says', plain +
           (turn.translation ? '  \u2014 ' + turn.translation : ''));
-        if (LG.game.canOverhear(a, b)) {
+        if (LG.village.canOverhear(a, b)) {
           const ruby = (L.furigana && plain !== turn.say) ? turn.say : null;
-          LG.game.logSpeech(LG.game.displayName(me), plain, ruby, turn.roman, turn.translation);
+          LG.ledger.logSpeech(LG.actors.displayName(me), plain, ruby, turn.roman, turn.translation);
         }
         await sleep(turnHold);
       }
@@ -1181,7 +1032,7 @@ LG.dialogue = (function () {
        form rather than either villager's own voice — "X thinks Y talks
        too much," never "You think...". */
     const told = v => (v.knows || []).map(f => ({ id: f.id, text: f.plain }));
-    LG.llm.recall(LG.game.llmConfig(), {
+    LG.llm.recall(LG.config.llm(), {
       transcript: transcript,
       a: { name: ctx.a.name, facts: told(ctx.a) },
       b: { name: ctx.b.name, facts: told(ctx.b) }
@@ -1197,9 +1048,9 @@ LG.dialogue = (function () {
     let landed = null;
     (took.remembers || []).slice(0, 4).forEach(m => {
       if (typeof m !== 'string' || m.length < 4) return;
-      if (LG.game.remember(speaker, m, listener.def.name)) {
+      if (LG.actors.remember(speaker, m, listener.def.name)) {
         landed = m;
-        if (LG.game.think) LG.game.think(speaker, 'remembers', m);
+        LG.actors.think(speaker, 'remembers', m);
       }
     });
     /* Applies the same reviseHeld() check used for player conversations
@@ -1214,8 +1065,8 @@ LG.dialogue = (function () {
       if (ids.indexOf(id) === -1) return;              // not theirs to tell
       if (listener.facts.indexOf(id) !== -1) return;   // already knew
       listener.facts.push(id);
-      LG.game.noteFactSource(listener, id, speaker.def.name);
-      if (LG.game.think) LG.game.think(listener, 'now knows', LG.game.factText(id) || id);
+      LG.actors.noteFactSource(listener, id, speaker.def.name);
+      LG.actors.think(listener, 'now knows', LG.village.factText(id) || id);
     });
   }
 
@@ -1285,9 +1136,5 @@ LG.dialogue = (function () {
            get chatRunning() { return chatBusy; },
            isOpen: () => !!current, renderItems, addLine, status,
            settled: () => { const all = pending.splice(0); return Promise.all(all); },
-           _debugPrompt: systemPrompt, _debugReply: buildReply, _reviseHeld: reviseHeld,
-           _rubyHTML: rubyHTML,
-           _stripRuby: stripRuby, _rubyMatches: rubyMatches, _needsFurigana: needsFurigana,
-           _looksEnglish: looksEnglish, _pinyinWrongLength: pinyinWrongLength,
-           rubyHTML: rubyHTML, _usableRuby: usableRuby };
+           _debugPrompt: systemPrompt, _debugReply: buildReply, _reviseHeld: reviseHeld };
 })();

@@ -771,7 +771,7 @@ async function jevPicksThePlace() {
     { provider: 'openrouter', apiKey: 'k', model: 'deepseek/deepseek-v4.1-flash' }, opts);
   const jev = sent.filter(r => r.url.indexOf('/alpha/decisions') !== -1);
   const chat = sent.filter(r => r.url.indexOf('/chat/completions') !== -1);
-  ok(jev.length === 1 && jev[0].body.model === 'typesafe/jev-1.13' && chat.length === 0,
+  ok(jev.length === 1 && jev[0].body.model === '~typesafe/jev-latest' && chat.length === 0,
      'with no setting turned on, the call goes to Jev and not the helper model');
   ok(!!onOR && onOR.go === 'the bakery' && !onOR.why, 'and comes back as a place, with no reason');
 

@@ -139,7 +139,7 @@ Use a fast, non-reasoning model for the helper if you can — see below.
 
 ### Jev, for what has a fixed set of answers
 
-On OpenRouter, three of the helper model's jobs go to [TypeSafe's Jev](https://openrouter.ai/typesafe/jev-1.13)
+On OpenRouter, three of the helper model's jobs go to [TypeSafe's Jev](https://openrouter.ai/~typesafe/jev-latest)
 instead, automatically — there's no setting for it, and no way to turn it off short of
 switching to Logfare. Jev doesn't generate text — given a fixed set of typed questions, it
 answers each with one of a named list of options and a probability, for $0.042 per

@@ -896,7 +896,7 @@ LG.ITEMS = {
   },
   knifefish: {
     icon: '🐟', tags: ['catch'], price: 4, en: 'banded knifefish', full: 'a banded knifefish',
-    ru: 'обыкновенный гимнот', zh: '圭亚那裸背电鳗', ja: 'バンデッド・ナイフフィッシュ', fr: 'gymnote rayé', es: 'morenita', ar: 'جمنوت', pl: 'Gymnotus carapo', tok: 'kala Gymnotus'
+    ru: 'обыкновенный гимнот', zh: '圭亚那裸背电鳗', ja: 'バンデッド・ナイフフィッシュ', fr: 'gymnote rayé', es: 'morenita', ar: 'جمنوت', pl: 'Gymnotus', tok: 'kala Gymnotus'
   },
   bullhead: {
     icon: '🐟', tags: ['catch'], price: 2, en: 'bullhead', full: 'a bullhead',

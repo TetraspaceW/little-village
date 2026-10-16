@@ -166,8 +166,8 @@ LG.sky = (function () {
     }
   }
 
-  /* A light the traveller is carrying (see LG.ledger.glow). It is not a
-     glow painted on top: the dark is drawn on a layer of its own, and the
+  /* A light: one the traveller is carrying (see LG.ledger.glow), or a
+     street lamp (LG.world.lamps). It is not a glow painted on top: the dark is drawn on a layer of its own, and the
      light cuts it away, so inside `r` the village is in its own colours,
      exactly as by day, with no tint at all. Only the last stretch fades
      back into the night, eased so there's no visible ring. How much it
@@ -193,11 +193,13 @@ LG.sky = (function () {
     g.globalCompositeOperation = 'source-over';
   }
 
-  /* `glow`, when there is one, is { x, y, r } in screen pixels. */
-  function draw(ctx, vw, vh, roofs, dpr, glow) {
+  /* `glows` is a list of { x, y, r } in screen pixels, maybe empty. Where
+     two overlap, each takes its share of what dark the other left. */
+  function draw(ctx, vw, vh, roofs, dpr, glows) {
     const info = LG.time.info || {};
     const light = daylight(LG.time.frac);
-    const k = glow && glow.r > 0 ? darkness(light, info) : 0;
+    const lit = (glows || []).filter(o => o.r > 0 && o.x > -o.r && o.y > -o.r && o.x < vw + o.r && o.y < vh + o.r);
+    const k = lit.length ? darkness(light, info) : 0;
     if (k > 0.01 && typeof document !== 'undefined') {
       const d = dpr || 1, w = Math.ceil(vw * d), h = Math.ceil(vh * d);
       if (!darkLayer) darkLayer = document.createElement('canvas');
@@ -207,7 +209,7 @@ LG.sky = (function () {
         g.setTransform(d, 0, 0, d, 0, 0);
         g.clearRect(0, 0, vw, vh);
         paintDark(g, vw, vh, info, light);
-        cutLight(g, glow, k);
+        lit.forEach(o => cutLight(g, o, k));
         ctx.drawImage(darkLayer, 0, 0, vw, vh);
       } else paintDark(ctx, vw, vh, info, light);
     } else paintDark(ctx, vw, vh, info, light);

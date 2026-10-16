@@ -1395,10 +1395,11 @@ LG.game = (function () {
     }
 
     ctx.restore();
-    // A light in the traveller's hand, centred on them rather than their feet.
-    const reach = LG.ledger.glow();
-    const glow = reach ? { x: player.px - c.x, y: player.py - c.y - 8, r: reach * TILE } : null;
-    LG.sky.draw(ctx, vw, vh, W.roofRects(cam, vw, vh, dpr), dpr, glow);
+    // A light in the traveller's hand, centred on them rather than their feet, and the street lamps by night.
+    const reach = LG.ledger.glow(), glows = [];
+    if (reach) glows.push({ x: player.px - c.x, y: player.py - c.y - 8, r: reach * TILE });
+    if (LG.time.isNight()) W.lamps().forEach(l => glows.push({ x: l.x - c.x, y: l.y - c.y, r: l.r }));
+    LG.sky.draw(ctx, vw, vh, W.roofRects(cam, vw, vh, dpr), dpr, glows);
 
     // Drawn on top of the weather -- it's a UI control, not part of the scenery.
     LG.touch.draw(ctx);

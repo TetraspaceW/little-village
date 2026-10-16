@@ -11,6 +11,20 @@ change can say so instead.
 
 There's a template in `.github/pull_request_template.md` with a place for them.
 
+**Once a PR is open, keep it current.** When you push a change to its
+branch that's worth new screenshots — anything a player would see or hear
+differently — add a comment to the PR with them, saying what changed. The
+description shows the PR as it was opened; the comments are how a reviewer
+follows it since. Sounds can't play inline on GitHub, so link the audio
+file.
+
+### Hosting the images
+
+GitHub has no API for attaching an image to a PR or comment. Commit them to
+the branch under `.github/pr-screenshots/`, link them by that commit's hash
+(`https://github.com/<owner>/<repo>/blob/<sha>/.github/pr-screenshots/x.png?raw=true`),
+and remove them again in the next commit, so they never reach the tree.
+
 ### Taking one
 
 There's no build step, so a static server and headless Chromium are enough:

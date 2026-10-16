@@ -543,12 +543,13 @@ section('eating, drinking and wearing what is in your pockets');
 
   /* "(worn)" agrees with the thing worn wherever the language needs it to. */
   const wearable = Object.keys(LG.ITEMS).filter(k => LG.ITEMS[k].use === 'wear');
-  ['ru', 'fr', 'es', 'pl'].forEach(lang => {
+  ['ru', 'fr', 'es', 'pl', 'ar'].forEach(lang => {
     ok(wearable.every(k => LG.ITEMS[k].g && LG.WORN[lang][LG.ITEMS[k].g[lang]]),
        'every wearable has a form of "(worn)" in ' + lang);
   });
   ok(LG.wornMark('hat', 'ru') === '(надета)' && LG.wornMark('trousers', 'fr') === '(porté)' &&
-     LG.wornMark('boots', 'es') === '(puestas)' && LG.wornMark('dress', 'pl') === '(założona)',
+     LG.wornMark('boots', 'es') === '(puestas)' && LG.wornMark('dress', 'pl') === '(założona)' &&
+     LG.wornMark('hat', 'ar') === '(مرتداة)' && LG.wornMark('coat', 'ar') === '(مرتدى)',
      'and it is the right one');
   ok(Object.keys(LG.LANGUAGES).every(lang => typeof LG.wornMark('hat', lang) === 'string'),
      'and every language has one');
@@ -630,6 +631,7 @@ section('lights');
 
   const lights = Object.keys(LG.ITEMS).filter(k => LG.ITEMS[k].use === 'light');
   ok(lights.length === 3 && lights.every(k => LG.ITEMS[k].glow > 0), 'three lights, each with a reach');
+  ok(LG.world.lamps().length >= 1 && LG.world.lamps().every(l => l.r > 0), 'and the street lamp has one too');
   ['ru', 'fr', 'es', 'pl', 'ar'].forEach(lang => {
     ok(lights.every(k => LG.LIT[lang][LG.ITEMS[k].g[lang]]), 'every light has a form of "(lit)" in ' + lang);
   });
@@ -639,7 +641,7 @@ section('lights');
 
   /* Drawing the night with a light in hand works even with no real canvas to cut it from. */
   let threw = null;
-  try { LG.sky.draw(ctx2d, 800, 600, [], 1, { x: 400, y: 300, r: 160 }); } catch (e) { threw = e; }
+  try { LG.sky.draw(ctx2d, 800, 600, [], 1, [{ x: 400, y: 300, r: 160 }, { x: 500, y: 300, r: 144 }]); } catch (e) { threw = e; }
   ok(!threw, 'the sky draws with a light in it' + (threw ? ': ' + threw.message : ''));
 }
 

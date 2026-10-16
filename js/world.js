@@ -467,6 +467,14 @@ LG.world = (function () {
     return out;
   }
 
+  /* Every street lamp, as the point its light falls from (world pixels).
+     They're lit whenever it's night; see LG.sky.draw. */
+  const LAMP_REACH = 4.5;         // tiles
+  function lamps() {
+    return props.filter(p => p.type === 'lamp')
+      .map(p => ({ x: p.x * TILE + 16, y: p.y * TILE + 14, r: LAMP_REACH * TILE }));
+  }
+
   const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
   /* Binary min-heap keyed by .f, used as A*'s open set in pathTo(). A
@@ -1278,10 +1286,7 @@ LG.world = (function () {
       const night = LG.time && LG.time.isNight && LG.time.isNight();
       ctx.fillStyle = night ? '#ffe6a3' : '#cdd3d6';
       ctx.fillRect(x + 12, y, 8, 5);
-      if (night) {
-        ctx.fillStyle = 'rgba(255,220,140,.16)';
-        ctx.beginPath(); ctx.arc(x + 16, y + 4, 20, 0, Math.PI * 2); ctx.fill();
-      }
+      // What it lights is done by taking the night away, not painting on it: see lamps() and LG.sky.draw.
       capSnow(ctx, p, () => ctx.fillRect(x + 10, y - 4, 12, 3));
       return;
     }
@@ -1619,7 +1624,7 @@ LG.world = (function () {
   }
 
   return { TILE, W, H, T, build, get, isSolid, isWalkable, nearestOpen, pathTo,
-           buildingAt, buildingUnder, roofRects, buildingByLabel, inRect, nearRect, ovens,
+           buildingAt, buildingUnder, roofRects, buildingByLabel, inRect, nearRect, ovens, lamps,
            drawGround, drawBuildings, drawSigns, drawAnimated, hitSign, overSign, buildings,
            // for the tests: what got placed, and where you can get to from here
            _props: () => props, _signs: () => signSpots(), _flood: flood,

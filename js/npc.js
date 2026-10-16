@@ -62,12 +62,13 @@ LG.actors = (function () {
     morning:   { work: 0.6, green: 0.3 },
     midday:    { work: 0.4, green: 0.5 },
     afternoon: { work: 0.5, green: 0.4 },
-    dusk:      { work: 0.2, green: 0.2 },
-    night:     { work: 0.0, green: 0.0 }
+    dusk:      { work: 0.2, green: 0.2, bed: 0.3 },
+    night:     { work: 0.0, green: 0.0, bed: 0.85 }
   };
 
   function byDice(a, green) {
     const t = PHASE_TABLE[LG.time.phase().id] || PHASE_TABLE.night;
+    if (a.bed && Math.random() < (t.bed || 0)) return a.bed.rect;
     if (LG.time.info.indoors) {
       return (a.work && a.workBuilding && Math.random() < 0.6) ? a.work : (a.shelter || a.def.home);
     }
@@ -87,8 +88,35 @@ LG.actors = (function () {
            '|' + Math.floor((a.lived || 0) / RETHINK);
   }
 
+  /* Sleep. A villager at their own bed at night lies down, and gets up at
+     first light. Nothing sends them there: their bed is one of the places
+     they can choose (placesFor in game.js), and with no model the dice
+     favour it at night (PHASE_TABLE.bed), the way rough weather favours
+     a roof. A sleeper isn't asked where to go. Nothing about sleep is
+     saved: whoever is on their bed at night when a village is reloaded
+     lies straight back down. */
+  function sleep(a) {
+    const night = !!a.bed && LG.time.isNight();
+    if (a.asleep && !night) {
+      a.asleep = false;
+      a.thought = null; a.wantsGo = null;         // up, and thinking about the day afresh
+      a.routeCool = Math.random() * 6;            // not all at once
+      think(a, 'wakes up', a.bed.label);
+    }
+    if (a.asleep) return true;
+    if (!night || a.chatting || (a.route && a.route.length)) return false;
+    if (a.tx !== a.bed.x || a.ty !== a.bed.y) return false;
+    a.asleep = true;
+    a.route = null; a.wantsGo = null; a.deciding = false;
+    a.px = a.bed.x * TILE + TILE / 2; a.py = a.bed.y * TILE + TILE / 2;
+    a.dir = 'down'; a.bubble = null; a.bubbleT = 0;
+    think(a, 'goes to sleep', a.bed.label);
+    return true;
+  }
+
   function routine(a, dt, green, decide) {
     if (a.frozen) { a.route = null; return; }
+    if (sleep(a)) return;
     if (a.route && a.route.length) return;          // still walking a previous route
 
     a.lived = (a.lived || 0) + dt;
@@ -137,7 +165,7 @@ LG.actors = (function () {
 
   /* Follows the current route if any; otherwise wanders within the current patch. */
   function walk(a, dt, speed) {
-    if (a.frozen) return;
+    if (a.frozen || a.asleep) return;
     if (a.route && a.route.length) {
       const step = a.route[0];
       a.tx = step.x; a.ty = step.y;
@@ -267,6 +295,7 @@ LG.actors = (function () {
         const a = npcs[i], b = npcs[j];
         if (a.frozen || b.frozen || a.gossipCool > 0 || b.gossipCool > 0) continue;
         if (a.chatting || b.chatting) continue;
+        if (a.asleep || b.asleep) continue;
         if (Math.hypot(a.px - b.px, a.py - b.py) > TILE * 2.2) continue;
         /* Holds them apart while they talk; a spoken conversation resets
            it again once it's over (LG.dialogue), so the rest starts then. */
@@ -422,6 +451,37 @@ LG.actors = (function () {
     return s;
   }
 
+  /* A villager asleep: head on the pillow, the rest under a blanket of
+     their own colour, and a z drifting up. Drawn live, since only the
+     room the player is standing in shows anyone sleeping. Lines up with
+     the bed drawn in world.js (drawFurniture). */
+  function drawSleeper(ctx, a, opts) {
+    const x = a.px, top = a.ty * TILE;
+    ctx.fillStyle = opts.color;
+    roundRect(ctx, x - 12, top + 19, 24, 33, 4); ctx.fill();
+    ctx.fillStyle = shade(opts.color, 24);
+    ctx.fillRect(x - 12, top + 19, 24, 4);           // the turned-down hem
+    ctx.fillStyle = opts.skin || '#f0c8a0';
+    ctx.beginPath(); ctx.arc(x, top + 13, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = opts.hair || '#4a3728';
+    ctx.beginPath(); ctx.arc(x, top + 11, 7, Math.PI, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#2b2118'; ctx.lineWidth = 1;   // eyes shut
+    ctx.beginPath();
+    ctx.moveTo(x - 4.5, top + 14); ctx.lineTo(x - 1.5, top + 14);
+    ctx.moveTo(x + 1.5, top + 14); ctx.lineTo(x + 4.5, top + 14);
+    ctx.stroke();
+    const t = (performance.now() / 1000 + a.px / 97) % 3;
+    ctx.globalAlpha = Math.max(0, 1 - t / 3);
+    ctx.font = '600 12px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#3a2e1f';
+    ctx.fillText('z', x + 12 + t * 3, top + 4 - t * 6);
+    ctx.globalAlpha = 1;
+    if (opts.emoji) {                                 // the role badge, as when awake
+      ctx.font = '12px system-ui'; ctx.fillStyle = '#000';
+      ctx.fillText(opts.emoji, x - 14, top + 2);
+    }
+    if (opts.name) paintName(ctx, opts.name, x, top - 30);
+  }
+
   function drawCharacter(ctx, a, opts, dpr) {
     const x = a.px, y = a.py, name = opts && opts.name;
     const bob = a.frozen ? 0 : Math.sin(performance.now() / 220 + x) * 0.8;
@@ -536,7 +596,8 @@ LG.actors = (function () {
     ctx.globalAlpha = 1;
   }
 
-  return { makeNPC, makeCreature, wander, walk, routine, stepTowards, meet, gossipRest, drawCharacter, drawBubble, roundRect,
+  return { makeNPC, makeCreature, wander, walk, routine, stepTowards, meet, gossipRest,
+           drawCharacter, drawSleeper, drawBubble, roundRect,
            displayName, nameOrEmoji, remember, noteFactSource, think,
            set thoughts(v) { thoughts = !!v; },
            get thoughts() { return thoughts; },

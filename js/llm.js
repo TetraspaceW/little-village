@@ -47,7 +47,7 @@ LG.llm = (function () {
      in-character model handles poorly: notebook fact-checking, furigana
      repair, confirming a trade completed. Any cheap, literal model works. */
   const HELPERS = {
-    openrouter: [{ id: "z-ai/glm-5.3-flash", label: "GLM-5.3 Flash" }],
+    openrouter: [{ id: "deepseek/deepseek-v4.1-flash", label: "DeepSeek V4.1 Flash" }],
     logfare: [{ id: LOGFARE_MODEL, label: "Auto" }],
   };
   /* Resolves the helper model: explicit user choice, else the first of

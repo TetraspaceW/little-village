@@ -2122,9 +2122,12 @@ async function mintedGoods() {
   answer = { thing: true, same: null, en: 'pain au chocolat', full: 'a pain au chocolat',
              name: 'pain au chocolat', icon: '🥐', price: 3, use: 'eat', slot: null, leaves: null };
   seller.till = []; seller.sold = {}; seller.stock = {}; seller.turns = 40;
+  seller.nameKnown = false;
   LG.ledger.state.inv.coins = 20;
   const ids = await LG.mint.sale(seller, ['pain_au_chocolat'], 'Voilà.', 'Here you are.');
   ok(ids.length === 1 && ids[0] === 'pain_au_chocolat', 'the unknown tag becomes an item');
+  ok(sandbox.document.getElementById('log').innerHTML.indexOf(seller.def.name + ' has') === -1,
+     'and the log does not give away a name the traveller has not been told');
   const it = LG.ITEMS.pain_au_chocolat;
   ok(it && it.icon === '🥐' && it.en === 'pain au chocolat' && it.price === 3, 'described the way the helper put it');
   ok(it && it.tags.length === 0, 'with no tags, so the errand generator never picks it');

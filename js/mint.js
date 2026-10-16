@@ -181,7 +181,8 @@ LG.mint = (function () {
                use: got.use, slot: got.slot, leaves: got.leaves,
                glow: got.glow, gm: got.gm, note: got.note, rung: got.rung,
                g: got.g ? { [lang]: got.g } : null, by: [npc.id] });
-    LG.ledger.log(LG.ITEMS[id].icon + ' ' + npc.def.name + ' has ' + LG.ITEMS[id].full +
+    // Named the way the rest of the game names them: not until they've said who they are.
+    LG.ledger.log(LG.ITEMS[id].icon + ' ' + LG.actors.displayName(npc) + ' has ' + LG.ITEMS[id].full +
                   ' — something new to the game.');
     return id;
   }

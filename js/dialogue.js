@@ -994,7 +994,9 @@ LG.dialogue = (function () {
           stageInLang: !!L.stageInLang,
           romanLabel: L.romanize ? L.romanLabel : null,
           grammarNote: L.grammarNote || '',
-          register: (LG.LEVELS[s.level] || {}).register || ''
+          register: (LG.LEVELS[s.level] || {}).register || '',
+          // one per speaker: each villager's turns share a prefix (see converse)
+          session: 'chat-' + me.def.id
         });
         if (!turn) break;
         if (a.frozen || b.frozen) break;

@@ -126,6 +126,7 @@ for (const f of files) {
 console.log('   ' + files.length + ' files: ' + files.map(f => path.basename(f)).join(' '));
 
 const LG = sandbox.LG;
+const realConverse = LG.llm.converse;
 
 /* Starts the game exactly as index.html does. No API key is set, so no request is ever sent. */
 sandbox.LG.game.init();
@@ -658,14 +659,23 @@ async function promptCached() {
   try {
     await LG.llm.speak(model, built.text, msgs, null, opts);
     await LG.llm.speak(model, built.text, msgs, null);
+    await LG.llm.gloss(model, 'Hm.', { langName: 'Japanese' });
+    const me = { name: 'Ana', job: 'baker', persona: 'Brisk.' };
+    const them = { name: 'Bo', job: 'smith', persona: 'Slow.' };
+    const chat = { me: me, them: them, held: ['the well is dry'], langName: 'Japanese',
+                   session: 'chat-ana' };
+    // the real one: villagersTalking() below stubs LG.llm.converse for good
+    await realConverse(model, Object.assign({}, chat, { transcript: [], when: 'Morning.' }));
+    await realConverse(model, Object.assign({}, chat, { when: '', closing: true,
+      transcript: [{ who: 'Ana', say: 'Hm.' }, { who: 'Bo', say: 'Mm.' }] }));
   } finally {
     sandbox.fetch = realFetch;
     LG.llm.audit = audit;
   }
 
   const api = sent.filter(r => r.url.indexOf('openrouter.ai/api/v1/chat') !== -1);
-  ok(api.length === 2, 'two requests went out');
-  if (api.length !== 2) return;
+  ok(api.length === 5, 'five requests went out');
+  if (api.length !== 5) return;
   const o = api[0].body, plain = api[1].body;
 
   ok(built.stable.indexOf(built.core) === 0 && built.core.length < built.stable.length &&
@@ -689,6 +699,16 @@ async function promptCached() {
 
   ok(plain.messages[0].content === built.text && !('session_id' in plain),
      'with no prefix given, the system prompt goes as a plain string');
+
+  ok(api[2].body.session_id === 'helper-gloss',
+     'a helper call with no session of its own gets one for its kind of job');
+  const t0 = api[3].body, t2 = api[4].body;
+  ok(t0.session_id === 'chat-ana' && t2.session_id === 'chat-ana',
+     'a villager-to-villager turn carries the speaker\u2019s session');
+  const p0 = t0.messages[1].content, p2 = t2.messages[1].content;
+  const lead = p0.slice(0, p0.indexOf('Morning.'));
+  ok(lead.length > 0 && p2.indexOf(lead) === 0 && lead.indexOf('Reply with only a JSON object') !== -1,
+     'and the same speaker\u2019s turns share everything up to the time, instructions included');
 }
 
 /* ---------------------------------------------------------- a key per provider

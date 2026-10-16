@@ -484,6 +484,12 @@ LG.llm = (function () {
      structured outputs — that check (schemaOK) happens centrally. */
   function providerCall(cfg, system, messages, schema, opts) {
     const s = schema && schemaOK(cfg, cfg.model) ? schema : null;
+    /* Helper calls that don't name a session of their own get one per
+       kind of job, so each kind keeps to one OpenRouter provider and
+       its warm cache (see `session` in send) instead of being spread
+       across whichever is fastest. */
+    if (cfg.fast && !(opts && opts.session))
+      opts = Object.assign({}, opts, { session: "helper-" + kindOf(system) });
     return audited(cfg, system, messages, () =>
       send(cfg, system, messages, s, opts),
     );
@@ -1276,7 +1282,6 @@ LG.llm = (function () {
         ? null
         : o.them.name + ", " + o.them.job + ", is here too." +
           (o.them.persona ? " " + o.them.persona : ""),
-      o.when || null,
       "",
       /* Roster of everyone else in the village by name/job/persona —
          same background info a villager gets when talking to the player.
@@ -1301,15 +1306,11 @@ LG.llm = (function () {
          another — so describing tradeable goods just led to villagers
          "agreeing" to deals that never actually happened. This will come
          back if/when that mechanic is implemented. */
-      said.length
-        ? "So far:\n" + said.join("\n")
-        : "Neither of you has said anything yet.",
-      "",
-      o.closing
-        ? "This is the last thing you will say in this conversation."
-        : null,
-      "Say your next line. A line or two.",
-      "",
+      /* Everything from the top through this block is the same on every
+         turn a villager takes in one conversation, so it's a prefix the
+         provider can read back from cache. What changes turn to turn --
+         the time (only the first turn states it), the transcript, the
+         closing note -- comes after it. */
       ("In " + o.langName + ". " + (o.register || "")).trim(),
       /* The player reads these lines too, so they need to actually be
          sentences. This rule exists in the player-facing prompt but was
@@ -1322,7 +1323,7 @@ LG.llm = (function () {
          "terse" as the instruction, over-shortening replies. How long a
          villager's lines are is a character trait; whether they're
          grammatical sentences is not negotiable. */
-      "Say it the way a real " +
+      "Say each line the way a real " +
         o.langName +
         " speaker would actually say it out loud.",
       /* Villager-to-villager dialogue is logged verbatim, and that log
@@ -1373,6 +1374,16 @@ LG.llm = (function () {
             '"'
           : "") +
         "}",
+      "",
+      o.when || null,
+      said.length
+        ? "So far:\n" + said.join("\n")
+        : "Neither of you has said anything yet.",
+      "",
+      o.closing
+        ? "This is the last thing you will say in this conversation."
+        : null,
+      "Say your next line. A line or two.",
     ]
       .filter((x) => x !== null && x !== undefined)
       .join("\n");
@@ -1380,9 +1391,13 @@ LG.llm = (function () {
     const sys =
       "You play one villager in a two-person conversation. Answer with JSON only.";
     try {
-      const raw = await providerCall(vcfg, sys, [
-        { role: "user", content: lines },
-      ]);
+      const raw = await providerCall(
+        vcfg,
+        sys,
+        [{ role: "user", content: lines }],
+        null,
+        { session: o.session },
+      );
       const obj = parseJSON(raw);
       if (!obj || !obj.say) return null;
       return obj;

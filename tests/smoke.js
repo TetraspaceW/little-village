@@ -2631,13 +2631,20 @@ async function mintedGoods() {
   // What you can do with it from your pockets, the same as anything shipped.
   ok(LG.ITEMS.pain_au_chocolat.use === 'eat', 'something to eat can be eaten');
   answer = { thing: true, same: null, en: 'flask of cider', full: 'a flask of cider', icon: '🍶',
-             price: 3, use: 'drink', slot: null, leaves: 'bottle' };
+             price: 3, use: 'drink', slot: null, leaves: 'bottle', alcohol: true };
   const cider = (await LG.mint.sale(seller, ['cider_flask'], '', ''))[0];
   ok(cider && LG.ITEMS[cider].leaves === 'bottle', 'and what it comes in is left behind');
   LG.ledger.give(cider, 1);
+  LG.ledger.state.tipsy = 0;
   const bottles = LG.ledger.count('bottle');
   ok(LG.pockets.use(cider) && LG.ledger.count(cider) === 0 && LG.ledger.count('bottle') === bottles + 1,
      'drinking it uses it up and leaves the bottle');
+  ok(Math.abs(LG.pockets.tipsy() - 1) < 1e-6, 'and cider goes to your head like wine');
+  answer = { thing: true, same: null, en: 'rum cake', full: 'a rum cake', icon: '🍰',
+             price: 3, use: 'eat', leaves: null, alcohol: true };
+  const cake = (await LG.mint.sale(seller, ['rum_cake'], '', ''))[0];
+  ok(cake && !LG.ITEMS[cake].alcohol, 'but only a drink can make you tipsy');
+  LG.ledger.state.tipsy = 0;
   answer = { thing: true, same: null, en: 'straw hat', full: 'a straw hat', icon: '👒', price: 4,
              use: 'wear', slot: 'head', leaves: null, g: 'f' };
   const hat = (await LG.mint.sale(seller, ['straw_hat'], '', ''))[0];
@@ -2739,7 +2746,48 @@ async function mintedGoods() {
                      g: { ar: 'f' } }]);
   ok(LG.litMark('torch', 'ar') === LG.LIT.ar.f, '"(lit)" agrees in Arabic, where only lights have a gender');
 
+  // A drink that goes to your head still does after a save.
+  LG.mint.restore([{ id: 'mead', en: 'mead', icon: '🍯', price: 4, use: 'drink', alcohol: true }]);
+  ok(LG.ITEMS.mead.alcohol === true && LG.mint.saved()[0].alcohol === true,
+     'a minted drink stays alcoholic through a save');
+
   LG.llm.mintItem = real;
+
+  // The real call sends a strict schema, built from the same lists as the prompt.
+  const sent = [];
+  const realFetch = sandbox.fetch, audit = LG.llm.audit;
+  sandbox.fetch = async (url, init) => {
+    if ((!init || !init.body) && url.indexOf('/endpoints') !== -1)
+      return { ok: true, json: async () => ({ data: { endpoints: [
+        { supported_parameters: ['structured_outputs'],
+          pricing: { prompt: '0.0000001', completion: '0.0000004' } }] } }) };
+    if (!init || !init.body) return { ok: true, json: async () => ({ data: [] }) };
+    sent.push(JSON.parse(init.body));
+    return { ok: true, status: 200, json: async () => ({
+      choices: [{ message: { content: '{"thing": false}' }, finish_reason: 'stop' }] }) };
+  };
+  LG.llm.audit = false;
+  const model = { provider: 'openrouter', apiKey: 'k', model: 'deepseek/deepseek-v4.1-flash' };
+  try {
+    await LG.llm.probe(model);
+    await LG.llm.mintItem(model, { npcName: 'Ana', tag: 'x', known: ['bread: bread'], langName: 'Russian',
+                                   slots: ['head', 'neck'], containers: ['bottle'], genders: ['m', 'f'],
+                                   instruments: [], recipes: [] });
+  } finally {
+    sandbox.fetch = realFetch;
+    LG.llm.audit = audit;
+  }
+  const js = sent[0] && sent[0].response_format && sent[0].response_format.json_schema;
+  const sp = js && js.schema.properties;
+  ok(js && js.strict && js.schema.additionalProperties === false &&
+     js.schema.required.length === Object.keys(sp).length,
+     'the mint call sends a strict schema, every field required');
+  ok(sp && sp.alcohol.type === 'boolean' && sp.slot.enum.join() === 'head,neck,' &&
+     sp.g.enum.join() === 'm,f,',
+     'with the slots and genders the game has as its only choices');
+  const rp = sp && sp.recipes.items;
+  ok(rp && rp.additionalProperties === false && rp.properties.dish.anyOf[0].properties.alcohol,
+     'and a new dish is described the same way, alcohol included');
 }
 
 beliefsRevised().then(villagersTalking);

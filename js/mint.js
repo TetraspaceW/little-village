@@ -79,7 +79,7 @@ LG.mint = (function () {
 
   /* What the traveller can do with it from their pockets (see `use` on
      LG.ITEMS, and ledger.use): eat, drink, wear, light or play it, which
-     slot it's worn in, how far it lights, which General MIDI instrument and
+     slot it's worn in, whether a drink makes you tipsy, how far it lights, which General MIDI instrument and
      note it sounds (see LG.sound), what's
      left once it's gone, and its gender where "(worn)" or "(lit)" has to
      agree. Anything that isn't one of the values the shipped items use is
@@ -106,7 +106,8 @@ LG.mint = (function () {
   function instruments() { return (LG.sound && LG.sound.INSTRUMENTS) || []; }
   function usesOf(def) {
     const out = { use: undefined, slot: undefined, leaves: undefined, g: undefined,
-                  glow: undefined, gm: undefined, note: undefined, rung: undefined };
+                  glow: undefined, gm: undefined, note: undefined, rung: undefined,
+                  alcohol: undefined };
     const use = ['eat', 'drink', 'wear', 'light', 'play'].indexOf(def.use) !== -1 ? def.use : null;
     if (use === 'wear') {
       if (slots().indexOf(def.slot) === -1) return out;      // worn with no slot can't be swapped out
@@ -123,6 +124,7 @@ LG.mint = (function () {
     } else if (use) {
       out.use = use;
       if (containers().indexOf(def.leaves) !== -1) out.leaves = def.leaves;
+      if (use === 'drink' && def.alcohol === true) out.alcohol = true;   // makes you tipsy, like wine
     }
     const g = {};
     Object.keys(def.g || {}).forEach(l => { if (genders(l).indexOf(def.g[l]) !== -1) g[l] = def.g[l]; });
@@ -192,7 +194,7 @@ LG.mint = (function () {
                       price: got.price, lang: lang !== 'en' && name ? lang : null, name: name,
                       use: got.use, slot: got.slot, leaves: got.leaves,
                       glow: got.glow, gm: got.gm, note: got.note, rung: got.rung,
-                      g: got.g ? { [lang]: got.g } : null, by: by });
+                      alcohol: got.alcohol, g: got.g ? { [lang]: got.g } : null, by: by });
   }
 
   /* --------------------------------------------------------------- recipes
@@ -272,7 +274,7 @@ LG.mint = (function () {
                                    use: it.use || null, slot: it.slot || null,
                                    leaves: it.leaves || null, g: it.g || null,
                                    glow: it.glow || null, gm: it.gm || null, note: it.note || null,
-                                   rung: !!it.rung, recipes: recipesOf(id) };
+                                   rung: !!it.rung, alcohol: !!it.alcohol, recipes: recipesOf(id) };
       Object.keys(LG.LANGUAGES).forEach(l => { if (l !== 'en' && it[l]) out.names[l] = it[l]; });
       return out;
     });
@@ -285,7 +287,7 @@ LG.mint = (function () {
       const id = register({ id: slug(d.id), en: d.en, full: d.full, icon: d.icon,
                             price: d.price, use: d.use, slot: d.slot, leaves: d.leaves, g: d.g,
                             glow: d.glow, gm: d.gm, note: d.note, rung: d.rung,
-                            by: Array.isArray(d.by) ? d.by : [] });
+                            alcohol: d.alcohol, by: Array.isArray(d.by) ? d.by : [] });
       if (id) Object.keys(d.names || {}).forEach(l => {
         if (LG.LANGUAGES[l]) LG.ITEMS[id][l] = plainText(d.names[l], 40);
       });

@@ -821,6 +821,56 @@ LG.llm = (function () {
      The instructions and the shipped catalogue (`o.known`) are the system
      prompt, the same for a whole village, and cached as one prefix; the
      sale itself and anything minted since (`o.minted`) follow it. */
+  /* mintItem's answer as a strict schema. Fields that don't apply to the
+     thing are null rather than left out, since strict mode has every field
+     required; the closed lists (uses, slots, containers, genders) are
+     enums, so the model can't name one the game doesn't have. LG.mint
+     still checks every value, as it must when no schema was sent. */
+  function mintSchema(o) {
+    const maybe = (type, description) => ({ type: [type, "null"], description });
+    const oneOf = (values, description) => ({ type: ["string", "null"], enum: values.concat([null]), description });
+    const leaves = oneOf(o.containers || [], "what is left in your hands once it is eaten or drunk, or null");
+    const alcohol = { type: "boolean", description: "true if it is a drink with alcohol in it, like wine or beer" };
+    const described = {
+      en: str('a short English name, lower case, like "loaf of bread"'),
+      full: str('the same with an article or "some", like "a loaf of bread"'),
+      name: str("what it is called in " + o.langName + ", written plainly"),
+      icon: str("one emoji that looks most like it"),
+      price: { type: "number", description: "what it is usually worth, in coins" },
+    };
+    const dish = strict(Object.assign({}, described, {
+      use: { type: "string", enum: ["eat", "drink"], description: "eat or drink" },
+      leaves: leaves,
+      alcohol: alcohol,
+    }));
+    const props = Object.assign({
+      thing: { type: "boolean", description: "false if it is not something a person could hold and hand over" },
+      same: maybe("string", "the tag of the thing the game already has, if it is only another name for it, or null"),
+    }, described, {
+      use: oneOf(["eat", "drink", "wear", "light", "play"], "what you do with it from your pockets, or null"),
+      slot: oneOf(o.slots || [], "where it is worn, or null"),
+      glow: maybe("number", "how many paces round you it lights, or null"),
+      gm: maybe("string", "the General MIDI instrument it sounds most like, or null"),
+      note: maybe("string", "one note it sounds well on, like C4 or Bb3, or null"),
+      rung: { type: "boolean", description: "true if it is rung rather than played, like a bell" },
+      alcohol: alcohol,
+      raw: { type: "boolean", description: "true if it is food you would cook before eating it" },
+      recipes: {
+        type: "array",
+        description: "if it is raw, one to three things an oven makes from it; otherwise empty",
+        items: strict({
+          also: strs("tags of anything else the recipe takes, from the game's list"),
+          makes: maybe("string", "the tag of a dish the game has, or null when dish is given"),
+          dish: { anyOf: [dish, { type: "null" }], description: "a dish the game does not have, or null when makes is given" },
+        }),
+      },
+      leaves: leaves,
+    });
+    if (o.genders && o.genders.length)
+      props.g = oneOf(o.genders, "the grammatical gender and number of name, or null");
+    return strict(props);
+  }
+
   async function mintItem(cfg, opts) {
     const o = opts || {};
     const system = [
@@ -850,13 +900,16 @@ LG.llm = (function () {
       '- "note": if it is played, one note it sounds well on, as C4, Eb3 or Bb5 (flats only,',
       '  octaves 0 to 7) — the drum is C3, the guitar G3, the violin A4, the bell A5; otherwise null',
       '- "rung": true if it is rung rather than played, like a bell; otherwise false',
+      '- "alcohol": true if it is a drink with alcohol in it, like wine or beer, that leaves',
+      '  you unsteady on your feet; otherwise false',
       '- "raw": true if it is food you would cook before eating it, like wheat, a raw egg or a',
       '  potato; otherwise false',
       '- "recipes": if it is raw, one to three things an oven makes from it, each',
       '  {"also": [tags of anything else it takes, from the list at the end, or []],',
       '   "makes": "<the tag of a dish from the list at the end>"} — or, for a dish the game',
-      '  does not have, {"also": [...], "dish": {"en", "full", "name", "icon", "price", "use",',
-      '  "leaves", described as above, with "use" "eat" or "drink"}} instead of "makes".',
+      '  does not have, {"also": [...], "makes": null, "dish": {"en", "full", "name", "icon",',
+      '  "price", "use", "leaves", "alcohol", described as above, with "use" "eat" or',
+      '  "drink"}} instead. A recipe that makes a dish the game has has "dish": null.',
       '  Otherwise []. The oven already knows these, for the style:',
       "  " + (o.recipes || []).join("; "),
       '- "leaves": if it is eaten or drunk out of something, what is left in your hands',
@@ -868,7 +921,7 @@ LG.llm = (function () {
       "",
       "Reply with only a JSON object:",
       '{"thing": true, "same": null, "en": "", "full": "", "name": "", "icon": "", "price": 0, ' +
-        '"use": null, "slot": null, "glow": null, "gm": null, "note": null, "rung": false, "raw": false, "recipes": [], "leaves": null' + (o.genders && o.genders.length ? ', "g": null' : "") + "}",
+        '"use": null, "slot": null, "glow": null, "gm": null, "note": null, "rung": false, "alcohol": false, "raw": false, "recipes": [], "leaves": null' + (o.genders && o.genders.length ? ', "g": null' : "") + "}",
       "",
       "General MIDI instruments, for \"gm\" —",
       (o.instruments || []).join(" "),
@@ -885,7 +938,7 @@ LG.llm = (function () {
     const vcfg = helperConfig(cfg);
     try {
       const raw = await providerCall(vcfg, system, [{ role: "user", content: ask }],
-                                     null, { kind: "mint", who: o.npcName, cachePrefixes: [system] });
+                                     mintSchema(o), { kind: "mint", who: o.npcName, cachePrefixes: [system] });
       return parseJSON(raw);
     } catch (e) {
       return null;

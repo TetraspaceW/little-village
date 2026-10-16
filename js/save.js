@@ -167,6 +167,7 @@ LG.save = (function () {
               hold: LG.time.weatherLeft, snow: LG.time.snow },
       player: { x: round(p.px), y: round(p.py), dir: p.dir },
       inventory: Object.assign({}, st.inv),
+      worn: Object.keys(st.worn || {}),
       // no `done`: whether a lead is spent is read off the world, not stored
       notes: st.notes.map(n => ({ id: n.id, text: n.text, ruby: n.ruby || null })),
       deeds: st.deeds.slice(),
@@ -248,6 +249,11 @@ LG.save = (function () {
 
     const st = LG.ledger.state;
     st.inv = Object.assign({}, data.inventory);
+    // Older saves have no `worn`; and nothing is worn that isn't in the pockets or can't be worn.
+    st.worn = {};
+    (data.worn || []).forEach(k => {
+      if (st.inv[k] > 0 && LG.ITEMS[k] && LG.ITEMS[k].use === 'wear') st.worn[k] = true;
+    });
     /* Enforces at most one note per fact id, same guarantee `learn`
        provides during live play (via the `hasNote` check in game.js) --
        but a save file bypasses that guard entirely, so nothing stops a

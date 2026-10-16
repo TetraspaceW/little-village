@@ -493,6 +493,55 @@ if (buyer) {
      'and the till records what actually happened');
 }
 
+/* -------------------------------------------------------- using your own things */
+section('eating, drinking and wearing what is in your pockets');
+{
+  const L = LG.ledger, usable = u => Object.keys(LG.ITEMS).filter(k => LG.ITEMS[k].use === u && !chainItem[k]);
+  const food = usable('eat')[0], drink = usable('drink')[0];
+  // Wearing never uses anything up, so the errand's own hat is as good as any.
+  const [hat, crown] = Object.keys(LG.ITEMS).filter(k => LG.ITEMS[k].slot === 'head');
+  ok(food && drink && hat && crown, 'there is something to eat, to drink, and two things for your head');
+
+  const f0 = L.count(food);
+  L.give(food, 2);
+  ok(L.use(food) && L.count(food) === f0 + 1, 'eating something uses one up');
+  L.take(drink, L.count(drink));
+  L.give(drink, 1);
+  ok(L.use(drink) && L.count(drink) === 0, 'and so does drinking');
+  ok(!L.use(drink), 'and you cannot drink what you no longer have');
+  ok(!L.use('coins') && !L.use('rope'), 'coins and rope are not for eating');
+
+  L.give(hat, 1); L.give(crown, 1);
+  ok(L.use(hat) && L.state.worn[hat] && L.count(hat) === 1, 'putting on a hat keeps it, worn');
+  const villager = npcs.find(n => n.def.id !== 'petra') || npcs[0];
+  const said = LG.itemSaid(hat, LG.config.settings.lang, true);
+  const prompt = LG.dialogue._debugPrompt(villager, null);
+  ok(prompt.indexOf('They are wearing: ' + said) !== -1, 'villagers can see it on you');
+  ok(L.inventoryList().indexOf(said) === -1, 'and it is not also in your pockets');
+  ok(L.use(crown) && L.state.worn[crown] && !L.state.worn[hat],
+     'putting on a crown takes the hat off — one thing on your head at a time');
+  ok(L.use(crown) && !L.state.worn[crown] && L.count(crown) === 1, 'and clicking again takes it off');
+  L.use(hat);
+  L.take(hat, 1);
+  ok(!L.state.worn[hat], 'handing over what you are wearing takes it off');
+
+  /* The errand's own items are never used up: there is no second goal item. */
+  const lk = plan.links.find(l => l.wants !== 'coins' && LG.ITEMS[l.wants].tags.indexOf('beast') === -1);
+  if (lk) {
+    const was = LG.ITEMS[lk.wants].use;
+    LG.ITEMS[lk.wants].use = 'eat';
+    const n0 = L.count(lk.wants);
+    L.give(lk.wants, lk.wantsCount || 1);
+    ok(!L.use(lk.wants) && L.count(lk.wants) === n0 + (lk.wantsCount || 1),
+       'you will not eat something the errand still needs');
+    L.give(lk.wants, 1);
+    ok(L.use(lk.wants), 'though a spare is fair game');
+    L.take(lk.wants, L.count(lk.wants) - n0);
+    if (was) LG.ITEMS[lk.wants].use = was; else delete LG.ITEMS[lk.wants].use;
+  }
+  L.take(food, L.count(food) - f0); L.take(crown, 1);
+}
+
 /* -------------------------------------------------------- one sale, rung twice
    Regression test for a real bug found in a session log: a villager
    flagged a sale as complete on the turn they merely agreed to a price,
@@ -889,6 +938,7 @@ section('a village, written down and read back');
   LG.config.settings.apiKey = 'sk-not-a-real-key';        // must not reach the file
   LG.config.settings.ttsKey = 'sk_not-a-real-voice-key';
   LG.ledger.state.deeds.push('Gave Mira a pie, got a shell.');
+  LG.ledger.give('scarf', 1); LG.ledger.use('scarf');   // something worn, to come back worn
   LG.ledger.give('coins', 7);
   const someFact = Object.keys(plan.facts)[0];
   const holder = npcs.find(n => n.facts.indexOf(someFact) !== -1);
@@ -921,6 +971,7 @@ section('a village, written down and read back');
   const before = {
     seed: plan.seed, day: LG.time.day, frac: LG.time.frac,
     weather: LG.time.weather, snow: LG.time.snow,
+    worn: JSON.stringify(LG.ledger.state.worn),
     inv: JSON.stringify(LG.ledger.state.inv), notes: JSON.stringify(LG.ledger.state.notes),
     deeds: JSON.stringify(LG.ledger.state.deeds),
     px: Math.round(LG.village.player.px * 10) / 10,
@@ -963,6 +1014,7 @@ section('a village, written down and read back');
   ok(LG.time.weather === before.weather && Math.abs(LG.time.snow - before.snow) < 1e-9,
      'under the same sky, with the same snow lying');
   ok(JSON.stringify(LG.ledger.state.inv) === before.inv, 'with the same pockets');
+  ok(JSON.stringify(LG.ledger.state.worn) === before.worn, 'wearing the same things');
   ok(JSON.stringify(LG.ledger.state.notes) === before.notes, 'the same notebook');
   ok(JSON.stringify(LG.ledger.state.deeds) === before.deeds, 'and the same deeds behind you');
   ok(Math.round(LG.village.player.px * 10) / 10 === before.px, 'standing where you were');

@@ -259,7 +259,15 @@ LG.LEVELS = {
      shop    — the shopkeeper can sell it
      ground  — it can be lying about in the world
      prize   — it makes a nice thank-you gift
-     beast   — it is an animal that wanders and must be caught          */
+     beast   — it is an animal that wanders and must be caught
+
+   `use`, where present, is what the traveller can do with it out of
+   their own pockets (click it in the Pockets box): 'eat' and 'drink'
+   use it up; 'wear' puts it on, and clicking again takes it off. Only
+   things you could eat or drink as they come are marked — a raw onion
+   or a joint of meat isn't a snack. Worn things take a `slot`, and
+   putting something on takes off whatever else was in that slot, so
+   you can't wear boots over your shoes.                                */
 LG.ITEMS = {
   shiny_rock: {
     icon: '💎', tags: ['hold', 'ground', 'prize'], en: 'shiny rock', full: 'a shiny rock',
@@ -274,7 +282,7 @@ LG.ITEMS = {
     ru: 'монеты', zh: '硬币', fr: 'pièces', es: 'monedas', ja: 'コイン', ar: 'عملات', pl: 'monety', tok: 'mani'
   },
   bread: {
-    icon: '🍞', tags: ['hold', 'shop', 'prize'], en: 'loaf of bread', full: 'a loaf of bread',
+    icon: '🍞', tags: ['hold', 'shop', 'prize'], use: 'eat', en: 'loaf of bread', full: 'a loaf of bread',
     ru: 'хлеб', zh: '面包', fr: 'pain', es: 'pan', ja: 'パン', ar: 'رغيف خبز', pl: 'bochenek chleba', tok: 'pan'
   },
   flower: {
@@ -302,15 +310,15 @@ LG.ITEMS = {
     ru: 'яйцо', zh: '鸡蛋', fr: 'œuf', es: 'huevo', ja: 'たまご', ar: 'بيضة', pl: 'jajko', tok: 'sike waso'
   },
   milk: {
-    icon: '🥛', tags: ['hold', 'shop'], en: 'jug of milk', full: 'a jug of milk',
+    icon: '🥛', tags: ['hold', 'shop'], use: 'drink', en: 'jug of milk', full: 'a jug of milk',
     ru: 'кувшин молока', zh: '一壶牛奶', fr: 'pot de lait', es: 'jarra de leche', ja: '牛乳のびん', ar: 'إبريق حليب', pl: 'dzbanek mleka', tok: 'poki pi telo mama'
   },
   apple: {
-    icon: '🍎', tags: ['hold', 'shop', 'ground', 'prize'], en: 'apple', full: 'an apple',
+    icon: '🍎', tags: ['hold', 'shop', 'ground', 'prize'], use: 'eat', en: 'apple', full: 'an apple',
     ru: 'яблоко', zh: '苹果', fr: 'pomme', es: 'manzana', ja: 'りんご', ar: 'تفاحة', pl: 'jabłko', tok: 'kili loje'
   },
   hat: {
-    icon: '🎩', tags: ['hold', 'ground'], en: 'hat', full: 'a hat',
+    icon: '🎩', tags: ['hold', 'ground'], use: 'wear', slot: 'head', en: 'hat', full: 'a hat',
     ru: 'шляпа', zh: '帽子', fr: 'chapeau', es: 'sombrero', ja: '帽子', ar: 'قبعة', pl: 'kapelusz', tok: 'len lawa'
   },
   candle: {
@@ -326,7 +334,7 @@ LG.ITEMS = {
     ru: 'клубок шерсти', zh: '一团羊毛', fr: 'pelote de laine', es: 'ovillo de lana', ja: '毛糸玉', ar: 'كرة صوف', pl: 'kłębek wełny', tok: 'sike pi linja soweli'
   },
   boots: {
-    icon: '🥾', tags: ['hold', 'ground'], en: 'boots', full: 'a pair of boots',
+    icon: '🥾', tags: ['hold', 'ground'], use: 'wear', slot: 'feet', en: 'boots', full: 'a pair of boots',
     ru: 'сапоги', zh: '靴子', fr: 'bottes', es: 'botas', ja: 'ブーツ', ar: 'حذاء طويل', pl: 'botki', tok: 'len noka suli'
   },
   lantern: {
@@ -360,7 +368,7 @@ LG.ITEMS = {
     ru: 'лук', zh: '洋葱', ja: '玉ねぎ', fr: 'oignon', es: 'cebolla', ar: 'بصلة', pl: 'cebula', tok: 'kili pi telo oko'
   },
   carrot: {
-    icon: '🥕', tags: ['hold', 'shop', 'ground'], en: 'carrot', full: 'a carrot',
+    icon: '🥕', tags: ['hold', 'shop', 'ground'], use: 'eat', en: 'carrot', full: 'a carrot',
     ru: 'морковь', zh: '胡萝卜', ja: 'にんじん', fr: 'carotte', es: 'zanahoria', ar: 'جزرة', pl: 'marchewka', tok: 'kili palisa loje'
   },
   potato: {
@@ -372,7 +380,7 @@ LG.ITEMS = {
     ru: 'капуста', zh: '白菜', ja: 'キャベツ', fr: 'chou', es: 'col', ar: 'ملفوف', pl: 'kapusta', tok: 'kili lipu'
   },
   tomato: {
-    icon: '🍅', tags: ['hold', 'shop'], en: 'tomato', full: 'a tomato',
+    icon: '🍅', tags: ['hold', 'shop'], use: 'eat', en: 'tomato', full: 'a tomato',
     ru: 'помидор', zh: '西红柿', ja: 'トマト', fr: 'tomate', es: 'tomate', ar: 'طماطم', pl: 'pomidor', tok: 'kili loje pi telo mute'
   },
   pumpkin: {
@@ -384,27 +392,27 @@ LG.ITEMS = {
     ru: 'чеснок', zh: '大蒜', ja: 'にんにく', fr: 'ail', es: 'ajo', ar: 'رأس ثوم', pl: 'główka czosnku', tok: 'kili ma walo'
   },
   corn: {
-    icon: '🌽', tags: ['hold', 'shop', 'ground'], en: 'corn', full: 'an ear of corn',
+    icon: '🌽', tags: ['hold', 'shop', 'ground'], use: 'eat', en: 'corn', full: 'an ear of corn',
     ru: 'кукуруза', zh: '玉米', ja: 'とうもろこし', fr: 'maïs', es: 'maíz', ar: 'كوز ذرة', pl: 'kolba kukurydzy', tok: 'pan jelo'
   },
   pear: {
-    icon: '🍐', tags: ['hold', 'shop', 'ground', 'prize'], en: 'pear', full: 'a pear',
+    icon: '🍐', tags: ['hold', 'shop', 'ground', 'prize'], use: 'eat', en: 'pear', full: 'a pear',
     ru: 'груша', zh: '梨', ja: 'なし', fr: 'poire', es: 'pera', ar: 'كمثرى', pl: 'gruszka', tok: 'kili nena'
   },
   peach: {
-    icon: '🍑', tags: ['hold', 'shop', 'prize'], en: 'peach', full: 'a peach',
+    icon: '🍑', tags: ['hold', 'shop', 'prize'], use: 'eat', en: 'peach', full: 'a peach',
     ru: 'персик', zh: '桃子', ja: 'もも', fr: 'pêche', es: 'melocotón', ar: 'خوخة', pl: 'brzoskwinia', tok: 'kili loje jelo'
   },
   cherries: {
-    icon: '🍒', tags: ['hold', 'shop', 'prize'], en: 'cherries', full: 'some cherries',
+    icon: '🍒', tags: ['hold', 'shop', 'prize'], use: 'eat', en: 'cherries', full: 'some cherries',
     ru: 'вишня', zh: '樱桃', ja: 'さくらんぼ', fr: 'cerises', es: 'cerezas', ar: 'كرز', pl: 'wiśnie', tok: 'kili loje lili'
   },
   grapes: {
-    icon: '🍇', tags: ['hold', 'shop', 'prize'], en: 'grapes', full: 'some grapes',
+    icon: '🍇', tags: ['hold', 'shop', 'prize'], use: 'eat', en: 'grapes', full: 'some grapes',
     ru: 'виноград', zh: '葡萄', ja: 'ぶどう', fr: 'raisin', es: 'uvas', ar: 'عنب', pl: 'winogrona', tok: 'kili laso lili'
   },
   strawberry: {
-    icon: '🍓', tags: ['hold', 'shop', 'prize'], en: 'strawberry', full: 'a strawberry',
+    icon: '🍓', tags: ['hold', 'shop', 'prize'], use: 'eat', en: 'strawberry', full: 'a strawberry',
     ru: 'клубника', zh: '草莓', ja: 'いちご', fr: 'fraise', es: 'fresa', ar: 'فراولة', pl: 'truskawka', tok: 'kili suwi loje'
   },
   lemon: {
@@ -412,15 +420,15 @@ LG.ITEMS = {
     ru: 'лимон', zh: '柠檬', ja: 'レモン', fr: 'citron', es: 'limón', ar: 'ليمونة', pl: 'cytryna', tok: 'kili jelo'
   },
   watermelon: {
-    icon: '🍉', tags: ['hold', 'shop'], en: 'watermelon', full: 'a watermelon',
+    icon: '🍉', tags: ['hold', 'shop'], use: 'eat', en: 'watermelon', full: 'a watermelon',
     ru: 'арбуз', zh: '西瓜', ja: 'すいか', fr: 'pastèque', es: 'sandía', ar: 'بطيخة', pl: 'arbuz', tok: 'kili suli telo'
   },
   chestnut: {
-    icon: '🌰', tags: ['hold', 'ground'], en: 'chestnut', full: 'a chestnut',
+    icon: '🌰', tags: ['hold', 'ground'], use: 'eat', en: 'chestnut', full: 'a chestnut',
     ru: 'каштан', zh: '栗子', ja: 'くり', fr: 'châtaigne', es: 'castaña', ar: 'كستناء', pl: 'kasztan', tok: 'kili kiwen'
   },
   cheese: {
-    icon: '🧀', tags: ['hold', 'shop', 'prize'], en: 'cheese', full: 'a wheel of cheese',
+    icon: '🧀', tags: ['hold', 'shop', 'prize'], use: 'eat', en: 'cheese', full: 'a wheel of cheese',
     ru: 'сыр', zh: '奶酪', ja: 'チーズ', fr: 'fromage', es: 'queso', ar: 'قالب جبن', pl: 'krąg sera', tok: 'moku pi telo mama'
   },
   butter: {
@@ -432,15 +440,15 @@ LG.ITEMS = {
     ru: 'соль', zh: '盐', ja: '塩', fr: 'sel', es: 'sal', ar: 'رشة ملح', pl: 'szczypta soli', tok: 'namako'
   },
   sweets: {
-    icon: '🍬', tags: ['hold', 'shop', 'prize'], en: 'sweets', full: 'some sweets',
+    icon: '🍬', tags: ['hold', 'shop', 'prize'], use: 'eat', en: 'sweets', full: 'some sweets',
     ru: 'конфеты', zh: '糖果', ja: 'あめ', fr: 'bonbons', es: 'caramelos', ar: 'حلوى', pl: 'cukierki', tok: 'moku suwi'
   },
   cake: {
-    icon: '🍰', tags: ['hold', 'shop', 'prize'], en: 'cake', full: 'a slice of cake',
+    icon: '🍰', tags: ['hold', 'shop', 'prize'], use: 'eat', en: 'cake', full: 'a slice of cake',
     ru: 'торт', zh: '蛋糕', ja: 'ケーキ', fr: 'gâteau', es: 'pastel', ar: 'قطعة كعك', pl: 'kawałek ciasta', tok: 'pan suwi'
   },
   pie: {
-    icon: '🥧', tags: ['hold', 'shop', 'prize'], en: 'pie', full: 'a pie',
+    icon: '🥧', tags: ['hold', 'shop', 'prize'], use: 'eat', en: 'pie', full: 'a pie',
     ru: 'пирог', zh: '派', ja: 'パイ', fr: 'tarte', es: 'tarta', ar: 'فطيرة', pl: 'placek', tok: 'pan pi kili suwi'
   },
   jam: {
@@ -448,7 +456,7 @@ LG.ITEMS = {
     ru: 'варенье', zh: '果酱', ja: 'ジャム', fr: 'confiture', es: 'mermelada', ar: 'برطمان مربى', pl: 'słoik dżemu', tok: 'ko kili'
   },
   soup: {
-    icon: '🍲', tags: ['hold', 'shop'], en: 'soup', full: 'a bowl of soup',
+    icon: '🍲', tags: ['hold', 'shop'], use: 'eat', en: 'soup', full: 'a bowl of soup',
     ru: 'суп', zh: '汤', ja: 'スープ', fr: 'soupe', es: 'sopa', ar: 'طبق حساء', pl: 'miska zupy', tok: 'telo moku'
   },
   meat: {
@@ -460,11 +468,11 @@ LG.ITEMS = {
     ru: 'бекон', zh: '培根', ja: 'ベーコン', fr: 'lard', es: 'tocino', ar: 'لحم مقدد', pl: 'boczek', tok: 'moku pi soweli ko'
   },
   rice: {
-    icon: '🍚', tags: ['hold', 'shop'], en: 'rice', full: 'a bowl of rice',
+    icon: '🍚', tags: ['hold', 'shop'], use: 'eat', en: 'rice', full: 'a bowl of rice',
     ru: 'рис', zh: '米饭', ja: 'ごはん', fr: 'riz', es: 'arroz', ar: 'طبق أرز', pl: 'miska ryżu', tok: 'pan lili'
   },
   noodles: {
-    icon: '🍜', tags: ['hold', 'shop'], en: 'noodles', full: 'a bowl of noodles',
+    icon: '🍜', tags: ['hold', 'shop'], use: 'eat', en: 'noodles', full: 'a bowl of noodles',
     ru: 'лапша', zh: '面条', ja: 'めん', fr: 'nouilles', es: 'fideos', ar: 'طبق نودلز', pl: 'miska makaronu', tok: 'linja moku'
   },
   wheat: {
@@ -472,19 +480,19 @@ LG.ITEMS = {
     ru: 'пшеница', zh: '小麦', ja: '小麦', fr: 'blé', es: 'trigo', ar: 'حزمة قمح', pl: 'snop pszenicy', tok: 'kasi pan'
   },
   tea: {
-    icon: '🍵', tags: ['hold', 'shop', 'prize'], en: 'tea', full: 'a cup of tea',
+    icon: '🍵', tags: ['hold', 'shop', 'prize'], use: 'drink', en: 'tea', full: 'a cup of tea',
     ru: 'чай', zh: '茶', ja: 'お茶', fr: 'thé', es: 'té', ar: 'كوب شاي', pl: 'filiżanka herbaty', tok: 'telo kasi'
   },
   coffee: {
-    icon: '☕', tags: ['hold', 'shop'], en: 'coffee', full: 'a cup of coffee',
+    icon: '☕', tags: ['hold', 'shop'], use: 'drink', en: 'coffee', full: 'a cup of coffee',
     ru: 'кофе', zh: '咖啡', ja: 'コーヒー', fr: 'café', es: 'café', ar: 'كوب قهوة', pl: 'filiżanka kawy', tok: 'telo pimeja'
   },
   wine: {
-    icon: '🍷', tags: ['hold', 'shop', 'prize'], en: 'wine', full: 'a bottle of wine',
+    icon: '🍷', tags: ['hold', 'shop', 'prize'], use: 'drink', en: 'wine', full: 'a bottle of wine',
     ru: 'вино', zh: '葡萄酒', ja: 'ワイン', fr: 'vin', es: 'vino', ar: 'زجاجة نبيذ', pl: 'butelka wina', tok: 'telo nasa'
   },
   beer: {
-    icon: '🍺', tags: ['hold', 'shop'], en: 'beer', full: 'a mug of beer',
+    icon: '🍺', tags: ['hold', 'shop'], use: 'drink', en: 'beer', full: 'a mug of beer',
     ru: 'пиво', zh: '啤酒', ja: 'ビール', fr: 'bière', es: 'cerveza', ar: 'كوب بيرة', pl: 'kufel piwa', tok: 'telo nasa pan'
   },
   hammer: {
@@ -644,15 +652,15 @@ LG.ITEMS = {
     ru: 'кошелёк', zh: '钱包', ja: 'さいふ', fr: 'porte-monnaie', es: 'monedero', ar: 'محفظة', pl: 'sakiewka', tok: 'poki mani'
   },
   backpack: {
-    icon: '🎒', tags: ['hold', 'shop'], en: 'backpack', full: 'a backpack',
+    icon: '🎒', tags: ['hold', 'shop'], use: 'wear', slot: 'back', en: 'backpack', full: 'a backpack',
     ru: 'рюкзак', zh: '背包', ja: 'リュック', fr: 'sac à dos', es: 'mochila', ar: 'حقيبة ظهر', pl: 'plecak', tok: 'poki monsi'
   },
   ring: {
-    icon: '💍', tags: ['hold', 'ground', 'prize'], en: 'ring', full: 'a ring',
+    icon: '💍', tags: ['hold', 'ground', 'prize'], use: 'wear', slot: 'finger', en: 'ring', full: 'a ring',
     ru: 'кольцо', zh: '戒指', ja: 'ゆびわ', fr: 'bague', es: 'anillo', ar: 'خاتم', pl: 'pierścionek', tok: 'sike luka'
   },
   crown: {
-    icon: '👑', tags: ['hold', 'prize'], en: 'crown', full: 'a crown',
+    icon: '👑', tags: ['hold', 'prize'], use: 'wear', slot: 'head', en: 'crown', full: 'a crown',
     ru: 'корона', zh: '王冠', ja: 'おうかん', fr: 'couronne', es: 'corona', ar: 'تاج', pl: 'korona', tok: 'sike lawa'
   },
   crystal_ball: {
@@ -660,43 +668,43 @@ LG.ITEMS = {
     ru: 'хрустальный шар', zh: '水晶球', ja: '水晶玉', fr: 'boule de cristal', es: 'bola de cristal', ar: 'كرة بلورية', pl: 'kryształowa kula', tok: 'sike pi kiwen lukin'
   },
   coat: {
-    icon: '🧥', tags: ['hold', 'shop'], en: 'coat', full: 'a coat',
+    icon: '🧥', tags: ['hold', 'shop'], use: 'wear', slot: 'over', en: 'coat', full: 'a coat',
     ru: 'пальто', zh: '外套', ja: 'コート', fr: 'manteau', es: 'abrigo', ar: 'معطف', pl: 'płaszcz', tok: 'len lete'
   },
   scarf: {
-    icon: '🧣', tags: ['hold', 'shop', 'prize'], en: 'scarf', full: 'a scarf',
+    icon: '🧣', tags: ['hold', 'shop', 'prize'], use: 'wear', slot: 'neck', en: 'scarf', full: 'a scarf',
     ru: 'шарф', zh: '围巾', ja: 'マフラー', fr: 'écharpe', es: 'bufanda', ar: 'وشاح', pl: 'szalik', tok: 'len pi anpa lawa'
   },
   gloves: {
-    icon: '🧤', tags: ['hold', 'shop', 'ground'], en: 'gloves', full: 'a pair of gloves',
+    icon: '🧤', tags: ['hold', 'shop', 'ground'], use: 'wear', slot: 'hands', en: 'gloves', full: 'a pair of gloves',
     ru: 'перчатки', zh: '手套', ja: 'てぶくろ', fr: 'gants', es: 'guantes', ar: 'قفازات', pl: 'rękawiczki', tok: 'len luka'
   },
   socks: {
-    icon: '🧦', tags: ['hold', 'shop'], en: 'socks', full: 'a pair of socks',
+    icon: '🧦', tags: ['hold', 'shop'], use: 'wear', slot: 'socks', en: 'socks', full: 'a pair of socks',
     ru: 'носки', zh: '袜子', ja: 'くつした', fr: 'chaussettes', es: 'calcetines', ar: 'جوارب', pl: 'skarpetki', tok: 'len noka lili'
   },
   shirt: {
-    icon: '👕', tags: ['hold', 'shop'], en: 'shirt', full: 'a shirt',
+    icon: '👕', tags: ['hold', 'shop'], use: 'wear', slot: 'top', en: 'shirt', full: 'a shirt',
     ru: 'рубашка', zh: '衬衫', ja: 'シャツ', fr: 'chemise', es: 'camisa', ar: 'قميص', pl: 'koszula', tok: 'len sijelo'
   },
   trousers: {
-    icon: '👖', tags: ['hold', 'shop'], en: 'trousers', full: 'a pair of trousers',
+    icon: '👖', tags: ['hold', 'shop'], use: 'wear', slot: 'legs', en: 'trousers', full: 'a pair of trousers',
     ru: 'штаны', zh: '裤子', ja: 'ズボン', fr: 'pantalon', es: 'pantalones', ar: 'بنطال', pl: 'spodnie', tok: 'len pi noka tu'
   },
   dress: {
-    icon: '👗', tags: ['hold', 'shop', 'prize'], en: 'dress', full: 'a dress',
+    icon: '👗', tags: ['hold', 'shop', 'prize'], use: 'wear', slot: 'top', en: 'dress', full: 'a dress',
     ru: 'платье', zh: '连衣裙', ja: 'ワンピース', fr: 'robe', es: 'vestido', ar: 'فستان', pl: 'sukienka', tok: 'len suli'
   },
   shoes: {
-    icon: '👞', tags: ['hold', 'shop', 'ground'], en: 'shoes', full: 'a pair of shoes',
+    icon: '👞', tags: ['hold', 'shop', 'ground'], use: 'wear', slot: 'feet', en: 'shoes', full: 'a pair of shoes',
     ru: 'туфли', zh: '鞋', ja: 'くつ', fr: 'chaussures', es: 'zapatos', ar: 'حذاء', pl: 'buty', tok: 'len noka'
   },
   glasses: {
-    icon: '👓', tags: ['hold', 'shop', 'ground'], en: 'glasses', full: 'a pair of glasses',
+    icon: '👓', tags: ['hold', 'shop', 'ground'], use: 'wear', slot: 'eyes', en: 'glasses', full: 'a pair of glasses',
     ru: 'очки', zh: '眼镜', ja: 'めがね', fr: 'lunettes', es: 'gafas', ar: 'نظارة', pl: 'okulary', tok: 'ilo lukin'
   },
   ribbon: {
-    icon: '🎀', tags: ['hold', 'shop', 'prize'], en: 'ribbon', full: 'a ribbon',
+    icon: '🎀', tags: ['hold', 'shop', 'prize'], use: 'wear', slot: 'hair', en: 'ribbon', full: 'a ribbon',
     ru: 'бант', zh: '蝴蝶结', ja: 'リボン', fr: 'ruban', es: 'lazo', ar: 'شريط', pl: 'wstążka', tok: 'linja kule'
   },
   feather: {
@@ -1002,9 +1010,54 @@ LG.TXN = {
     ar: 'تم تسليم {item} من {name}.',
     pl: '{name} wręcza ci {item}.',
     tok: '{name} li pana e {item}.'
+  },
+  /* What the traveller does with their own pockets — see `use` on LG.ITEMS. */
+  eat: {
+    en: 'You eat {item}.',
+    ru: 'Вы съедаете {item}.',
+    zh: '你吃了{item}。',
+    ja: '{item}を食べた。',
+    fr: 'Vous mangez {item}.',
+    es: 'Te comes {item}.',
+    ar: 'تم تناول {item}.',
+    pl: 'Zjadasz {item}.',
+    tok: 'sina moku e {item}.'
+  },
+  drink: {
+    en: 'You drink {item}.',
+    ru: 'Вы выпиваете {item}.',
+    zh: '你喝了{item}。',
+    ja: '{item}を飲んだ。',
+    fr: 'Vous buvez {item}.',
+    es: 'Te bebes {item}.',
+    ar: 'تم شرب {item}.',
+    pl: 'Wypijasz {item}.',
+    tok: 'sina moku e {item}.'
+  },
+  wear: {
+    en: 'You put on {item}.',
+    ru: 'Вы надеваете {item}.',
+    zh: '你穿戴上了{item}。',
+    ja: '{item}を身につけた。',
+    fr: 'Vous mettez {item}.',
+    es: 'Te pones {item}.',
+    ar: 'تم ارتداء {item}.',
+    pl: 'Zakładasz {item}.',
+    tok: 'sina len e sijelo kepeken {item}.'
+  },
+  takeOff: {
+    en: 'You take off {item}.',
+    ru: 'Вы снимаете {item}.',
+    zh: '你取下了{item}。',
+    ja: '{item}を外した。',
+    fr: 'Vous enlevez {item}.',
+    es: 'Te quitas {item}.',
+    ar: 'تم خلع {item}.',
+    pl: 'Zdejmujesz {item}.',
+    tok: 'sina weka e {item} tan sijelo.'
   }
 };
-/* All other languages' four lines put the traveller in the grammatical
+/* All other languages' lines put the traveller in the grammatical
    subject position ("you buy", "vous remettez") since none of them mark
    the subject's gender. Arabic verbs do, and the game never asks the
    player's gender. Real Arabic solves this in exactly this genre —

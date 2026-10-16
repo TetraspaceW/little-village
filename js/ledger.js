@@ -9,26 +9,31 @@
    carries; it's one object mutated in place, so a reference taken once
    stays current across new villages.
 
-   A village is attached with `begin(plan, isSpent)`: the plan says which
-   facts exist to be learned, and `isSpent(factId)` asks the world whether
-   a note is already done with, so the notebook can strike it through
-   without storing a flag that could go stale. */
+   A village is attached with `begin(plan, isSpent, keep)`: the plan says
+   which facts exist to be learned, and `isSpent(factId)` asks the world
+   whether a note is already done with, so the notebook can strike it
+   through without storing a flag that could go stale. `keep(itemId)` asks
+   how many of an item the errand still needs, so eating or drinking
+   can't use up the one thing somebody is waiting on. */
 window.LG = window.LG || {};
 
 LG.ledger = (function () {
   const settings = LG.config.settings, C = LG.config;
   const { escapeHTML, rubyHTML } = LG.text;
 
-  const state = { inv: {}, notes: [], deeds: [], won: false, board: [] };
+  const state = { inv: {}, worn: {}, notes: [], deeds: [], won: false, board: [] };
   const logLines = [];
   let plan = null;
   let isSpent = () => false;
+  let keep = () => 0;
 
   /* Starts the record afresh for a new (or about-to-be-restored) village. */
-  function begin(newPlan, spent) {
+  function begin(newPlan, spent, needed) {
     plan = newPlan;
     isSpent = spent || (() => false);
+    keep = needed || (() => 0);
     state.inv = { coins: 10 };          // a little money to be going on with
+    state.worn = {};
     state.notes = []; state.deeds = []; state.won = false; state.board = [];
     logLines.length = 0;
   }
@@ -38,20 +43,60 @@ LG.ledger = (function () {
   function give(id, n) { state.inv[id] = (state.inv[id] || 0) + (n || 1); render(); }
   function take(id, n) {
     state.inv[id] = Math.max(0, (state.inv[id] || 0) - (n || 1));
-    if (!state.inv[id]) delete state.inv[id];
+    if (!state.inv[id]) { delete state.inv[id]; delete state.worn[id]; }   // can't wear what you've handed over
     render();
   }
   /* `exclude` omits one item from the list entirely -- used for a
      caught animal following the player, which isn't really "in a
      pocket" and is described separately (see LG.view.companion). */
+  /* What's worn is listed by `wornList` instead, so a hat on the
+     traveller's head isn't also described as being in a pocket. */
   function inventoryList(exclude) {
-    const ks = Object.keys(state.inv).filter(k => state.inv[k] > 0 && k !== exclude);
+    const carried = k => state.inv[k] - (state.worn[k] ? 1 : 0);
+    const ks = Object.keys(state.inv).filter(k => carried(k) > 0 && k !== exclude);
     if (!ks.length) return '';
     // Used only in the villager's prompt, so names items the way the rest of that prompt does -- see LG.itemSaid.
     return ks.map(k => LG.itemSaid(k, settings.lang, true) +
-                       (state.inv[k] > 1 ? ' x' + state.inv[k] : '')).join(', ');
+                       (carried(k) > 1 ? ' x' + carried(k) : '')).join(', ');
+  }
+  function wornList() {
+    return Object.keys(state.worn).filter(k => state.inv[k] > 0)
+      .map(k => LG.itemSaid(k, settings.lang, true)).join(', ');
   }
   function itemLabel(id) { return LG.itemName(id, settings.lang); }
+
+  /* Eats, drinks, puts on or takes off one of the traveller's own things
+     (see `use` on LG.ITEMS). Returns whether anything happened. Eating
+     or drinking refuses to touch anything the errand is still waiting on
+     — there's no getting a second goal item once the first is gone, and
+     a dead-ended village isn't a fair price for a snack. */
+  function use(id) {
+    const it = LG.ITEMS[id];
+    if (!it || !it.use || !count(id)) return false;
+    const say = (key, english) => txn(it.icon, key, { item: itemLabel(id) }, { item: english });
+    if (it.use === 'wear') {
+      if (state.worn[id]) {
+        delete state.worn[id];
+        say('takeOff', 'the ' + it.en);
+      } else {
+        Object.keys(state.worn).forEach(k => {
+          if (LG.ITEMS[k].slot === it.slot) delete state.worn[k];
+        });
+        state.worn[id] = true;
+        say('wear', it.full);
+      }
+      render();
+      return true;
+    }
+    if (count(id) <= keep(id)) {
+      log('You had better hang on to the ' + it.en + ' for now.');
+      return false;
+    }
+    take(id);
+    say(it.use, it.full);
+    return true;
+  }
+  const VERB = { eat: 'Eat', drink: 'Drink', wear: 'Put on' };
 
   /* Narrates a completed deal ("you hand over the rope") in the
      village's language rather than English — see LG.TXN. `native` and
@@ -147,11 +192,24 @@ LG.ledger = (function () {
     const inv = document.getElementById('inv');
     const L = C.language();
     const ks = Object.keys(state.inv).filter(k => state.inv[k] > 0 && k !== 'coins');
+    /* Anything with a `use` is a button: click it to eat, drink, or put
+       it on (and click again to take it off). The tooltip says which, in
+       English like the plain pills' tooltips. */
     inv.innerHTML = ks.length
-      ? ks.map(k => '<span class="pill" title="' + LG.ITEMS[k].en + '">' + LG.ITEMS[k].icon +
-          ' <span lang="' + L.tag + '">' + escapeHTML(itemLabel(k)) +
-          (state.inv[k] > 1 ? ' ×' + state.inv[k] : '') + '</span></span>').join('')
+      ? ks.map(k => {
+          const it = LG.ITEMS[k], worn = !!state.worn[k];
+          const body = it.icon + ' <span lang="' + L.tag + '">' + escapeHTML(itemLabel(k)) +
+            (state.inv[k] > 1 ? ' ×' + state.inv[k] : '') + '</span>' +
+            (worn ? ' <span class="worn-tag">worn</span>' : '');
+          if (!it.use) return '<span class="pill" title="' + it.en + '">' + body + '</span>';
+          const verb = worn ? 'Take off' : VERB[it.use];
+          return '<button type="button" class="pill use' + (worn ? ' worn' : '') +
+                 '" data-use="' + k + '" title="' + verb + ' the ' + it.en + '">' + body + '</button>';
+        }).join('')
       : '<span class="muted">empty pockets</span>';
+    Array.prototype.forEach.call(inv.querySelectorAll('[data-use]'), el => {
+      el.onclick = () => use(el.dataset.use);
+    });
 
     const nb = document.getElementById('notebook');
     const rows = state.deeds.map(d => '<div class="q done">✔ ' + escapeHTML(d) + '</div>')
@@ -173,6 +231,6 @@ LG.ledger = (function () {
     });
   }
 
-  return { state, begin, count, give, take, inventoryList, hasNote, learn,
+  return { state, begin, count, give, take, use, inventoryList, wornList, hasNote, learn,
            log, logSpeech, txn, render };
 })();

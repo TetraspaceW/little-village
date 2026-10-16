@@ -86,6 +86,17 @@ LG.game = (function () {
   let nudge = '', nudgeT = 0;
 
   /* ------------------------------------------------------------- trading */
+  /* How many of an item the errand is still waiting on: every link not
+     yet traded that wants it. Read live off the villagers, like
+     factSpent, so it can't fall out of step with what has happened. */
+  function stillNeeded(id) {
+    return plan.links.reduce((sum, lk) => {
+      if (lk.wants !== id) return sum;
+      const owner = npcs.find(n => n.def.id === lk.npcId);
+      return owner && owner.tradeDone ? sum : sum + (lk.wantsCount || 1);
+    }, 0);
+  }
+
   function doTrade(npc, trade) {
     const needN = trade.wantsCount || 1, giveN = trade.givesCount || 1;
     take(trade.wants, needN);
@@ -204,7 +215,7 @@ LG.game = (function () {
        around is a poor way to start a game. */
     LG.time.start();
 
-    LG.ledger.begin(plan, factSpent);
+    LG.ledger.begin(plan, factSpent, stillNeeded);
     LG.trade.begin(plan);
 
     renderHUD();

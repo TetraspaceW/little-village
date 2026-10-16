@@ -50,6 +50,11 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
 - Type in the villager's own language. The **Phrases** row suggests something
   to start from; **Offer an item** holds an item out of your pockets instead
   of typing.
+- **Click or tap an item in Pockets** to use it: food is eaten and drink
+  drunk (both used up), clothes and jewellery are put on, and clicking a worn
+  thing takes it off. Putting on a hat takes off whatever else was on your
+  head. Villagers can see what you're wearing. You won't eat or drink
+  something the errand still needs.
 - Translations stay blurred until you click them.
 
 ## Gameplay

@@ -423,6 +423,11 @@ ruby rb{font-size:1em}
 .recipe .lack{opacity:.45}
 .recipe .kept{border:1px dashed #b5a07c;border-radius:999px;padding:1px 7px}
 .recipe .chip:disabled{opacity:.45;cursor:default}
+/* A Cook button filling from left to right while the dish is in (see startCooking). */
+.recipe .chip.cooking{position:relative;z-index:0;overflow:hidden;pointer-events:none}
+.recipe .chip.cooking::before{content:'';position:absolute;z-index:-1;inset:0;width:0;background:#e9b86c;
+  animation:cook-fill var(--cook,3s) linear forwards}
+@keyframes cook-fill{to{width:100%}}
 .recipe .chip:disabled:hover{background:var(--paper-2);border-color:var(--line)}
 .note{font-size:12.5px;color:#8a7355;background:var(--paper-2);
   border-left:3px solid var(--line);padding:8px 10px;border-radius:0 8px 8px 0}

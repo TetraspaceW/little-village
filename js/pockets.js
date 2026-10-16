@@ -166,7 +166,7 @@ LG.pockets = (function () {
 
   function openOven() {
     const panel = document.getElementById('oven');
-    document.getElementById('ovenClose').onclick = () => panel.classList.remove('open');
+    document.getElementById('ovenClose').onclick = () => { stopCooking(); panel.classList.remove('open'); };
     renderOven();
     panel.classList.add('open');
   }
@@ -199,8 +199,27 @@ LG.pockets = (function () {
           (canCook(r) ? '' : ' disabled') + '>Cook</button></div>').join('')
       : '<div class="notice muted">Nothing in your pockets that wants cooking.</div>';
     Array.prototype.forEach.call(box.querySelectorAll('[data-recipe]'), el => {
-      el.onclick = () => cookAt(LG.RECIPES[+el.dataset.recipe]);
+      el.onclick = () => startCooking(el, LG.RECIPES[+el.dataset.recipe]);
     });
+  }
+
+  /* Cooking takes COOK_TIME, while the Cook button fills from left to
+     right (the `cooking` class in style.css, timed by --cook) and the other
+     buttons wait. Nothing goes in the pot until it's done, so closing the
+     oven partway through loses nothing. */
+  const COOK_TIME = 3;                 // seconds
+  let cooking = null;
+  function startCooking(button, recipe) {
+    if (cooking) return;
+    const box = document.getElementById('ovenList');
+    Array.prototype.forEach.call(box.querySelectorAll('[data-recipe]'), el => { el.disabled = el !== button; });
+    button.style.setProperty('--cook', COOK_TIME + 's');
+    button.classList.add('cooking');
+    button.textContent = 'Cooking…';
+    cooking = setTimeout(() => { cooking = null; cookAt(recipe); }, COOK_TIME * 1000);
+  }
+  function stopCooking() {
+    if (cooking) { clearTimeout(cooking); cooking = null; }
   }
 
   /* Anyone in the room sees it done, and it's theirs to mention — the

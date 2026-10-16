@@ -62,12 +62,13 @@ LG.actors = (function () {
     morning:   { work: 0.6, green: 0.3 },
     midday:    { work: 0.4, green: 0.5 },
     afternoon: { work: 0.5, green: 0.4 },
-    dusk:      { work: 0.2, green: 0.2 },
-    night:     { work: 0.0, green: 0.0 }
+    dusk:      { work: 0.2, green: 0.2, bed: 0.3 },
+    night:     { work: 0.0, green: 0.0, bed: 0.85 }
   };
 
   function byDice(a, green) {
     const t = PHASE_TABLE[LG.time.phase().id] || PHASE_TABLE.night;
+    if (a.bed && Math.random() < (t.bed || 0)) return a.bed.rect;
     if (LG.time.info.indoors) {
       return (a.work && a.workBuilding && Math.random() < 0.6) ? a.work : (a.shelter || a.def.home);
     }
@@ -87,49 +88,35 @@ LG.actors = (function () {
            '|' + Math.floor((a.lived || 0) / RETHINK);
   }
 
-  /* Night is for sleeping. From nightfall to first light a villager with a
-     bed walks to it and lies down, and nobody is asked where to go: the
-     answer is bed. A conversation already under way is finished first. A
-     decision that lands meanwhile is dropped; they think again on waking.
-     Nothing about sleep is saved: a village reloaded at night sends each of
-     them back to bed, and anyone already on it lies straight down. */
-  const BED_RETRY = 5;                            // seconds before trying again for an unreachable bed
-  function bedtime(a) { return !!a.bed && LG.time.isNight(); }
-
-  function sleep(a, dt) {
-    if (!bedtime(a)) {
-      if (a.asleep) {
-        a.asleep = false;
-        a.thought = null;                         // up, and thinking about the day
-        a.routeCool = Math.random() * 6;          // not all at once
-        think(a, 'wakes up', a.bed.label);
-      }
-      return false;
+  /* Sleep. A villager at their own bed at night lies down, and gets up at
+     first light. Nothing sends them there: their bed is one of the places
+     they can choose (placesFor in game.js), and with no model the dice
+     favour it at night (PHASE_TABLE.bed), the way rough weather favours
+     a roof. A sleeper isn't asked where to go. Nothing about sleep is
+     saved: whoever is on their bed at night when a village is reloaded
+     lies straight back down. */
+  function sleep(a) {
+    const night = !!a.bed && LG.time.isNight();
+    if (a.asleep && !night) {
+      a.asleep = false;
+      a.thought = null; a.wantsGo = null;         // up, and thinking about the day afresh
+      a.routeCool = Math.random() * 6;            // not all at once
+      think(a, 'wakes up', a.bed.label);
     }
     if (a.asleep) return true;
-    a.wantsGo = null; a.deciding = false;
-    if (a.chatting) return true;
-    const bed = a.bed, route = a.route && a.route.length ? a.route : null;
-    if (!route && a.tx === bed.x && a.ty === bed.y) {
-      a.asleep = true;
-      a.px = bed.x * TILE + TILE / 2; a.py = bed.y * TILE + TILE / 2;
-      a.dir = 'down'; a.bubble = null; a.bubbleT = 0; a.patch = bed.room;
-      think(a, 'goes to sleep', bed.label);
-      return true;
-    }
-    const last = route && route[route.length - 1];
-    if (last && last.x === bed.x && last.y === bed.y) return true;   // on the way
-    a.bedCool = (a.bedCool || 0) - dt;
-    if (a.bedCool > 0) return true;
-    const path = W.pathTo(a.tx, a.ty, bed.x, bed.y);
-    if (path && path.length) { a.route = path; a.patch = bed.room; }
-    else a.bedCool = BED_RETRY;
+    if (!night || a.chatting || (a.route && a.route.length)) return false;
+    if (a.tx !== a.bed.x || a.ty !== a.bed.y) return false;
+    a.asleep = true;
+    a.route = null; a.wantsGo = null; a.deciding = false;
+    a.px = a.bed.x * TILE + TILE / 2; a.py = a.bed.y * TILE + TILE / 2;
+    a.dir = 'down'; a.bubble = null; a.bubbleT = 0;
+    think(a, 'goes to sleep', a.bed.label);
     return true;
   }
 
   function routine(a, dt, green, decide) {
     if (a.frozen) { a.route = null; return; }
-    if (sleep(a, dt)) return;
+    if (sleep(a)) return;
     if (a.route && a.route.length) return;          // still walking a previous route
 
     a.lived = (a.lived || 0) + dt;
@@ -308,7 +295,7 @@ LG.actors = (function () {
         const a = npcs[i], b = npcs[j];
         if (a.frozen || b.frozen || a.gossipCool > 0 || b.gossipCool > 0) continue;
         if (a.chatting || b.chatting) continue;
-        if (bedtime(a) || bedtime(b)) continue;            // nobody stops for a word on the way to bed
+        if (a.asleep || b.asleep) continue;
         if (Math.hypot(a.px - b.px, a.py - b.py) > TILE * 2.2) continue;
         /* Holds them apart while they talk; a spoken conversation resets
            it again once it's over (LG.dialogue), so the rest starts then. */
@@ -609,7 +596,7 @@ LG.actors = (function () {
     ctx.globalAlpha = 1;
   }
 
-  return { makeNPC, makeCreature, wander, walk, routine, bedtime, stepTowards, meet, gossipRest,
+  return { makeNPC, makeCreature, wander, walk, routine, stepTowards, meet, gossipRest,
            drawCharacter, drawSleeper, drawBubble, roundRect,
            displayName, nameOrEmoji, remember, noteFactSource, think,
            set thoughts(v) { thoughts = !!v; },

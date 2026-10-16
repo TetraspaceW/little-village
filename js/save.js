@@ -80,7 +80,7 @@ LG.save = (function () {
   }
   function rectIn(npc, r) {
     if (!r) return npc.def.home;
-    const known = [npc.def.home, npc.work, npc.shelter, LG.GREEN, LG.BOARD_SPOT]
+    const known = [npc.def.home, npc.work, npc.shelter, npc.bed && npc.bed.rect, LG.GREEN, LG.BOARD_SPOT]
       .concat(LG.world.buildings.map(b => b.inside));
     return known.find(k => sameRect(k, r)) || { x: r.x, y: r.y, w: r.w, h: r.h };
   }

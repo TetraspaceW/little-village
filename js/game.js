@@ -502,7 +502,14 @@ LG.game = (function () {
      see: knowing who has something is only useful with a way to go and
      find them. */
   function placesFor(n) {
-    const out = [{ name: 'home', rect: n.def.home, note: 'your own place' }];
+    /* Which places have a roof is said, not left to the name: "the mine"
+       could be a tunnel or a pit, and most villagers' home is a patch of
+       street or yard, which "your own place" made sound like a house. */
+    const roofed = r => !!W.buildingAt(r.x + (r.w >> 1), r.y + (r.h >> 1));
+    const home = roofed(n.def.home) ? 'your own place' : 'your usual patch';
+    const out = [{ name: 'home', rect: n.def.home, note: home }];
+    if (n.bed) out.push({ name: 'your bed', rect: n.bed.rect, roofed: true,
+                          note: 'in the ' + n.bed.label + ', where you sleep' });
     let workLabel = null;
     if (n.work) {
       // Named as the building (or `def.workLabel`, for a job that isn't a place);
@@ -528,6 +535,10 @@ LG.game = (function () {
       if (n.workBuilding && b === n.workBuilding) return;
       out.push({ name: b.label, rect: b.inside });
     });
+    for (const o of out) {
+      if (o.roofed) continue;
+      o.note = (o.note ? o.note + ', ' : '') + (roofed(o.rect) ? 'indoors' : 'out in the open');
+    }
     npcs.forEach(o => {
       if (o === n) return;
       if (!LG.view.near(n, o, LG.view.SIGHT)) return;   // only people they can see
@@ -1039,6 +1050,8 @@ LG.game = (function () {
            _debugViewport: () => { readInsets(); measureViewport(); },
            // Returns the resulting visible-canvas band (see seen()).
            _debugSeen: seen,
+           // Where a villager could choose to go, notes and all.
+           _placesFor: n => placesFor(n),
            doTrade, uiBlocked, newVillage,
            get saving() { return saving(); },
            get canvas() { return canvas; } };

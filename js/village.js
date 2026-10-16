@@ -39,14 +39,15 @@ LG.village = (function () {
     // Every villager gets an assigned workplace, and a fallback indoor shelter for bad weather.
     const publics = ['Inn', 'Village Hall', 'Chapel']
       .map(l => W.buildingByLabel(l)).filter(Boolean);
-    /* And a bed to sleep in at night: where they work, else where they
-       shelter, else any bed still free. */
+    /* And a bed of their own: where they work, else where they shelter,
+       else any bed still free. Going to it is their choice (see sleep() in
+       npc.js). */
     const taken = new Set();
     const bedIn = b => {
       const f = b && b.furniture.find(f => f.type === 'bed' && !taken.has(f));
       if (!f) return null;
       taken.add(f);
-      return { x: f.x, y: f.y, room: b.inside, label: b.label };
+      return { x: f.x, y: f.y, rect: { x: f.x, y: f.y, w: 1, h: 1 }, label: b.label };
     };
     npcs.forEach((n, i) => {
       const b = n.def.workplace ? W.buildingByLabel(n.def.workplace) : null;

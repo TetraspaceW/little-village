@@ -263,14 +263,15 @@ LG.actors = (function () {
      Without this, there was no way to tell from the outside whether a
      villager's movement decision was reasoned or effectively random.
      Tagged in the villager's own color so a busy village stays readable.
-     `LG.actors.thoughts = false` disables this. */
+     `LG.actors.thoughts = false` disables this; it's off anyway unless
+     LG.consoleLog is on. */
   let thoughts = true;
   function think(n, what, detail) {
     // The log keeps these whether or not the console is printing them.
     if (LG.logbook) LG.logbook.note('villager', n.def ? n.def.name : '?', what,
       { detail: detail || '', where: n.px !== undefined ? LG.view.where(n) : '',
         clock: LG.time && LG.time.clock ? LG.time.clock() : '' });
-    if (!thoughts || typeof console === 'undefined' || !console.log) return;
+    if (!LG.consoleLog || !thoughts || typeof console === 'undefined' || !console.log) return;
     const c = (n.def && n.def.color) || '#888';
     console.log('%c ' + (n.def ? n.def.name : '?') + ' %c ' + what +
                 (detail ? '%c  ' + detail : ''),

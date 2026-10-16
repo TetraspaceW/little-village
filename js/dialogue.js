@@ -411,7 +411,12 @@ LG.dialogue = (function () {
        what the prompt itself says: nothing is ever omitted, and "nothing
        to report" is spelled out as null, [], or "none". */
     const props = {}, required = [];
-    fields.forEach(f => { props[f.k] = f.type; required.push(f.k); });
+    /* Each property carries the same description the prompt shows for
+       it, so the schema says what goes in a field and not just its type. */
+    fields.forEach(f => {
+      props[f.k] = Object.assign({ description: f.desc }, f.type);
+      required.push(f.k);
+    });
 
     /* `core` and `stable` are returned alongside the combined `text` so
        the caller can hand them to llm.js as cache prefixes — breakpoints

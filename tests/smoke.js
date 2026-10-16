@@ -645,8 +645,10 @@ async function promptCached() {
   const sent = [];
   const realFetch = sandbox.fetch, audit = LG.llm.audit;
   sandbox.fetch = async (url, init) => {
-    // no body: OpenRouter's model list, looked up for its price cap
-    if (!init || !init.body) return { ok: true, json: async () => ({ data: [] }) };
+    // no body: OpenRouter's model list, looked up for its price cap and
+    // for which models take a schema
+    if (!init || !init.body) return { ok: true, json: async () => ({ data: [
+      { id: 'deepseek/deepseek-v4.1-flash', supported_parameters: ['structured_outputs'] }] }) };
     sent.push({ url: url, body: JSON.parse(init.body) });
     const reply = '{"say": "Hm."}';
     return { ok: true, status: 200, json: async () => ({
@@ -657,6 +659,7 @@ async function promptCached() {
   const opts = { cachePrefixes: [built.core, built.stable], session: 'npc-' + n.id };
   const model = { provider: 'openrouter', apiKey: 'k', model: 'deepseek/deepseek-v4.1-flash' };
   try {
+    await LG.llm.probe(model);
     await LG.llm.speak(model, built.text, msgs, null, opts);
     await LG.llm.speak(model, built.text, msgs, null);
     await LG.llm.gloss(model, 'Hm.', { langName: 'Japanese' });
@@ -709,6 +712,19 @@ async function promptCached() {
   const lead = p0.slice(0, p0.indexOf('Morning.'));
   ok(lead.length > 0 && p2.indexOf(lead) === 0 && lead.indexOf('Reply with only a JSON object') !== -1,
      'and the same speaker\u2019s turns share everything up to the time, instructions included');
+
+  const fmt = b => b.response_format && b.response_format.json_schema;
+  ok(!fmt(o) && !(o.provider && o.provider.require_parameters),
+     'a call that asks for no schema sends none');
+  const g = fmt(api[2].body), c = fmt(t0);
+  ok(g && g.strict && g.schema.required.join() === 'translation' &&
+     g.schema.additionalProperties === false,
+     'a helper call on a model that takes a schema sends a strict one');
+  ok(c && c.schema.required.join() === 'say,translation' &&
+     /in Japanese/.test(c.schema.properties.say.description),
+     'and each field says what goes in it, not just its type');
+  ok(api[2].body.provider.require_parameters === true && t0.provider.require_parameters === true,
+     'and the request only goes to a provider that will honour it');
 }
 
 /* ---------------------------------------------------------- a key per provider

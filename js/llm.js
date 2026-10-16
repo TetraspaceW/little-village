@@ -479,6 +479,28 @@ LG.llm = (function () {
     }
   }
 
+  /* A strict JSON Schema object: every property required and nothing
+     else allowed, the one shape strict structured outputs accept.
+     `props` maps each field to its type plus a `description` that says
+     what goes in it in the same words the prompt uses, so a model that
+     reads the schema rather than the prompt still knows what to write.
+     Fields that only sometimes apply are left out by the caller rather
+     than made optional. */
+  function strict(props) {
+    return {
+      type: "object",
+      properties: props,
+      required: Object.keys(props),
+      additionalProperties: false,
+    };
+  }
+  const str = (description) => ({ type: "string", description });
+  const strs = (description) => ({
+    type: "array",
+    items: { type: "string" },
+    description,
+  });
+
   /* Every API call goes through here. Callers pass the schema they want
      without needing to know whether the target model actually supports
      structured outputs — that check (schemaOK) happens centrally. */
@@ -569,6 +591,11 @@ LG.llm = (function () {
       if (price) body.provider = { sort: "throughput", max_price: price };
     }
     if (schema) {
+      /* The model list's structured_outputs flag means some provider of
+         the model takes a schema, not every one -- without this,
+         OpenRouter can route to one that silently drops it. Logfare
+         never gets a schema (schemaOK), so this is OpenRouter's alone. */
+      body.provider = Object.assign({}, body.provider, { require_parameters: true });
       body.response_format = {
         type: "json_schema",
         json_schema: { name: "reply", strict: true, schema: schema },
@@ -789,6 +816,16 @@ LG.llm = (function () {
         vcfg,
         "You keep one person's beliefs up to date. Answer with JSON only.",
         [{ role: "user", content: ask }],
+        strict({
+          n: {
+            type: "integer",
+            description:
+              "the number of the line that is out of date, or 0 if nothing is",
+          },
+          line: str(
+            "that line rewritten so it is true now, in the same voice, still saying what used to be the case -- empty string if n is 0",
+          ),
+        }),
       );
       const obj = parseJSON(raw);
       const n = obj && Number(obj.n);
@@ -831,6 +868,19 @@ LG.llm = (function () {
         vcfg,
         "You translate and romanise single lines. Answer with JSON only.",
         [{ role: "user", content: ask }],
+        strict(
+          Object.assign(
+            { translation: str("a plain English translation of the line") },
+            o.romanLabel
+              ? {
+                  roman: str(
+                    "the " + o.romanLabel + " of the line" +
+                      (o.romanNote ? ", " + o.romanNote : ""),
+                  ),
+                }
+              : {},
+          ),
+        ),
       );
       const o2 = parseJSON(raw);
       return o2 || null;
@@ -900,9 +950,24 @@ LG.llm = (function () {
     const sys =
       "You note what people took away from a conversation. Answer with JSON only.";
     try {
-      const raw = await providerCall(vcfg, sys, [
-        { role: "user", content: lines },
-      ]);
+      const took = (who) =>
+        strict({
+          remembers: strs(
+            "what " + who.name + " would come away remembering, each a short plain-English sentence naming who it is about -- [] if nothing was worth keeping",
+          ),
+          said: strs(
+            "the ids, as written, of the statements " + who.name + " actually said out loud -- [] if none",
+          ),
+        });
+      const shape = {};
+      shape[o.a.name] = took(o.a);
+      shape[o.b.name] = took(o.b);
+      const raw = await providerCall(
+        vcfg,
+        sys,
+        [{ role: "user", content: lines }],
+        strict(shape),
+      );
       const obj = parseJSON(raw);
       if (!obj) return null;
       const pick = (n) => {
@@ -1231,9 +1296,42 @@ LG.llm = (function () {
     const sys =
       "You decide whether a villager posts a notice, and write it if so. Answer with JSON only.";
     try {
-      const raw = await providerCall(vcfg, sys, [
-        { role: "user", content: lines },
-      ]);
+      const raw = await providerCall(
+        vcfg,
+        sys,
+        [{ role: "user", content: lines }],
+        strict(
+          Object.assign(
+            {
+              post: {
+                type: "boolean",
+                description:
+                  "true if you pin something up, false if you have nothing worth posting",
+              },
+              text: str(
+                "what you pin up, in " + o.langName + " -- empty string if post is false",
+              ),
+              translation: str(
+                "plain English, or empty string if post is false",
+              ),
+            },
+            o.romanLabel
+              ? {
+                  roman: str(
+                    o.romanLabel +
+                      (o.romanNote ? ", " + o.romanNote : "") +
+                      ", or empty string if post is false",
+                  ),
+                }
+              : {},
+            {
+              revealed: strs(
+                "ids from what you know that this notice states outright -- [] if none or if post is false",
+              ),
+            },
+          ),
+        ),
+      );
       const obj = parseJSON(raw);
       if (!obj) return null;
       return obj;
@@ -1395,7 +1493,26 @@ LG.llm = (function () {
         vcfg,
         sys,
         [{ role: "user", content: lines }],
-        null,
+        strict(
+          Object.assign(
+            {
+              say: str(
+                "your line, in " + o.langName +
+                  (o.furigana ? ", with the furigana as above" : "") +
+                  (o.diacritics ? ", fully vocalised as above" : ""),
+              ),
+              translation: str("the same line in plain English"),
+            },
+            o.romanLabel
+              ? {
+                  roman: str(
+                    "the " + o.romanLabel + " of your line" +
+                      (o.romanNote ? ", " + o.romanNote : ""),
+                  ),
+                }
+              : {},
+          ),
+        ),
         { session: o.session },
       );
       const obj = parseJSON(raw);

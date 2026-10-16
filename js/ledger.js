@@ -42,9 +42,18 @@ LG.ledger = (function () {
 
   /* ---------------------------------------------------------- inventory */
   function count(id) { return state.inv[id] || 0; }
-  function give(id, n) { state.inv[id] = (state.inv[id] || 0) + (n || 1); render(); }
+  /* `n` defaults to one, but only when it's left out: a count of 0 moves
+     nothing. (It used to be `n || 1`, so a refund at a price that rounds
+     to 0 coins — 0.4, say — paid the traveller a coin.) */
+  const many = n => (n == null ? 1 : n);
+  function give(id, n) {
+    if (many(n) <= 0) return;
+    state.inv[id] = (state.inv[id] || 0) + many(n);
+    render();
+  }
   function take(id, n) {
-    state.inv[id] = Math.max(0, (state.inv[id] || 0) - (n || 1));
+    if (many(n) <= 0) return;
+    state.inv[id] = Math.max(0, (state.inv[id] || 0) - many(n));
     // Can't wear, or carry a flame in, what you've handed over.
     if (!state.inv[id]) { delete state.inv[id]; delete state.worn[id]; delete state.lit[id]; }
     render();

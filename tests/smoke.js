@@ -476,6 +476,31 @@ if (shop) {
   ok(purse - LG.ledger.count('coins') === ware.p, 'at the usual price');
 }
 
+/* A count of nothing moves nothing; left out, it means one. */
+{
+  const L = LG.ledger, c0 = L.count('coins'), r0 = L.count('rope');
+  L.give('coins', 0); L.take('rope', 0);
+  ok(L.count('coins') === c0 && L.count('rope') === r0, 'giving or taking 0 of something changes nothing');
+  L.give('rope'); ok(L.count('rope') === r0 + 1, 'and with no count, one');
+  L.take('rope'); ok(L.count('rope') === r0, 'either way');
+}
+
+/* A price that rounds to nothing pays nothing. A plain 0 is refused as
+   no deal at all (see commerce), but the reply schema's price is any
+   number, and a refund at 0.4 rounds to 0 coins — which used to pay a
+   coin, because the ledger read a count of 0 as 1. */
+if (shop) {
+  const ware = shop.def.sells.find(w => !chainItem[w.i]);
+  LG.ledger.state.inv.coins = 20;
+  shop.turns = (shop.turns || 0) + 5;
+  LG.trade.commerce(shop, 'sell', ware.i, ware.p);
+  const purse = LG.ledger.count('coins');
+  const held = LG.ledger.count(ware.i);
+  ok(LG.trade.commerce(shop, 'buy', ware.i, 0.4), shop.def.name + ' takes the ' + LG.ITEMS[ware.i].en + ' back for 0.4 of a coin');
+  ok(LG.ledger.count('coins') === purse && LG.ledger.count(ware.i) === held - 1,
+     'which rounds to nothing, and nothing is what the traveller is paid');
+}
+
 /* What a villager buys they hold, know they hold, and can say so. */
 const buyer = npcs.find(n => (n.def.buys || []).some(w => !chainItem[w.i]));
 if (buyer) {
@@ -640,7 +665,7 @@ section('pockets.js: the oven, and the Pockets box it describes');
     const list = () => sandbox.document.getElementById('ovenList').innerHTML;
     const n0 = LG.ledger.count(lk.wants), mine = LG.RECIPES.length;
     LG.RECIPES.push({ needs: { [lk.wants]: 1 }, makes: 'popcorn' });
-    if (n0) LG.ledger.take(lk.wants, n0);   // (0 would mean 1 to take and give: see `n || 1`)
+    LG.ledger.take(lk.wants, n0);
     LG.ledger.give(lk.wants, lk.wantsCount || 1);
     at((farm.x + 1) * 32, (farm.y + 1) * 32 + 8);
     P.openOven();
@@ -651,7 +676,7 @@ section('pockets.js: the oven, and the Pockets box it describes');
     ok(list().indexOf('data-recipe="' + mine + '"') !== -1, 'with a spare, it is');
     LG.RECIPES.pop();
     LG.ledger.take(lk.wants, LG.ledger.count(lk.wants));
-    if (n0) LG.ledger.give(lk.wants, n0);
+    LG.ledger.give(lk.wants, n0);
   }
   at(was.x, was.y);
 }

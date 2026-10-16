@@ -1320,11 +1320,16 @@ async function villagersTalking() {
   ok(a.wentAfter === null && b.wentAfter === null,
      'and what brought them is spent, so the next meeting is a coincidence again');
 
+  const stillTalking = a.chatting;
+  if (stillTalking) a.gossipCool = b.gossipCool = 0;  // as if they'd talked a long while
+
   for (let i = 0; i < 600 && !recalled; i++) {
     LG.game._debugTick(1 / 30);
     await new Promise(r => setTimeout(r, 0));
   }
   ok(!!recalled, 'and afterwards somebody works out what they took away');
+  ok(stillTalking && !a.chatting && a.gossipCool > 30 && b.gossipCool > 30,
+     'and the rest before their next meeting starts once they have finished');
   if (recalled) {
     const flat = JSON.stringify(recalled);
     ok(flat.indexOf('You think') === -1,

@@ -297,7 +297,9 @@ LG.actors = (function () {
         if (a.frozen || b.frozen || a.gossipCool > 0 || b.gossipCool > 0) continue;
         if (a.chatting || b.chatting) continue;
         if (Math.hypot(a.px - b.px, a.py - b.py) > TILE * 2.2) continue;
-        a.gossipCool = b.gossipCool = 22 + Math.random() * 25;
+        /* Holds them apart while they talk; a spoken conversation resets
+           it again once it's over (LG.dialogue), so the rest starts then. */
+        a.gossipCool = b.gossipCool = gossipRest();
         a.pauseT = b.pauseT = 4 + Math.random() * 3;      // stop and talk
         a.route = b.route = null;
         faceEachOther(a, b);
@@ -310,6 +312,9 @@ LG.actors = (function () {
       }
     }
   }
+
+  /* Seconds a villager waits before stopping for another word. */
+  function gossipRest() { return 40 + Math.random() * 40; }
 
   function faceEachOther(a, b) {
     const dx = b.px - a.px, dy = b.py - a.py;
@@ -440,7 +445,7 @@ LG.actors = (function () {
     ctx.globalAlpha = 1;
   }
 
-  return { makeNPC, makeCreature, wander, walk, routine, stepTowards, meet, drawCharacter, drawBubble, roundRect,
+  return { makeNPC, makeCreature, wander, walk, routine, stepTowards, meet, gossipRest, drawCharacter, drawBubble, roundRect,
            displayName, nameOrEmoji, remember, noteFactSource, think,
            set thoughts(v) { thoughts = !!v; },
            get thoughts() { return thoughts; } };

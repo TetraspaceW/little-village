@@ -411,6 +411,7 @@ ruby rb{font-size:1em}
 .recipe:last-child{border-bottom:none}
 .recipe .parts{flex:1}
 .recipe .lack{opacity:.45}
+.recipe .kept{border:1px dashed #b5a07c;border-radius:999px;padding:1px 7px}
 .recipe .chip:disabled{opacity:.45;cursor:default}
 .recipe .chip:disabled:hover{background:var(--paper-2);border-color:var(--line)}
 .note{font-size:12.5px;color:#8a7355;background:var(--paper-2);

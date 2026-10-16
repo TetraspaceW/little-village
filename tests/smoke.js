@@ -566,7 +566,8 @@ section('cooking at an oven');
      'every recipe is made of real things');
   ok(LG.RECIPES.every(r => ['eat', 'drink'].indexOf(LG.ITEMS[r.makes].use) !== -1),
      'and makes something you can eat or drink');
-  const cooked = ['roast', 'fried_egg', 'popcorn'];
+  const cooked = ['roast', 'fried_egg', 'popcorn', 'fried_bacon', 'sandwich', 'grilled_fish',
+                  'fried_mushrooms', 'baked_potato', 'jar', 'jug', 'cup', 'mug', 'bowl'];
   ok(cooked.every(k => LG.ITEMS[k].tags.length === 0),
      'oven-only dishes have no tags, so the errand generator never picks them');
   ok(cooked.every(k => Object.keys(LG.LANGUAGES).every(l => l === 'en' || LG.ITEMS[k][l])),
@@ -592,6 +593,40 @@ section('cooking at an oven');
     ok(!L.cook(fake), 'the errand\'s own things are not for cooking');
     L.take(lk.wants, L.count(lk.wants) - n0);
   }
+
+  /* Tea needs the teapot but doesn't use it up. (Not in a village whose
+     errand wants the herbs: those rightly stay out of the pot.) */
+  const tea = LG.RECIPES.find(x => x.makes === 'tea');
+  if (!chainItem.herbs) {
+  const pot0 = L.count('teapot'), herbs0 = L.count('herbs'), tea0 = L.count('tea');
+  L.take('teapot', pot0);
+  L.give('herbs', 1);
+  ok(!L.cook(tea), 'no tea without a teapot');
+  L.give('teapot', 1);
+  ok(L.cook(tea) && L.count('teapot') === 1 && L.count('herbs') === herbs0 && L.count('tea') === tea0 + 1,
+     'with one, the herbs make tea and the teapot is still there');
+  L.take('tea', 1); L.take('teapot', 1); L.give('teapot', pot0);
+  }
+}
+
+section('eating out of a container leaves the container');
+{
+  const L = LG.ledger;
+  const contained = /\b(jar|jug|cup|mug|bowl|bottle|plate) of\b/;
+  const eaten = Object.keys(LG.ITEMS).filter(k => LG.ITEMS[k].use === 'eat' || LG.ITEMS[k].use === 'drink');
+  const missing = eaten.filter(k => contained.test(LG.ITEMS[k].full) && !LG.ITEMS[k].leaves);
+  ok(!missing.length, 'everything served in something says what it leaves' +
+     (missing.length ? ': not ' + missing.join(', ') : ''));
+  ok(eaten.every(k => !LG.ITEMS[k].leaves || (LG.ITEMS[LG.ITEMS[k].leaves] && !LG.ITEMS[LG.ITEMS[k].leaves].use)),
+     'and what it leaves is a real, empty thing');
+  // Never one the errand wants: that would rightly be refused.
+  eaten.filter(k => LG.ITEMS[k].leaves && !chainItem[k]).slice(0, 4).forEach(k => {
+    const box = LG.ITEMS[k].leaves, had = L.count(box), n0 = L.count(k);
+    L.give(k, 1);
+    ok(L.use(k) && L.count(k) === n0 && L.count(box) === had + 1,
+       LG.ITEMS[k].full + ' leaves ' + LG.ITEMS[box].full.replace(/^an? (empty )?/, 'the '));
+    L.take(box, 1);
+  });
 }
 
 /* -------------------------------------------------------- one sale, rung twice

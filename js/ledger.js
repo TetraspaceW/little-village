@@ -93,13 +93,16 @@ LG.ledger = (function () {
       return false;
     }
     take(id);
+    if (it.leaves) give(it.leaves, 1);   // the jar, cup or bowl it came in
     say(it.use, it.full);
     return true;
   }
   /* Can one of LG.RECIPES be made from what's in the pockets? Same rule as
      eating: nothing the errand is still waiting on goes in the pot. */
   function canCook(recipe) {
-    return Object.keys(recipe.needs).every(k => count(k) - keep(k) >= recipe.needs[k]);
+    const kept = recipe.with || {};   // only has to be there, so the errand loses nothing
+    return Object.keys(recipe.needs).every(k => count(k) - keep(k) >= recipe.needs[k]) &&
+           Object.keys(kept).every(k => count(k) >= kept[k]);
   }
   function cook(recipe) {
     if (!canCook(recipe)) return false;

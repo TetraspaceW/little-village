@@ -267,7 +267,8 @@ LG.LEVELS = {
    things you could eat or drink as they come are marked — a raw onion
    or a joint of meat isn't a snack. Worn things take a `slot`, and
    putting something on takes off whatever else was in that slot, so
-   you can't wear boots over your shoes. `g` is the item name's
+   you can't wear boots over your shoes. `leaves` is the container left in
+   your pockets once something has been eaten or drunk out of it. `g` is the item name's
    grammatical gender and number, in the languages where "(worn)" has to
    agree with it (see LG.WORN): m, f, n or p(lural) in Russian and
    Polish, m, f, mp or fp in French and Spanish.                       */
@@ -277,7 +278,7 @@ LG.ITEMS = {
     ru: 'блестящий камень', zh: '闪亮的石头', fr: 'pierre brillante', es: 'piedra brillante', ja: '光る石', ar: 'حجر لامع', pl: 'błyszczący kamień', tok: 'kiwen suno'
   },
   beans: {
-    icon: '🫘', tags: ['hold', 'shop'], en: 'jar of beans', full: 'a jar of beans',
+    icon: '🫘', tags: ['hold', 'shop'], use: 'eat', leaves: 'jar', en: 'jar of beans', full: 'a jar of beans',
     ru: 'банка бобов', zh: '一罐豆子', fr: 'bocal de haricots', es: 'tarro de frijoles', ja: '豆のびん', ar: 'برطمان فول', pl: 'słoik fasoli', tok: 'poki pi kili lili'
   },
   coins: {
@@ -297,7 +298,7 @@ LG.ITEMS = {
     ru: 'рыба', zh: '鱼', fr: 'poisson', es: 'pescado', ja: '魚', ar: 'سمكة', pl: 'ryba', tok: 'kala'
   },
   honey: {
-    icon: '🍯', tags: ['hold', 'shop', 'prize'], en: 'jar of honey', full: 'a jar of honey',
+    icon: '🍯', tags: ['hold', 'shop', 'prize'], use: 'eat', leaves: 'jar', en: 'jar of honey', full: 'a jar of honey',
     ru: 'банка мёда', zh: '一罐蜂蜜', fr: 'pot de miel', es: 'tarro de miel', ja: 'はちみつのびん', ar: 'برطمان عسل', pl: 'słoik miodu', tok: 'poki pi telo suwi'
   },
   rope: {
@@ -313,7 +314,7 @@ LG.ITEMS = {
     ru: 'яйцо', zh: '鸡蛋', fr: 'œuf', es: 'huevo', ja: 'たまご', ar: 'بيضة', pl: 'jajko', tok: 'sike waso'
   },
   milk: {
-    icon: '🥛', tags: ['hold', 'shop'], use: 'drink', en: 'jug of milk', full: 'a jug of milk',
+    icon: '🥛', tags: ['hold', 'shop'], use: 'drink', leaves: 'jug', en: 'jug of milk', full: 'a jug of milk',
     ru: 'кувшин молока', zh: '一壶牛奶', fr: 'pot de lait', es: 'jarra de leche', ja: '牛乳のびん', ar: 'إبريق حليب', pl: 'dzbanek mleka', tok: 'poki pi telo mama'
   },
   apple: {
@@ -455,11 +456,11 @@ LG.ITEMS = {
     ru: 'пирог', zh: '派', ja: 'パイ', fr: 'tarte', es: 'tarta', ar: 'فطيرة', pl: 'placek', tok: 'pan pi kili suwi'
   },
   jam: {
-    icon: '🫙', tags: ['hold', 'shop', 'prize'], en: 'jam', full: 'a jar of jam',
+    icon: '🫙', tags: ['hold', 'shop', 'prize'], use: 'eat', leaves: 'jar', en: 'jam', full: 'a jar of jam',
     ru: 'варенье', zh: '果酱', ja: 'ジャム', fr: 'confiture', es: 'mermelada', ar: 'برطمان مربى', pl: 'słoik dżemu', tok: 'ko kili'
   },
   soup: {
-    icon: '🍲', tags: ['hold', 'shop'], use: 'eat', en: 'soup', full: 'a bowl of soup',
+    icon: '🍲', tags: ['hold', 'shop'], use: 'eat', leaves: 'bowl', en: 'soup', full: 'a bowl of soup',
     ru: 'суп', zh: '汤', ja: 'スープ', fr: 'soupe', es: 'sopa', ar: 'طبق حساء', pl: 'miska zupy', tok: 'telo moku'
   },
   meat: {
@@ -471,11 +472,11 @@ LG.ITEMS = {
     ru: 'бекон', zh: '培根', ja: 'ベーコン', fr: 'lard', es: 'tocino', ar: 'لحم مقدد', pl: 'boczek', tok: 'moku pi soweli ko'
   },
   rice: {
-    icon: '🍚', tags: ['hold', 'shop'], use: 'eat', en: 'rice', full: 'a bowl of rice',
+    icon: '🍚', tags: ['hold', 'shop'], use: 'eat', leaves: 'bowl', en: 'rice', full: 'a bowl of rice',
     ru: 'рис', zh: '米饭', ja: 'ごはん', fr: 'riz', es: 'arroz', ar: 'طبق أرز', pl: 'miska ryżu', tok: 'pan lili'
   },
   noodles: {
-    icon: '🍜', tags: ['hold', 'shop'], use: 'eat', en: 'noodles', full: 'a bowl of noodles',
+    icon: '🍜', tags: ['hold', 'shop'], use: 'eat', leaves: 'bowl', en: 'noodles', full: 'a bowl of noodles',
     ru: 'лапша', zh: '面条', ja: 'めん', fr: 'nouilles', es: 'fideos', ar: 'طبق نودلز', pl: 'miska makaronu', tok: 'linja moku'
   },
   wheat: {
@@ -483,19 +484,19 @@ LG.ITEMS = {
     ru: 'пшеница', zh: '小麦', ja: '小麦', fr: 'blé', es: 'trigo', ar: 'حزمة قمح', pl: 'snop pszenicy', tok: 'kasi pan'
   },
   tea: {
-    icon: '🍵', tags: ['hold', 'shop', 'prize'], use: 'drink', en: 'tea', full: 'a cup of tea',
+    icon: '🍵', tags: ['hold', 'shop', 'prize'], use: 'drink', leaves: 'cup', en: 'tea', full: 'a cup of tea',
     ru: 'чай', zh: '茶', ja: 'お茶', fr: 'thé', es: 'té', ar: 'كوب شاي', pl: 'filiżanka herbaty', tok: 'telo kasi'
   },
   coffee: {
-    icon: '☕', tags: ['hold', 'shop'], use: 'drink', en: 'coffee', full: 'a cup of coffee',
+    icon: '☕', tags: ['hold', 'shop'], use: 'drink', leaves: 'cup', en: 'coffee', full: 'a cup of coffee',
     ru: 'кофе', zh: '咖啡', ja: 'コーヒー', fr: 'café', es: 'café', ar: 'كوب قهوة', pl: 'filiżanka kawy', tok: 'telo pimeja'
   },
   wine: {
-    icon: '🍷', tags: ['hold', 'shop', 'prize'], use: 'drink', en: 'wine', full: 'a bottle of wine',
+    icon: '🍷', tags: ['hold', 'shop', 'prize'], use: 'drink', leaves: 'bottle', en: 'wine', full: 'a bottle of wine',
     ru: 'вино', zh: '葡萄酒', ja: 'ワイン', fr: 'vin', es: 'vino', ar: 'زجاجة نبيذ', pl: 'butelka wina', tok: 'telo nasa'
   },
   beer: {
-    icon: '🍺', tags: ['hold', 'shop'], use: 'drink', en: 'beer', full: 'a mug of beer',
+    icon: '🍺', tags: ['hold', 'shop'], use: 'drink', leaves: 'mug', en: 'beer', full: 'a mug of beer',
     ru: 'пиво', zh: '啤酒', ja: 'ビール', fr: 'bière', es: 'cerveza', ar: 'كوب بيرة', pl: 'kufel piwa', tok: 'telo nasa pan'
   },
   hammer: {
@@ -843,7 +844,7 @@ LG.ITEMS = {
      No tags, so the errand generator never picks them: they can't be
      anyone's errand, and adding them leaves every seed's chain as it was. */
   roast: {
-    icon: '🍗', tags: [], use: 'eat', price: 3, en: 'roast meat', full: 'a plate of roast meat',
+    icon: '🍗', tags: [], use: 'eat', leaves: 'plate', price: 3, en: 'roast meat', full: 'a plate of roast meat',
     ru: 'жаркое', zh: '烤肉', ja: '焼いた肉', fr: 'rôti', es: 'asado', ar: 'لحم مشوي', pl: 'pieczeń', tok: 'moku soweli seli'
   },
   fried_egg: {
@@ -851,15 +852,61 @@ LG.ITEMS = {
     ru: 'яичница', zh: '煎蛋', ja: '目玉焼き', fr: 'œuf au plat', es: 'huevo frito', ar: 'بيضة مقلية', pl: 'jajko sadzone', tok: 'sike waso seli'
   },
   popcorn: {
-    icon: '🍿', tags: [], use: 'eat', price: 2, en: 'popcorn', full: 'a bowl of popcorn',
+    icon: '🍿', tags: [], use: 'eat', leaves: 'bowl', price: 2, en: 'popcorn', full: 'a bowl of popcorn',
     ru: 'попкорн', zh: '爆米花', ja: 'ポップコーン', fr: 'pop-corn', es: 'palomitas', ar: 'فشار', pl: 'popcorn', tok: 'pan jelo seli'
+  },
+  fried_bacon: {
+    icon: '🥓', tags: [], use: 'eat', price: 3, en: 'fried bacon', full: 'some fried bacon',
+    ru: 'жареный бекон', zh: '煎培根', ja: '焼いたベーコン', fr: 'lard grillé', es: 'tocino frito', ar: 'لحم مقدد مقلي', pl: 'smażony boczek', tok: 'moku soweli ko seli'
+  },
+  sandwich: {
+    icon: '🥪', tags: [], use: 'eat', price: 3, en: 'bacon sandwich', full: 'a bacon sandwich',
+    ru: 'бутерброд с беконом', zh: '培根三明治', ja: 'ベーコンサンド', fr: 'sandwich au lard', es: 'bocadillo de tocino', ar: 'شطيرة لحم مقدد', pl: 'kanapka z boczkiem', tok: 'pan pi moku soweli'
+  },
+  grilled_fish: {
+    icon: '🐟', tags: [], use: 'eat', price: 3, en: 'grilled fish', full: 'a grilled fish',
+    ru: 'жареная рыба', zh: '烤鱼', ja: '焼き魚', fr: 'poisson grillé', es: 'pescado a la parrilla', ar: 'سمك مشوي', pl: 'pieczona ryba', tok: 'kala seli'
+  },
+  fried_mushrooms: {
+    icon: '🍄', tags: [], use: 'eat', price: 2, en: 'fried mushrooms', full: 'some fried mushrooms',
+    ru: 'жареные грибы', zh: '炒蘑菇', ja: 'きのこ炒め', fr: 'champignons poêlés', es: 'setas fritas', ar: 'فطر مقلي', pl: 'smażone grzyby', tok: 'soko seli'
+  },
+  baked_potato: {
+    icon: '🥔', tags: [], use: 'eat', price: 2, en: 'baked potato', full: 'a baked potato',
+    ru: 'печёная картошка', zh: '烤土豆', ja: '焼きいも', fr: 'pomme de terre au four', es: 'patata asada', ar: 'بطاطا مشوية', pl: 'pieczony ziemniak', tok: 'kili ma seli'
+  },
+
+  /* ---- what's left once you've eaten or drunk what was in it -----------
+     (see `leaves`). The bottle and plate already exist as ordinary items;
+     these are new, and untagged for the same reason as the dishes above. */
+  jar: {
+    icon: '🏺', tags: [], price: 1, en: 'jar', full: 'an empty jar',
+    ru: 'банка', zh: '空罐子', ja: '空きびん', fr: 'bocal', es: 'tarro', ar: 'برطمان فارغ', pl: 'słoik', tok: 'poki lili'
+  },
+  jug: {
+    icon: '🫗', tags: [], price: 1, en: 'jug', full: 'an empty jug',
+    ru: 'кувшин', zh: '空壶', ja: 'ピッチャー', fr: 'pot', es: 'jarra', ar: 'إبريق فارغ', pl: 'dzbanek', tok: 'poki pi pana telo'
+  },
+  cup: {
+    icon: '🥤', tags: [], price: 1, en: 'cup', full: 'an empty cup',
+    ru: 'чашка', zh: '空杯子', ja: 'カップ', fr: 'tasse', es: 'taza', ar: 'فنجان فارغ', pl: 'filiżanka', tok: 'poki pi telo moku'
+  },
+  mug: {
+    icon: '🥃', tags: [], price: 1, en: 'mug', full: 'an empty mug',
+    ru: 'кружка', zh: '空马克杯', ja: 'ジョッキ', fr: 'chope', es: 'jarro', ar: 'كوب كبير فارغ', pl: 'kufel', tok: 'poki telo suli'
+  },
+  bowl: {
+    icon: '🥣', tags: [], price: 1, en: 'bowl', full: 'an empty bowl',
+    ru: 'миска', zh: '空碗', ja: 'おわん', fr: 'bol', es: 'cuenco', ar: 'وعاء فارغ', pl: 'miska', tok: 'poki moku'
   }
 };
 
 /* ------------------------------------------------------------- recipes
    What an oven turns raw things into (see LG.world.ovens). `needs` is
-   item id -> how many; `makes` is one of the result. Only things you
-   have at least one ingredient for are shown at the oven. */
+   item id -> how many, used up; `with` is things you must have but keep,
+   like the teapot; `makes` is one of the result, container and all (see
+   `leaves`). Only things you have at least one ingredient for are shown
+   at the oven. */
 LG.RECIPES = [
   { needs: { wheat: 1 }, makes: 'bread' },
   { needs: { egg: 1 }, makes: 'fried_egg' },
@@ -872,7 +919,13 @@ LG.RECIPES = [
   { needs: { wheat: 1, apple: 1 }, makes: 'pie' },
   { needs: { wheat: 1, pear: 1 }, makes: 'pie' },
   { needs: { wheat: 1, cherries: 1 }, makes: 'pie' },
-  { needs: { wheat: 1, egg: 1, butter: 1 }, makes: 'cake' }
+  { needs: { wheat: 1, egg: 1, butter: 1 }, makes: 'cake' },
+  { needs: { bacon: 1 }, makes: 'fried_bacon' },
+  { needs: { bacon: 1, bread: 1 }, makes: 'sandwich' },
+  { needs: { fish: 1 }, makes: 'grilled_fish' },
+  { needs: { mushrooms: 1 }, makes: 'fried_mushrooms' },
+  { needs: { potato: 1 }, makes: 'baked_potato' },
+  { needs: { herbs: 1 }, with: { teapot: 1 }, makes: 'tea' }
 ];
 
 /* Fallback price when an item has no explicit `price` field. */

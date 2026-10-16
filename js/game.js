@@ -728,16 +728,21 @@ LG.game = (function () {
      shopping list, and finding out what wheat is good for is half the fun. */
   function renderOven() {
     const L = C.language(), box = document.getElementById('ovenList');
-    const part = (id, n) => {
+    const part = (id, n, kept) => {
       const it = LG.ITEMS[id], short = LG.ledger.count(id) < n;
-      return '<span class="' + (short ? 'lack' : '') + '" title="' + escapeHTML(it.en) + '">' + it.icon +
+      return '<span class="' + (short ? 'lack' : '') + (kept ? ' kept' : '') + '" title="' +
+             escapeHTML(it.en + (kept ? ' (kept)' : '')) + '">' + it.icon +
              ' <span lang="' + L.tag + '">' + escapeHTML(LG.itemName(id, settings.lang)) +
              (n > 1 ? ' ×' + n : '') + '</span></span>';
     };
-    const shown = LG.RECIPES.filter(r => Object.keys(r.needs).some(k => LG.ledger.count(k) > 0));
+    /* Things only needed, not used up (the teapot), sit in a dashed outline. */
+    const shown = LG.RECIPES.filter(r => Object.keys(r.needs).concat(Object.keys(r.with || {}))
+                                               .some(k => LG.ledger.count(k) > 0));
     box.innerHTML = shown.length
       ? shown.map((r, i) => '<div class="recipe"><span class="parts">' +
-          Object.keys(r.needs).map(k => part(k, r.needs[k])).join(' + ') + ' → ' + part(r.makes, 0) +
+          Object.keys(r.needs).map(k => part(k, r.needs[k]))
+            .concat(Object.keys(r.with || {}).map(k => part(k, r.with[k], true))).join(' + ') +
+          ' → ' + part(r.makes, 0) +
           '</span><button type="button" class="chip" data-recipe="' + LG.RECIPES.indexOf(r) + '"' +
           (LG.ledger.canCook(r) ? '' : ' disabled') + '>Cook</button></div>').join('')
       : '<div class="notice muted">Nothing in your pockets that wants cooking.</div>';

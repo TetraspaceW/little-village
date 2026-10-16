@@ -54,7 +54,8 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
   drunk (both used up), clothes and jewellery are put on, and clicking a worn
   thing takes it off. Putting on a hat takes off whatever else was on your
   head. Villagers can see what you're wearing. You won't eat or drink
-  something the errand still needs.
+  something the errand still needs. Whatever it came in stays behind: a jar
+  of honey leaves an empty jar, a cup of tea a cup, a bowl of soup a bowl.
 - Translations stay blurred until you click them.
 
 ## Gameplay
@@ -93,7 +94,8 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
 - **Cooking.** The farmhouse kitchen has an oven, and so does the bakery.
   Stand beside one and press **E** (or tap it) to see what you could make
   from what you're carrying: wheat bakes into bread, an egg fries, two
-  vegetables make soup, wheat and fruit make a pie, and so on. Only recipes
+  vegetables make soup, wheat and fruit make a pie, herbs make tea if you
+  have a teapot (which you keep), and so on. Only recipes
   you have at least one ingredient for are shown. Anyone in the room sees you
   do it and remembers. As with eating, nothing the errand still needs goes
   in the pot.

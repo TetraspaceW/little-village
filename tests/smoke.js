@@ -2166,15 +2166,15 @@ async function mintedGoods() {
   ok(cider && LG.ITEMS[cider].leaves === 'bottle', 'and what it comes in is left behind');
   LG.ledger.give(cider, 1);
   const bottles = LG.ledger.count('bottle');
-  ok(LG.ledger.use(cider) && LG.ledger.count(cider) === 0 && LG.ledger.count('bottle') === bottles + 1,
+  ok(LG.pockets.use(cider) && LG.ledger.count(cider) === 0 && LG.ledger.count('bottle') === bottles + 1,
      'drinking it uses it up and leaves the bottle');
   answer = { thing: true, same: null, en: 'straw hat', full: 'a straw hat', icon: '👒', price: 4,
              use: 'wear', slot: 'head', leaves: null, g: 'f' };
   const hat = (await LG.mint.sale(seller, ['straw_hat'], '', ''))[0];
   LG.ledger.give(hat, 1);
-  ok(LG.ITEMS[hat].slot === 'head' && LG.ledger.use(hat) && LG.ledger.state.worn[hat],
+  ok(LG.ITEMS[hat].slot === 'head' && LG.pockets.use(hat) && LG.ledger.state.worn[hat],
      'something to wear can be put on');
-  ok(LG.ledger.wornList().indexOf('straw hat') !== -1, 'and the villagers see it worn');
+  ok(LG.pockets.wornList().indexOf('straw hat') !== -1, 'and the villagers see it worn');
   answer = { thing: true, same: null, en: 'odd cloak', full: 'an odd cloak', icon: '🧥', price: 4,
              use: 'wear', slot: 'tail', leaves: 'teapot_of_doom' };
   const cloak = (await LG.mint.sale(seller, ['odd_cloak'], '', ''))[0];
@@ -2186,14 +2186,14 @@ async function mintedGoods() {
   const lamp = (await LG.mint.sale(seller, ['storm_lantern'], '', ''))[0];
   LG.ledger.give(lamp, 1);
   ok(LG.ITEMS[lamp].glow === 6, 'a light reaches no further than the brightest the game has');
-  ok(LG.ledger.use(lamp) && LG.ledger.state.lit[lamp] && LG.ledger.glow() === 6,
+  ok(LG.pockets.use(lamp) && LG.ledger.state.lit[lamp] && LG.pockets.glow() === 6,
      'and it can be lit, and lights the dark');
   answer = { thing: true, same: null, en: 'tin whistle', full: 'a tin whistle', icon: '🪈',
              price: 2, use: 'play', gm: 'whistle', note: 'C5', rung: false };
   const whistle = (await LG.mint.sale(seller, ['tin_whistle'], '', ''))[0];
   LG.ledger.give(whistle, 1);
   ok(LG.ITEMS[whistle].gm === 'whistle' && LG.ITEMS[whistle].note === 'C5' && !LG.ITEMS[whistle].rung &&
-     LG.ledger.use(whistle), 'an instrument can be played, on its own General MIDI instrument');
+     LG.pockets.use(whistle), 'an instrument can be played, on its own General MIDI instrument');
   answer = { thing: true, same: null, en: 'kazoo', full: 'a kazoo', icon: '🎺',
              price: 2, use: 'play', gm: 'kazoo', note: 'C4' };
   const kazoo = (await LG.mint.sale(seller, ['kazoo'], '', ''))[0];
@@ -2230,7 +2230,7 @@ async function mintedGoods() {
      'every recipe is still made of real things, and makes something to eat');
   const mashing = mine.find(r => r.makes === mash);
   LG.ledger.give(yam, 1);
-  ok(LG.ledger.cook(mashing) && LG.ledger.count(yam) === 0 && LG.ledger.count(mash) === 1,
+  ok(LG.pockets.cook(mashing) && LG.ledger.count(yam) === 0 && LG.ledger.count(mash) === 1,
      'and the oven cooks it');
 
   answer = { thing: true, same: null, en: 'raw turnip', full: 'a raw turnip', icon: '🥔', price: 1,

@@ -2120,7 +2120,7 @@ async function mintedGoods() {
      'a villager at work is told they can sell what is not listed');
 
   answer = { thing: true, same: null, en: 'pain au chocolat', full: 'a pain au chocolat',
-             name: 'pain au chocolat', icon: '🥐', price: 3 };
+             name: 'pain au chocolat', icon: '🥐', price: 3, use: 'eat', slot: null, leaves: null };
   seller.till = []; seller.sold = {}; seller.stock = {}; seller.turns = 40;
   LG.ledger.state.inv.coins = 20;
   const ids = await LG.mint.sale(seller, ['pain_au_chocolat'], 'Voilà.', 'Here you are.');
@@ -2154,8 +2154,31 @@ async function mintedGoods() {
   answer = null;
   ok((await LG.mint.sale(seller, ['mystery'], '', '')).length === 0, 'no answer is nothing too');
 
+  // What you can do with it from your pockets, the same as anything shipped.
+  ok(LG.ITEMS.pain_au_chocolat.use === 'eat', 'something to eat can be eaten');
+  answer = { thing: true, same: null, en: 'flask of cider', full: 'a flask of cider', icon: '🍶',
+             price: 3, use: 'drink', slot: null, leaves: 'bottle' };
+  const cider = (await LG.mint.sale(seller, ['cider_flask'], '', ''))[0];
+  ok(cider && LG.ITEMS[cider].leaves === 'bottle', 'and what it comes in is left behind');
+  LG.ledger.give(cider, 1);
+  const bottles = LG.ledger.count('bottle');
+  ok(LG.ledger.use(cider) && LG.ledger.count(cider) === 0 && LG.ledger.count('bottle') === bottles + 1,
+     'drinking it uses it up and leaves the bottle');
+  answer = { thing: true, same: null, en: 'straw hat', full: 'a straw hat', icon: '👒', price: 4,
+             use: 'wear', slot: 'head', leaves: null, g: 'f' };
+  const hat = (await LG.mint.sale(seller, ['straw_hat'], '', ''))[0];
+  LG.ledger.give(hat, 1);
+  ok(LG.ITEMS[hat].slot === 'head' && LG.ledger.use(hat) && LG.ledger.state.worn[hat],
+     'something to wear can be put on');
+  ok(LG.ledger.wornList().indexOf('straw hat') !== -1, 'and the villagers see it worn');
+  answer = { thing: true, same: null, en: 'odd cloak', full: 'an odd cloak', icon: '🧥', price: 4,
+             use: 'wear', slot: 'tail', leaves: 'teapot_of_doom' };
+  const cloak = (await LG.mint.sale(seller, ['odd_cloak'], '', ''))[0];
+  ok(cloak && !LG.ITEMS[cloak].use && !LG.ITEMS[cloak].slot && !LG.ITEMS[cloak].leaves,
+     'worn somewhere nothing is worn, it is just a thing to carry');
+
   const shot = JSON.parse(JSON.stringify(LG.save.snapshot()));
-  ok(shot.minted.length === 1 && shot.minted[0].id === 'pain_au_chocolat', 'a save carries it');
+  ok(shot.minted.some(m => m.id === 'pain_au_chocolat'), 'a save carries it');
   LG.game.newVillage('yet-another-village', true);
   ok(!LG.ITEMS.pain_au_chocolat, 'a new village does not have it');
   ok(LG.save.restore(shot) === null, 'the save loads');
@@ -2163,6 +2186,15 @@ async function mintedGoods() {
      'and it is back, in the traveller’s pocket');
   ok(LG.mint.priceFor(LG.village.npcs.find(x => x.id === seller.id), 'pain_au_chocolat') === 3,
      'still sold by the one who sold it');
+  ok(LG.ITEMS.pain_au_chocolat.use === 'eat' && LG.ITEMS[hat] && LG.ITEMS[hat].slot === 'head',
+     'still to be eaten, or worn');
+  ok(LG.ledger.state.worn[hat], 'and the hat is still on');
+
+  // "(worn)" agrees with a minted thing, in the languages where it has to.
+  LG.mint.restore([{ id: 'shawl', en: 'shawl', icon: '🧣', price: 3, use: 'wear', slot: 'neck',
+                     names: { ru: 'шаль' }, g: { ru: 'f', fr: 'zz' } }]);
+  ok(LG.wornMark('shawl', 'ru') === '(надета)', 'a feminine shawl is надета in Russian');
+  ok(!LG.ITEMS.shawl.g.fr, 'and a gender French does not have is dropped');
 
   LG.llm.mintItem = real;
 }

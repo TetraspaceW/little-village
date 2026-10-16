@@ -12,8 +12,8 @@
    (LG.llm.mintItem) and it becomes a real entry in LG.ITEMS — an icon, an
    English name, the village's own name for it, and a usual price. From
    then on it's an ordinary item: it sits in the traveller's pockets, can
-   be held out, refunded, and resold, and every prompt names it the way it
-   names anything else.
+   be held out, refunded, and resold, eaten, drunk or worn if it's that kind
+   of thing, and every prompt names it the way it names anything else.
 
    What a minted item deliberately is not:
    - It has no tags, so the errand generator (which picks by tag) can never
@@ -71,9 +71,45 @@ LG.mint = (function () {
     it.en = def.en; it.full = def.full || def.en;
     it.price = Math.max(1, Math.min(30, Math.round(Number(def.price)) || 2));
     if (def.lang && def.name) it[def.lang] = def.name;
+    Object.assign(it, usesOf(def));
     (def.by || []).forEach(id => { if (it.by.indexOf(id) === -1) it.by.push(id); });
     LG.ITEMS[def.id] = made[def.id] = it;
     return def.id;
+  }
+
+  /* What the traveller can do with it from their pockets (see `use` on
+     LG.ITEMS, and ledger.use): eat, drink or wear it, which slot it's worn
+     in, what's left once it's gone, and its gender where "(worn)" has to
+     agree. Anything that isn't one of the values the shipped items use is
+     dropped, so a minted item is never half-usable. */
+  function slots() {
+    const out = [];
+    Object.keys(LG.ITEMS).forEach(k => { const s = LG.ITEMS[k].slot; if (s && out.indexOf(s) === -1) out.push(s); });
+    return out;
+  }
+  function containers() {
+    const out = [];
+    Object.keys(LG.ITEMS).forEach(k => { const c = LG.ITEMS[k].leaves; if (c && LG.ITEMS[c] && out.indexOf(c) === -1) out.push(c); });
+    return out;
+  }
+  function genders(lang) {
+    const t = LG.WORN && LG.WORN[lang];
+    return t && typeof t === 'object' ? Object.keys(t) : [];
+  }
+  function usesOf(def) {
+    const out = { use: undefined, slot: undefined, leaves: undefined, g: undefined };
+    const use = ['eat', 'drink', 'wear'].indexOf(def.use) !== -1 ? def.use : null;
+    if (use === 'wear') {
+      if (slots().indexOf(def.slot) === -1) return out;      // worn with no slot can't be swapped out
+      out.use = use; out.slot = def.slot;
+    } else if (use) {
+      out.use = use;
+      if (containers().indexOf(def.leaves) !== -1) out.leaves = def.leaves;
+    }
+    const g = {};
+    Object.keys(def.g || {}).forEach(l => { if (genders(l).indexOf(def.g[l]) !== -1) g[l] = def.g[l]; });
+    if (Object.keys(g).length) out.g = g;
+    return out;
   }
 
   /* A free tag for a new item: its English name, made unique if that
@@ -111,6 +147,8 @@ LG.mint = (function () {
       npcName: npc.def.name, tag: raw, said: said, translation: translation,
       known: ids.filter(k => !made[k]).map(entry), minted: ids.filter(k => made[k]).map(entry),
       langName: LG.LANGUAGES[lang].name,
+      slots: slots(), containers: containers(), genders: genders(lang),
+      genderNote: lang === 'fr' || lang === 'es' ? 'mp and fp are the plurals' : 'p is plural',
       anchor: 'a loaf of bread costs ' + LG.priceOf('bread') + ' coins'
     });
     if (!got || got.thing === false) return null;
@@ -122,7 +160,8 @@ LG.mint = (function () {
     const id = freeId(en);
     register({ id: id, en: en, full: plainText(got.full, 48) || en, icon: got.icon,
                price: got.price, lang: lang !== 'en' && name ? lang : null, name: name,
-               by: [npc.id] });
+               use: got.use, slot: got.slot, leaves: got.leaves,
+               g: got.g ? { [lang]: got.g } : null, by: [npc.id] });
     LG.ledger.log(LG.ITEMS[id].icon + ' ' + npc.def.name + ' has ' + LG.ITEMS[id].full +
                   ' — something new to the game.');
     return id;
@@ -150,7 +189,9 @@ LG.mint = (function () {
   function saved() {
     return Object.keys(made).map(id => {
       const it = made[id], out = { id: id, icon: it.icon, en: it.en, full: it.full,
-                                   price: it.price, by: it.by.slice(), names: {} };
+                                   price: it.price, by: it.by.slice(), names: {},
+                                   use: it.use || null, slot: it.slot || null,
+                                   leaves: it.leaves || null, g: it.g || null };
       Object.keys(LG.LANGUAGES).forEach(l => { if (l !== 'en' && it[l]) out.names[l] = it[l]; });
       return out;
     });
@@ -161,7 +202,8 @@ LG.mint = (function () {
     (Array.isArray(list) ? list : []).forEach(d => {
       if (!d || typeof d.en !== 'string') return;
       const id = register({ id: slug(d.id), en: d.en, full: d.full, icon: d.icon,
-                            price: d.price, by: Array.isArray(d.by) ? d.by : [] });
+                            price: d.price, use: d.use, slot: d.slot, leaves: d.leaves, g: d.g,
+                            by: Array.isArray(d.by) ? d.by : [] });
       if (id) Object.keys(d.names || {}).forEach(l => {
         if (LG.LANGUAGES[l]) LG.ITEMS[id][l] = plainText(d.names[l], 40);
       });

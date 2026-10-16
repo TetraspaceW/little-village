@@ -102,7 +102,7 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
   chain. Ask for something their trade would plausibly have that the game
   doesn't list — a pain au chocolat at the bakery — and if they sell it to
   you, it becomes a new item, with its own icon and name, for the rest of
-  that village.
+  that village — one you can eat, drink or wear if it's that sort of thing.
 - **Cooking.** The farmhouse kitchen has an oven, and so does the bakery.
   Stand beside one and press **E** (or tap it) to see what you could make
   from what you're carrying: wheat bakes into bread, an egg fries, two

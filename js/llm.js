@@ -775,9 +775,20 @@ LG.llm = (function () {
         ", the word the villager used if they named it, written plainly (no readings, no brackets)",
       '- "icon": one emoji that looks most like it',
       '- "price": what it is usually worth, in coins, where ' + o.anchor,
+      '- "use": "eat" or "drink" if you would eat or drink it just as it comes (a raw',
+      '  onion or a joint of meat is not a snack), "wear" if it is worn, otherwise null',
+      '- "slot": if it is worn, where — one of ' + (o.slots || []).join(", ") +
+        ' (putting it on takes off whatever else is there); otherwise null',
+      '- "leaves": if it is eaten or drunk out of something, what is left in your hands',
+      '  afterwards — one of ' + (o.containers || []).join(", ") + '; otherwise null',
+      o.genders && o.genders.length
+        ? '- "g": the grammatical gender and number of "name" in ' + o.langName +
+          ' — one of ' + o.genders.join(", ") + (o.genderNote ? " (" + o.genderNote + ")" : "")
+        : "",
       "",
       "Reply with only a JSON object:",
-      '{"thing": true, "same": null, "en": "", "full": "", "name": "", "icon": "", "price": 0}',
+      '{"thing": true, "same": null, "en": "", "full": "", "name": "", "icon": "", "price": 0, ' +
+        '"use": null, "slot": null, "leaves": null' + (o.genders && o.genders.length ? ', "g": null' : "") + "}",
       "",
       "Things the game already has, as tag: name —",
       o.known.join("; "),

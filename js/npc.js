@@ -338,74 +338,142 @@ LG.actors = (function () {
     ctx.closePath();
   }
 
-  function drawCharacter(ctx, a, opts) {
-    const x = a.px, y = a.py;
-    const bob = a.frozen ? 0 : Math.sin(performance.now() / 220 + x) * 0.8;
-
+  /* A character is three layers: a shadow and a name tag that stay put,
+     and between them a body that bobs. Each is painted by one of these,
+     into a sprite (see drawCharacter) or, with no canvas for one, live. */
+  function paintShadow(ctx, x, y) {
     ctx.fillStyle = 'rgba(0,0,0,.22)';
     ctx.beginPath(); ctx.ellipse(x, y + 12, 10, 4.5, 0, 0, Math.PI * 2); ctx.fill();
+  }
 
+  function paintBody(ctx, a, opts, x, y) {
     if (a.isBeast) {
       // A halo behind the emoji so a creature reads clearly against grass,
       // dirt, or shadow — without one, small dark-colored animals all but
       // vanish into the green.
       ctx.fillStyle = 'rgba(253,246,232,.55)';
-      ctx.beginPath(); ctx.arc(x, y + bob, 15, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x, y, 15, 0, Math.PI * 2); ctx.fill();
 
       // fillText draws an emoji at whatever alpha fillStyle last carried, not
       // just its color — left at the halo's .55 (or the shadow's .22 before
       // that), the animal itself came out translucent. Full alpha, opaque.
       ctx.fillStyle = '#000';
       ctx.font = '30px system-ui'; ctx.textAlign = 'center';
-      ctx.fillText(a.emoji, x, y + 11 + bob);
-      if (opts && opts.name) {
-        ctx.font = '600 11px system-ui';
-        const w = ctx.measureText(opts.name).width + 10;
-        ctx.fillStyle = 'rgba(28,24,20,.6)';
-        roundRect(ctx, x - w / 2, y - 22, w, 15, 7); ctx.fill();
-        ctx.fillStyle = '#fdf6e8';
-        ctx.fillText(opts.name, x, y - 11);
-      }
+      ctx.fillText(a.emoji, x, y + 11);
       return;
     }
 
     const c = opts.color;
     // body
     ctx.fillStyle = c;
-    roundRect(ctx, x - 8, y - 6 + bob, 16, 18, 5); ctx.fill();
+    roundRect(ctx, x - 8, y - 6, 16, 18, 5); ctx.fill();
     // arms
     ctx.fillStyle = shade(c, -18);
-    ctx.fillRect(x - 11, y - 3 + bob, 3, 10);
-    ctx.fillRect(x + 8, y - 3 + bob, 3, 10);
+    ctx.fillRect(x - 11, y - 3, 3, 10);
+    ctx.fillRect(x + 8, y - 3, 3, 10);
     // head
     ctx.fillStyle = opts.skin || '#f0c8a0';
-    ctx.beginPath(); ctx.arc(x, y - 13 + bob, 8.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y - 13, 8.5, 0, Math.PI * 2); ctx.fill();
     // hair
     ctx.fillStyle = opts.hair || '#4a3728';
     ctx.beginPath();
-    ctx.arc(x, y - 15 + bob, 8.5, Math.PI * (a.dir === 'up' ? 0 : 1), Math.PI * (a.dir === 'up' ? 2 : 2));
+    ctx.arc(x, y - 15, 8.5, Math.PI * (a.dir === 'up' ? 0 : 1), Math.PI * (a.dir === 'up' ? 2 : 2));
     ctx.fill();
     // eyes (not when facing away)
     if (a.dir !== 'up') {
       ctx.fillStyle = '#2b2118';
       const off = a.dir === 'left' ? -2 : a.dir === 'right' ? 2 : 0;
-      ctx.beginPath(); ctx.arc(x - 3 + off, y - 12 + bob, 1.4, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(x + 3 + off, y - 12 + bob, 1.4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x - 3 + off, y - 12, 1.4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x + 3 + off, y - 12, 1.4, 0, Math.PI * 2); ctx.fill();
     }
     // role badge
     if (opts.emoji) {
       ctx.font = '14px system-ui'; ctx.textAlign = 'center';
-      ctx.fillText(opts.emoji, x + 13, y - 16 + bob);
+      ctx.fillText(opts.emoji, x + 13, y - 16);
     }
-    // name
-    if (opts.name) {
-      ctx.font = '600 11px system-ui'; ctx.textAlign = 'center';
-      const w = ctx.measureText(opts.name).width + 10;
-      ctx.fillStyle = 'rgba(28,24,20,.6)';
-      roundRect(ctx, x - w / 2, y - 38, w, 15, 7); ctx.fill();
-      ctx.fillStyle = '#fdf6e8';
-      ctx.fillText(opts.name, x, y - 27);
+  }
+
+  // `top` is the tag's top edge: 38 px above a villager's anchor, 22 above an animal's.
+  const TAG_FONT = '600 11px system-ui';
+  function paintName(ctx, name, x, top) {
+    ctx.font = TAG_FONT; ctx.textAlign = 'center';
+    const w = ctx.measureText(name).width + 10;
+    ctx.fillStyle = 'rgba(28,24,20,.6)';
+    roundRect(ctx, x - w / 2, top, w, 15, 7); ctx.fill();
+    ctx.fillStyle = '#fdf6e8';
+    ctx.fillText(name, x, top + 11);
+  }
+
+  /* Characters and bubbles are stamped from sprites. Drawn live, a character
+     was ~10 path fills and two text draws a frame and a bubble re-wrapped
+     its text every frame: ~0.4 ms each for the village and four bubbles in
+     Firefox. Bodies are shared by look and facing; a name tag or bubble
+     belongs to its character and is repainted when its text changes.
+     Painted at device resolution, and stamped one texel to a device pixel
+     at whole device pixels (as in world.js). A body's bob is under a pixel,
+     so it has a sprite per quarter of a device pixel down, painted that far
+     into it; drawn smoothed at its fractional height instead, walking
+     villagers cost half again as much. sprite() returns null with no
+     canvas to paint into, and the caller paints live. */
+  function sprite(w, h, ox, oy, d, paint) {
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(w * d); canvas.height = Math.ceil(h * d);
+    const g = canvas.getContext && canvas.getContext('2d');
+    if (!g || typeof g.arc !== 'function') return null;
+    g.setTransform(d, 0, 0, d, 0, 0);
+    paint(g, ox, oy);
+    return { canvas, w: canvas.width / d, h: canvas.height / d, ox, oy };
+  }
+  function snap(v, d) { return Math.round(v * d) / d; }
+  function stamp(ctx, s, x, y, d) {
+    ctx.drawImage(s.canvas, snap(x - s.ox, d), snap(y - s.oy, d), s.w, s.h);
+  }
+
+  // Body sprite boxes: width, height, and where the anchor sits. Room for the
+  // emoji, as a badge's glyph or an animal's can overhang its nominal size.
+  const BEAST_BOX = [52, 54, 26, 28], PERSON_BOX = [48, 54, 16, 37], BOB_STEPS = 4;
+  const bodies = new Map(), tags = new WeakMap(), bubbles = new WeakMap();
+  let bodiesDpr = 0, shadow = null;
+  function bodySprite(a, opts, d, step) {
+    if (d !== bodiesDpr) { bodies.clear(); shadow = null; bodiesDpr = d; }
+    if (!shadow) shadow = sprite(24, 12, 12, -6, d, (g, x, y) => paintShadow(g, x, y));
+    const key = (a.isBeast ? 'beast|' + a.emoji
+                           : [opts.color, opts.skin, opts.hair, opts.emoji, a.dir].join('|')) + '|' + step;
+    if (!bodies.has(key)) {
+      const [w, h, ox, oy] = a.isBeast ? BEAST_BOX : PERSON_BOX, down = step / (BOB_STEPS * d);
+      bodies.set(key, sprite(w, h, ox, oy, d, (g, x, y) => paintBody(g, a, opts, x, y + down)));
     }
+    return shadow && bodies.get(key);
+  }
+  function tagSprite(ctx, a, name, d) {
+    const key = name + '|' + d, had = tags.get(a);
+    if (had && had.key === key) return had.s;
+    ctx.font = TAG_FONT;
+    const w = 2 * Math.ceil((ctx.measureText(name).width + 10) / 2) + 4;
+    const s = sprite(w, 17, w / 2, 1, d, (g, x, top) => paintName(g, name, x, top));
+    tags.set(a, { key, s });
+    return s;
+  }
+
+  function drawCharacter(ctx, a, opts, dpr) {
+    const x = a.px, y = a.py, name = opts && opts.name;
+    const bob = a.frozen ? 0 : Math.sin(performance.now() / 220 + x) * 0.8;
+    const top = y - (a.isBeast ? 22 : 38);
+    // The body sprite's top edge in device pixels, split into a whole pixel and quarters.
+    const edge = dpr ? (y + bob - (a.isBeast ? BEAST_BOX : PERSON_BOX)[3]) * dpr : 0;
+    let row = Math.floor(edge), step = Math.round((edge - row) * BOB_STEPS);
+    if (step === BOB_STEPS) { row++; step = 0; }
+    const body = dpr ? bodySprite(a, opts, dpr, step) : null;
+    const tag = body && name ? tagSprite(ctx, a, name, dpr) : null;
+    if (!body || (name && !tag)) {
+      paintShadow(ctx, x, y);
+      paintBody(ctx, a, opts, x, y + bob);
+      if (name) paintName(ctx, name, x, top);
+      return;
+    }
+    stamp(ctx, shadow, x, y, dpr);
+    ctx.drawImage(body.canvas, snap(x - body.ox, dpr), row / dpr, body.w, body.h);
+    if (tag) stamp(ctx, tag, x, top, dpr);
   }
 
   function shade(hex, amt) {
@@ -416,10 +484,10 @@ LG.actors = (function () {
     return 'rgb(' + r + ',' + g + ',' + b + ')';
   }
 
-  function drawBubble(ctx, a, font) {
-    if (!a.bubble || a.bubbleT <= 0) return;
-    const text = a.bubble;
-    ctx.font = '13px ' + (font || 'system-ui');
+  /* Wraps a bubble's text to 190 px: its lines, and the bubble's size. */
+  const LINE_H = 17;
+  function bubbleLayout(ctx, text, font) {
+    ctx.font = font;
     const maxW = 190;
     const words = text.split(/(\s+)/);
     const lines = [];
@@ -429,19 +497,40 @@ LG.actors = (function () {
       else line += w;
     }
     if (line.trim()) lines.push(line.trim());
-    const lh = 17;
     const bw = Math.min(maxW, Math.max.apply(null, lines.map(l => ctx.measureText(l).width))) + 18;
-    const bh = lines.length * lh + 12;
-    const bx = a.px - bw / 2, by = a.py - 46 - bh;
-    const alpha = Math.min(1, a.bubbleT);
-    ctx.globalAlpha = alpha;
+    return { lines, bw, bh: lines.length * LINE_H + 12 };
+  }
+
+  // The bubble's tail points at (x, y - 38).
+  function paintBubble(ctx, L, font, x, y) {
+    const bx = x - L.bw / 2, by = y - 46 - L.bh;
     ctx.fillStyle = '#fdf8ec';
-    roundRect(ctx, bx, by, bw, bh, 9); ctx.fill();
+    roundRect(ctx, bx, by, L.bw, L.bh, 9); ctx.fill();
     ctx.beginPath();
-    ctx.moveTo(a.px - 6, by + bh); ctx.lineTo(a.px, by + bh + 8); ctx.lineTo(a.px + 6, by + bh);
+    ctx.moveTo(x - 6, by + L.bh); ctx.lineTo(x, by + L.bh + 8); ctx.lineTo(x + 6, by + L.bh);
     ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#2b2118'; ctx.textAlign = 'center';
-    lines.forEach((l, i) => ctx.fillText(l, a.px, by + 20 + i * lh));
+    ctx.font = font; ctx.fillStyle = '#2b2118'; ctx.textAlign = 'center';
+    L.lines.forEach((l, i) => ctx.fillText(l, x, by + 20 + i * LINE_H));
+  }
+
+  /* A sprite fades as one piece; drawn live, the text faded over an
+     already-faded bubble. */
+  function drawBubble(ctx, a, font, dpr) {
+    if (!a.bubble || a.bubbleT <= 0) return;
+    const f = '13px ' + (font || 'system-ui');
+    let s = null;
+    if (dpr) {
+      const key = f + '\n' + a.bubble + '\n' + dpr, had = bubbles.get(a);
+      if (had && had.key === key) s = had.s;
+      else {
+        const L = bubbleLayout(ctx, a.bubble, f), w = 2 * Math.ceil(L.bw / 2) + 2;
+        s = sprite(w, L.bh + 10, w / 2, L.bh + 47, dpr, (g, x, y) => paintBubble(g, L, f, x, y));
+        bubbles.set(a, { key, s });
+      }
+    }
+    ctx.globalAlpha = Math.min(1, a.bubbleT);
+    if (s) stamp(ctx, s, a.px, a.py, dpr);
+    else paintBubble(ctx, bubbleLayout(ctx, a.bubble, f), f, a.px, a.py);
     ctx.globalAlpha = 1;
   }
 

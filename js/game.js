@@ -169,7 +169,7 @@ LG.game = (function () {
   function init() {
     C.load();
     canvas = document.getElementById('game');
-    ctx = canvas.getContext('2d');
+    ctx = canvas.getContext('2d', { alpha: false });      // opaque: see draw()
     W.build();
 
     /* A previously-visited village resumes exactly where it was left; a
@@ -1250,6 +1250,13 @@ LG.game = (function () {
     const room = W.buildingUnder(player);
     refreshGroundLayer(room);
     const c = roundedCam();
+    /* The layer covers the canvas, but it's cleared first anyway: a
+       whole-canvas clear lets Firefox drop the last frame instead of
+       keeping it to draw over. With the canvas opaque too, this copy fell
+       from ~2.4 to ~1.4 ms a frame. The layer itself stays transparent:
+       opaque, it gave Chrome a steady run of 11 ms frames, and Firefox
+       subpixel-antialiased the sign lettering painted into it. */
+    ctx.clearRect(0, 0, vw, vh);
     ctx.drawImage(groundCanvas, groundSeen.x - c.x, groundSeen.y - c.y,
                   groundCanvas.width / dpr, groundCanvas.height / dpr);
 
@@ -1279,19 +1286,19 @@ LG.game = (function () {
 
     for (const a of drawables) {
       if (a === player) {
-        A.drawCharacter(ctx, a, { color: '#2f6fb0', skin: '#f2cba4', hair: '#2b2118', name: 'You', emoji: '🎒' });
+        A.drawCharacter(ctx, a, { color: '#2f6fb0', skin: '#f2cba4', hair: '#2b2118', name: 'You', emoji: '🎒' }, dpr);
       } else if (a.isBeast) {
-        A.drawCharacter(ctx, a, { name: a.caught ? '' : a.name });
+        A.drawCharacter(ctx, a, { name: a.caught ? '' : a.name }, dpr);
       } else {
         // The role emoji is always shown -- only the name is withheld until known.
         A.drawCharacter(ctx, a, {
           color: a.def.color, emoji: a.def.emoji, name: a.nameKnown ? a.def.name : '?',
           skin: '#f0c8a0', hair: '#3b2b20'
-        });
+        }, dpr);
       }
     }
     for (const a of drawables) {
-      if (a.bubble) A.drawBubble(ctx, a, C.language().fontStack);
+      if (a.bubble) A.drawBubble(ctx, a, C.language().fontStack, dpr);
     }
 
     ctx.restore();

@@ -607,13 +607,16 @@ section('eating, drinking and wearing what is in your pockets');
   if (lk) {
     const was = LG.ITEMS[lk.wants].use;
     LG.ITEMS[lk.wants].use = 'eat';
+    // Starting from none: the crown put on above may be the very thing the errand wants.
     const n0 = L.count(lk.wants);
+    L.take(lk.wants, n0);
     L.give(lk.wants, lk.wantsCount || 1);
-    ok(!LG.pockets.use(lk.wants) && L.count(lk.wants) === n0 + (lk.wantsCount || 1),
+    ok(!LG.pockets.use(lk.wants) && L.count(lk.wants) === (lk.wantsCount || 1),
        'you will not eat something the errand still needs');
     L.give(lk.wants, 1);
     ok(LG.pockets.use(lk.wants), 'though a spare is fair game');
-    L.take(lk.wants, L.count(lk.wants) - n0);
+    L.take(lk.wants, L.count(lk.wants));
+    L.give(lk.wants, n0);
     if (was) LG.ITEMS[lk.wants].use = was; else delete LG.ITEMS[lk.wants].use;
   }
   L.take(food, L.count(food) - f0); L.take(crown, 1);
@@ -736,10 +739,14 @@ section('pockets.js: the oven, and the Pockets box it describes');
 section('a drink or two');
 {
   const L = LG.ledger, P = LG.pockets;
+  /* An earlier section may have drunk something strong (the first drink
+     the errand doesn't want can be wine), and the errand may want the wine
+     or beer, which can't then be drunk: so start sober, with spares. */
+  L.state.tipsy = 0;
   ok(P.tipsy() === 0, 'sober to start with');
-  L.give('milk', 1); P.use('milk');
+  L.give('milk', 5); P.use('milk');
   ok(P.tipsy() === 0, 'milk doesn\'t go to your head');
-  L.give('wine', 1); L.give('beer', 1);
+  L.give('wine', 5); L.give('beer', 5);
   P.use('wine');
   ok(Math.abs(P.tipsy() - 1) < 1e-6, 'a bottle of wine is an hour of wobbling');
   P.use('beer');
@@ -750,7 +757,8 @@ section('a drink or two');
   ok(Math.abs(P.tipsy() - 0.5) < 1e-3, 'it wears off as the village clock runs');
   LG.time.tick(12 * 60 / 24);
   ok(P.tipsy() === 0, 'and is gone once the hours are up');
-  ['bottle', 'mug'].forEach(k => L.take(k, 1));
+  ['milk', 'wine', 'beer'].forEach(k => L.take(k, 4));
+  ['jug', 'bottle', 'mug'].forEach(k => L.take(k, 1));
 }
 
 section('toys: the die, the ball and the kite');

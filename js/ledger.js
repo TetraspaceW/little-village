@@ -96,6 +96,20 @@ LG.ledger = (function () {
     say(it.use, it.full);
     return true;
   }
+  /* Can one of LG.RECIPES be made from what's in the pockets? Same rule as
+     eating: nothing the errand is still waiting on goes in the pot. */
+  function canCook(recipe) {
+    return Object.keys(recipe.needs).every(k => count(k) - keep(k) >= recipe.needs[k]);
+  }
+  function cook(recipe) {
+    if (!canCook(recipe)) return false;
+    Object.keys(recipe.needs).forEach(k => take(k, recipe.needs[k]));
+    give(recipe.makes, 1);
+    const it = LG.ITEMS[recipe.makes];
+    txn(it.icon, 'cook', { item: itemLabel(recipe.makes) }, { item: it.full });
+    return true;
+  }
+
   const VERB = { eat: 'Eat', drink: 'Drink', wear: 'Put on' };
   /* "(worn)" in the village's language; a full-width bracket brings its own spacing. */
   function wornTag(id) {
@@ -237,6 +251,6 @@ LG.ledger = (function () {
     });
   }
 
-  return { state, begin, count, give, take, use, inventoryList, wornList, hasNote, learn,
+  return { state, begin, count, give, take, use, canCook, cook, inventoryList, wornList, hasNote, learn,
            log, logSpeech, txn, render };
 })();

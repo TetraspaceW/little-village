@@ -837,8 +837,43 @@ LG.ITEMS = {
   pony: {
     icon: '🐴', tags: ['beast'], en: 'pony', full: 'a pony',
     ru: 'пони', zh: '小马', ja: 'ポニー', fr: 'poney', es: 'poni', ar: 'مهر', pl: 'kucyk', tok: 'soweli tawa lili'
+  },
+
+  /* ---- only ever made at an oven (see LG.RECIPES) ----------------------
+     No tags, so the errand generator never picks them: they can't be
+     anyone's errand, and adding them leaves every seed's chain as it was. */
+  roast: {
+    icon: '🍗', tags: [], use: 'eat', price: 3, en: 'roast meat', full: 'a plate of roast meat',
+    ru: 'жаркое', zh: '烤肉', ja: '焼いた肉', fr: 'rôti', es: 'asado', ar: 'لحم مشوي', pl: 'pieczeń', tok: 'moku soweli seli'
+  },
+  fried_egg: {
+    icon: '🍳', tags: [], use: 'eat', price: 2, en: 'fried egg', full: 'a fried egg',
+    ru: 'яичница', zh: '煎蛋', ja: '目玉焼き', fr: 'œuf au plat', es: 'huevo frito', ar: 'بيضة مقلية', pl: 'jajko sadzone', tok: 'sike waso seli'
+  },
+  popcorn: {
+    icon: '🍿', tags: [], use: 'eat', price: 2, en: 'popcorn', full: 'a bowl of popcorn',
+    ru: 'попкорн', zh: '爆米花', ja: 'ポップコーン', fr: 'pop-corn', es: 'palomitas', ar: 'فشار', pl: 'popcorn', tok: 'pan jelo seli'
   }
 };
+
+/* ------------------------------------------------------------- recipes
+   What an oven turns raw things into (see LG.world.ovens). `needs` is
+   item id -> how many; `makes` is one of the result. Only things you
+   have at least one ingredient for are shown at the oven. */
+LG.RECIPES = [
+  { needs: { wheat: 1 }, makes: 'bread' },
+  { needs: { egg: 1 }, makes: 'fried_egg' },
+  { needs: { meat: 1 }, makes: 'roast' },
+  { needs: { corn: 1 }, makes: 'popcorn' },
+  { needs: { pumpkin: 1 }, makes: 'soup' },
+  { needs: { potato: 1, onion: 1 }, makes: 'soup' },
+  { needs: { carrot: 1, cabbage: 1 }, makes: 'soup' },
+  { needs: { tomato: 1, garlic: 1 }, makes: 'soup' },
+  { needs: { wheat: 1, apple: 1 }, makes: 'pie' },
+  { needs: { wheat: 1, pear: 1 }, makes: 'pie' },
+  { needs: { wheat: 1, cherries: 1 }, makes: 'pie' },
+  { needs: { wheat: 1, egg: 1, butter: 1 }, makes: 'cake' }
+];
 
 /* Fallback price when an item has no explicit `price` field. */
 LG.PRICE_BY_TAG = { beast: 6, prize: 4, shop: 2, hold: 2, ground: 1 };
@@ -1077,6 +1112,19 @@ LG.TXN = {
     ar: 'تم خلع {item}.',
     pl: 'Zdejmujesz {item}.',
     tok: 'sina weka e {item} tan sijelo.'
+  },
+  /* A colon before the dish, where the language allows it, keeps the item
+     name in the form LG.ITEMS gives it from having to change its ending. */
+  cook: {
+    en: 'You cook {item} in the oven.',
+    ru: 'Вы готовите в печи: {item}.',
+    zh: '你用烤炉做了{item}。',
+    ja: 'オーブンで{item}を作った。',
+    fr: 'Vous préparez au four : {item}.',
+    es: 'Preparas en el horno: {item}.',
+    ar: 'تم إعداد {item} في الفرن.',
+    pl: 'Przygotowujesz w piecu: {item}.',
+    tok: 'sina pali e {item} kepeken ilo seli.'
   }
 };
 /* All other languages' lines put the traveller in the grammatical

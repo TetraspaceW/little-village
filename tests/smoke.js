@@ -554,6 +554,46 @@ section('eating, drinking and wearing what is in your pockets');
      'and every language has one');
 }
 
+/* -------------------------------------------------------- the oven */
+section('cooking at an oven');
+{
+  const L = LG.ledger, W = LG.world;
+  const farm = W.ovens().find(o => o.building.label === 'Farmhouse');
+  ok(!!farm, 'there is an oven in the farmhouse');
+  ok(farm && W.isWalkable(farm.x, farm.y + 1) && W.buildingAt(farm.x, farm.y + 1) === farm.building,
+     'with floor in front of it, inside, to stand on');
+  ok(LG.RECIPES.every(r => LG.ITEMS[r.makes] && Object.keys(r.needs).every(k => LG.ITEMS[k])),
+     'every recipe is made of real things');
+  ok(LG.RECIPES.every(r => ['eat', 'drink'].indexOf(LG.ITEMS[r.makes].use) !== -1),
+     'and makes something you can eat or drink');
+  const cooked = ['roast', 'fried_egg', 'popcorn'];
+  ok(cooked.every(k => LG.ITEMS[k].tags.length === 0),
+     'oven-only dishes have no tags, so the errand generator never picks them');
+  ok(cooked.every(k => Object.keys(LG.LANGUAGES).every(l => l === 'en' || LG.ITEMS[k][l])),
+     'and each has a name in every language');
+
+  const r = LG.RECIPES.find(x => Object.keys(x.needs).length === 2 &&
+                                 Object.keys(x.needs).every(k => !chainItem[k]) && !chainItem[x.makes]);
+  const [a, b] = Object.keys(r.needs);
+  const before = { a: L.count(a), b: L.count(b), out: L.count(r.makes) };
+  L.give(a, 1);
+  ok(!L.canCook(r) && !L.cook(r) && L.count(a) === before.a + 1, 'half a recipe cooks nothing');
+  L.give(b, 1);
+  ok(L.cook(r) && L.count(a) === before.a && L.count(b) === before.b &&
+     L.count(r.makes) === before.out + 1, 'the whole recipe turns into ' + LG.ITEMS[r.makes].full);
+  L.take(r.makes, 1);
+
+  /* Nothing the errand is still waiting on goes in the pot. */
+  const lk = plan.links.find(l => l.wants !== 'coins' && LG.ITEMS[l.wants].tags.indexOf('beast') === -1);
+  if (lk) {
+    const fake = { needs: { [lk.wants]: 1 }, makes: 'popcorn' };
+    const n0 = L.count(lk.wants);
+    L.give(lk.wants, lk.wantsCount || 1);
+    ok(!L.cook(fake), 'the errand\'s own things are not for cooking');
+    L.take(lk.wants, L.count(lk.wants) - n0);
+  }
+}
+
 /* -------------------------------------------------------- one sale, rung twice
    Regression test for a real bug found in a session log: a villager
    flagged a sale as complete on the turn they merely agreed to a price,

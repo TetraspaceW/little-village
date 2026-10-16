@@ -90,6 +90,13 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
   on. Prices are fixed per item with a haggling band either side. Villagers
   won't trade at night, away from their counter, or for a link of the errand
   chain.
+- **Cooking.** The farmhouse kitchen has an oven, and so does the bakery.
+  Stand beside one and press **E** (or tap it) to see what you could make
+  from what you're carrying: wheat bakes into bread, an egg fries, two
+  vegetables make soup, wheat and fruit make a pie, and so on. Only recipes
+  you have at least one ingredient for are shown. Anyone in the room sees you
+  do it and remembers. As with eating, nothing the errand still needs goes
+  in the pot.
 - **Interiors.** Walking through a door lifts the roof off that building, and
   villagers who went inside are visible to you but not to anyone outside.
 - **Signs.** Every building, the noticeboard and the station platform has a

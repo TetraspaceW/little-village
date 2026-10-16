@@ -568,6 +568,8 @@ LG.game = (function () {
       document.getElementById('help').classList.remove('open');
     document.getElementById('boardClose').onclick = () =>
       document.getElementById('board').classList.remove('open');
+    document.getElementById('ovenClose').onclick = () =>
+      document.getElementById('oven').classList.remove('open');
     document.getElementById('endingClose').onclick = () =>
       document.getElementById('ending').classList.remove('open');
     document.getElementById('endingAgain').onclick = () => {
@@ -606,6 +608,7 @@ LG.game = (function () {
     if (beast && !beast.caught && dist(player, beast) < TILE * 1.4) catchBeast();
     else if (worldItem && !worldItem.taken && dist(player, worldItem) < TILE * 1.4) pickUp();
     else if (nearBoard()) openBoard();
+    else if (ovenHere()) openOven();
   }
 
   /* ------------------------------------------------------------------ a tap */
@@ -675,6 +678,13 @@ LG.game = (function () {
     if (nearRect(spot, LG.BOARD_SPOT, 0)) {
       if (nearBoard()) openBoard();
       else aside('Walk over to the noticeboard to read it.');
+      return;
+    }
+    // Ovens are indoors, so only one in the room you're in can be seen to tap.
+    const oven = W.ovens().find(o => nearRect(spot, o, 0) && o.building === W.buildingUnder(player));
+    if (oven) {
+      if (nearRect(player, oven, 1)) openOven();
+      else aside('Walk over to the oven first.');
     }
   }
 
@@ -699,6 +709,53 @@ LG.game = (function () {
 
   /* Reuses world.js's rectangle-proximity check. */
   const nearRect = W.nearRect;
+
+  /* ---------------------------------------------------------------- ovens
+     An oven you're standing beside, in the same room as you — the one in
+     the farmhouse kitchen can't be reached through its wall. */
+  function ovenHere() {
+    const room = W.buildingUnder(player);
+    return room ? W.ovens().find(o => o.building === room && nearRect(player, o, 1)) : null;
+  }
+
+  function openOven() {
+    renderOven();
+    document.getElementById('oven').classList.add('open');
+  }
+
+  /* Lists only the recipes the traveller has at least one ingredient
+     for — a list of every dish the village knows would read as a
+     shopping list, and finding out what wheat is good for is half the fun. */
+  function renderOven() {
+    const L = C.language(), box = document.getElementById('ovenList');
+    const part = (id, n) => {
+      const it = LG.ITEMS[id], short = LG.ledger.count(id) < n;
+      return '<span class="' + (short ? 'lack' : '') + '" title="' + escapeHTML(it.en) + '">' + it.icon +
+             ' <span lang="' + L.tag + '">' + escapeHTML(LG.itemName(id, settings.lang)) +
+             (n > 1 ? ' ×' + n : '') + '</span></span>';
+    };
+    const shown = LG.RECIPES.filter(r => Object.keys(r.needs).some(k => LG.ledger.count(k) > 0));
+    box.innerHTML = shown.length
+      ? shown.map((r, i) => '<div class="recipe"><span class="parts">' +
+          Object.keys(r.needs).map(k => part(k, r.needs[k])).join(' + ') + ' → ' + part(r.makes, 0) +
+          '</span><button type="button" class="chip" data-recipe="' + LG.RECIPES.indexOf(r) + '"' +
+          (LG.ledger.canCook(r) ? '' : ' disabled') + '>Cook</button></div>').join('')
+      : '<div class="notice muted">Nothing in your pockets that wants cooking.</div>';
+    Array.prototype.forEach.call(box.querySelectorAll('[data-recipe]'), el => {
+      el.onclick = () => cookAt(LG.RECIPES[+el.dataset.recipe]);
+    });
+  }
+
+  /* Anyone in the room sees it done, and it's theirs to mention — the
+     farmer will know who has been at the oven. */
+  function cookAt(recipe) {
+    const oven = ovenHere();
+    if (!oven || !LG.ledger.cook(recipe)) { renderOven(); return; }
+    npcs.filter(n => W.buildingUnder(n) === oven.building).forEach(n =>
+      remember(n, 'The traveller cooked ' + LG.ITEMS[recipe.makes].full + ' in the oven in the ' +
+                  oven.building.label + ' while you watched.'));
+    renderOven();
+  }
 
   /* Trading hours and counter-proximity checks now live in LG.view,
      alongside everything else a villager can observe about their own
@@ -1128,6 +1185,8 @@ LG.game = (function () {
     } else if (nearBoard()) {
       say = tap ? 'Tap the noticeboard to read it'
                 : 'Press E to read the noticeboard';
+    } else if (ovenHere()) {
+      say = tap ? 'Tap the oven to cook' : 'Press E to cook at the oven';
     }
     // Same as the clock: touched only on a change. A hidden hint keeps its
     // last text, so it doesn't blank out while it fades.

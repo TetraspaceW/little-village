@@ -2106,8 +2106,9 @@ function escapeCloses() {
 async function mintedGoods() {
   section('something the game never had can still be sold');
   const real = LG.llm.mintItem;
-  let asked = 0, answer = null;
-  LG.llm.mintItem = async () => { asked++; return answer; };
+  let asked = 0, answer = null, lastAsk = null;
+  LG.llm.mintItem = async (cfg, o) => { asked++; lastAsk = o; return answer; };
+  const shippedRecipes = LG.RECIPES.length;
   LG.config.settings.apiKey = 'not-a-real-key';          // the stub above, so nothing is sent
   LG.time.start(LG.time.day, 0.5);
 
@@ -2206,10 +2207,46 @@ async function mintedGoods() {
   const dark = (await LG.mint.sale(seller, ['dark_candle'], '', ''))[0];
   ok(dark && !LG.ITEMS[dark].use, 'and so is a light that lights nothing');
 
+  // Something raw comes with what an oven makes of it.
+  answer = { thing: true, same: null, en: 'sweet potato', full: 'a sweet potato', icon: '🍠', price: 2,
+             use: null, raw: true, recipes: [
+               { also: ['unobtainium'], makes: 'soup' },
+               { also: ['onion'], makes: 'soup' },
+               { also: [], dish: { en: 'sweet potato mash', full: 'a bowl of sweet potato mash', icon: '🥣',
+                                   price: 3, use: 'eat', leaves: 'bowl' } },
+               { also: [], makes: 'baked_potato' } ] };
+  const yam = (await LG.mint.sale(seller, ['sweet_potato'], '', ''))[0];
+  const mine = LG.RECIPES.filter(r => r.minted);
+  ok(mine.length === 2, 'a raw thing comes with recipes, the impossible one left out and no more than three tried');
+  ok(mine.some(r => r.needs[yam] && r.needs.onion && r.makes === 'soup'),
+     'one with something the game already has, making a dish it already has');
+  const mash = mine.map(r => r.makes).find(k => k !== 'soup');
+  ok(mash && LG.ITEMS[mash].use === 'eat' && LG.ITEMS[mash].leaves === 'bowl' && LG.ITEMS[mash].tags.length === 0,
+     'and one making a new dish, eaten from a bowl and no errand\'s');
+  ok(LG.mint.priceFor(seller, mash) === 0, 'which nobody sells: only an oven makes it');
+  ok(lastAsk.recipes.length === shippedRecipes, 'the helper is shown only the shipped recipes, so its prompt stays cacheable');
+  ok(LG.RECIPES.every(r => LG.ITEMS[r.makes] && Object.keys(r.needs).every(k => LG.ITEMS[k]) &&
+                           ['eat', 'drink'].indexOf(LG.ITEMS[r.makes].use) !== -1),
+     'every recipe is still made of real things, and makes something to eat');
+  const mashing = mine.find(r => r.makes === mash);
+  LG.ledger.give(yam, 1);
+  ok(LG.ledger.cook(mashing) && LG.ledger.count(yam) === 0 && LG.ledger.count(mash) === 1,
+     'and the oven cooks it');
+
+  answer = { thing: true, same: null, en: 'raw turnip', full: 'a raw turnip', icon: '🥔', price: 1,
+             raw: true, recipes: [{ also: [], makes: 'rope' }, { also: ['ghost'], makes: 'soup' }] };
+  await LG.mint.sale(seller, ['raw_turnip'], '', '');
+  ok(LG.RECIPES.filter(r => r.minted).length === 2, 'a recipe for something inedible, or from nothing, is not one');
+  answer = { thing: true, same: null, en: 'clay jug', full: 'a clay jug', icon: '🏺', price: 1,
+             raw: false, recipes: [{ also: [], makes: 'soup' }] };
+  await LG.mint.sale(seller, ['clay_jug'], '', '');
+  ok(LG.RECIPES.filter(r => r.minted).length === 2, 'and nothing that is not raw gets cooked');
+
   const shot = JSON.parse(JSON.stringify(LG.save.snapshot()));
   ok(shot.minted.some(m => m.id === 'pain_au_chocolat'), 'a save carries it');
   LG.game.newVillage('yet-another-village', true);
   ok(!LG.ITEMS.pain_au_chocolat, 'a new village does not have it');
+  ok(LG.RECIPES.length === shippedRecipes, 'or its recipes');
   ok(LG.save.restore(shot) === null, 'the save loads');
   ok(LG.ITEMS.pain_au_chocolat && LG.ledger.count('pain_au_chocolat') === 1,
      'and it is back, in the traveller’s pocket');
@@ -2220,6 +2257,8 @@ async function mintedGoods() {
   ok(LG.ledger.state.worn[hat], 'and the hat is still on');
   ok(LG.ledger.state.lit[lamp] && LG.ITEMS[lamp].glow === 6, 'the lantern is still lit');
   ok(LG.ITEMS[whistle].gm === 'whistle' && LG.ITEMS[whistle].note === 'C5', 'and the whistle still plays');
+  ok(LG.RECIPES.filter(r => r.minted).length === 2 && LG.ledger.count(mash) === 1,
+     'the sweet potato\'s recipes are back, and so is the mash');
 
   // "(worn)" agrees with a minted thing, in the languages where it has to.
   LG.mint.restore([{ id: 'shawl', en: 'shawl', icon: '🧣', price: 3, use: 'wear', slot: 'neck',

@@ -129,7 +129,11 @@ OpenRouter's decisions endpoint (`decisionPost`/`askJev` in `js/llm.js`), not
   worn, lit or played, with the slot, leftover container, light reach, General MIDI
   instrument and note, and grammatical gender those need), and
   `js/mint.js` registers it in `LG.ITEMS`. Values outside what shipped items use are
-  dropped, so a minted item is never half-usable. Minted items have **no tags**, so the errand generator can't pick
+  dropped, so a minted item is never half-usable. Something **raw** comes with up to
+  three oven recipes (into a dish the game has, or a new minted dish nobody sells),
+  added to `LG.RECIPES` and dropped if they'd make something inedible or need a thing
+  the game doesn't have. The helper is shown only the shipped recipes, so its prompt
+  stays cacheable. Minted items have **no tags**, so the errand generator can't pick
   one and a seed still builds the same village. Only the villagers who minted one
   sell it. They belong to one village: cleared by `newVillage`, carried in the save.
 

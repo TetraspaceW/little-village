@@ -13,7 +13,7 @@
    English name, the village's own name for it, and a usual price. From
    then on it's an ordinary item: it sits in the traveller's pockets, can
    be held out, refunded, and resold, eaten, drunk, worn, lit or played if
-   it's that kind of thing, and every prompt names it the way it names anything else.
+   it's that kind of thing, cooked at an oven if it's raw (see `cookable`), and every prompt names it the way it names anything else.
 
    What a minted item deliberately is not:
    - It has no tags, so the errand generator (which picks by tag) can never
@@ -167,24 +167,76 @@ LG.mint = (function () {
       langName: LG.LANGUAGES[lang].name,
       slots: slots(), containers: containers(), genders: genders(lang), instruments: instruments(),
       genderNote: lang === 'fr' || lang === 'es' ? 'mp and fp are the plurals' : 'p is plural',
-      anchor: 'a loaf of bread costs ' + LG.priceOf('bread') + ' coins'
+      anchor: 'a loaf of bread costs ' + LG.priceOf('bread') + ' coins',
+      recipes: LG.RECIPES.filter(r => !r.minted).map(recipeLine)
     });
     if (!got || got.thing === false) return null;
     const same = got.same && known(got.same);
     if (same) return same;
-    const en = plainText(got.en, 40).toLowerCase();
-    if (!en || !/[a-z]/.test(en)) return null;
-    const name = plainText(got.name, 40);
-    const id = freeId(en);
-    register({ id: id, en: en, full: plainText(got.full, 48) || en, icon: got.icon,
-               price: got.price, lang: lang !== 'en' && name ? lang : null, name: name,
-               use: got.use, slot: got.slot, leaves: got.leaves,
-               glow: got.glow, gm: got.gm, note: got.note, rung: got.rung,
-               g: got.g ? { [lang]: got.g } : null, by: [npc.id] });
+    const id = describe(got, lang, [npc.id]);
+    if (!id) return null;
+    if (got.raw === true) cookable(id, got.recipes, lang);
     // Named the way the rest of the game names them: not until they've said who they are.
     LG.ledger.log(LG.ITEMS[id].icon + ' ' + LG.actors.displayName(npc) + ' has ' + LG.ITEMS[id].full +
                   ' — something new to the game.');
     return id;
+  }
+
+  /* Registers an item from the helper's description of it, under a free
+     tag. `by` is who sells it: nobody, for a dish only an oven makes. */
+  function describe(got, lang, by) {
+    const en = plainText(got && got.en, 40).toLowerCase();
+    if (!en || !/[a-z]/.test(en)) return null;
+    const name = plainText(got.name, 40);
+    return register({ id: freeId(en), en: en, full: plainText(got.full, 48) || en, icon: got.icon,
+                      price: got.price, lang: lang !== 'en' && name ? lang : null, name: name,
+                      use: got.use, slot: got.slot, leaves: got.leaves,
+                      glow: got.glow, gm: got.gm, note: got.note, rung: got.rung,
+                      g: got.g ? { [lang]: got.g } : null, by: by });
+  }
+
+  /* --------------------------------------------------------------- recipes
+     Something raw — food you'd cook before eating — comes with what an
+     oven makes of it, the way wheat comes with bread. Each recipe uses the
+     new thing and, if it says so, other things the game already has, and
+     makes either a dish the game has or a new one, minted here the same
+     way (sold by nobody: like the shipped dishes, only an oven makes it).
+     They go into LG.RECIPES, so the oven offers them like any other, with
+     `minted` marking the ones `forget` takes out again. A recipe that
+     doesn't make something to eat or drink, or names a thing nobody has
+     heard of, is dropped. */
+  const MAX_RECIPES = 3;
+  function recipeLine(r) {
+    return Object.keys(r.needs).join(' + ') +
+      (r.with ? ' (with ' + Object.keys(r.with).join(', ') + ', kept)' : '') + ' → ' + r.makes;
+  }
+  function edible(id) { return !!LG.ITEMS[id] && ['eat', 'drink'].indexOf(LG.ITEMS[id].use) !== -1; }
+
+  /* Adds one recipe, unless an identical one is already known. */
+  function addRecipe(needs, makes) {
+    const keys = Object.keys(needs);
+    if (!edible(makes) || needs[makes] || !keys.length ||
+        !keys.every(k => k !== 'coins' && LG.ITEMS[k])) return false;
+    const same = r => r.makes === makes && !r.with && Object.keys(r.needs).length === keys.length &&
+                      keys.every(k => r.needs[k] === needs[k]);
+    if (LG.RECIPES.some(same)) return false;
+    LG.RECIPES.push({ needs: needs, makes: makes, minted: true });
+    return true;
+  }
+
+  function cookable(id, list, lang) {
+    (Array.isArray(list) ? list : []).slice(0, MAX_RECIPES).forEach(r => {
+      if (!r || typeof r !== 'object') return;
+      const needs = { [id]: 1 };
+      (Array.isArray(r.also) ? r.also : []).forEach(raw => {
+        const k = known(raw);
+        if (k && k !== 'coins') needs[k] = 1;
+      });
+      if (Object.keys(needs).length !== 1 + (Array.isArray(r.also) ? r.also.length : 0)) return;
+      let makes = r.makes && known(r.makes);
+      if (!makes && r.dish && ['eat', 'drink'].indexOf(r.dish.use) !== -1) makes = describe(r.dish, lang, []);
+      if (makes) addRecipe(needs, makes);
+    });
   }
 
   /* Every piece of a sale resolved to an item id — the list commerce gets.
@@ -203,7 +255,14 @@ LG.mint = (function () {
 
   /* A new village: the last one's inventions go with it. */
   function forget() {
+    for (let i = LG.RECIPES.length - 1; i >= 0; i--) if (LG.RECIPES[i].minted) LG.RECIPES.splice(i, 1);
     Object.keys(made).forEach(id => { delete LG.ITEMS[id]; delete made[id]; });
+  }
+
+  /* The recipes `id` was minted with (see cookable). */
+  function recipesOf(id) {
+    return LG.RECIPES.filter(r => r.minted && Object.keys(r.needs)[0] === id)
+      .map(r => ({ needs: Object.assign({}, r.needs), makes: r.makes }));
   }
 
   function saved() {
@@ -213,7 +272,7 @@ LG.mint = (function () {
                                    use: it.use || null, slot: it.slot || null,
                                    leaves: it.leaves || null, g: it.g || null,
                                    glow: it.glow || null, gm: it.gm || null, note: it.note || null,
-                                   rung: !!it.rung };
+                                   rung: !!it.rung, recipes: recipesOf(id) };
       Object.keys(LG.LANGUAGES).forEach(l => { if (l !== 'en' && it[l]) out.names[l] = it[l]; });
       return out;
     });
@@ -229,6 +288,12 @@ LG.mint = (function () {
                             by: Array.isArray(d.by) ? d.by : [] });
       if (id) Object.keys(d.names || {}).forEach(l => {
         if (LG.LANGUAGES[l]) LG.ITEMS[id][l] = plainText(d.names[l], 40);
+      });
+    });
+    // Recipes once every item is back, since a dish may be listed after what it's cooked from.
+    (Array.isArray(list) ? list : []).forEach(d => {
+      (d && Array.isArray(d.recipes) ? d.recipes : []).forEach(r => {
+        if (r && r.needs && typeof r.needs === 'object') addRecipe(Object.assign({}, r.needs), r.makes);
       });
     });
   }

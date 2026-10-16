@@ -104,11 +104,13 @@ LG.mint = (function () {
     const cfg = LG.config.llm();
     if (!cfg || !cfg.apiKey) return null;
     const lang = LG.config.settings.lang;
-    const list = Object.keys(LG.ITEMS).filter(k => k !== 'coins')
-      .map(k => k + ': ' + LG.ITEMS[k].en);
+    // Shipped items first and on their own, so that part of the call is cacheable.
+    const entry = k => k + ': ' + LG.ITEMS[k].en;
+    const ids = Object.keys(LG.ITEMS).filter(k => k !== 'coins');
     const got = await LG.llm.mintItem(cfg, {
       npcName: npc.def.name, tag: raw, said: said, translation: translation,
-      known: list, langName: LG.LANGUAGES[lang].name,
+      known: ids.filter(k => !made[k]).map(entry), minted: ids.filter(k => made[k]).map(entry),
+      langName: LG.LANGUAGES[lang].name,
       anchor: 'a loaf of bread costs ' + LG.priceOf('bread') + ' coins'
     });
     if (!got || got.thing === false) return null;

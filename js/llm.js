@@ -753,40 +753,45 @@ LG.llm = (function () {
      when it is only a different name for something the game already has.
      Only the description comes from here; whether the sale itself is
      allowed is still trade.commerce's decision. Fails closed: no answer
-     means no item, and the sale is refused as before. */
+     means no item, and the sale is refused as before.
+
+     The instructions and the shipped catalogue (`o.known`) are the system
+     prompt, the same for a whole village, and cached as one prefix; the
+     sale itself and anything minted since (`o.minted`) follow it. */
   async function mintItem(cfg, opts) {
     const o = opts || {};
-    const ask = [
-      o.npcName + " has just sold the traveller something tagged " +
-        JSON.stringify(o.tag) + ".",
+    const system = [
+      "You catalogue the goods in a village. Answer with JSON only.",
       "",
-      o.npcName + " said: " + JSON.stringify(o.said || ""),
-      o.translation ? "In English, that is: " + JSON.stringify(o.translation) : "",
+      "A villager has sold the traveller something under a tag the game does not know.",
       "",
-      "Things the game already has, as tag: name —",
-      o.known.join("; "),
-      "",
-      "If it is one of those under another name, give its tag as \"same\".",
-      "If it is not something a person could hold and hand over — a service, a",
-      "piece of information, a building, a person — set \"thing\" to false.",
+      "If it is one of the things the game already has under another name, give its tag",
+      "as \"same\". If it is not something a person could hold and hand over — a service,",
+      "a piece of information, a building, a person — set \"thing\" to false.",
       "Otherwise describe it:",
       '- "en": a short English name, lower case, like "loaf of bread"',
       '- "full": the same with an article or "some", like "a loaf of bread"',
       '- "name": what it is called in ' + o.langName +
-        ", the word " + o.npcName + " used if they named it, written plainly (no readings, no brackets)",
+        ", the word the villager used if they named it, written plainly (no readings, no brackets)",
       '- "icon": one emoji that looks most like it',
       '- "price": what it is usually worth, in coins, where ' + o.anchor,
       "",
       "Reply with only a JSON object:",
       '{"thing": true, "same": null, "en": "", "full": "", "name": "", "icon": "", "price": 0}',
+      "",
+      "Things the game already has, as tag: name —",
+      o.known.join("; "),
+    ].join("\n");
+    const ask = [
+      (o.minted && o.minted.length ? "The game has also had, since: " + o.minted.join("; ") + "\n\n" : "") +
+        o.npcName + " has just sold the traveller something tagged " + JSON.stringify(o.tag) + ".",
+      o.npcName + " said: " + JSON.stringify(o.said || ""),
+      o.translation ? "In English, that is: " + JSON.stringify(o.translation) : "",
     ].join("\n");
     const vcfg = helperConfig(cfg);
     try {
-      const raw = await providerCall(
-        vcfg,
-        "You catalogue the goods in a village. Answer with JSON only.",
-        [{ role: "user", content: ask }],
-      );
+      const raw = await providerCall(vcfg, system, [{ role: "user", content: ask }],
+                                     null, { cachePrefixes: [system] });
       return parseJSON(raw);
     } catch (e) {
       return null;

@@ -764,9 +764,10 @@ section('fishing at the pond');
   const was = { x: me.px, y: me.py };
   const at = (x, y) => { me.px = x; me.py = y; me.tx = (x / 32) | 0; me.ty = (y / 32) | 0; };
   const caught = LG.CATCHES.map(c => c.id);
-  ok(caught.length >= 16 && caught.every(k => LG.ITEMS[k]), 'many kinds of thing bite, each a real item');
-  ok(['saury', 'robot_fish', 'shrimp', 'sea_slug', 'copepod'].every(k => caught.indexOf(k) !== -1),
-     'among them the Pacific saury, a robot fish, shrimp, a sea slug and a copepod');
+  ok(caught.length >= 21 && caught.every(k => LG.ITEMS[k]), 'many kinds of thing bite, each a real item');
+  ok(['robot_fish', 'shrimp', 'copepod'].every(k => caught.indexOf(k) !== -1),
+     'among them a robot fish, shrimp and a copepod');
+  ok(['saury', 'sea_slug', 'squid', 'pufferfish'].every(k => !LG.ITEMS[k]), 'and nothing out of the sea');
   ok(caught.every(k => LG.ITEMS[k].tags.join() === 'catch'),
      'tagged only as a catch, so the errand generator never picks one');
   ok(caught.every(k => Object.keys(LG.LANGUAGES).every(l => l === 'en' || LG.ITEMS[k][l])),
@@ -823,10 +824,10 @@ section('fishing at the pond');
     const seen = new Set(); for (let i = 0; i < 400; i++) seen.add(F.pick().id);
     LG.time.isNight = was; return seen; };
   const day = pool(false), dark = pool(true);
-  ok(!day.has('eel') && !day.has('squid') && dark.has('eel'), 'eels come out at night');
+  ok(!day.has('eel') && !day.has('knifefish') && dark.has('eel'), 'eels come out at night');
   ok(!dark.has('trout') && day.has('trout'), 'and the trout keep to the day');
 
-  ok(LG.RECIPES.some(r => r.needs.saury && r.makes === 'grilled_fish'), 'a saury grills');
+  ok(LG.RECIPES.some(r => r.needs.tilapia && r.makes === 'grilled_fish'), 'a tilapia grills');
   const yuri = LG.NPCS.find(d => d.id === 'yuri');
   ok(yuri.sells.some(w => w.i === 'fishing_rod') && yuri.buysTags.indexOf('catch') !== -1,
      'the fisherman sells rods and buys what you catch');

@@ -850,6 +850,10 @@ LG.ITEMS = {
 
   /* ---- caught at the pond with a fishing rod (see LG.CATCHES and
      fishing.js) ---------------------------------------------------------
+     Everything that lives in a freshwater pond: one of each genus of
+     Linnaeus's Pisces (Systema Naturae, 10th edition, 1758) with a species
+     found in still fresh water, a couple more of his Cyprinus, and the
+     small things that aren't fish at all. And a robot fish.
      Tagged only `catch`, which the errand generator never asks for, so
      nothing you can pull out of the water is ever anyone's errand, and
      every seed's chain stays as it was. The fisherman buys them by that
@@ -894,25 +898,45 @@ LG.ITEMS = {
     icon: '🦐', tags: ['catch'], price: 2, en: 'shrimp', full: 'a shrimp',
     ru: 'креветка', zh: '虾', ja: 'エビ', fr: 'crevette', es: 'gamba', ar: 'روبيان', pl: 'krewetka', tok: 'pipi telo lili'
   },
-  saury: {
-    icon: '🐟', tags: ['catch'], price: 4, en: 'Pacific saury', full: 'a Pacific saury',
-    ru: 'сайра', zh: '秋刀鱼', ja: 'サンマ', fr: 'balaou du Pacifique', es: 'paparda del Pacífico', ar: 'سمك الصوري الهادئ', pl: 'sajra', tok: 'kala palisa'
-  },
-  sea_slug: {
-    icon: '🐌', tags: ['catch'], price: 3, en: 'sea slug', full: 'a sea slug',
-    ru: 'морской слизень', zh: '海蛞蝓', ja: 'ウミウシ', fr: 'limace de mer', es: 'babosa de mar', ar: 'بزاق البحر', pl: 'ślimak morski', tok: 'pipi pi telo suli'
-  },
   copepod: {
     icon: '🦠', tags: ['catch'], price: 1, en: 'copepod', full: 'a copepod',
     ru: 'веслоногий рачок', zh: '桡足类', ja: 'カイアシ', fr: 'copépode', es: 'copépodo', ar: 'مجدافي الأرجل', pl: 'widłonóg', tok: 'pipi telo lili lili'
   },
-  pufferfish: {
-    icon: '🐡', tags: ['catch'], price: 5, en: 'pufferfish', full: 'a pufferfish',
-    ru: 'рыба-фугу', zh: '河豚', ja: 'フグ', fr: 'poisson-globe', es: 'pez globo', ar: 'السمكة المنتفخة', pl: 'rozdymka', tok: 'kala sike'
+  knifefish: {
+    icon: '🐟', tags: ['catch'], price: 4, en: 'banded knifefish', full: 'a banded knifefish',
+    ru: 'полосатый гимнот', zh: '裸背电鳗', ja: 'バンデッドナイフフィッシュ', fr: 'gymnote carapo', es: 'carapo', ar: 'سمكة السكين المخططة', pl: 'nożowiec prążkowany', tok: 'kala palisa'
   },
-  squid: {
-    icon: '🦑', tags: ['catch'], price: 5, en: 'squid', full: 'a squid',
-    ru: 'кальмар', zh: '鱿鱼', ja: 'イカ', fr: 'calmar', es: 'calamar', ar: 'حبار', pl: 'kałamarnica', tok: 'kala luka'
+  bullhead: {
+    icon: '🐟', tags: ['catch'], price: 2, en: 'bullhead', full: 'a bullhead',
+    ru: 'подкаменщик', zh: '杜父鱼', ja: 'カジカ', fr: 'chabot', es: 'cavilat', ar: 'سمكة الرأس الثوري', pl: 'głowacz', tok: 'kala lawa suli'
+  },
+  tilapia: {
+    icon: '🐟', tags: ['catch'], price: 2, en: 'tilapia', full: 'a tilapia',
+    ru: 'тиляпия', zh: '罗非鱼', ja: 'ティラピア', fr: 'tilapia', es: 'tilapia', ar: 'سمك البلطي', pl: 'tilapia', tok: 'kala Tilapija'
+  },
+  paradise_fish: {
+    icon: '🐠', tags: ['catch'], price: 3, en: 'paradise fish', full: 'a paradise fish',
+    ru: 'макропод', zh: '叉尾斗鱼', ja: 'タイワンキンギョ', fr: 'poisson du paradis', es: 'pez del paraíso', ar: 'سمكة الجنة', pl: 'wielkopłetw', tok: 'kala pi ma sewi'
+  },
+  stickleback: {
+    icon: '🐟', tags: ['catch'], price: 1, en: 'stickleback', full: 'a stickleback',
+    ru: 'колюшка', zh: '刺鱼', ja: 'イトヨ', fr: 'épinoche', es: 'espinoso', ar: 'سمك أبو شوكة', pl: 'ciernik', tok: 'kala pi palisa lili'
+  },
+  weatherfish: {
+    icon: '🐟', tags: ['catch'], price: 2, en: 'weatherfish', full: 'a weatherfish',
+    ru: 'вьюн', zh: '泥鳅', ja: 'ドジョウ', fr: 'loche d’étang', es: 'locha de estanque', ar: 'سمك اللوش', pl: 'piskorz', tok: 'kala ko'
+  },
+  hatchetfish: {
+    icon: '🐟', tags: ['catch'], price: 3, en: 'hatchetfish', full: 'a hatchetfish',
+    ru: 'клинобрюшка', zh: '银斧鱼', ja: 'ハチェットフィッシュ', fr: 'poisson-hachette', es: 'pez hacha', ar: 'سمكة الفأس', pl: 'toporek', tok: 'kala pi ilo kipisi'
+  },
+  elephantfish: {
+    icon: '🐟', tags: ['catch'], price: 5, en: 'elephantfish', full: 'an elephantfish',
+    ru: 'рыба-слон', zh: '象鼻鱼', ja: 'エレファントノーズ', fr: 'poisson-éléphant', es: 'pez elefante', ar: 'سمكة الفيل', pl: 'mruk', tok: 'kala pi nena suli'
+  },
+  fahaka: {
+    icon: '🐡', tags: ['catch'], price: 5, en: 'Fahaka pufferfish', full: 'a Fahaka pufferfish',
+    ru: 'фахака', zh: '尼罗河豚', ja: 'ファハカフグ', fr: 'tétraodon fahaka', es: 'pez globo del Nilo', ar: 'سمكة الفهقة', pl: 'fahaka', tok: 'kala sike'
   },
   robot_fish: {
     icon: '🤖', tags: ['catch'], price: 10, en: 'robot fish', full: 'a robot fish',
@@ -1007,7 +1031,7 @@ LG.RECIPES = [
   { needs: { trout: 1 }, makes: 'grilled_fish' },
   { needs: { pike: 1 }, makes: 'grilled_fish' },
   { needs: { catfish: 1 }, makes: 'grilled_fish' },
-  { needs: { saury: 1 }, makes: 'grilled_fish' },
+  { needs: { tilapia: 1 }, makes: 'grilled_fish' },
   { needs: { mushrooms: 1 }, makes: 'fried_mushrooms' },
   { needs: { potato: 1 }, makes: 'baked_potato' },
   { needs: { herbs: 1 }, with: { teapot: 1 }, makes: 'tea' }
@@ -1021,22 +1045,27 @@ LG.RECIPES = [
    night; without it, it's about at any hour. The names, prices and icons
    are in LG.ITEMS like everything else you can carry. */
 LG.CATCHES = [
-  { id: 'minnow',     weight: 22, bite: 1.1 },
-  { id: 'perch',      weight: 18, bite: 0.9 },
-  { id: 'carp',       weight: 16, bite: 0.9 },
-  { id: 'crayfish',   weight: 10, bite: 1.0 },
-  { id: 'shrimp',     weight: 10, bite: 1.0 },
-  { id: 'copepod',    weight: 8,  bite: 1.2 },
-  { id: 'trout',      weight: 8,  bite: 0.7, when: 'day' },
-  { id: 'catfish',    weight: 8,  bite: 0.8, when: 'night' },
-  { id: 'eel',        weight: 7,  bite: 0.6, when: 'night' },
-  { id: 'goldfish',   weight: 5,  bite: 0.8, when: 'day' },
-  { id: 'pike',       weight: 5,  bite: 0.5 },
-  { id: 'saury',      weight: 5,  bite: 0.55 },
-  { id: 'sea_slug',   weight: 4,  bite: 0.9 },
-  { id: 'pufferfish', weight: 2,  bite: 0.6 },
-  { id: 'squid',      weight: 2,  bite: 0.5, when: 'night' },
-  { id: 'robot_fish', weight: 1,  bite: 0.4 }
+  { id: 'minnow',        weight: 22, bite: 1.1 },
+  { id: 'perch',         weight: 18, bite: 0.9 },
+  { id: 'carp',          weight: 16, bite: 0.9 },
+  { id: 'stickleback',   weight: 14, bite: 1.1 },
+  { id: 'crayfish',      weight: 10, bite: 1.0 },
+  { id: 'shrimp',        weight: 10, bite: 1.0 },
+  { id: 'copepod',       weight: 8,  bite: 1.2 },
+  { id: 'tilapia',       weight: 8,  bite: 0.9, when: 'day' },
+  { id: 'trout',         weight: 8,  bite: 0.7, when: 'day' },
+  { id: 'catfish',       weight: 8,  bite: 0.8, when: 'night' },
+  { id: 'eel',           weight: 7,  bite: 0.6, when: 'night' },
+  { id: 'bullhead',      weight: 6,  bite: 0.9 },
+  { id: 'weatherfish',   weight: 6,  bite: 0.8 },
+  { id: 'goldfish',      weight: 5,  bite: 0.8, when: 'day' },
+  { id: 'paradise_fish', weight: 5,  bite: 0.8, when: 'day' },
+  { id: 'pike',          weight: 5,  bite: 0.5 },
+  { id: 'knifefish',     weight: 4,  bite: 0.6, when: 'night' },
+  { id: 'hatchetfish',   weight: 4,  bite: 0.7, when: 'day' },
+  { id: 'elephantfish',  weight: 3,  bite: 0.6, when: 'night' },
+  { id: 'fahaka',        weight: 2,  bite: 0.6 },
+  { id: 'robot_fish',    weight: 1,  bite: 0.4 }
 ];
 
 /* Fallback price when an item has no explicit `price` field. */

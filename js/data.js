@@ -965,6 +965,10 @@ LG.itemSaid = function (id, lang, short) {
    click-to-reveal gloss, same convention as the notebook and overheard
    speech. */
 LG.CONJ = { ru: 'и', en: 'and', zh: '和', ja: 'と', fr: 'et', es: 'y', ar: 'و', pl: 'i', tok: 'en' };
+/* The mark beside something the traveller has on, in the Pockets box,
+   brackets included: Chinese and Japanese use their own full-width ones. */
+LG.WORN = { ru: '(надето)', en: '(worn)', zh: '（穿戴中）', ja: '（着用中）', fr: '(porté)',
+            es: '(puesto)', ar: '(مرتدى)', pl: '(założone)', tok: '(lon sijelo)' };
 
 LG.TXN = {
   buy: {

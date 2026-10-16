@@ -167,7 +167,7 @@ body:not(.touch) .touch-only{display:none}
 #inv button.pill{font:inherit;font-size:13px;color:inherit;cursor:pointer}
 #inv button.pill:hover{background:#fff;border-color:#b5563f}
 #inv .pill.worn{border-color:#b5563f;background:#fff}
-#inv .worn-tag{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#b5563f}
+#inv .worn-tag{font-size:11px;color:#b5563f}
 .muted{color:#9c8b72;font-size:13px}
 
 #log{

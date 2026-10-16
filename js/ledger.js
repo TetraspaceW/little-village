@@ -97,6 +97,11 @@ LG.ledger = (function () {
     return true;
   }
   const VERB = { eat: 'Eat', drink: 'Drink', wear: 'Put on' };
+  /* "(worn)" in the village's language; a full-width bracket brings its own spacing. */
+  function wornTag() {
+    const t = LG.WORN[settings.lang] || LG.WORN.en;
+    return (t[0] === '（' ? '' : ' ') + '<span class="worn-tag">' + escapeHTML(t) + '</span>';
+  }
 
   /* Narrates a completed deal ("you hand over the rope") in the
      village's language rather than English — see LG.TXN. `native` and
@@ -199,8 +204,9 @@ LG.ledger = (function () {
       ? ks.map(k => {
           const it = LG.ITEMS[k], worn = !!state.worn[k];
           const body = it.icon + ' <span lang="' + L.tag + '">' + escapeHTML(itemLabel(k)) +
-            (state.inv[k] > 1 ? ' ×' + state.inv[k] : '') + '</span>' +
-            (worn ? ' <span class="worn-tag">worn</span>' : '');
+            (state.inv[k] > 1 ? ' ×' + state.inv[k] : '') +
+            (worn ? wornTag() : '') +
+            '</span>';
           if (!it.use) return '<span class="pill" title="' + it.en + '">' + body + '</span>';
           const verb = worn ? 'Take off' : VERB[it.use];
           return '<button type="button" class="pill use' + (worn ? ' worn' : '') +

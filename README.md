@@ -192,10 +192,12 @@ Where the model supports it, replies are constrained with a JSON Schema
 the villager's reply to you, and the helper's conversation lines, recall,
 belief revisions, glosses and notices. Each field in a schema carries the same
 description the prompt gives it. Support is checked per model when the key
-connects, and a request with a schema is sent with
-`provider.require_parameters`, so OpenRouter only routes it to a provider that
-honours the schema. Anything unrecognised falls back to prompt-based JSON with
-repair.
+connects, against OpenRouter's per-provider listing: a model gets a schema only
+if at least one of its providers takes one at a price under the request's price
+cap. A request with a schema is sent with `provider.require_parameters`, so
+OpenRouter only routes it to such a provider; if it finds none anyway, the call
+is retried once without the schema and that model gets none for the rest of the
+session. Anything unrecognised falls back to prompt-based JSON with repair.
 
 ## Languages and difficulty
 

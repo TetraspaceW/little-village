@@ -338,8 +338,17 @@ LG.dialogue = (function () {
       fields.push({ k: 'price', type: { type: ['number', 'null'] },
         desc: 'the coins agreed for all of it together, as a number — only with sell or buy' });
     }
+    /* Says what each action means, not just which exist: the schema
+       carries this description too, and a bare "none | trade" told a
+       model reading only the schema nothing about when to pick which. */
+    const means = {
+      none: 'nothing changed hands this turn',
+      trade: 'you hand over your side of the deal, this very turn',
+      sell: 'you hand goods over and take the money, this very turn',
+      buy: 'you take something off the traveller and pay for it, this very turn'
+    };
     fields.push({ k: 'action', type: { type: 'string', enum: acts },
-      desc: acts.join(' | ') });
+      desc: acts.map(a => a + ' (' + means[a] + ')').join(' | ') });
 
     /* Everything in `stable` up to here is the same for this villager
        whatever their shop and deal are doing; the reply format below

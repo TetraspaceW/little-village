@@ -93,11 +93,14 @@ LG.llm = (function () {
       );
     }
     if (res.status === 404) {
-      throw new Error(
-        'The model "' +
-          (body.model || "?") +
-          '" was not found on this provider, ' +
-          "or your key has no access to it.",
+      throw withStatus(
+        new Error(
+          'The model "' +
+            (body.model || "?") +
+            '" was not found on this provider, ' +
+            "or your key has no access to it.",
+        ),
+        404,
       );
     }
     if (res.status === 429)
@@ -107,11 +110,19 @@ LG.llm = (function () {
       try {
         detail = (await res.text()).slice(0, 240);
       } catch (e) {}
-      throw new Error(
-        "API error " + res.status + (detail ? ": " + detail : ""),
+      throw withStatus(
+        new Error("API error " + res.status + (detail ? ": " + detail : "")),
+        res.status,
       );
     }
     return res.json();
+  }
+
+  /* Tags an error with the HTTP status that caused it, so providerCall
+     can tell "no provider takes this schema" from everything else. */
+  function withStatus(e, status) {
+    e.status = status;
+    return e;
   }
 
   /* The system prompt as text blocks, cut where each of `prefixes` ends,
@@ -227,7 +238,16 @@ LG.llm = (function () {
      accepted, and failure is treated as "no" — a failed/unknown lookup
      falls back to prompt-only JSON with repair, same as before this
      existed. */
-  const SCHEMA_OK = {}; // 'provider:model' -> true | false, cached after first check
+  /* 'provider:model' -> false, true, or a list of prices. A list holds
+     one entry per OpenRouter provider of that model that takes a schema,
+     as {prompt, completion} in $/M tokens, so schemaOK can tell whether
+     one of them is also under the price cap a request will carry -- a
+     schema sent with require_parameters (see send) to a model whose only
+     schema-capable providers are over the cap would fail outright. true
+     means the model takes a schema somewhere but its providers couldn't
+     be looked up; a call that then finds none recovers on its own (see
+     providerCall). */
+  const SCHEMA_OK = {};
   let orModels = null; // OpenRouter's model list, fetched once and shared with the price lookup below
 
   async function getJSON(url, headers) {
@@ -242,7 +262,14 @@ LG.llm = (function () {
 
   /* Synchronous check so the send path never blocks on it. Unresolved/unknown reads as false. */
   function schemaOK(cfg, model) {
-    return SCHEMA_OK[schemaKey(cfg, model || cfg.model)] === true;
+    const v = SCHEMA_OK[schemaKey(cfg, model || cfg.model)];
+    if (v === true) return true;
+    if (!Array.isArray(v) || !v.length) return false;
+    // the same cap send will attach; none resolved means none is sent
+    const cap = maxPriceCache[cfg.fast ? "fast" : "big"];
+    if (!cap) return true;
+    const under = (a, b) => a <= b * 1.000001;
+    return v.some((p) => under(p.prompt, cap.prompt) && under(p.completion, cap.completion));
   }
 
   async function probeOne(cfg, model) {
@@ -252,13 +279,31 @@ LG.llm = (function () {
     // Logfare picks its own backing model, so there's no catalogue to
     // query -- fails closed the same as any other unresolvable lookup.
     if (cfg.provider !== "openrouter") return false;
+    const takes = (x) =>
+      (x.supported_parameters || []).indexOf("structured_outputs") !== -1;
+    try {
+      // Per-provider listing first: which providers take a schema, at what price.
+      const d = await getJSON(
+        "https://openrouter.ai/api/v1/models/" + model + "/endpoints",
+      );
+      const eps = (d.data && d.data.endpoints) || [];
+      SCHEMA_OK[key] = eps
+        .filter(takes)
+        .map((e) => ({
+          prompt: Number((e.pricing || {}).prompt) * 1e6,
+          completion: Number((e.pricing || {}).completion) * 1e6,
+        }))
+        .filter((p) => isFinite(p.prompt) && isFinite(p.completion));
+      return SCHEMA_OK[key];
+    } catch (e) {
+      /* no per-provider listing (a router like openrouter/auto has none);
+         fall back to the model list's flag below */
+    }
     try {
       if (!orModels) orModels = getJSON("https://openrouter.ai/api/v1/models");
       const d = await orModels;
       const m = (d.data || []).find((x) => x.id === model);
-      SCHEMA_OK[key] =
-        !!m &&
-        (m.supported_parameters || []).indexOf("structured_outputs") !== -1;
+      SCHEMA_OK[key] = !!m && takes(m);
     } catch (e) {
       orModels = null; // don't cache a failed fetch -- allow retrying later
     }
@@ -273,6 +318,9 @@ LG.llm = (function () {
       await Promise.all([
         probeOne(cfg, cfg.model),
         probeOne(cfg, helperModel(cfg)),
+        // resolved now so schemaOK can compare against them from the first call
+        cfg.provider === "openrouter" ? maxPriceFor("big") : null,
+        cfg.provider === "openrouter" ? maxPriceFor("fast") : null,
       ]);
     } catch (e) {
       /* fails closed on its own */
@@ -512,9 +560,19 @@ LG.llm = (function () {
        across whichever is fastest. */
     if (cfg.fast && !(opts && opts.session))
       opts = Object.assign({}, opts, { session: "helper-" + kindOf(system) });
-    return audited(cfg, system, messages, () =>
-      send(cfg, system, messages, s, opts),
-    );
+    const run = (sc) =>
+      audited(cfg, system, messages, () => send(cfg, system, messages, sc, opts));
+    if (!s) return run(null);
+    /* OpenRouter answers 404 (or 400) when no provider it may use takes
+       the schema -- the lookup was stale, or the cap or session ruled
+       the capable ones out. That isn't worth failing the call over: stop
+       sending this model a schema for the rest of the session and ask
+       again without one, which falls back to prompt-only JSON. */
+    return run(s).catch((e) => {
+      if (e.status !== 404 && e.status !== 400) throw e;
+      SCHEMA_OK[schemaKey(cfg, cfg.model)] = false;
+      return run(null);
+    });
   }
 
   function dump() {

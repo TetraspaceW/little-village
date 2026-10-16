@@ -645,8 +645,12 @@ async function promptCached() {
   const sent = [];
   const realFetch = sandbox.fetch, audit = LG.llm.audit;
   sandbox.fetch = async (url, init) => {
-    // no body: OpenRouter's model list, looked up for its price cap and
-    // for which models take a schema
+    // no body: a lookup. Per-provider listings say which providers take a schema...
+    if ((!init || !init.body) && url.indexOf('/endpoints') !== -1)
+      return { ok: true, json: async () => ({ data: { endpoints: [
+        { supported_parameters: ['structured_outputs'],
+          pricing: { prompt: '0.0000001', completion: '0.0000004' } }] } }) };
+    // ...and the model list gives the price cap
     if (!init || !init.body) return { ok: true, json: async () => ({ data: [
       { id: 'deepseek/deepseek-v4.1-flash', supported_parameters: ['structured_outputs'] }] }) };
     sent.push({ url: url, body: JSON.parse(init.body) });
@@ -725,6 +729,39 @@ async function promptCached() {
      'and each field says what goes in it, not just its type');
   ok(api[2].body.provider.require_parameters === true && t0.provider.require_parameters === true,
      'and the request only goes to a provider that will honour it');
+
+  /* No provider OpenRouter may use takes the schema after all: the call
+     still goes through, without one, and the model stops getting one. */
+  const fussy = { provider: 'openrouter', apiKey: 'k', model: 'deepseek/deepseek-v4.1-flash',
+                  helper: 'x/fussy' };
+  const tries = [];
+  sandbox.fetch = async (url, init) => {
+    if (!init || !init.body)
+      return { ok: true, json: async () => ({ data: { endpoints: [
+        { supported_parameters: ['structured_outputs'], pricing: { prompt: '0', completion: '0' } }] } }) };
+    const body = JSON.parse(init.body);
+    tries.push(body);
+    if (body.response_format)
+      return { ok: false, status: 404, text: async () => 'No endpoints found' };
+    return { ok: true, status: 200, json: async () => ({
+      choices: [{ message: { content: '{"translation": "Hm."}' }, finish_reason: 'stop' }] }) };
+  };
+  LG.llm.audit = false;
+  let got;
+  try {
+    await LG.llm.probe(fussy);
+    ok(LG.llm.schemaOK({ provider: 'openrouter', model: 'x/fussy', fast: true }),
+       'a model whose providers take a schema reads as taking one');
+    got = await LG.llm.gloss(fussy, 'Hm.', { langName: 'Japanese' });
+  } finally {
+    sandbox.fetch = realFetch;
+    LG.llm.audit = audit;
+  }
+  ok(tries.length === 2 && tries[0].response_format && !tries[1].response_format,
+     'turned away with a schema, the call is asked again without one');
+  ok(got && got.translation === 'Hm.', 'and its answer comes back as usual');
+  ok(!LG.llm.schemaOK({ provider: 'openrouter', model: 'x/fussy', fast: true }),
+     'and that model gets no schema from then on');
 }
 
 /* ---------------------------------------------------------- a key per provider

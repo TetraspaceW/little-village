@@ -776,9 +776,15 @@ LG.llm = (function () {
       '- "icon": one emoji that looks most like it',
       '- "price": what it is usually worth, in coins, where ' + o.anchor,
       '- "use": "eat" or "drink" if you would eat or drink it just as it comes (a raw',
-      '  onion or a joint of meat is not a snack), "wear" if it is worn, otherwise null',
+      '  onion or a joint of meat is not a snack), "wear" if it is worn, "light" if it is',
+      '  lit to see by, "play" if it is a musical instrument, otherwise null',
       '- "slot": if it is worn, where — one of ' + (o.slots || []).join(", ") +
         ' (putting it on takes off whatever else is there); otherwise null',
+      '- "glow": if it is lit, how many paces round you it lights — a candle 2.5, an oil',
+      '  lamp 4, a lantern 5.5; otherwise null',
+      '- "voice": if it is played, which of these it sounds most like — ' +
+        (o.voices || []).join(", ") + '; otherwise null',
+      '- "rung": true if it is rung rather than played, like a bell; otherwise false',
       '- "leaves": if it is eaten or drunk out of something, what is left in your hands',
       '  afterwards — one of ' + (o.containers || []).join(", ") + '; otherwise null',
       o.genders && o.genders.length
@@ -788,7 +794,7 @@ LG.llm = (function () {
       "",
       "Reply with only a JSON object:",
       '{"thing": true, "same": null, "en": "", "full": "", "name": "", "icon": "", "price": 0, ' +
-        '"use": null, "slot": null, "leaves": null' + (o.genders && o.genders.length ? ', "g": null' : "") + "}",
+        '"use": null, "slot": null, "glow": null, "voice": null, "rung": false, "leaves": null' + (o.genders && o.genders.length ? ', "g": null' : "") + "}",
       "",
       "Things the game already has, as tag: name —",
       o.known.join("; "),

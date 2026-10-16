@@ -62,8 +62,9 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
   out to the light's reach, fading back into the night at the edge. A
   candle reaches a couple of tiles, a lantern about five.
 - **Instruments.** The drum, violin, guitar and bell play a note when
-  clicked — synthesized in the browser, no sound files — and any villager
-  within earshot remembers hearing it.
+  clicked — a recorded note from a General MIDI soundfont, downloaded the
+  first time you play one (see Credits) — and any villager within earshot
+  remembers hearing it.
 - Translations stay blurred until you click them.
 
 ## Gameplay
@@ -347,7 +348,7 @@ js/view.js           per-villager prompt assembly (single source of truth)
 js/touch.js          the joystick and the tap: touch gestures, on a canvas
 js/npc.js            villager movement, meetings, beliefs and naming, rendering
 js/village.js        the village as it stands: chain, cast, traveller, the thing to find
-js/sound.js          the instruments' notes, synthesized with Web Audio
+js/sound.js          the instruments' notes: soundfont samples, fetched and played
 js/ledger.js         the traveller's pockets, notebook, deeds and log, and the HUD
 js/trade.js          buying and selling for coin: prices, refunds, the till
 js/dialogue.js       prompt building, conversation UI
@@ -377,6 +378,14 @@ commits to confirm a refactor didn't change what the model sees. The errand
 generator is separately fuzz-tested: 900 random chains across all three
 difficulties, checked for solvability, no self-trades, no duplicate
 villagers, a reachable terminal item, and no orphaned facts.
+
+## Credits
+
+- Instrument sounds: the **FluidR3 GM** soundfont by Frank Wen, under
+  [Creative Commons Attribution 3.0](https://creativecommons.org/licenses/by/3.0/),
+  as rendered to MP3 by Benjamin Gleitzman's
+  [midi-js-soundfonts](https://github.com/gleitz/midi-js-soundfonts) and served by
+  [jsDelivr](https://www.jsdelivr.com/).
 
 ## Further reading
 

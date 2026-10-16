@@ -1,149 +1,81 @@
 /* sound.js — the notes the traveller's instruments make (see `use: 'play'`
    on LG.ITEMS).
 
-   There are no sound files: each instrument is synthesized when it's
-   played, from what makes that instrument sound like itself — a skin
-   whose pitch drops as it settles, a bowed string with vibrato, a
-   plucked string (Karplus–Strong: a burst of noise fed round a delay
-   line one period long, softened a little each time round, which is
-   very nearly what a real string does), and a bell's partials, which
-   aren't harmonics of one another and die away at different rates.
-   A General MIDI note would need a soundfont downloading first; this
-   needs nothing.
+   Each instrument is one recorded note from the FluidR3 General MIDI
+   soundfont (Frank Wen, Creative Commons Attribution 3.0), as rendered to
+   one MP3 per note by Benjamin Gleitzman's midi-js-soundfonts. They're
+   fetched from jsDelivr the first time any instrument is played, pinned
+   to one commit of that repository so the sound can't change under us,
+   and kept for the rest of the session. A few tens of KB each.
 
    The AudioContext is made on first use, which is always a click or a
-   tap, so browsers allow it to make sound. With no Web Audio at all
-   (the tests, an old browser), playing is silently a no-op. */
+   tap, so browsers allow it to make sound. The very first note waits for
+   its download; every note after is immediate. With no Web Audio or no
+   network (the tests, offline), playing is silently a no-op — the log
+   line and anyone hearing it still happen, in ledger.js and game.js. */
 window.LG = window.LG || {};
 
 LG.sound = (function () {
-  const VOLUME = 0.35;
-  let ac = null, out = null;
+  const BASE = 'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@' +
+               '044fab8e1456bfafc5776e86dfd6bb8697149aef/FluidR3_GM/';
+  /* GM instrument and note for each voice. The bell is tubular bells up
+     an octave, where it rings like a handbell; the soundfont's own
+     "tinkle bell" is a click a tenth of a second long. */
+  const NOTES = {
+    drum:   'taiko_drum-mp3/C3.mp3',
+    violin: 'violin-mp3/A4.mp3',
+    guitar: 'acoustic_guitar_steel-mp3/G3.mp3',
+    bell:   'tubular_bells-mp3/A5.mp3'
+  };
+  /* The samples come in at different levels; each is scaled so its
+     loudest moment reaches PEAK, which keeps the four even. */
+  const PEAK = 0.5;
+
+  let ac = null;
+  const loading = {};            // voice -> Promise of { buffer, gain }, or of null if it failed
 
   function context() {
     if (ac) return ac;
     const AC = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
     if (!AC) return null;
     try { ac = new AC(); } catch (e) { return null; }
-    out = ac.createGain();
-    out.gain.value = VOLUME;
-    out.connect(ac.destination);
     return ac;
   }
 
-  /* An envelope: up to `peak` over `attack` seconds, then an exponential
-     fall to silence by `end`. */
-  function envelope(g, t, peak, attack, end) {
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(peak, t + attack);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + end);
+  function load(a, voice) {
+    if (!loading[voice]) {
+      loading[voice] = fetch(BASE + NOTES[voice])
+        .then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+        .then(data => new Promise((ok, fail) => a.decodeAudioData(data, ok, fail)))
+        .then(buffer => {
+          let peak = 0;
+          for (let c = 0; c < buffer.numberOfChannels; c++) {
+            const d = buffer.getChannelData(c);
+            for (let i = 0; i < d.length; i++) if (Math.abs(d[i]) > peak) peak = Math.abs(d[i]);
+          }
+          return { buffer, gain: peak ? PEAK / peak : 1 };
+        })
+        .catch(() => { delete loading[voice]; return null; });   // try again next time
+    }
+    return loading[voice];
   }
 
-  function noise(a, seconds) {
-    const buf = a.createBuffer(1, Math.ceil(a.sampleRate * seconds), a.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    return buf;
-  }
-
-  /* A floor tom: the skin starts high and drops as the tension evens
-     out, under a short slap of filtered noise from the stick. */
-  function drum(a, t) {
-    const o = a.createOscillator(), g = a.createGain();
-    o.type = 'sine';
-    o.frequency.setValueAtTime(150, t);
-    o.frequency.exponentialRampToValueAtTime(58, t + 0.35);
-    envelope(g, t, 1, 0.004, 0.7);
-    o.connect(g).connect(out);
-    o.start(t); o.stop(t + 0.75);
-
-    const n = a.createBufferSource(), f = a.createBiquadFilter(), ng = a.createGain();
-    n.buffer = noise(a, 0.12);
-    f.type = 'lowpass'; f.frequency.value = 1800;
-    envelope(ng, t, 0.5, 0.002, 0.09);
-    n.connect(f).connect(ng).connect(out);
-    n.start(t);
-  }
-
-  /* An A on the violin: a bright sawtooth (a bowed string's own
-     waveform is very near one) through the resonances of a wooden body,
-     bowed in rather than struck, with vibrato arriving a moment after
-     the note starts, the way a player's does. */
-  function violin(a, t) {
-    const o = a.createOscillator(), g = a.createGain();
-    o.type = 'sawtooth';
-    o.frequency.value = 440;
-    const lfo = a.createOscillator(), depth = a.createGain();
-    lfo.frequency.value = 5.6;
-    depth.gain.setValueAtTime(0, t);
-    depth.gain.linearRampToValueAtTime(5, t + 0.45);
-    lfo.connect(depth).connect(o.frequency);
-
-    const body = a.createBiquadFilter(), bright = a.createBiquadFilter(), top = a.createBiquadFilter();
-    body.type = 'peaking'; body.frequency.value = 290; body.Q.value = 2; body.gain.value = 8;
-    bright.type = 'peaking'; bright.frequency.value = 2600; bright.Q.value = 1.5; bright.gain.value = 6;
-    top.type = 'lowpass'; top.frequency.value = 5200;
-
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.45, t + 0.14);
-    g.gain.setValueAtTime(0.45, t + 0.95);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
-    o.connect(body).connect(bright).connect(top).connect(g).connect(out);
-    o.start(t); lfo.start(t);
-    o.stop(t + 1.45); lfo.stop(t + 1.45);
-  }
-
-  /* An open G string, plucked. */
-  function guitar(a, t) {
-    const rate = a.sampleRate, seconds = 2.6, period = Math.round(rate / 196);
-    const buf = a.createBuffer(1, Math.ceil(rate * seconds), rate), d = buf.getChannelData(0);
-    /* The pluck: noise, softened twice over (a finger is not a razor, so
-       the low harmonics should come out on top), with its average taken
-       off — any offset left in would go round the string for ever as a
-       silent DC hum, eating the headroom. */
-    for (let i = 0; i < period; i++) d[i] = Math.random() * 2 - 1;
-    for (let pass = 0; pass < 2; pass++)
-      for (let i = 0; i < period; i++) d[i] = (d[(i + period - 1) % period] + d[i] + d[(i + 1) % period]) / 3;
-    let mean = 0;
-    for (let i = 0; i < period; i++) mean += d[i] / period;
-    for (let i = 0; i < period; i++) d[i] = (d[i] - mean) * 1.5;
-    for (let i = period; i < d.length; i++) d[i] = 0.996 * 0.5 * (d[i - period] + d[i - period + 1]);
-    const s = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
-    s.buffer = buf;
-    f.type = 'lowpass'; f.frequency.value = 3200;
-    g.gain.value = 1.1;
-    s.connect(f).connect(g).connect(out);
-    s.start(t);
-  }
-
-  /* A handbell. The partials are a real bell's: the hum an octave below
-     the note, the note, a minor third, a fifth, the octave and the
-     upper partials — not a harmonic series, which is what makes it a
-     bell and not an organ — each fading at its own pace, the low ones
-     ringing longest. */
-  function bell(a, t) {
-    const base = 880;
-    [[0.5, 0.26, 3.2], [1, 0.45, 2.6], [1.19, 0.22, 2.0], [1.5, 0.15, 1.6],
-     [2, 0.19, 1.4], [2.74, 0.09, 0.9], [3.76, 0.06, 0.6], [5.4, 0.04, 0.35]].forEach(([r, peak, end]) => {
-      const o = a.createOscillator(), g = a.createGain();
-      o.type = 'sine';
-      o.frequency.value = base * r;
-      envelope(g, t, peak, 0.003, end);
-      o.connect(g).connect(out);
-      o.start(t); o.stop(t + end + 0.05);
-    });
-  }
-
-  const VOICES = { drum, violin, guitar, bell };
-
-  /* Plays one note on the named voice. Returns whether it could. */
+  /* Plays one note on the named voice. Returns whether it will try to. */
   function play(voice) {
-    const a = context(), v = VOICES[voice];
-    if (!a || !v) return false;
+    const a = context();
+    if (!a || !NOTES[voice] || typeof fetch !== 'function') return false;
     if (a.state === 'suspended' && a.resume) a.resume();
-    v(a, a.currentTime + 0.01);
+    Object.keys(NOTES).forEach(v => load(a, v));    // the rest are likely next
+    load(a, voice).then(s => {
+      if (!s) return;
+      const src = a.createBufferSource(), g = a.createGain();
+      src.buffer = s.buffer;
+      g.gain.value = s.gain;
+      src.connect(g).connect(a.destination);
+      src.start();
+    });
     return true;
   }
 
-  return { play, voices: Object.keys(VOICES) };
+  return { play, voices: Object.keys(NOTES), _url: v => BASE + NOTES[v] };
 })();

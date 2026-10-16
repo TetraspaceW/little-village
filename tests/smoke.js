@@ -653,6 +653,8 @@ section('instruments');
      played.every(k => LG.sound.voices.indexOf(LG.ITEMS[k].voice) !== -1),
      'the drum, violin, guitar and bell each have a voice to play');
   ok(!LG.sound.play('violin'), 'with no Web Audio, playing is quietly nothing');
+  ok(LG.sound.voices.every(v => /^https:\/\/cdn\.jsdelivr\.net\/gh\/gleitz\/midi-js-soundfonts@[0-9a-f]{40}\//.test(LG.sound._url(v))),
+     'each note comes from the soundfont, pinned to one commit');
 
   // Someone right beside you hears it; someone across the map doesn't.
   const near = npcs[0], far = npcs[1], me = LG.village.player;

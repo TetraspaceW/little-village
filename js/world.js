@@ -1625,6 +1625,7 @@ LG.world = (function () {
 
   return { TILE, W, H, T, build, get, isSolid, isWalkable, nearestOpen, pathTo,
            buildingAt, buildingUnder, roofRects, buildingByLabel, inRect, nearRect, ovens, lamps,
+           iced: iceOnWater,
            drawGround, drawBuildings, drawSigns, drawAnimated, hitSign, overSign, buildings,
            // for the tests: what got placed, and where you can get to from here
            _props: () => props, _signs: () => signSpots(), _flood: flood,

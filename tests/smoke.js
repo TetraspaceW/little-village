@@ -758,6 +758,83 @@ section('instruments');
   near.px = at.nx; near.py = at.ny; far.px = at.fx; far.py = at.fy;
 }
 
+section('fishing at the pond');
+{
+  const L = LG.ledger, F = LG.fishing, W = LG.world, me = LG.village.player;
+  const was = { x: me.px, y: me.py };
+  const at = (x, y) => { me.px = x; me.py = y; me.tx = (x / 32) | 0; me.ty = (y / 32) | 0; };
+  const caught = LG.CATCHES.map(c => c.id);
+  ok(caught.length >= 16 && caught.every(k => LG.ITEMS[k]), 'many kinds of thing bite, each a real item');
+  ok(['saury', 'robot_fish', 'shrimp', 'sea_slug', 'copepod'].every(k => caught.indexOf(k) !== -1),
+     'among them the Pacific saury, a robot fish, shrimp, a sea slug and a copepod');
+  ok(caught.every(k => LG.ITEMS[k].tags.join() === 'catch'),
+     'tagged only as a catch, so the errand generator never picks one');
+  ok(caught.every(k => Object.keys(LG.LANGUAGES).every(l => l === 'en' || LG.ITEMS[k][l])),
+     'and each has a name in every language');
+  ok(['cast', 'reelIn', 'tooSoon', 'gotAway', 'landed'].every(k =>
+       Object.keys(LG.LANGUAGES).every(l => LG.TXN[k][l])), 'what happens at the water is told in every language');
+  ok(['day', 'night'].every(h => LG.CATCHES.some(c => c.when === h)) &&
+     LG.CATCHES.every(c => c.weight > 0 && c.bite > 0), 'some bite by day, some by night, and each lets go in time');
+
+  // Stand on the bank, just above the pond's top edge.
+  let bank = null;
+  for (let y = 60; y < 80 && !bank; y++) for (let x = 4; x < 21 && !bank; x++)
+    if (W.get(x, y) === W.T.WATER && W.isWalkable(x, y - 1) && !W.buildingAt(x, y - 1)) bank = { x, y: y - 1 };
+  ok(!!bank, 'the pond has a bank to stand on');
+  at((bank.x + 0.5) * 32, (bank.y + 0.5) * 32);
+  const rods = L.count('fishing_rod');
+  L.take('fishing_rod', rods);
+  ok(F.stopped() === 'rod' && !F.cast(), 'no casting without a rod');
+  L.give('fishing_rod', 1);
+  ok(F.canCast() && F.cast() && F.out() && F.phase === 'wait', 'with one, you cast and wait');
+  ok(!F.canCast(), 'and you cannot cast a second line');
+  ok(F.pull() && !F.out(), 'pulling back before anything bites comes up empty');
+  ok(!caught.some(k => L.count(k) > 0), 'with nothing in your pockets for it');
+
+  const before = caught.reduce((n, k) => n + L.count(k), 0);
+  F.cast(); F._debugNibbles(1);
+  F._debugSkip(); F.tick(0.01);
+  ok(F.phase === 'nibble', 'a nibble shakes the float first');
+  F._debugSkip(); F.tick(0.01);
+  ok(F.phase === 'wait', 'then it settles again');
+  F._debugSkip(); F.tick(0.01);
+  ok(F.phase === 'bite', 'until something takes the bait');
+  const near = npcs[0], np = { x: near.px, y: near.py };
+  near.px = me.px + 64; near.py = me.py;
+  ok(F.pull() && caught.reduce((n, k) => n + L.count(k), 0) === before + 1, 'pulling back while it is under lands it');
+  ok((near.memory || []).some(m => /pull .* out of the water/.test(m.text)) || !!W.buildingUnder(near),
+     'and a villager standing by saw it');
+  near.px = np.x; near.py = np.y;
+
+  F.cast(); F._debugNibbles(0); F._debugSkip(); F.tick(0.01);
+  ok(F.phase === 'bite', 'another bite');
+  F.tick(0.01, true); F._debugSkip(); F.tick(5, true);
+  ok(F.phase === 'bite', 'which waits while a panel is open');
+  F._debugSkip(); F.tick(0.01);
+  ok(!F.out(), 'but left under too long, it gets away');
+
+  F.cast();
+  at(me.px + 20, me.py);
+  F.tick(0.01);
+  ok(!F.out(), 'walking off reels the line in');
+
+  /* What bites depends on the hour. */
+  const pool = night => { const was = LG.time.isNight; LG.time.isNight = () => night;
+    const seen = new Set(); for (let i = 0; i < 400; i++) seen.add(F.pick().id);
+    LG.time.isNight = was; return seen; };
+  const day = pool(false), dark = pool(true);
+  ok(!day.has('eel') && !day.has('squid') && dark.has('eel'), 'eels come out at night');
+  ok(!dark.has('trout') && day.has('trout'), 'and the trout keep to the day');
+
+  ok(LG.RECIPES.some(r => r.needs.saury && r.makes === 'grilled_fish'), 'a saury grills');
+  const yuri = LG.NPCS.find(d => d.id === 'yuri');
+  ok(yuri.sells.some(w => w.i === 'fishing_rod') && yuri.buysTags.indexOf('catch') !== -1,
+     'the fisherman sells rods and buys what you catch');
+  caught.forEach(k => L.take(k, L.count(k)));
+  L.take('fishing_rod', L.count('fishing_rod')); L.give('fishing_rod', rods);
+  at(was.x, was.y);
+}
+
 section('eating out of a container leaves the container');
 {
   const L = LG.ledger;

@@ -195,6 +195,7 @@ LG.game = (function () {
      `restoring` is set by LG.save.restore, which lays a save over the
      result and must not have the bare village saved over it first. */
   function newVillage(seed, quiet, restoring) {
+    LG.mint.forget();                   // one village's inventions aren't the next one's
     V.create(seed, settings.level);
     adopt();
 

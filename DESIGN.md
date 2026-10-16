@@ -121,6 +121,14 @@ OpenRouter's decisions endpoint (`decisionPost`/`askJev` in `js/llm.js`), not
   `revealed`, `remember`, and an optional trade `action`.
 - **Stock is a prior, not a manifest.** A baker plausibly has a pain au chocolat. The
   only hard inventory is what the villager actually took from the player.
+- **Unlisted goods are minted, not refused.** A sale naming a tag the game doesn't
+  have used to be dropped ("could not be squared up") while the villager believed
+  they'd handed it over. Now the helper model either maps it to an existing item
+  under another name, says it isn't a thing that can be handed over, or describes
+  it (icon, English name, village name, usual price), and `js/mint.js` registers it
+  in `LG.ITEMS`. Minted items have **no tags**, so the errand generator can't pick
+  one and a seed still builds the same village. Only the villagers who minted one
+  sell it. They belong to one village: cleared by `newVillage`, carried in the save.
 
 ## Structured output and reply parsing
 

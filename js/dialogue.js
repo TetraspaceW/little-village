@@ -196,6 +196,10 @@ LG.dialogue = (function () {
          for something. */
       volatile.push('If the traveller holds out their coins, that is them paying you for something you have not handed over yet — take the money and hand the goods over in the same breath. Something the record already shows you were paid for is not being bought a second time.');
       volatile.push('Two things at once is still one sale: put both tags in "item" and the total in "price". Only list what you are actually handing over this turn.');
+      /* Stock is a prior, not a manifest: anything without a tag above
+         that their trade would plausibly have is theirs to sell under a
+         tag they make up, and mint.js turns it into a real item. */
+      volatile.push('Something your trade would have that is not listed above, you have as well. Selling it, make up a short English [tag] for it in the style of the ones above.');
     } else if (v.trade.sells.length) {
       /* Villagers need to be told explicitly when their trade is
          closed (nighttime only) — without it, a villager would agree to
@@ -338,7 +342,7 @@ LG.dialogue = (function () {
          schema only asks for the list form — one shape to validate
          rather than two to allow. */
       fields.push({ k: 'item', type: { type: ['array', 'null'], items: { type: 'string' } },
-        desc: 'the [tag] of the goods, or a list of tags if it is more than one thing — only with sell or buy' });
+        desc: 'the [tag] of the goods, or a list of tags if it is more than one thing (a new tag of your own for anything not listed) — only with sell or buy' });
       fields.push({ k: 'price', type: { type: ['number', 'null'] },
         desc: 'the coins agreed for all of it together, as a number — only with sell or buy' });
     }
@@ -738,8 +742,13 @@ LG.dialogue = (function () {
        was neither completed nor refused — the villager narrated handing
        over tea, and nothing in the game state ever contradicted it. */
     const act = gotIt ? String(reply.action || '').toLowerCase() : '';
+    /* Something sold that the game has no item for becomes one first
+       (see mint.js), so a villager can sell what their trade would
+       plausibly have, not only what the game happened to ship with. */
+    const goods = act === 'sell'
+      ? await LG.mint.sale(npc, reply.item, spoken, reply.translation) : reply.item;
     if (act === 'sell' || act === 'buy') {
-      if (LG.trade.commerce(npc, act, reply.item, reply.price)) renderItems();
+      if (LG.trade.commerce(npc, act, goods, reply.price)) renderItems();
       else say('That sale could not be squared up.', 'miss');
     }
 

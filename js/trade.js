@@ -107,7 +107,8 @@ LG.trade = (function () {
       // An item they've bought from the player can be resold, whether or not it's normally part of their trade.
       if (act === 'sell') {
         const own = npc.stock[id] > 0 ? Math.max(1, Math.round(LG.priceOf(id))) : 0;
-        return { id: id, base: priceFrom(d.sells, d.sellsTags, id, 1) || own, fromStock: own > 0 };
+        return { id: id, base: priceFrom(d.sells, d.sellsTags, id, 1) || LG.mint.priceFor(npc, id) || own,
+                 fromStock: own > 0 };
       }
       const owed = back(id);                       // returning something they sold you
       return owed ? { id: id, base: owed.price, refund: true }

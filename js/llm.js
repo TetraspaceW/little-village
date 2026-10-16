@@ -363,6 +363,7 @@ LG.llm = (function () {
     ["You keep one person", "revise"],
     ["You note what people took away", "recall"],
     ["You decide whether a villager posts", "notice"],
+    ["You catalogue", "mint"],
   ];
   const transcript = [];
   let audit = true,
@@ -745,6 +746,51 @@ LG.llm = (function () {
     } catch (e) {
       return false;
     } // treat a failed check as no deal
+  }
+
+  /* Describes a thing a villager has just sold that the game has no item
+     for, so it can become one (see LG.mint). `same` is the existing tag
+     when it is only a different name for something the game already has.
+     Only the description comes from here; whether the sale itself is
+     allowed is still trade.commerce's decision. Fails closed: no answer
+     means no item, and the sale is refused as before. */
+  async function mintItem(cfg, opts) {
+    const o = opts || {};
+    const ask = [
+      o.npcName + " has just sold the traveller something tagged " +
+        JSON.stringify(o.tag) + ".",
+      "",
+      o.npcName + " said: " + JSON.stringify(o.said || ""),
+      o.translation ? "In English, that is: " + JSON.stringify(o.translation) : "",
+      "",
+      "Things the game already has, as tag: name —",
+      o.known.join("; "),
+      "",
+      "If it is one of those under another name, give its tag as \"same\".",
+      "If it is not something a person could hold and hand over — a service, a",
+      "piece of information, a building, a person — set \"thing\" to false.",
+      "Otherwise describe it:",
+      '- "en": a short English name, lower case, like "loaf of bread"',
+      '- "full": the same with an article or "some", like "a loaf of bread"',
+      '- "name": what it is called in ' + o.langName +
+        ", the word " + o.npcName + " used if they named it, written plainly (no readings, no brackets)",
+      '- "icon": one emoji that looks most like it',
+      '- "price": what it is usually worth, in coins, where ' + o.anchor,
+      "",
+      "Reply with only a JSON object:",
+      '{"thing": true, "same": null, "en": "", "full": "", "name": "", "icon": "", "price": 0}',
+    ].join("\n");
+    const vcfg = helperConfig(cfg);
+    try {
+      const raw = await providerCall(
+        vcfg,
+        "You catalogue the goods in a village. Answer with JSON only.",
+        [{ role: "user", content: ask }],
+      );
+      return parseJSON(raw);
+    } catch (e) {
+      return null;
+    }
   }
 
   /* Checks whether newly-learned info supersedes something the villager
@@ -1581,6 +1627,7 @@ LG.llm = (function () {
       audit = !!v;
     },
     confirmTrade,
+    mintItem,
     validate,
     probe,
     schemaOK,

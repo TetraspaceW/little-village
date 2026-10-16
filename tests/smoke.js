@@ -1634,6 +1634,7 @@ async function villagersTalking() {
   await roomForTheComposer();
   escapeCloses();
   whatYouCanSee();
+  await mintedGoods();
 
   console.log('\n' + (failures ? failures + ' of ' + checks + ' CHECKS FAILED'
                                : 'SMOKE TEST PASSED (' + checks + ' checks)'));
@@ -2096,6 +2097,74 @@ function escapeCloses() {
      'Escape over a conversation closes the panel on top first');
   esc();
   ok(!s5.LG.dialogue.isOpen(), 'and then the conversation');
+}
+
+/* --------------------------------------------------- something not in the catalogue
+   A villager may sell what their trade would plausibly have, not only what
+   LG.ITEMS lists. The unknown tag becomes an item (mint.js) and the sale
+   goes through like any other. */
+async function mintedGoods() {
+  section('something the game never had can still be sold');
+  const real = LG.llm.mintItem;
+  let asked = 0, answer = null;
+  LG.llm.mintItem = async () => { asked++; return answer; };
+  LG.config.settings.apiKey = 'not-a-real-key';          // the stub above, so nothing is sent
+  LG.time.start(LG.time.day, 0.5);
+
+  const cast = LG.village.npcs;
+  const seller = cast.find(n => (n.def.sells || []).length);
+  const other = cast.find(n => n !== seller);
+  const seed = LG.village.plan.seed, level = LG.config.settings.level;
+  const digest = LG.save.digestOf(LG.chain.generate({ level: level, seed: seed }));
+  ok(LG.dialogue._debugPrompt(seller, null).indexOf('make up a short English [tag]') !== -1,
+     'a villager at work is told they can sell what is not listed');
+
+  answer = { thing: true, same: null, en: 'pain au chocolat', full: 'a pain au chocolat',
+             name: 'pain au chocolat', icon: '🥐', price: 3 };
+  seller.till = []; seller.sold = {}; seller.stock = {}; seller.turns = 40;
+  LG.ledger.state.inv.coins = 20;
+  const ids = await LG.mint.sale(seller, ['pain_au_chocolat'], 'Voilà.', 'Here you are.');
+  ok(ids.length === 1 && ids[0] === 'pain_au_chocolat', 'the unknown tag becomes an item');
+  const it = LG.ITEMS.pain_au_chocolat;
+  ok(it && it.icon === '🥐' && it.en === 'pain au chocolat' && it.price === 3, 'described the way the helper put it');
+  ok(it && it.tags.length === 0, 'with no tags, so the errand generator never picks it');
+  ok(LG.save.digestOf(LG.chain.generate({ level: level, seed: seed })) === digest,
+     'and the same seed still builds the same village');
+  ok(LG.trade.commerce(seller, 'sell', ids, 3), 'the sale goes through');
+  ok(LG.ledger.count('pain_au_chocolat') === 1 && LG.ledger.count('coins') === 17,
+     'the traveller has it, and paid for it');
+  ok(LG.dialogue._debugPrompt(seller, null).indexOf('pain au chocolat') !== -1,
+     'and the villager is told they sold it');
+  if (other) {
+    other.stock = {};
+    ok(LG.trade.commerce(other, 'sell', ['pain_au_chocolat'], 3) === false,
+       'someone else does not sell it just because it exists');
+  }
+
+  const n = asked;
+  ok((await LG.mint.sale(seller, 'pain_au_chocolat, bread', '', ''))
+       .join() === 'pain_au_chocolat,bread', 'a known tag is not asked about again');
+  ok(asked === n, 'not even an invented one');
+  answer = { thing: true, same: 'bread', en: 'loaf', full: 'a loaf', icon: '🍞', price: 2 };
+  ok((await LG.mint.sale(seller, ['baguette_loaf'], '', '')).join() === 'bread',
+     'another name for something the game has is that thing');
+  answer = { thing: false };
+  ok((await LG.mint.sale(seller, ['a_haircut'], '', '')).length === 0,
+     'and something that cannot be handed over is nothing');
+  answer = null;
+  ok((await LG.mint.sale(seller, ['mystery'], '', '')).length === 0, 'no answer is nothing too');
+
+  const shot = JSON.parse(JSON.stringify(LG.save.snapshot()));
+  ok(shot.minted.length === 1 && shot.minted[0].id === 'pain_au_chocolat', 'a save carries it');
+  LG.game.newVillage('yet-another-village', true);
+  ok(!LG.ITEMS.pain_au_chocolat, 'a new village does not have it');
+  ok(LG.save.restore(shot) === null, 'the save loads');
+  ok(LG.ITEMS.pain_au_chocolat && LG.ledger.count('pain_au_chocolat') === 1,
+     'and it is back, in the traveller’s pocket');
+  ok(LG.mint.priceFor(LG.village.npcs.find(x => x.id === seller.id), 'pain_au_chocolat') === 3,
+     'still sold by the one who sold it');
+
+  LG.llm.mintItem = real;
 }
 
 beliefsRevised().then(villagersTalking);

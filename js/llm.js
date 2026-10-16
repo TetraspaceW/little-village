@@ -394,54 +394,22 @@ LG.llm = (function () {
        LG.llm.audit = false     stop printing (still recorded); nothing is
                                 printed anyway unless LG.consoleLog is on
        LG.llm.transcript        the records, newest last
-       LG.llm.dump()            the lot as plain text, for copying out */
-  /* Identifies which kind of call a log entry is by matching the opening
-     of its system prompt. A villager's own system prompt opens with their
-     name (not matchable), so those are instead identified by a section
-     heading unique to that prompt ('# Your character'). Keep these
-     strings in sync with the actual prompt text below, or entries fall
-     through to the generic 'call' label. */
-  const KINDS = [
-    ["You decide what a villager does next", "intent"],
-    ["You play one villager", "chatter"],
-    ["You verify claims", "notebook"],
-    ["You add furigana", "furigana"],
-    ["You translate and romanise", "gloss"],
-    ["You answer yes or no", "trade"],
-    ["You keep one person", "revise"],
-    ["You note what people took away", "recall"],
-    ["You decide whether a villager posts", "notice"],
-  ];
+       LG.llm.dump()            the lot as plain text, for copying out
+
+     Each caller names its call: `kind` is what the call is for (villager,
+     chatter, intent, notebook, trade, gloss, furigana, revise, recall,
+     notice) and `who` the villager it's about. tools/latency-report.js
+     groups by `kind`. */
   const transcript = [];
   let audit = true,
     seq = 0;
   const KEEP = 200;
 
-  function kindOf(system) {
-    const t = String(system || "");
-    for (const [head, name] of KINDS) if (t.indexOf(head) === 0) return name;
-    if (t.indexOf("# Your character") !== -1) return "villager";
-    return "call";
-  }
-
-  /* Extracts the villager's name from the prompt when present, so log
-     entries can be labeled by who they're about instead of all showing
-     as generic "villager" calls. */
-  function subjectOf(system, messages) {
-    const t =
-      String(system || "") +
-      "\n" +
-      (messages || []).map((m) => m.content).join("\n");
-    const named =
-      /^Name:\s*([^—\n.]+)/m.exec(t) || /^You are ([A-Z][\w'-]*)/m.exec(t);
-    return named ? named[1].trim() : "";
-  }
-
-  function record(cfg, system, messages, out, err, ms, res) {
+  function record(cfg, system, messages, out, err, ms, res, tag) {
     const entry = {
       n: ++seq,
-      kind: kindOf(system),
-      who: subjectOf(system, messages),
+      kind: (tag && tag.kind) || "call",
+      who: (tag && tag.who) || "",
       // What actually answered, not what was asked for -- for the "auto"
       // routers (OpenRouter, Logfare) those differ every call, and
       // cfg.model would otherwise just log "openrouter/auto" forever.
@@ -508,8 +476,9 @@ LG.llm = (function () {
     return entry;
   }
 
-  /* Wraps a provider call so a log entry is recorded whether it succeeds or throws. */
-  async function audited(cfg, system, messages, run) {
+  /* Wraps a provider call so a log entry is recorded whether it succeeds
+     or throws. `tag` is {kind, who}. */
+  async function audited(cfg, system, messages, run, tag) {
     const t0 =
       typeof performance !== "undefined" && performance.now
         ? performance.now()
@@ -520,10 +489,10 @@ LG.llm = (function () {
         : Date.now()) - t0;
     try {
       const res = await run();
-      record(cfg, system, messages, res.text, null, since(), res);
+      record(cfg, system, messages, res.text, null, since(), res, tag);
       return res.text;
     } catch (e) {
-      record(cfg, system, messages, undefined, e, since());
+      record(cfg, system, messages, undefined, e, since(), undefined, tag);
       throw e;
     }
   }
@@ -552,7 +521,8 @@ LG.llm = (function () {
 
   /* Every API call goes through here. Callers pass the schema they want
      without needing to know whether the target model actually supports
-     structured outputs — that check (schemaOK) happens centrally. */
+     structured outputs — that check (schemaOK) happens centrally. `opts`
+     carries the call's `kind` and `who` for the log, and send's options. */
   function providerCall(cfg, system, messages, schema, opts) {
     const s = schema && schemaOK(cfg, cfg.model) ? schema : null;
     /* Helper calls that don't name a session of their own get one per
@@ -560,9 +530,9 @@ LG.llm = (function () {
        its warm cache (see `session` in send) instead of being spread
        across whichever is fastest. */
     if (cfg.fast && !(opts && opts.session))
-      opts = Object.assign({}, opts, { session: "helper-" + kindOf(system) });
+      opts = Object.assign({}, opts, { session: "helper-" + ((opts && opts.kind) || "call") });
     const run = (sc) =>
-      audited(cfg, system, messages, () => send(cfg, system, messages, sc, opts));
+      audited(cfg, system, messages, () => send(cfg, system, messages, sc, opts), opts);
     if (!s) return run(null);
     /* OpenRouter answers 404 (or 400) when no provider it may use takes
        the schema -- the lookup was stale, or the cap or session ruled
@@ -592,8 +562,7 @@ LG.llm = (function () {
           "ms  " +
           e.at +
           (e.usage ? "  " + JSON.stringify(e.usage) : "") +
-          "\n--- system\n" +
-          e.system +
+          (e.system ? "\n--- system\n" + e.system : "") +
           (e.messages || [])
             .map((m) => "\n--- " + m.role + "\n" + m.content)
             .join("") +
@@ -712,7 +681,7 @@ LG.llm = (function () {
     /* Jev whenever it's reachable, same as intent() and confirmTrade()
        below -- see DESIGN.md. */
     if (cfg.provider === "openrouter" && cfg.apiKey) {
-      return judgeByJev(cfg, said, translation, candidates);
+      return judgeByJev(cfg, said, translation, candidates, opts && opts.who);
     }
     const lang = (opts && opts.langName) || "the speaker\u2019s language";
     const lines = [
@@ -765,6 +734,8 @@ LG.llm = (function () {
         vcfg,
         "You verify claims against a transcript. Answer with JSON only.",
         [{ role: "user", content: lines.join("\n") }],
+        null,
+        { kind: "notebook", who: opts && opts.who },
       );
     } catch (e) {
       return []; // never guess on failure
@@ -831,6 +802,8 @@ LG.llm = (function () {
         vcfg,
         "You answer yes or no about what a line of dialogue did.",
         [{ role: "user", content: ask }],
+        null,
+        { kind: "trade", who: deal.npcName },
       );
       return /^\W*yes\b/i.test(String(raw).trim());
     } catch (e) {
@@ -885,6 +858,7 @@ LG.llm = (function () {
             "that line rewritten so it is true now, in the same voice, still saying what used to be the case -- empty string if n is 0",
           ),
         }),
+        { kind: "revise", who: o.who },
       );
       const obj = parseJSON(raw);
       const n = obj && Number(obj.n);
@@ -940,6 +914,7 @@ LG.llm = (function () {
               : {},
           ),
         ),
+        { kind: "gloss", who: o.who },
       );
       const o2 = parseJSON(raw);
       return o2 || null;
@@ -1026,6 +1001,7 @@ LG.llm = (function () {
         sys,
         [{ role: "user", content: lines }],
         strict(shape),
+        { kind: "recall", who: o.a.name + " & " + o.b.name },
       );
       const obj = parseJSON(raw);
       if (!obj) return null;
@@ -1045,12 +1021,13 @@ LG.llm = (function () {
   }
 
   /* Shared plumbing for every Jev decisions-endpoint call: sends
-     `{state, questions}`, logs it to the console the same way as any
-     other call, and hands back `data.answers` (or null on failure).
+     `{state, questions}`, logs it the same way as any other call (with
+     no system prompt, since Jev takes none, and `tag` as its {kind, who}),
+     and hands back `data.answers` (or null on failure).
      Every caller builds its own state text and typed questions and
      reads back whichever `answers[key].choice` it asked for -- this
      only owns the request/response/logging shape they all share. */
-  async function askJev(cfg, sys, state, questions) {
+  async function askJev(cfg, tag, state, questions) {
     const body = { model: JEV_MODEL, state, questions };
     // A trimmed-down cfg just for logging -- the real request always
     // targets JEV_MODEL regardless of what cfg.model/helper name.
@@ -1063,7 +1040,7 @@ LG.llm = (function () {
       },
     ];
     try {
-      const raw = await audited(lcfg, sys, msg, async () => {
+      const raw = await audited(lcfg, null, msg, async () => {
         const data = await decisionPost(lcfg, body);
         const u = data.usage;
         return {
@@ -1082,7 +1059,7 @@ LG.llm = (function () {
           schema: true,
           model: data.model || JEV_MODEL,
         };
-      });
+      }, tag);
       const data = JSON.parse(raw);
       return data.answers || null;
     } catch (e) {
@@ -1133,12 +1110,7 @@ LG.llm = (function () {
         criteria,
       },
     };
-    const answers = await askJev(
-      cfg,
-      "You decide what a villager does next. Answer with a typed choice, not text.",
-      state,
-      questions,
-    );
+    const answers = await askJev(cfg, { kind: "intent", who: o.me.name }, state, questions);
     const ans = answers && answers.go;
     const choice = ans && typeof ans.choice === "string" ? ans.choice : null;
     return choice ? { go: choice } : null;
@@ -1171,12 +1143,7 @@ LG.llm = (function () {
         },
       },
     };
-    const answers = await askJev(
-      cfg,
-      "You decide whether a line of dialogue completed a trade. Answer with a typed choice, not text.",
-      state,
-      questions,
-    );
+    const answers = await askJev(cfg, { kind: "trade", who: deal.npcName }, state, questions);
     return !!(answers && answers.deal && answers.deal.choice === "yes");
   }
 
@@ -1189,7 +1156,7 @@ LG.llm = (function () {
      back with no note, the same shape judge() itself returns when the
      model left one out; verifyRevealed already falls back to the line
      as spoken in that case. */
-  async function judgeByJev(cfg, said, translation, candidates) {
+  async function judgeByJev(cfg, said, translation, candidates, who) {
     const state = [
       "The speaker said: " + JSON.stringify(said),
       translation ? "In English, that is: " + JSON.stringify(translation) : null,
@@ -1208,12 +1175,7 @@ LG.llm = (function () {
         },
       };
     });
-    const answers = await askJev(
-      cfg,
-      "You check whether a line of dialogue stated each fact outright. Answer with typed choices, not text.",
-      state,
-      questions,
-    );
+    const answers = await askJev(cfg, { kind: "notebook", who: who }, state, questions);
     if (!answers) return [];
     return candidates
       .filter((c) => answers[c.id] && answers[c.id].choice === "yes")
@@ -1291,9 +1253,13 @@ LG.llm = (function () {
     const vcfg = helperConfig(cfg);
     const sys = "You decide what a villager does next. Answer with JSON only.";
     try {
-      const raw = await providerCall(vcfg, sys, [
-        { role: "user", content: lines },
-      ]);
+      const raw = await providerCall(
+        vcfg,
+        sys,
+        [{ role: "user", content: lines }],
+        null,
+        { kind: "intent", who: o.me.name },
+      );
       const obj = parseJSON(raw);
       if (!obj || !obj.go) return null;
       return obj;
@@ -1390,6 +1356,7 @@ LG.llm = (function () {
             },
           ),
         ),
+        { kind: "notice", who: o.me.name },
       );
       const obj = parseJSON(raw);
       if (!obj) return null;
@@ -1572,7 +1539,7 @@ LG.llm = (function () {
               : {},
           ),
         ),
-        { session: o.session },
+        { kind: "chatter", who: o.me.name, session: o.session },
       );
       const obj = parseJSON(raw);
       if (!obj || !obj.say) return null;
@@ -1585,7 +1552,7 @@ LG.llm = (function () {
   /* Adds furigana to a Japanese line when the in-character model's reply
      omitted the ruby field or left it unmarked. Returns null on anything
      unexpected. */
-  async function furigana(cfg, say, attempt) {
+  async function furigana(cfg, say, attempt, who) {
     const ask = [
       "Add furigana to this Japanese sentence.",
       "",
@@ -1615,6 +1582,8 @@ LG.llm = (function () {
         vcfg,
         "You add furigana to Japanese text. Output the sentence only.",
         [{ role: "user", content: ask }],
+        null,
+        { kind: "furigana", who: who },
       );
       return String(raw).trim();
     } catch (e) {
@@ -1734,7 +1703,8 @@ LG.llm = (function () {
      for the conversation (OpenRouter's sticky routing). Logfare's API
      isn't known to take either, so it's sent neither. */
   async function speak(cfg, system, messages, schema, opts) {
-    const raw = await providerCall(cfg, system, messages, schema, opts);
+    const raw = await providerCall(cfg, system, messages, schema,
+      Object.assign({ kind: "villager" }, opts));
     const obj = parseJSON(raw);
     if (!obj || !obj.say) {
       // Never show the player raw/malformed JSON -- let the caller report a failure instead.

@@ -21,15 +21,7 @@ LG.config = (function () {
     /* One key per provider, so switching provider and back doesn't lose
        the other one. `apiKey` is always the current provider's entry. */
     keys: { openrouter: '', logfare: '' },
-    /* These four are no longer exposed as player-facing settings —
-       villager gossip is always on, translations always start blurred
-       (click to reveal), voices are always cast from the curated
-       library, and speech speed always matches difficulty. Kept as
-       fields since other code still reads settings.npcChatter etc.;
-       load() below force-resets them so an old localStorage save with
-       different values can't reintroduce the removed choice. */
-    showTranslation: false, npcChatter: true,
-    voices: false, ttsKey: '', voiceSpeed: 'auto', voiceQuality: 'curated'
+    voices: false, ttsKey: ''
   };
 
   function load() {
@@ -51,14 +43,12 @@ LG.config = (function () {
     settings.keys = Object.assign({ openrouter: '', logfare: '' }, settings.keys);
     if (settings.apiKey && !settings.keys[settings.provider]) settings.keys[settings.provider] = settings.apiKey;
     settings.apiKey = settings.keys[settings.provider] || '';
-    // No longer configurable -- force these even if an old save has different values stored.
-    settings.npcChatter = true;
-    settings.showTranslation = false;
-    settings.voiceQuality = 'curated';
-    settings.voiceSpeed = 'auto';
-    // Jev used to be opt-in; it's now always used on OpenRouter, so nothing reads these.
-    delete settings.jevMovement;
-    delete settings.jevValidation;
+    /* Settings that are no longer choices: villagers always gossip,
+       translations always start blurred, voices are always cast from the
+       curated library at a pace set by difficulty, and Jev is always used
+       on OpenRouter. Dropped from an older browser's stored settings. */
+    ['npcChatter', 'showTranslation', 'voiceQuality', 'voiceSpeed', 'jevMovement', 'jevValidation']
+      .forEach(k => { delete settings[k]; });
   }
 
   function save() {
@@ -71,12 +61,10 @@ LG.config = (function () {
              model: settings.model, helper: settings.helper };
   }
 
-  /* What LG.tts takes. Talking speed is always derived from difficulty,
-     not separately configurable. */
+  // What LG.tts takes. Talking speed follows difficulty.
   function tts() {
     const speed = (LG.LEVELS[settings.level] || {}).speed || 0.85;
-    return { key: settings.ttsKey.trim(), speed: speed,
-             lang: settings.lang, curatedOnly: settings.voiceQuality === 'curated' };
+    return { key: settings.ttsKey.trim(), speed: speed, lang: settings.lang };
   }
 
   /* The village language's entry in LG.LANGUAGES — the thing nearly every

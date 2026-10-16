@@ -79,7 +79,8 @@ LG.mint = (function () {
 
   /* What the traveller can do with it from their pockets (see `use` on
      LG.ITEMS, and ledger.use): eat, drink, wear, light or play it, which
-     slot it's worn in, how far it lights, which voice it sounds in, what's
+     slot it's worn in, how far it lights, which General MIDI instrument and
+     note it sounds (see LG.sound), what's
      left once it's gone, and its gender where "(worn)" or "(lit)" has to
      agree. Anything that isn't one of the values the shipped items use is
      dropped, so a minted item is never half-usable. */
@@ -102,10 +103,10 @@ LG.mint = (function () {
     });
     return out;
   }
-  function voices() { return (LG.sound && LG.sound.voices) || []; }
+  function instruments() { return (LG.sound && LG.sound.INSTRUMENTS) || []; }
   function usesOf(def) {
     const out = { use: undefined, slot: undefined, leaves: undefined, g: undefined,
-                  glow: undefined, voice: undefined, rung: undefined };
+                  glow: undefined, gm: undefined, note: undefined, rung: undefined };
     const use = ['eat', 'drink', 'wear', 'light', 'play'].indexOf(def.use) !== -1 ? def.use : null;
     if (use === 'wear') {
       if (slots().indexOf(def.slot) === -1) return out;      // worn with no slot can't be swapped out
@@ -115,8 +116,9 @@ LG.mint = (function () {
       if (!(glow > 0)) return out;                           // a light that lights nothing
       out.use = use; out.glow = Math.max(1.5, Math.min(6, glow));
     } else if (use === 'play') {
-      if (voices().indexOf(def.voice) === -1) return out;    // nothing to sound it with
-      out.use = use; out.voice = def.voice;
+      // An instrument and note the soundfont has, or there's nothing to sound it with.
+      if (!LG.sound || !LG.sound.known(def.gm, def.note)) return out;
+      out.use = use; out.gm = def.gm; out.note = def.note;
       if (def.rung === true) out.rung = true;
     } else if (use) {
       out.use = use;
@@ -163,7 +165,7 @@ LG.mint = (function () {
       npcName: npc.def.name, tag: raw, said: said, translation: translation,
       known: ids.filter(k => !made[k]).map(entry), minted: ids.filter(k => made[k]).map(entry),
       langName: LG.LANGUAGES[lang].name,
-      slots: slots(), containers: containers(), genders: genders(lang), voices: voices(),
+      slots: slots(), containers: containers(), genders: genders(lang), instruments: instruments(),
       genderNote: lang === 'fr' || lang === 'es' ? 'mp and fp are the plurals' : 'p is plural',
       anchor: 'a loaf of bread costs ' + LG.priceOf('bread') + ' coins'
     });
@@ -177,7 +179,7 @@ LG.mint = (function () {
     register({ id: id, en: en, full: plainText(got.full, 48) || en, icon: got.icon,
                price: got.price, lang: lang !== 'en' && name ? lang : null, name: name,
                use: got.use, slot: got.slot, leaves: got.leaves,
-               glow: got.glow, voice: got.voice, rung: got.rung,
+               glow: got.glow, gm: got.gm, note: got.note, rung: got.rung,
                g: got.g ? { [lang]: got.g } : null, by: [npc.id] });
     LG.ledger.log(LG.ITEMS[id].icon + ' ' + npc.def.name + ' has ' + LG.ITEMS[id].full +
                   ' — something new to the game.');
@@ -209,7 +211,8 @@ LG.mint = (function () {
                                    price: it.price, by: it.by.slice(), names: {},
                                    use: it.use || null, slot: it.slot || null,
                                    leaves: it.leaves || null, g: it.g || null,
-                                   glow: it.glow || null, voice: it.voice || null, rung: !!it.rung };
+                                   glow: it.glow || null, gm: it.gm || null, note: it.note || null,
+                                   rung: !!it.rung };
       Object.keys(LG.LANGUAGES).forEach(l => { if (l !== 'en' && it[l]) out.names[l] = it[l]; });
       return out;
     });
@@ -221,7 +224,7 @@ LG.mint = (function () {
       if (!d || typeof d.en !== 'string') return;
       const id = register({ id: slug(d.id), en: d.en, full: d.full, icon: d.icon,
                             price: d.price, use: d.use, slot: d.slot, leaves: d.leaves, g: d.g,
-                            glow: d.glow, voice: d.voice, rung: d.rung,
+                            glow: d.glow, gm: d.gm, note: d.note, rung: d.rung,
                             by: Array.isArray(d.by) ? d.by : [] });
       if (id) Object.keys(d.names || {}).forEach(l => {
         if (LG.LANGUAGES[l]) LG.ITEMS[id][l] = plainText(d.names[l], 40);

@@ -2185,15 +2185,19 @@ async function mintedGoods() {
   ok(LG.ledger.use(lamp) && LG.ledger.state.lit[lamp] && LG.ledger.glow() === 6,
      'and it can be lit, and lights the dark');
   answer = { thing: true, same: null, en: 'tin whistle', full: 'a tin whistle', icon: '🪈',
-             price: 2, use: 'play', voice: 'violin', rung: false };
+             price: 2, use: 'play', gm: 'whistle', note: 'C5', rung: false };
   const whistle = (await LG.mint.sale(seller, ['tin_whistle'], '', ''))[0];
   LG.ledger.give(whistle, 1);
-  ok(LG.ITEMS[whistle].voice === 'violin' && !LG.ITEMS[whistle].rung && LG.ledger.use(whistle),
-     'an instrument can be played, in the voice nearest it');
+  ok(LG.ITEMS[whistle].gm === 'whistle' && LG.ITEMS[whistle].note === 'C5' && !LG.ITEMS[whistle].rung &&
+     LG.ledger.use(whistle), 'an instrument can be played, on its own General MIDI instrument');
   answer = { thing: true, same: null, en: 'kazoo', full: 'a kazoo', icon: '🎺',
-             price: 2, use: 'play', voice: 'kazoo' };
+             price: 2, use: 'play', gm: 'kazoo', note: 'C4' };
   const kazoo = (await LG.mint.sale(seller, ['kazoo'], '', ''))[0];
-  ok(kazoo && !LG.ITEMS[kazoo].use, 'one with no voice to sound it in is just a thing to carry');
+  ok(kazoo && !LG.ITEMS[kazoo].use, 'one the soundfont has no instrument for is just a thing to carry');
+  answer = { thing: true, same: null, en: 'odd flute', full: 'an odd flute', icon: '🪈',
+             price: 2, use: 'play', gm: 'flute', note: 'C#4' };
+  const flute = (await LG.mint.sale(seller, ['odd_flute'], '', ''))[0];
+  ok(flute && !LG.ITEMS[flute].use, 'and so is one on a note the soundfont does not name');
   answer = { thing: true, same: null, en: 'dark candle', full: 'a dark candle', icon: '🕯️',
              price: 2, use: 'light', glow: 0 };
   const dark = (await LG.mint.sale(seller, ['dark_candle'], '', ''))[0];
@@ -2212,7 +2216,7 @@ async function mintedGoods() {
      'still to be eaten, or worn');
   ok(LG.ledger.state.worn[hat], 'and the hat is still on');
   ok(LG.ledger.state.lit[lamp] && LG.ITEMS[lamp].glow === 6, 'the lantern is still lit');
-  ok(LG.ITEMS[whistle].voice === 'violin', 'and the whistle still plays');
+  ok(LG.ITEMS[whistle].gm === 'whistle' && LG.ITEMS[whistle].note === 'C5', 'and the whistle still plays');
 
   // "(worn)" agrees with a minted thing, in the languages where it has to.
   LG.mint.restore([{ id: 'shawl', en: 'shawl', icon: '🧣', price: 3, use: 'wear', slot: 'neck',

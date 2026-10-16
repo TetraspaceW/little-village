@@ -1020,6 +1020,9 @@ LG.dialogue = (function () {
 
     chatBusy--;
     a.chatting = b.chatting = false;
+    // The rest before their next meeting counts from now, not from when they met.
+    a.gossipCool = LG.actors.gossipRest();
+    b.gossipCool = LG.actors.gossipRest();
 
     /* What each villager takes away is determined from the
        conversation that actually happened, not decided in advance. */

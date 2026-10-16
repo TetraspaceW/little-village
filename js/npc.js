@@ -297,7 +297,7 @@ LG.actors = (function () {
         if (a.frozen || b.frozen || a.gossipCool > 0 || b.gossipCool > 0) continue;
         if (a.chatting || b.chatting) continue;
         if (Math.hypot(a.px - b.px, a.py - b.py) > TILE * 2.2) continue;
-        a.gossipCool = b.gossipCool = 22 + Math.random() * 25;
+        a.gossipCool = b.gossipCool = 40 + Math.random() * 40;
         a.pauseT = b.pauseT = 4 + Math.random() * 3;      // stop and talk
         a.route = b.route = null;
         faceEachOther(a, b);

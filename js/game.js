@@ -497,13 +497,21 @@ LG.game = (function () {
   /* --------------------------------------------------------------- input */
   function wireUI() {
     window.addEventListener('keydown', e => {
+      /* Escape is checked ahead of uiBlocked(), since what it closes is
+         exactly what blocks the UI: an open panel first (it sits on
+         top), else the conversation. Both close on Escape from anywhere,
+         not only from inside the conversation's text box. */
+      if (isCancel(e)) {
+        if (panelOpen()) closePanels();
+        else if (LG.dialogue.isOpen()) LG.dialogue.close();
+        return;
+      }
       if (uiBlocked()) return;
       const dir = moveDir(e);
       if (dir) { held[dir] = true; if (e.code !== 'KeyW' && e.code !== 'KeyA' &&
                  e.code !== 'KeyS' && e.code !== 'KeyD') e.preventDefault(); }
       if (isShift(e)) held.run = true;
       if (isInteract(e)) { e.preventDefault(); interact(); }
-      if (isCancel(e)) closePanels();
     });
     window.addEventListener('keyup', e => {
       const dir = moveDir(e);

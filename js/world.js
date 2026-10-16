@@ -394,11 +394,12 @@ LG.world = (function () {
         type: f[0], x: i.x + f[1], y: i.y + f[2], w: f[3] || 1
       })).filter(f => f.x < i.x + i.w && f.y < i.y + i.h);
     };
-    put('Bakery',       [['oven', 0, 0], ['counter', 3, 2, 2], ['shelf', 3, 0, 2], ['sack', 0, 2]]);
+    put('Bakery',       [['oven', 0, 0, 2], ['counter', 3, 2, 2], ['shelf', 3, 0, 2], ['sack', 0, 2]]);
     put('Shop',         [['counter', 1, 2, 3], ['shelf', 0, 0, 5], ['barrel', 0, 2], ['sack', 4, 2]]);
     put('Inn',          [['counter', 0, 0, 3], ['barrel', 4, 0], ['table', 1, 2], ['stool', 0, 2],
                          ['stool', 2, 2], ['table', 4, 2], ['stool', 3, 3]]);
-    put('Farmhouse',    [['table', 1, 1], ['stool', 0, 1], ['stool', 2, 1], ['bed', 4, 0], ['sack', 3, 2]]);
+    put('Farmhouse',    [['oven', 0, 0, 2], ['table', 1, 2], ['stool', 0, 2], ['stool', 2, 2], ['bed', 4, 0],
+                         ['sack', 3, 3]]);
     put('Mill',         [['sack', 0, 0], ['sack', 1, 0], ['sack', 0, 2], ['barrel', 5, 0],
                          ['counter', 2, 2, 3], ['shelf', 3, 0, 2]]);
     put('School',       [['desk', 0, 1], ['desk', 2, 1], ['desk', 4, 1], ['desk', 0, 2],
@@ -409,6 +410,24 @@ LG.world = (function () {
     put('Hut',          [['sack', 0, 0], ['sack', 1, 0], ['bed', 3, 0], ['counter', 0, 1, 3]]);
     put('Village Hall', [['table', 3, 1], ['table', 5, 1], ['stool', 2, 1], ['stool', 6, 1],
                          ['pew', 1, 3, 4], ['pew', 5, 3, 4], ['shelf', 0, 0, 3], ['desk', 8, 1]]);
+  }
+
+  /* Every oven in the village, each with the building it stands in. Any
+     of them can be cooked at (see LG.RECIPES); the farmhouse's is the one
+     in somebody's home, the bakery's the one in a shop. */
+  function ovens() {
+    const out = [];
+    for (const b of buildings) for (const f of b.furniture)
+      if (f.type === 'oven') out.push({ x: f.x, y: f.y, w: f.w, h: 1, building: b });
+    return out;
+  }
+
+  /* Every street lamp, as the point its light falls from (world pixels).
+     They're lit whenever it's night; see LG.sky.draw. */
+  const LAMP_REACH = 4.5;         // tiles
+  function lamps() {
+    return props.filter(p => p.type === 'lamp')
+      .map(p => ({ x: p.x * TILE + 16, y: p.y * TILE + 14, r: LAMP_REACH * TILE }));
   }
 
   const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -1165,10 +1184,7 @@ LG.world = (function () {
       const night = LG.time && LG.time.isNight && LG.time.isNight();
       ctx.fillStyle = night ? '#ffe6a3' : '#cdd3d6';
       ctx.fillRect(x + 12, y, 8, 5);
-      if (night) {
-        ctx.fillStyle = 'rgba(255,220,140,.16)';
-        ctx.beginPath(); ctx.arc(x + 16, y + 4, 20, 0, Math.PI * 2); ctx.fill();
-      }
+      // What it lights is done by taking the night away, not painting on it: see lamps() and LG.sky.draw.
       capSnow(ctx, p, () => ctx.fillRect(x + 10, y - 4, 12, 3));
       return;
     }
@@ -1457,7 +1473,7 @@ LG.world = (function () {
   }
 
   return { TILE, W, H, T, build, get, isSolid, isWalkable, nearestOpen, pathTo,
-           buildingAt, buildingUnder, roofRects, buildingByLabel, inRect, nearRect,
+           buildingAt, buildingUnder, roofRects, buildingByLabel, inRect, nearRect, ovens, lamps,
            drawGround, drawBuildings, drawSigns, drawAnimated, buildings,
            // for the tests: what got placed, and where you can get to from here
            _props: () => props, _signs: () => signSpots(), _flood: flood,

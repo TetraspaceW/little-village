@@ -50,6 +50,21 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
 - Type in the villager's own language. The **Phrases** row suggests something
   to start from; **Offer an item** holds an item out of your pockets instead
   of typing.
+- **Click or tap an item in Pockets** to use it: food is eaten and drink
+  drunk (both used up), clothes and jewellery are put on, and clicking a worn
+  thing takes it off. Putting on a hat takes off whatever else was on your
+  head. Villagers can see what you're wearing. You won't eat or drink
+  something the errand still needs. Whatever it came in stays behind: a jar
+  of honey leaves an empty jar, a cup of tea a cup, a bowl of soup a bowl.
+- **Lights.** A lantern, oil lamp or candle is lit (and put out) the same
+  way. While one is burning and it's dark — night, or heavy weather — there
+  is no darkness around you at all: the village is in its daytime colours
+  out to the light's reach, fading back into the night at the edge. A
+  candle reaches a couple of tiles, a lantern about five.
+- **Instruments.** The drum, violin, guitar and bell play a note when
+  clicked — a recorded note from a General MIDI soundfont, downloaded the
+  first time you play one (see Credits) — and any villager within earshot
+  remembers hearing it.
 - Translations stay blurred until you click them.
 
 ## Gameplay
@@ -85,6 +100,14 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
   on. Prices are fixed per item with a haggling band either side. Villagers
   won't trade at night, away from their counter, or for a link of the errand
   chain.
+- **Cooking.** The farmhouse kitchen has an oven, and so does the bakery.
+  Stand beside one and press **E** (or tap it) to see what you could make
+  from what you're carrying: wheat bakes into bread, an egg fries, two
+  vegetables make soup, wheat and fruit make a pie, herbs make tea if you
+  have a teapot (which you keep), and so on. Only recipes
+  you have at least one ingredient for are shown. Anyone in the room sees you
+  do it and remembers. As with eating, nothing the errand still needs goes
+  in the pot.
 - **Interiors.** Walking through a door lifts the roof off that building, and
   villagers who went inside are visible to you but not to anyone outside.
 - **Signs.** Every building, the noticeboard and the station platform has a
@@ -330,12 +353,14 @@ js/llm.js            provider abstraction, key validation, reply parsing
 js/config.js         the player's settings, their storage, llm/tts call configs
 js/tts.js            ElevenLabs voice casting and playback
 js/world.js          tile map, forest, station, collision, pathfinding, interiors, rendering
-js/sky.js            hour/season colour, precipitation
+js/sky.js            hour/season colour, precipitation, carried lights
 js/view.js           per-villager prompt assembly (single source of truth)
 js/touch.js          the joystick and the tap: touch gestures, on a canvas
 js/npc.js            villager movement, meetings, beliefs and naming, rendering
 js/village.js        the village as it stands: chain, cast, traveller, the thing to find
+js/sound.js          the instruments' notes: soundfont samples, fetched and played
 js/ledger.js         the traveller's pockets, notebook, deeds and log, and the HUD
+js/pockets.js        what you can do with your things: eat, wear, light, play, cook at an oven
 js/trade.js          buying and selling for coin: prices, refunds, the till
 js/dialogue.js       prompt building, conversation UI
 js/save.js           save format: snapshot/restore, both storage locations
@@ -364,6 +389,14 @@ commits to confirm a refactor didn't change what the model sees. The errand
 generator is separately fuzz-tested: 900 random chains across all three
 difficulties, checked for solvability, no self-trades, no duplicate
 villagers, a reachable terminal item, and no orphaned facts.
+
+## Credits
+
+- Instrument sounds: the **FluidR3 GM** soundfont by Frank Wen, under
+  [Creative Commons Attribution 3.0](https://creativecommons.org/licenses/by/3.0/),
+  as rendered to MP3 by Benjamin Gleitzman's
+  [midi-js-soundfonts](https://github.com/gleitz/midi-js-soundfonts) and served by
+  [jsDelivr](https://www.jsdelivr.com/).
 
 ## Further reading
 

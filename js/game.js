@@ -414,7 +414,9 @@ LG.game = (function () {
     if (nearby) { talkTo(nearby); return; }
     if (beast && !beast.caught && dist(player, beast) < TILE * 1.4) catchBeast();
     else if (worldItem && !worldItem.taken && dist(player, worldItem) < TILE * 1.4) pickUp();
+    else if (LG.toys.nearBall(player)) LG.toys.useBall();
     else if (nearBoard()) openBoard();
+    else if (LG.pockets.atOven()) LG.pockets.openOven();
   }
 
   /* ------------------------------------------------------------------ a tap */
@@ -469,6 +471,11 @@ LG.game = (function () {
     if (nearRect(spot, LG.BOARD_SPOT, 0)) {
       if (nearBoard()) openBoard();
       else aside('Walk over to the noticeboard to read it.');
+      return;
+    }
+    if (LG.pockets.ovenOnTile(spot.tx, spot.ty)) {
+      if (LG.pockets.atOven()) LG.pockets.openOven();
+      else aside('Walk over to the oven first.');
     }
   }
 
@@ -694,6 +701,7 @@ LG.game = (function () {
      normalised only above length 1: keyboard diagonals stay full speed and
      a half-pushed stick walks at half speed. */
   function movePlayer(dt) {
+    player.vx = player.vy = 0;
     if (uiBlocked()) return;
     let dx = 0, dy = 0;
     if (held.left) dx -= 1;
@@ -705,11 +713,23 @@ LG.game = (function () {
     const len = Math.hypot(dx, dy);
     if (!len) return;
     const scale = len > 1 ? 1 / len : 1;
+    /* After a drink (LG.pockets.tipsy) the way you're heading swings from
+       side to side, on two slow waves so it never settles into a pattern,
+       and steadies over the last half hour as it wears off. */
+    const tipsy = Math.min(1, LG.pockets.tipsy() * 2);
+    if (tipsy) {
+      const t = performance.now() / 1000;
+      const a = tipsy * (0.6 * Math.sin(t * 1.7) + 0.35 * Math.sin(t * 3.3 + 1.3));
+      [dx, dy] = [dx * Math.cos(a) - dy * Math.sin(a), dx * Math.sin(a) + dy * Math.cos(a)];
+    }
     const speed = running() ? RUN_SPEED : WALK_SPEED;
     const nx = player.px + dx * scale * speed * dt;
     const ny = player.py + dy * scale * speed * dt;
+    // How fast they really went, walls and all: it's what kicks the ball (LG.toys).
+    const x0 = player.px, y0 = player.py;
     if (canStand(nx, player.py)) player.px = nx;
     if (canStand(player.px, ny)) player.py = ny;
+    if (dt) { player.vx = (player.px - x0) / dt; player.vy = (player.py - y0) / dt; }
     player.tx = (player.px / TILE) | 0;
     player.ty = (player.py / TILE) | 0;
     if (Math.abs(dx) > Math.abs(dy)) player.dir = dx > 0 ? 'right' : 'left';
@@ -763,6 +783,7 @@ LG.game = (function () {
     if (el && el.textContent !== label) el.textContent = label;
 
     movePlayer(dt);
+    LG.toys.update(dt);
 
     for (const n of npcs) {
       const wasFollowing = n.followingPlayer;
@@ -819,9 +840,13 @@ LG.game = (function () {
       say = (tap ? 'Tap to pick up ' : 'Press E to pick up ') + beast.name;
     } else if (worldItem && !worldItem.taken && dist(player, worldItem) < TILE * 1.8) {
       say = tap ? 'Tap to pick it up' : 'Press E to pick it up';
+    } else if (LG.toys.nearBall(player)) {
+      say = tap ? 'Walk into the ball to kick it' : 'Walk into the ball to kick it, or press E to pick it up';
     } else if (nearBoard()) {
       say = tap ? 'Tap the noticeboard to read it'
                 : 'Press E to read the noticeboard';
+    } else if (LG.pockets.atOven()) {
+      say = tap ? 'Tap the oven to cook' : 'Press E to cook at the oven';
     }
     // Same as the clock: touched only on a change. A hidden hint keeps its
     // last text, so it doesn't blank out while it fades.
@@ -963,6 +988,7 @@ LG.game = (function () {
 
     W.drawAnimated(ctx, c, vw, vh);
     drawWorldItem();
+    LG.toys.drawGround(ctx, room);
 
     /* Nobody inside a building the player isn't in (the roof lifts only on
        the player's own room), and nobody off screen; the margin is for
@@ -991,12 +1017,17 @@ LG.game = (function () {
         }, dpr);
       }
     }
+    LG.toys.drawSky(ctx);
     for (const a of drawables) {
       if (a.bubble) A.drawBubble(ctx, a, C.language().fontStack, dpr);
     }
 
     ctx.restore();
-    LG.sky.draw(ctx, vw, vh, W.roofRects(cam, vw, vh, dpr, room), dpr);
+    // A light in the traveller's hand, centred on them rather than their feet, and the street lamps by night.
+    const reach = LG.pockets.glow(), glows = [];
+    if (reach) glows.push({ x: player.px - c.x, y: player.py - c.y - 8, r: reach * TILE });
+    if (LG.time.isNight()) W.lamps().forEach(l => glows.push({ x: l.x - c.x, y: l.y - c.y, r: l.r }));
+    LG.sky.draw(ctx, vw, vh, W.roofRects(cam, vw, vh, dpr, room), dpr, glows);
 
     // Drawn on top of the weather -- it's a UI control, not part of the scenery.
     LG.touch.draw(ctx);

@@ -12,46 +12,76 @@
    A village is attached with `begin(plan, isSpent)`: the plan says which
    facts exist to be learned, and `isSpent(factId)` asks the world whether
    a note is already done with, so the notebook can strike it through
-   without storing a flag that could go stale. */
+   without storing a flag that could go stale.
+
+   What the traveller can *do* with their things — eat, wear, light, play,
+   cook, play with — is pockets.js. The record of it (what's worn, what's
+   lit, which toy is out of the pockets and being played with) is
+   kept here with everything else a save carries; how an item's pill reads
+   and what clicking it does comes from whoever called `describeWith`. */
 window.LG = window.LG || {};
 
 LG.ledger = (function () {
   const settings = LG.config.settings, C = LG.config;
   const { escapeHTML, rubyHTML } = LG.text;
 
-  const state = { inv: {}, notes: [], deeds: [], won: false, board: [] };
+  const state = { inv: {}, worn: {}, lit: {}, out: {}, tipsy: 0, notes: [], deeds: [], won: false, board: [] };
   const logLines = [];
   let plan = null;
   let isSpent = () => false;
+  let describe = () => null;
 
   /* Starts the record afresh for a new (or about-to-be-restored) village. */
   function begin(newPlan, spent) {
     plan = newPlan;
     isSpent = spent || (() => false);
     state.inv = { coins: 10 };          // a little money to be going on with
+    state.worn = {}; state.lit = {}; state.out = {}; state.tipsy = 0;
     state.notes = []; state.deeds = []; state.won = false; state.board = [];
     logLines.length = 0;
   }
 
   /* ---------------------------------------------------------- inventory */
   function count(id) { return state.inv[id] || 0; }
-  function give(id, n) { state.inv[id] = (state.inv[id] || 0) + (n || 1); render(); }
+  /* `n` defaults to one, but only when it's left out: a count of 0 moves
+     nothing. (It used to be `n || 1`, so a refund at a price that rounds
+     to 0 coins — 0.4, say — paid the traveller a coin.) */
+  const many = n => (n == null ? 1 : n);
+  function give(id, n) {
+    if (many(n) <= 0) return;
+    state.inv[id] = (state.inv[id] || 0) + many(n);
+    render();
+  }
   function take(id, n) {
-    state.inv[id] = Math.max(0, (state.inv[id] || 0) - (n || 1));
-    if (!state.inv[id]) delete state.inv[id];
+    if (many(n) <= 0) return;
+    state.inv[id] = Math.max(0, (state.inv[id] || 0) - many(n));
+    // Can't wear, carry a flame in, or play with what you've handed over.
+    if (!state.inv[id]) { delete state.inv[id]; delete state.worn[id]; delete state.lit[id]; delete state.out[id]; }
     render();
   }
   /* `exclude` omits one item from the list entirely -- used for a
      caught animal following the player, which isn't really "in a
      pocket" and is described separately (see LG.view.companion). */
+  /* What's worn is listed by LG.pockets.wornList instead, so a hat on the
+     traveller's head isn't also described as being in a pocket. */
   function inventoryList(exclude) {
-    const ks = Object.keys(state.inv).filter(k => state.inv[k] > 0 && k !== exclude);
+    const carried = k => state.inv[k] - (state.worn[k] ? 1 : 0);
+    const ks = Object.keys(state.inv).filter(k => carried(k) > 0 && k !== exclude);
     if (!ks.length) return '';
     // Used only in the villager's prompt, so names items the way the rest of that prompt does -- see LG.itemSaid.
     return ks.map(k => LG.itemSaid(k, settings.lang, true) +
-                       (state.inv[k] > 1 ? ' x' + state.inv[k] : '')).join(', ');
+                       (carried(k) > 1 ? ' x' + carried(k) : '')).join(', ');
   }
   function itemLabel(id) { return LG.itemName(id, settings.lang); }
+
+  /* How an item's pill reads and what clicking it does: `fn(itemId)` gives
+     null for a plain pill, or { title, mark, on, act } — see LG.pockets. */
+  function describeWith(fn) { describe = fn; }
+  /* "(worn)" or "(lit)" in the village's language; a full-width bracket
+     brings its own spacing. */
+  function markTag(t) {
+    return (t[0] === '（' ? '' : ' ') + '<span class="worn-tag">' + escapeHTML(t) + '</span>';
+  }
 
   /* Narrates a completed deal ("you hand over the rope") in the
      village's language rather than English — see LG.TXN. `native` and
@@ -138,11 +168,24 @@ LG.ledger = (function () {
     const inv = document.getElementById('inv');
     const L = C.language();
     const ks = Object.keys(state.inv).filter(k => state.inv[k] > 0 && k !== 'coins');
+    /* Anything that can be used is a button; `describe` (see
+       describeWith) says what its tooltip and mark are and what a click
+       does. Plain pills' tooltips are the English name. */
+    const pills = {};
     inv.innerHTML = ks.length
-      ? ks.map(k => '<span class="pill" title="' + LG.ITEMS[k].en + '">' + LG.ITEMS[k].icon +
-          ' <span lang="' + L.tag + '">' + escapeHTML(itemLabel(k)) +
-          (state.inv[k] > 1 ? ' ×' + state.inv[k] : '') + '</span></span>').join('')
+      ? ks.map(k => {
+          const it = LG.ITEMS[k], d = pills[k] = describe(k);
+          const body = it.icon + ' <span lang="' + L.tag + '">' + escapeHTML(itemLabel(k)) +
+            (state.inv[k] > 1 ? ' ×' + state.inv[k] : '') +
+            (d && d.mark ? markTag(d.mark) : '') + '</span>';
+          if (!d) return '<span class="pill" title="' + escapeHTML(it.en) + '">' + body + '</span>';
+          return '<button type="button" class="pill use' + (d.on ? ' worn' : '') +
+                 '" data-use="' + k + '" title="' + escapeHTML(d.title) + '">' + body + '</button>';
+        }).join('')
       : '<span class="muted">empty pockets</span>';
+    Array.prototype.forEach.call(inv.querySelectorAll('[data-use]'), el => {
+      el.onclick = () => pills[el.dataset.use].act();
+    });
 
     const nb = document.getElementById('notebook');
     const rows = state.deeds.map(d => '<div class="q done">✔ ' + escapeHTML(d) + '</div>')
@@ -161,5 +204,5 @@ LG.ledger = (function () {
   }
 
   return { state, begin, count, give, take, inventoryList, hasNote, learn,
-           log, logSpeech, txn, render };
+           log, logSpeech, txn, render, describeWith };
 })();

@@ -78,6 +78,10 @@ LG.dialogue = (function () {
     sep(volatile);
     volatile.push('# The player');
     volatile.push('A traveller visiting the village.');
+    const worn = LG.pockets.wornList();
+    if (worn) volatile.push('They are wearing: ' + worn + ' — you can see it on them.');
+    const lit = LG.pockets.litList();
+    if (lit) volatile.push('They are carrying, lit: ' + lit + '.');
     volatile.push('They are carrying: ' + (inv || 'nothing'));
     if (v.companion) volatile.push(v.companion.name + ', ' + LG.itemSaid(v.companion.item, s.lang, true) +
                                  ', is following right behind them — you can see it as plainly as you can see them.');

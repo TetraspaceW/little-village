@@ -269,9 +269,12 @@ LG.LEVELS = {
    putting something on takes off whatever else was in that slot, so
    you can't wear boots over your shoes. 'light' is lit and put out the
    same way, and while it's lit and dark out there is no night for `glow`
-   tiles around you (see LG.sky.draw). 'play' sounds one note in the
-   item's `voice` (see LG.sound), and anyone near enough hears it; a
-   `rung` thing is rung rather than played. `leaves` is the container left in
+   tiles around you (see LG.sky.draw). 'play' sounds `note` on the
+   General MIDI instrument `gm` — any of the FluidR3 soundfont's 128, by
+   its name there (see LG.sound, which evens out their volumes itself) —
+   and anyone near enough hears it; a `rung` thing is rung rather than
+   played. The bell is tubular bells an octave up, where they ring like a
+   handbell: the soundfont's "tinkle bell" is a click a tenth of a second long. `leaves` is the container left in
    your pockets once something has been eaten or drunk out of it. `g` is the item name's
    grammatical gender and number, in the languages where "(worn)" or
    "(lit)" has to agree with it (see LG.WORN, LG.LIT): m, f, n or
@@ -565,7 +568,7 @@ LG.ITEMS = {
     ru: 'цепь', zh: '链子', ja: 'くさり', fr: 'chaîne', es: 'cadena', ar: 'سلسلة', pl: 'łańcuch', tok: 'linja kiwen'
   },
   bell: {
-    icon: '🔔', tags: ['hold', 'shop', 'prize'], use: 'play', voice: 'bell', rung: true, en: 'bell', full: 'a bell',
+    icon: '🔔', tags: ['hold', 'shop', 'prize'], use: 'play', gm: 'tubular_bells', note: 'A5', rung: true, en: 'bell', full: 'a bell',
     ru: 'колокольчик', zh: '铃铛', ja: 'すず', fr: 'cloche', es: 'campana', ar: 'جرس', pl: 'dzwonek', tok: 'ilo kalama lili'
   },
   broom: {
@@ -749,15 +752,15 @@ LG.ITEMS = {
     ru: 'травы', zh: '草药', ja: 'ハーブ', fr: 'herbes', es: 'hierbas', ar: 'حزمة أعشاب', pl: 'pęczek ziół', tok: 'kasi pi kon pona'
   },
   drum: {
-    icon: '🥁', tags: ['hold', 'prize'], use: 'play', voice: 'drum', en: 'drum', full: 'a drum',
+    icon: '🥁', tags: ['hold', 'prize'], use: 'play', gm: 'taiko_drum', note: 'C3', en: 'drum', full: 'a drum',
     ru: 'барабан', zh: '鼓', ja: 'たいこ', fr: 'tambour', es: 'tambor', ar: 'طبل', pl: 'bęben', tok: 'ilo kalama supa'
   },
   violin: {
-    icon: '🎻', tags: ['hold', 'prize'], use: 'play', voice: 'violin', en: 'violin', full: 'a violin',
+    icon: '🎻', tags: ['hold', 'prize'], use: 'play', gm: 'violin', note: 'A4', en: 'violin', full: 'a violin',
     ru: 'скрипка', zh: '小提琴', ja: 'バイオリン', fr: 'violon', es: 'violín', ar: 'كمان', pl: 'skrzypce', tok: 'ilo kalama linja'
   },
   guitar: {
-    icon: '🎸', tags: ['hold', 'prize'], use: 'play', voice: 'guitar', en: 'guitar', full: 'a guitar',
+    icon: '🎸', tags: ['hold', 'prize'], use: 'play', gm: 'acoustic_guitar_steel', note: 'G3', en: 'guitar', full: 'a guitar',
     ru: 'гитара', zh: '吉他', ja: 'ギター', fr: 'guitare', es: 'guitarra', ar: 'جيتار', pl: 'gitara', tok: 'ilo kalama pi linja luka'
   },
   kite: {

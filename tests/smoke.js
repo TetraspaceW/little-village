@@ -649,12 +649,26 @@ section('instruments');
 {
   const L = LG.ledger;
   const played = Object.keys(LG.ITEMS).filter(k => LG.ITEMS[k].use === 'play');
-  ok(['drum', 'violin', 'guitar', 'bell'].every(k => played.indexOf(k) !== -1) &&
-     played.every(k => LG.sound.voices.indexOf(LG.ITEMS[k].voice) !== -1),
-     'the drum, violin, guitar and bell each have a voice to play');
-  ok(!LG.sound.play('violin'), 'with no Web Audio, playing is quietly nothing');
-  ok(LG.sound.voices.every(v => /^https:\/\/cdn\.jsdelivr\.net\/gh\/gleitz\/midi-js-soundfonts@[0-9a-f]{40}\//.test(LG.sound._url(v))),
-     'each note comes from the soundfont, pinned to one commit');
+  ok(['drum', 'violin', 'guitar', 'bell'].every(k => played.indexOf(k) !== -1), 'the drum, violin, guitar and bell can be played');
+  const bad = played.filter(k => !LG.sound.known(LG.ITEMS[k].gm, LG.ITEMS[k].note));
+  ok(!bad.length, 'each names a real soundfont instrument and note' + (bad.length ? ': not ' + bad.join(', ') : ''));
+  ok(LG.sound.INSTRUMENTS.length === 128 && !LG.sound.known('violn', 'A4') && !LG.sound.known('violin', 'H4'),
+     'and a misspelt instrument or note is caught');
+  ok(!LG.sound.play('violin', 'A4'), 'with no Web Audio, playing is quietly nothing');
+  ok(/^https:\/\/cdn\.jsdelivr\.net\/gh\/gleitz\/midi-js-soundfonts@[0-9a-f]{40}\/FluidR3_GM\/violin-mp3\/A4\.mp3$/
+       .test(LG.sound.url('violin', 'A4')), 'notes come from the soundfont, pinned to one commit');
+
+  /* Balancing: a quiet held note and a loud short one come out at the same loudness, and nothing clips. */
+  const fake = (len, at) => ({ length: len, numberOfChannels: 1, sampleRate: 1000,
+                               getChannelData: () => Float32Array.from({ length: len }, (_, i) => at(i)) });
+  const held = fake(3000, i => 0.05 * Math.sin(i)), hit = fake(3000, i => i < 100 ? 0.4 * Math.sin(i) * (1 - i / 100) : 0);
+  const loudness = (b, g) => { const d = b.getChannelData(0); let m = 0;
+    for (let i = 0; i + 400 <= d.length; i += 50) { let s = 0; for (let j = i; j < i + 400; j++) s += d[j] * d[j]; m = Math.max(m, s / 400); }
+    return Math.sqrt(m) * g; };
+  const gh = LG.sound.balance(held), gk = LG.sound.balance(hit);
+  ok(Math.abs(loudness(held, gh) - loudness(hit, gk)) < 0.005,
+     'a quiet held note and a short loud one are brought to the same loudness');
+  ok(gh * 0.05 <= 0.9 + 1e-9 && gk * 0.4 <= 0.9 + 1e-9, 'without either clipping');
 
   // Someone right beside you hears it; someone across the map doesn't.
   const near = npcs[0], far = npcs[1], me = LG.village.player;

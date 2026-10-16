@@ -103,7 +103,7 @@ LG.ledger = (function () {
       return true;
     }
     if (it.use === 'play') {
-      LG.sound.play(it.voice);
+      LG.sound.play(it.gm, it.note);
       say(it.rung ? 'ring' : 'play', 'the ' + it.en);
       heard(id);
       return true;

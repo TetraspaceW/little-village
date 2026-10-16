@@ -61,6 +61,9 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
   is no darkness around you at all: the village is in its daytime colours
   out to the light's reach, fading back into the night at the edge. A
   candle reaches a couple of tiles, a lantern about five.
+- **Instruments.** The drum, violin, guitar and bell play a note when
+  clicked — synthesized in the browser, no sound files — and any villager
+  within earshot remembers hearing it.
 - Translations stay blurred until you click them.
 
 ## Gameplay
@@ -339,11 +342,12 @@ js/llm.js            provider abstraction, key validation, reply parsing
 js/config.js         the player's settings, their storage, llm/tts call configs
 js/tts.js            ElevenLabs voice casting and playback
 js/world.js          tile map, forest, station, collision, pathfinding, interiors, rendering
-js/sky.js            hour/season colour, precipitation
+js/sky.js            hour/season colour, precipitation, carried lights
 js/view.js           per-villager prompt assembly (single source of truth)
 js/touch.js          the joystick and the tap: touch gestures, on a canvas
 js/npc.js            villager movement, meetings, beliefs and naming, rendering
 js/village.js        the village as it stands: chain, cast, traveller, the thing to find
+js/sound.js          the instruments' notes, synthesized with Web Audio
 js/ledger.js         the traveller's pockets, notebook, deeds and log, and the HUD
 js/trade.js          buying and selling for coin: prices, refunds, the till
 js/dialogue.js       prompt building, conversation UI

@@ -14,7 +14,8 @@
    whether a note is already done with, so the notebook can strike it
    through without storing a flag that could go stale. `keep(itemId)` asks
    how many of an item the errand still needs, so eating or drinking
-   can't use up the one thing somebody is waiting on. */
+   can't use up the one thing somebody is waiting on. `heard(itemId)` is
+   told when the traveller plays something, so the village can hear it. */
 window.LG = window.LG || {};
 
 LG.ledger = (function () {
@@ -26,12 +27,14 @@ LG.ledger = (function () {
   let plan = null;
   let isSpent = () => false;
   let keep = () => 0;
+  let heard = () => {};
 
   /* Starts the record afresh for a new (or about-to-be-restored) village. */
-  function begin(newPlan, spent, needed) {
+  function begin(newPlan, spent, needed, onPlay) {
     plan = newPlan;
     isSpent = spent || (() => false);
     keep = needed || (() => 0);
+    heard = onPlay || (() => {});
     state.inv = { coins: 10 };          // a little money to be going on with
     state.worn = {}; state.lit = {};
     state.notes = []; state.deeds = []; state.won = false; state.board = [];
@@ -99,6 +102,12 @@ LG.ledger = (function () {
       render();
       return true;
     }
+    if (it.use === 'play') {
+      LG.sound.play(it.voice);
+      say(it.rung ? 'ring' : 'play', 'the ' + it.en);
+      heard(id);
+      return true;
+    }
     if (it.use === 'light') {
       if (state.lit[id]) { delete state.lit[id]; say('putOut', 'the ' + it.en); }
       else { state.lit[id] = true; say('light', 'the ' + it.en); }
@@ -130,7 +139,7 @@ LG.ledger = (function () {
     return true;
   }
 
-  const VERB = { eat: 'Eat', drink: 'Drink', wear: 'Put on', light: 'Light' };
+  const VERB = { eat: 'Eat', drink: 'Drink', wear: 'Put on', light: 'Light', play: 'Play' };
   const UNDO = { wear: 'Take off', light: 'Put out' };
   /* "(worn)" or "(lit)" in the village's language; a full-width bracket
      brings its own spacing. */
@@ -244,7 +253,7 @@ LG.ledger = (function () {
             (state.lit[k] ? markTag(LG.litMark(k, settings.lang)) : '') +
             '</span>';
           if (!it.use) return '<span class="pill" title="' + it.en + '">' + body + '</span>';
-          const verb = on ? UNDO[it.use] : VERB[it.use];
+          const verb = on ? UNDO[it.use] : it.rung ? 'Ring' : VERB[it.use];
           // Worn and lit look the same: something you've got going.
           return '<button type="button" class="pill use' + (on ? ' worn' : '') +
                  '" data-use="' + k + '" title="' + verb + ' the ' + it.en + '">' + body + '</button>';

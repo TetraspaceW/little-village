@@ -269,7 +269,9 @@ LG.LEVELS = {
    putting something on takes off whatever else was in that slot, so
    you can't wear boots over your shoes. 'light' is lit and put out the
    same way, and while it's lit and dark out there is no night for `glow`
-   tiles around you (see LG.sky.draw). `leaves` is the container left in
+   tiles around you (see LG.sky.draw). 'play' sounds one note in the
+   item's `voice` (see LG.sound), and anyone near enough hears it; a
+   `rung` thing is rung rather than played. `leaves` is the container left in
    your pockets once something has been eaten or drunk out of it. `g` is the item name's
    grammatical gender and number, in the languages where "(worn)" or
    "(lit)" has to agree with it (see LG.WORN, LG.LIT): m, f, n or
@@ -563,7 +565,7 @@ LG.ITEMS = {
     ru: 'цепь', zh: '链子', ja: 'くさり', fr: 'chaîne', es: 'cadena', ar: 'سلسلة', pl: 'łańcuch', tok: 'linja kiwen'
   },
   bell: {
-    icon: '🔔', tags: ['hold', 'shop', 'prize'], en: 'bell', full: 'a bell',
+    icon: '🔔', tags: ['hold', 'shop', 'prize'], use: 'play', voice: 'bell', rung: true, en: 'bell', full: 'a bell',
     ru: 'колокольчик', zh: '铃铛', ja: 'すず', fr: 'cloche', es: 'campana', ar: 'جرس', pl: 'dzwonek', tok: 'ilo kalama lili'
   },
   broom: {
@@ -747,15 +749,15 @@ LG.ITEMS = {
     ru: 'травы', zh: '草药', ja: 'ハーブ', fr: 'herbes', es: 'hierbas', ar: 'حزمة أعشاب', pl: 'pęczek ziół', tok: 'kasi pi kon pona'
   },
   drum: {
-    icon: '🥁', tags: ['hold', 'prize'], en: 'drum', full: 'a drum',
+    icon: '🥁', tags: ['hold', 'prize'], use: 'play', voice: 'drum', en: 'drum', full: 'a drum',
     ru: 'барабан', zh: '鼓', ja: 'たいこ', fr: 'tambour', es: 'tambor', ar: 'طبل', pl: 'bęben', tok: 'ilo kalama supa'
   },
   violin: {
-    icon: '🎻', tags: ['hold', 'prize'], en: 'violin', full: 'a violin',
+    icon: '🎻', tags: ['hold', 'prize'], use: 'play', voice: 'violin', en: 'violin', full: 'a violin',
     ru: 'скрипка', zh: '小提琴', ja: 'バイオリン', fr: 'violon', es: 'violín', ar: 'كمان', pl: 'skrzypce', tok: 'ilo kalama linja'
   },
   guitar: {
-    icon: '🎸', tags: ['hold', 'prize'], en: 'guitar', full: 'a guitar',
+    icon: '🎸', tags: ['hold', 'prize'], use: 'play', voice: 'guitar', en: 'guitar', full: 'a guitar',
     ru: 'гитара', zh: '吉他', ja: 'ギター', fr: 'guitare', es: 'guitarra', ar: 'جيتار', pl: 'gitara', tok: 'ilo kalama pi linja luka'
   },
   kite: {
@@ -1202,6 +1204,30 @@ LG.TXN = {
     ar: 'تم إطفاء {item}.',
     pl: 'Gasisz {item}.',
     tok: 'sina pini e suno pi {item}.'
+  },
+  /* The colon keeps the instrument's name in the form LG.ITEMS gives it,
+     where "play" would otherwise want it in another case (на скрипке). */
+  play: {
+    en: 'You play {item}.',
+    ru: 'Вы играете на инструменте: {item}.',
+    zh: '你演奏了{item}。',
+    ja: '{item}を演奏した。',
+    fr: 'Vous jouez : {item}.',
+    es: 'Tocas: {item}.',
+    ar: 'تم العزف على {item}.',
+    pl: 'Grasz na instrumencie: {item}.',
+    tok: 'sina kalama musi kepeken {item}.'
+  },
+  ring: {
+    en: 'You ring {item}.',
+    ru: 'Вы звоните: {item}.',
+    zh: '你摇响了{item}。',
+    ja: '{item}を鳴らした。',
+    fr: 'Vous faites sonner : {item}.',
+    es: 'Haces sonar: {item}.',
+    ar: 'تم قرع {item}.',
+    pl: 'Dzwonisz: {item}.',
+    tok: 'sina kalama e {item}.'
   },
   /* A colon before the dish, where the language allows it, keeps the item
      name in the form LG.ITEMS gives it from having to change its ending. */

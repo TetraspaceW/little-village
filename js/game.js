@@ -97,6 +97,16 @@ LG.game = (function () {
     }, 0);
   }
 
+  /* Anyone within earshot of an instrument hears it, walls or no walls,
+     and it's theirs to bring up. Remembering the same thing twice is a
+     no-op (see A.remember), so a tune doesn't fill anyone's memory. */
+  const EARSHOT = 12;           // tiles
+  function playedNear(id) {
+    const it = LG.ITEMS[id];
+    npcs.filter(n => dist(player, n) < EARSHOT * TILE).forEach(n =>
+      remember(n, 'You heard the traveller ' + (it.rung ? 'ring ' : 'play ') + it.full + ' nearby.'));
+  }
+
   function doTrade(npc, trade) {
     const needN = trade.wantsCount || 1, giveN = trade.givesCount || 1;
     take(trade.wants, needN);
@@ -215,7 +225,7 @@ LG.game = (function () {
        around is a poor way to start a game. */
     LG.time.start();
 
-    LG.ledger.begin(plan, factSpent, stillNeeded);
+    LG.ledger.begin(plan, factSpent, stillNeeded, playedNear);
     LG.trade.begin(plan);
 
     renderHUD();

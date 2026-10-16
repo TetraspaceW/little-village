@@ -643,6 +643,32 @@ section('lights');
   ok(!threw, 'the sky draws with a light in it' + (threw ? ': ' + threw.message : ''));
 }
 
+section('instruments');
+{
+  const L = LG.ledger;
+  const played = Object.keys(LG.ITEMS).filter(k => LG.ITEMS[k].use === 'play');
+  ok(['drum', 'violin', 'guitar', 'bell'].every(k => played.indexOf(k) !== -1) &&
+     played.every(k => LG.sound.voices.indexOf(LG.ITEMS[k].voice) !== -1),
+     'the drum, violin, guitar and bell each have a voice to play');
+  ok(!LG.sound.play('violin'), 'with no Web Audio, playing is quietly nothing');
+
+  // Someone right beside you hears it; someone across the map doesn't.
+  const near = npcs[0], far = npcs[1], me = LG.village.player;
+  const at = { nx: near.px, ny: near.py, fx: far.px, fy: far.py };
+  near.px = me.px + 32; near.py = me.py;
+  far.px = me.px + 32 * 40; far.py = me.py;
+  const n0 = L.count('violin');
+  L.give('violin', 1);
+  const heard = n => (n.memory || []).some(m => m.text.indexOf('play a violin') !== -1);
+  ok(L.use('violin') && L.count('violin') === n0 + 1, 'playing the violin keeps it');
+  ok(heard(near) && !heard(far), 'a villager beside you hears it, and one far off does not');
+  L.give('bell', 1);
+  L.use('bell');
+  ok((near.memory || []).some(m => m.text.indexOf('ring a bell') !== -1), 'a bell is rung, not played');
+  L.take('violin', 1); L.take('bell', 1);
+  near.px = at.nx; near.py = at.ny; far.px = at.fx; far.py = at.fy;
+}
+
 section('eating out of a container leaves the container');
 {
   const L = LG.ledger;

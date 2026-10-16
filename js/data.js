@@ -267,7 +267,7 @@ LG.ITEMS = {
   },
   beans: {
     icon: '🫘', tags: ['hold', 'shop'], en: 'jar of beans', full: 'a jar of beans',
-    ru: 'банка бобов', zh: '一罐豆子', fr: 'bocal de haricots', es: 'tarro de frijoles', ja: '豆のびん', ar: 'برطمان فول', pl: 'słoik fasoli', tok: 'poki pi kili lili'
+    ru: 'банка бобов', zh: '一罐豆子', fr: 'bocal de haricots', es: 'tarro de judías', ja: '豆のびん', ar: 'برطمان فول', pl: 'słoik fasoli', tok: 'poki pi kili lili'
   },
   coins: {
     icon: '🪙', tags: [], stackable: true, en: 'coins', full: 'coins',
@@ -327,7 +327,7 @@ LG.ITEMS = {
   },
   boots: {
     icon: '🥾', tags: ['hold', 'ground'], en: 'boots', full: 'a pair of boots',
-    ru: 'сапоги', zh: '靴子', fr: 'bottes', es: 'botas', ja: 'ブーツ', ar: 'حذاء طويل', pl: 'botki', tok: 'len noka suli'
+    ru: 'сапоги', zh: '靴子', fr: 'bottes', es: 'botas', ja: 'ブーツ', ar: 'حذاء طويل', pl: 'wysokie buty', tok: 'len noka suli'
   },
   lantern: {
     icon: '🏮', tags: ['hold', 'shop', 'ground'], en: 'lantern', full: 'a lantern',
@@ -369,7 +369,7 @@ LG.ITEMS = {
   },
   cabbage: {
     icon: '🥬', tags: ['hold', 'shop', 'ground'], en: 'cabbage', full: 'a cabbage',
-    ru: 'капуста', zh: '白菜', ja: 'キャベツ', fr: 'chou', es: 'col', ar: 'ملفوف', pl: 'kapusta', tok: 'kili lipu'
+    ru: 'капуста', zh: '卷心菜', ja: 'キャベツ', fr: 'chou', es: 'col', ar: 'ملفوف', pl: 'kapusta', tok: 'kili lipu'
   },
   tomato: {
     icon: '🍅', tags: ['hold', 'shop'], en: 'tomato', full: 'a tomato',
@@ -397,11 +397,11 @@ LG.ITEMS = {
   },
   cherries: {
     icon: '🍒', tags: ['hold', 'shop', 'prize'], en: 'cherries', full: 'some cherries',
-    ru: 'вишня', zh: '樱桃', ja: 'さくらんぼ', fr: 'cerises', es: 'cerezas', ar: 'كرز', pl: 'wiśnie', tok: 'kili loje lili'
+    ru: 'вишни', zh: '樱桃', ja: 'さくらんぼ', fr: 'cerises', es: 'cerezas', ar: 'كرز', pl: 'wiśnie', tok: 'kili loje lili'
   },
   grapes: {
     icon: '🍇', tags: ['hold', 'shop', 'prize'], en: 'grapes', full: 'some grapes',
-    ru: 'виноград', zh: '葡萄', ja: 'ぶどう', fr: 'raisin', es: 'uvas', ar: 'عنب', pl: 'winogrona', tok: 'kili laso lili'
+    ru: 'виноград', zh: '葡萄', ja: 'ぶどう', fr: 'raisins', es: 'uvas', ar: 'عنب', pl: 'winogrona', tok: 'kili laso lili'
   },
   strawberry: {
     icon: '🍓', tags: ['hold', 'shop', 'prize'], en: 'strawberry', full: 'a strawberry',
@@ -457,7 +457,7 @@ LG.ITEMS = {
   },
   bacon: {
     icon: '🥓', tags: ['hold', 'shop'], en: 'bacon', full: 'some bacon',
-    ru: 'бекон', zh: '培根', ja: 'ベーコン', fr: 'lard', es: 'tocino', ar: 'لحم مقدد', pl: 'boczek', tok: 'moku pi soweli ko'
+    ru: 'бекон', zh: '培根', ja: 'ベーコン', fr: 'bacon', es: 'tocino', ar: 'لحم مقدد', pl: 'boczek', tok: 'moku pi soweli ko'
   },
   rice: {
     icon: '🍚', tags: ['hold', 'shop'], en: 'rice', full: 'a bowl of rice',
@@ -825,7 +825,7 @@ LG.ITEMS = {
   },
   pony: {
     icon: '🐴', tags: ['beast'], en: 'pony', full: 'a pony',
-    ru: 'пони', zh: '小马', ja: 'ポニー', fr: 'poney', es: 'poni', ar: 'مهر', pl: 'kucyk', tok: 'soweli tawa lili'
+    ru: 'пони', zh: '小马', ja: 'ポニー', fr: 'poney', es: 'poni', ar: 'حصان صغير', pl: 'kucyk', tok: 'soweli tawa lili'
   }
 };
 

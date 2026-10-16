@@ -853,34 +853,36 @@ LG.ITEMS = {
      Everything that lives in a freshwater pond: one of each genus of
      Linnaeus's Pisces (Systema Naturae, 10th edition, 1758) with a species
      found in still fresh water, and the small things that aren't fish at
-     all. And a robot fish.
+     all. And a robot fish. In toki pona each fish is "kala" and its
+     modern genus, written in toki pona's letters: Muraena anguilla is
+     Anguilla now, so the eel is kala Ankila.
      Tagged only `catch`, which the errand generator never asks for, so
      nothing you can pull out of the water is ever anyone's errand, and
      every seed's chain stays as it was. The fisherman buys them by that
      tag. */
   carp: {
     icon: '🐟', tags: ['catch'], price: 2, en: 'carp', full: 'a carp',
-    ru: 'карп', zh: '鲤鱼', ja: 'コイ', fr: 'carpe', es: 'carpa', ar: 'سمك الشبوط', pl: 'karp', tok: 'kala Cyprinus'
+    ru: 'карп', zh: '鲤鱼', ja: 'コイ', fr: 'carpe', es: 'carpa', ar: 'سمك الشبوط', pl: 'karp', tok: 'kala Kipinu'
   },
   perch: {
     icon: '🐟', tags: ['catch'], price: 2, en: 'perch', full: 'a perch',
-    ru: 'окунь', zh: '河鲈', ja: 'ヨーロピアンパーチ', fr: 'perche', es: 'perca', ar: 'سمك الفرخ', pl: 'okoń', tok: 'kala Perca'
+    ru: 'окунь', zh: '河鲈', ja: 'ヨーロピアンパーチ', fr: 'perche', es: 'perca', ar: 'سمك الفرخ', pl: 'okoń', tok: 'kala Peka'
   },
   pike: {
     icon: '🐟', tags: ['catch'], price: 4, en: 'pike', full: 'a pike',
-    ru: 'щука', zh: '狗鱼', ja: 'カワカマス', fr: 'brochet', es: 'lucio', ar: 'سمك الكراكي', pl: 'szczupak', tok: 'kala Esox'
+    ru: 'щука', zh: '狗鱼', ja: 'カワカマス', fr: 'brochet', es: 'lucio', ar: 'سمك الكراكي', pl: 'szczupak', tok: 'kala Esoko'
   },
   trout: {
     icon: '🐟', tags: ['catch'], price: 3, en: 'trout', full: 'a trout',
-    ru: 'форель', zh: '鳟鱼', ja: 'マス', fr: 'truite', es: 'trucha', ar: 'سلمون مرقط', pl: 'pstrąg', tok: 'kala Salmo'
+    ru: 'форель', zh: '鳟鱼', ja: 'マス', fr: 'truite', es: 'trucha', ar: 'سلمون مرقط', pl: 'pstrąg', tok: 'kala Samo'
   },
   eel: {
     icon: '🐍', tags: ['catch'], price: 4, en: 'eel', full: 'an eel',
-    ru: 'угорь', zh: '鳗鱼', ja: 'ウナギ', fr: 'anguille', es: 'anguila', ar: 'سمك الأنقليس', pl: 'węgorz', tok: 'kala Muraena'
+    ru: 'угорь', zh: '鳗鱼', ja: 'ウナギ', fr: 'anguille', es: 'anguila', ar: 'سمك الأنقليس', pl: 'węgorz', tok: 'kala Ankila'
   },
   catfish: {
     icon: '🐟', tags: ['catch'], price: 3, en: 'catfish', full: 'a catfish',
-    ru: 'сом', zh: '鲶鱼', ja: 'ナマズ', fr: 'silure', es: 'siluro', ar: 'سمك السلور', pl: 'sum', tok: 'kala Silurus'
+    ru: 'сом', zh: '鲶鱼', ja: 'ナマズ', fr: 'silure', es: 'siluro', ar: 'سمك السلور', pl: 'sum', tok: 'kala Silulu'
   },
   crayfish: {
     icon: '🦞', tags: ['catch'], price: 2, en: 'crayfish', full: 'a crayfish',
@@ -896,39 +898,39 @@ LG.ITEMS = {
   },
   knifefish: {
     icon: '🐟', tags: ['catch'], price: 4, en: 'banded knifefish', full: 'a banded knifefish',
-    ru: 'обыкновенный гимнот', zh: '圭亚那裸背电鳗', ja: 'バンデッド・ナイフフィッシュ', fr: 'gymnote rayé', es: 'morenita', ar: 'جمنوت', pl: 'Gymnotus', tok: 'kala Gymnotus'
+    ru: 'обыкновенный гимнот', zh: '圭亚那裸背电鳗', ja: 'バンデッド・ナイフフィッシュ', fr: 'gymnote rayé', es: 'morenita', ar: 'جمنوت', pl: 'Gymnotus', tok: 'kala Kinotu'
   },
   bullhead: {
     icon: '🐟', tags: ['catch'], price: 2, en: 'bullhead', full: 'a bullhead',
-    ru: 'подкаменщик', zh: '杜父鱼', ja: 'カジカ', fr: 'chabot', es: 'cavilat', ar: 'قد الأنهار', pl: 'głowacz', tok: 'kala Cottus'
+    ru: 'подкаменщик', zh: '杜父鱼', ja: 'カジカ', fr: 'chabot', es: 'cavilat', ar: 'قد الأنهار', pl: 'głowacz', tok: 'kala Kotu'
   },
   tilapia: {
     icon: '🐟', tags: ['catch'], price: 2, en: 'tilapia', full: 'a tilapia',
-    ru: 'тиляпия', zh: '罗非鱼', ja: 'ティラピア', fr: 'tilapia', es: 'tilapia', ar: 'سمك البلطي', pl: 'tilapia', tok: 'kala Sparus'
+    ru: 'тиляпия', zh: '罗非鱼', ja: 'ティラピア', fr: 'tilapia', es: 'tilapia', ar: 'سمك البلطي', pl: 'tilapia', tok: 'kala Saloteloton'
   },
   paradise_fish: {
     icon: '🐠', tags: ['catch'], price: 3, en: 'paradise fish', full: 'a paradise fish',
-    ru: 'макропод', zh: '叉尾斗鱼', ja: 'タイワンキンギョ', fr: 'macropode', es: 'pez paraíso', ar: 'سمك الجنة', pl: 'wielkopłetw', tok: 'kala Labrus'
+    ru: 'макропод', zh: '叉尾斗鱼', ja: 'タイワンキンギョ', fr: 'macropode', es: 'pez paraíso', ar: 'سمك الجنة', pl: 'wielkopłetw', tok: 'kala Makopotu'
   },
   stickleback: {
     icon: '🐟', tags: ['catch'], price: 1, en: 'stickleback', full: 'a stickleback',
-    ru: 'колюшка', zh: '三刺鱼', ja: 'イトヨ', fr: 'épinoche', es: 'espinoso', ar: 'أبو شوكة', pl: 'ciernik', tok: 'kala Gasterosteus'
+    ru: 'колюшка', zh: '三刺鱼', ja: 'イトヨ', fr: 'épinoche', es: 'espinoso', ar: 'أبو شوكة', pl: 'ciernik', tok: 'kala Kasetelosetu'
   },
   weatherfish: {
     icon: '🐟', tags: ['catch'], price: 2, en: 'weatherfish', full: 'a weatherfish',
-    ru: 'вьюн', zh: '泥鳅', ja: 'ヨーロッパドジョウ', fr: 'loche d’étang', es: 'misgurno', ar: 'سمك اللخ', pl: 'piskorz', tok: 'kala Cobitis'
+    ru: 'вьюн', zh: '泥鳅', ja: 'ヨーロッパドジョウ', fr: 'loche d’étang', es: 'misgurno', ar: 'سمك اللخ', pl: 'piskorz', tok: 'kala Misukunu'
   },
   hatchetfish: {
     icon: '🐟', tags: ['catch'], price: 3, en: 'hatchetfish', full: 'a hatchetfish',
-    ru: 'клинобрюшка', zh: '胸斧鱼', ja: 'ハチェットフィッシュ', fr: 'poisson-hachette', es: 'pechito', ar: 'سمك المياه العذبة الفأسي', pl: 'pstrążeń', tok: 'kala Clupea'
+    ru: 'клинобрюшка', zh: '胸斧鱼', ja: 'ハチェットフィッシュ', fr: 'poisson-hachette', es: 'pechito', ar: 'سمك المياه العذبة الفأسي', pl: 'pstrążeń', tok: 'kala Kasetelopeleku'
   },
   elephantfish: {
     icon: '🐟', tags: ['catch'], price: 5, en: 'elephantfish', full: 'an elephantfish',
-    ru: 'слонорыл', zh: '长颌鱼', ja: 'モルミルス', fr: 'mormyre', es: 'pez elefante', ar: 'قنومة', pl: 'Mormyrus', tok: 'kala Mormyrus'
+    ru: 'слонорыл', zh: '长颌鱼', ja: 'モルミルス', fr: 'mormyre', es: 'pez elefante', ar: 'قنومة', pl: 'Mormyrus', tok: 'kala Momilu'
   },
   fahaka: {
     icon: '🐡', tags: ['catch'], price: 5, en: 'Fahaka pufferfish', full: 'a Fahaka pufferfish',
-    ru: 'фахака', zh: '尼罗鲀', ja: 'テトラオドン・ファハカ', fr: 'tétrodon fahaka', es: 'pez globo fahaka', ar: 'ينفوخ نيلي', pl: 'kolcobrzuch nilowy', tok: 'kala Tetraodon'
+    ru: 'фахака', zh: '尼罗鲀', ja: 'テトラオドン・ファハカ', fr: 'tétrodon fahaka', es: 'pez globo fahaka', ar: 'ينفوخ نيلي', pl: 'kolcobrzuch nilowy', tok: 'kala Tetaton'
   },
   robot_fish: {
     icon: '🤖', tags: ['catch'], price: 10, en: 'robot fish', full: 'a robot fish',

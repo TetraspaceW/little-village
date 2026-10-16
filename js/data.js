@@ -267,11 +267,14 @@ LG.LEVELS = {
    things you could eat or drink as they come are marked — a raw onion
    or a joint of meat isn't a snack. Worn things take a `slot`, and
    putting something on takes off whatever else was in that slot, so
-   you can't wear boots over your shoes. `leaves` is the container left in
+   you can't wear boots over your shoes. 'light' is lit and put out the
+   same way, and while it's lit and dark out there is no night for `glow`
+   tiles around you (see LG.sky.draw). `leaves` is the container left in
    your pockets once something has been eaten or drunk out of it. `g` is the item name's
-   grammatical gender and number, in the languages where "(worn)" has to
-   agree with it (see LG.WORN): m, f, n or p(lural) in Russian and
-   Polish, m, f, mp or fp in French and Spanish.                       */
+   grammatical gender and number, in the languages where "(worn)" or
+   "(lit)" has to agree with it (see LG.WORN, LG.LIT): m, f, n or
+   p(lural) in Russian and Polish, m, f, mp or fp in French and Spanish,
+   m or f in Arabic (lights only, so far).                       */
 LG.ITEMS = {
   shiny_rock: {
     icon: '💎', tags: ['hold', 'ground', 'prize'], en: 'shiny rock', full: 'a shiny rock',
@@ -326,7 +329,7 @@ LG.ITEMS = {
     ru: 'шляпа', zh: '帽子', fr: 'chapeau', es: 'sombrero', ja: '帽子', ar: 'قبعة', pl: 'kapelusz', tok: 'len lawa'
   },
   candle: {
-    icon: '🕯️', tags: ['hold', 'shop'], en: 'candle', full: 'a candle',
+    icon: '🕯️', tags: ['hold', 'shop'], use: 'light', glow: 2.5, g: { ru: 'f', fr: 'f', es: 'f', pl: 'f', ar: 'f' }, en: 'candle', full: 'a candle',
     ru: 'свеча', zh: '蜡烛', fr: 'bougie', es: 'vela', ja: 'ろうそく', ar: 'شمعة', pl: 'świeca', tok: 'palisa suno'
   },
   key: {
@@ -342,7 +345,7 @@ LG.ITEMS = {
     ru: 'сапоги', zh: '靴子', fr: 'bottes', es: 'botas', ja: 'ブーツ', ar: 'حذاء طويل', pl: 'botki', tok: 'len noka suli'
   },
   lantern: {
-    icon: '🏮', tags: ['hold', 'shop', 'ground'], en: 'lantern', full: 'a lantern',
+    icon: '🏮', tags: ['hold', 'shop', 'ground'], use: 'light', glow: 5.5, g: { ru: 'm', fr: 'f', es: 'f', pl: 'f', ar: 'm' }, en: 'lantern', full: 'a lantern',
     ru: 'фонарь', zh: '灯笼', fr: 'lanterne', es: 'linterna', ja: '提灯', ar: 'فانوس', pl: 'latarnia', tok: 'ilo suno'
   },
   cat: {
@@ -616,7 +619,7 @@ LG.ITEMS = {
     ru: 'часы', zh: '钟', ja: 'とけい', fr: 'horloge', es: 'reloj', ar: 'ساعة', pl: 'zegar', tok: 'ilo tenpo'
   },
   oil_lamp: {
-    icon: '🪔', tags: ['hold', 'shop', 'ground'], en: 'oil lamp', full: 'an oil lamp',
+    icon: '🪔', tags: ['hold', 'shop', 'ground'], use: 'light', glow: 4, g: { ru: 'f', fr: 'f', es: 'f', pl: 'f', ar: 'm' }, en: 'oil lamp', full: 'an oil lamp',
     ru: 'лампа', zh: '油灯', ja: 'ランプ', fr: 'lampe', es: 'lámpara', ar: 'مصباح زيت', pl: 'lampa naftowa', tok: 'ilo suno pi telo seli'
   },
   chair: {
@@ -1068,13 +1071,25 @@ LG.WORN = {
   es: { m: '(puesto)', f: '(puesta)', mp: '(puestos)', fp: '(puestas)' },
   pl: { m: '(założony)', f: '(założona)', n: '(założone)', p: '(założone)' }
 };
-/* "(worn)" for one item in one language, agreeing with it where it has to. */
-LG.wornMark = function (id, lang) {
-  const t = LG.WORN[lang] || LG.WORN.en;
+/* The same for a light that's burning. */
+LG.LIT = {
+  en: '(lit)', zh: '（点着）', ja: '（点灯中）', tok: '(suno)',
+  ar: { m: '(مضاء)', f: '(مضاءة)' },
+  ru: { m: '(зажжён)', f: '(зажжена)', n: '(зажжено)', p: '(зажжены)' },
+  fr: { m: '(allumé)', f: '(allumée)', mp: '(allumés)', fp: '(allumées)' },
+  es: { m: '(encendido)', f: '(encendida)', mp: '(encendidos)', fp: '(encendidas)' },
+  pl: { m: '(zapalony)', f: '(zapalona)', n: '(zapalone)', p: '(zapalone)' }
+};
+/* A mark from one of those tables for one item in one language,
+   agreeing with it where it has to. */
+LG.markFor = function (table, id, lang) {
+  const t = table[lang] || table.en;
   if (typeof t === 'string') return t;
   const g = (LG.ITEMS[id] && LG.ITEMS[id].g) || {};
   return t[g[lang]] || t.m;
 };
+LG.wornMark = (id, lang) => LG.markFor(LG.WORN, id, lang);
+LG.litMark = (id, lang) => LG.markFor(LG.LIT, id, lang);
 
 LG.TXN = {
   buy: {
@@ -1165,6 +1180,28 @@ LG.TXN = {
     ar: 'تم خلع {item}.',
     pl: 'Zdejmujesz {item}.',
     tok: 'sina weka e {item} tan sijelo.'
+  },
+  light: {
+    en: 'You light {item}.',
+    ru: 'Вы зажигаете {item}.',
+    zh: '你点亮了{item}。',
+    ja: '{item}に火をつけた。',
+    fr: 'Vous allumez {item}.',
+    es: 'Enciendes {item}.',
+    ar: 'تم إشعال {item}.',
+    pl: 'Zapalasz {item}.',
+    tok: 'sina suno e {item}.'
+  },
+  putOut: {
+    en: 'You put out {item}.',
+    ru: 'Вы гасите {item}.',
+    zh: '你熄灭了{item}。',
+    ja: '{item}の火を消した。',
+    fr: 'Vous éteignez {item}.',
+    es: 'Apagas {item}.',
+    ar: 'تم إطفاء {item}.',
+    pl: 'Gasisz {item}.',
+    tok: 'sina pini e suno pi {item}.'
   },
   /* A colon before the dish, where the language allows it, keeps the item
      name in the form LG.ITEMS gives it from having to change its ending. */

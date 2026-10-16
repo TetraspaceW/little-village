@@ -1385,7 +1385,10 @@ LG.game = (function () {
     }
 
     ctx.restore();
-    LG.sky.draw(ctx, vw, vh, W.roofRects(cam, vw, vh, dpr), dpr);
+    // A light in the traveller's hand, centred on them rather than their feet.
+    const reach = LG.ledger.glow();
+    const glow = reach ? { x: player.px - c.x, y: player.py - c.y - 8, r: reach * TILE } : null;
+    LG.sky.draw(ctx, vw, vh, W.roofRects(cam, vw, vh, dpr), dpr, glow);
 
     // Drawn on top of the weather -- it's a UI control, not part of the scenery.
     LG.touch.draw(ctx);

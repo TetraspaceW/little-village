@@ -21,7 +21,7 @@ LG.ledger = (function () {
   const settings = LG.config.settings, C = LG.config;
   const { escapeHTML, rubyHTML } = LG.text;
 
-  const state = { inv: {}, worn: {}, notes: [], deeds: [], won: false, board: [] };
+  const state = { inv: {}, worn: {}, lit: {}, notes: [], deeds: [], won: false, board: [] };
   const logLines = [];
   let plan = null;
   let isSpent = () => false;
@@ -33,7 +33,7 @@ LG.ledger = (function () {
     isSpent = spent || (() => false);
     keep = needed || (() => 0);
     state.inv = { coins: 10 };          // a little money to be going on with
-    state.worn = {};
+    state.worn = {}; state.lit = {};
     state.notes = []; state.deeds = []; state.won = false; state.board = [];
     logLines.length = 0;
   }
@@ -43,7 +43,8 @@ LG.ledger = (function () {
   function give(id, n) { state.inv[id] = (state.inv[id] || 0) + (n || 1); render(); }
   function take(id, n) {
     state.inv[id] = Math.max(0, (state.inv[id] || 0) - (n || 1));
-    if (!state.inv[id]) { delete state.inv[id]; delete state.worn[id]; }   // can't wear what you've handed over
+    // Can't wear, or carry a flame in, what you've handed over.
+    if (!state.inv[id]) { delete state.inv[id]; delete state.worn[id]; delete state.lit[id]; }
     render();
   }
   /* `exclude` omits one item from the list entirely -- used for a
@@ -62,6 +63,16 @@ LG.ledger = (function () {
   function wornList() {
     return Object.keys(state.worn).filter(k => state.inv[k] > 0)
       .map(k => LG.itemSaid(k, settings.lang, true)).join(', ');
+  }
+  function litList() {
+    return Object.keys(state.lit).filter(k => state.inv[k] > 0)
+      .map(k => LG.itemSaid(k, settings.lang, true)).join(', ');
+  }
+  /* How far, in tiles, the brightest light the traveller has burning
+     reaches — 0 with none lit. */
+  function glow() {
+    return Object.keys(state.lit).reduce((r, k) =>
+      state.inv[k] > 0 ? Math.max(r, LG.ITEMS[k].glow || 0) : r, 0);
   }
   function itemLabel(id) { return LG.itemName(id, settings.lang); }
 
@@ -85,6 +96,12 @@ LG.ledger = (function () {
         state.worn[id] = true;
         say('wear', it.full);
       }
+      render();
+      return true;
+    }
+    if (it.use === 'light') {
+      if (state.lit[id]) { delete state.lit[id]; say('putOut', 'the ' + it.en); }
+      else { state.lit[id] = true; say('light', 'the ' + it.en); }
       render();
       return true;
     }
@@ -113,10 +130,11 @@ LG.ledger = (function () {
     return true;
   }
 
-  const VERB = { eat: 'Eat', drink: 'Drink', wear: 'Put on' };
-  /* "(worn)" in the village's language; a full-width bracket brings its own spacing. */
-  function wornTag(id) {
-    const t = LG.wornMark(id, settings.lang);
+  const VERB = { eat: 'Eat', drink: 'Drink', wear: 'Put on', light: 'Light' };
+  const UNDO = { wear: 'Take off', light: 'Put out' };
+  /* "(worn)" or "(lit)" in the village's language; a full-width bracket
+     brings its own spacing. */
+  function markTag(t) {
     return (t[0] === '（' ? '' : ' ') + '<span class="worn-tag">' + escapeHTML(t) + '</span>';
   }
 
@@ -214,19 +232,21 @@ LG.ledger = (function () {
     const inv = document.getElementById('inv');
     const L = C.language();
     const ks = Object.keys(state.inv).filter(k => state.inv[k] > 0 && k !== 'coins');
-    /* Anything with a `use` is a button: click it to eat, drink, or put
-       it on (and click again to take it off). The tooltip says which, in
+    /* Anything with a `use` is a button: click it to eat, drink, put it
+       on or light it (and click again to take it off or put it out). The tooltip says which, in
        English like the plain pills' tooltips. */
     inv.innerHTML = ks.length
       ? ks.map(k => {
-          const it = LG.ITEMS[k], worn = !!state.worn[k];
+          const it = LG.ITEMS[k], on = !!(state.worn[k] || state.lit[k]);
           const body = it.icon + ' <span lang="' + L.tag + '">' + escapeHTML(itemLabel(k)) +
             (state.inv[k] > 1 ? ' ×' + state.inv[k] : '') +
-            (worn ? wornTag(k) : '') +
+            (state.worn[k] ? markTag(LG.wornMark(k, settings.lang)) : '') +
+            (state.lit[k] ? markTag(LG.litMark(k, settings.lang)) : '') +
             '</span>';
           if (!it.use) return '<span class="pill" title="' + it.en + '">' + body + '</span>';
-          const verb = worn ? 'Take off' : VERB[it.use];
-          return '<button type="button" class="pill use' + (worn ? ' worn' : '') +
+          const verb = on ? UNDO[it.use] : VERB[it.use];
+          // Worn and lit look the same: something you've got going.
+          return '<button type="button" class="pill use' + (on ? ' worn' : '') +
                  '" data-use="' + k + '" title="' + verb + ' the ' + it.en + '">' + body + '</button>';
         }).join('')
       : '<span class="muted">empty pockets</span>';
@@ -254,6 +274,7 @@ LG.ledger = (function () {
     });
   }
 
-  return { state, begin, count, give, take, use, canCook, cook, inventoryList, wornList, hasNote, learn,
+  return { state, begin, count, give, take, use, canCook, cook, inventoryList, wornList, litList, glow,
+           hasNote, learn,
            log, logSpeech, txn, render };
 })();

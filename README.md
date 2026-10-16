@@ -56,6 +56,11 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
   head. Villagers can see what you're wearing. You won't eat or drink
   something the errand still needs. Whatever it came in stays behind: a jar
   of honey leaves an empty jar, a cup of tea a cup, a bowl of soup a bowl.
+- **Lights.** A lantern, oil lamp or candle is lit (and put out) the same
+  way. While one is burning and it's dark — night, or heavy weather — there
+  is no darkness around you at all: the village is in its daytime colours
+  out to the light's reach, fading back into the night at the edge. A
+  candle reaches a couple of tiles, a lantern about five.
 - Translations stay blurred until you click them.
 
 ## Gameplay

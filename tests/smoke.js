@@ -609,6 +609,40 @@ section('cooking at an oven');
   }
 }
 
+section('lights');
+{
+  const L = LG.ledger;
+  ['candle', 'lantern'].forEach(k => L.take(k, L.count(k)));
+  ok(L.glow() === 0, 'nothing lit, no light');
+  L.give('candle', 1); L.give('lantern', 1);
+  ok(L.use('candle') && L.state.lit.candle && L.count('candle') === 1, 'lighting a candle keeps it, lit');
+  ok(L.glow() === LG.ITEMS.candle.glow, 'and it lights the dark around you');
+  L.use('lantern');
+  ok(L.glow() === LG.ITEMS.lantern.glow && LG.ITEMS.lantern.glow > LG.ITEMS.candle.glow,
+     'a lantern as well reaches further than the candle alone');
+  const said = LG.itemSaid('lantern', LG.config.settings.lang, true);
+  ok(LG.dialogue._debugPrompt(npcs[0], null).indexOf('They are carrying, lit: ') !== -1,
+     'villagers can see you have a light burning');
+  ok(L.use('lantern') && !L.state.lit.lantern && L.glow() === LG.ITEMS.candle.glow, 'and it can be put out');
+  L.take('candle', 1);
+  ok(!L.state.lit.candle && L.glow() === 0, 'handing over a lit candle puts it out of your hands');
+  L.take('lantern', 1);
+
+  const lights = Object.keys(LG.ITEMS).filter(k => LG.ITEMS[k].use === 'light');
+  ok(lights.length === 3 && lights.every(k => LG.ITEMS[k].glow > 0), 'three lights, each with a reach');
+  ['ru', 'fr', 'es', 'pl', 'ar'].forEach(lang => {
+    ok(lights.every(k => LG.LIT[lang][LG.ITEMS[k].g[lang]]), 'every light has a form of "(lit)" in ' + lang);
+  });
+  ok(LG.litMark('lantern', 'ru') === '(зажжён)' && LG.litMark('candle', 'ru') === '(зажжена)' &&
+     LG.litMark('candle', 'ar') === '(مضاءة)' && LG.litMark('lantern', 'ar') === '(مضاء)',
+     'and it agrees with the light');
+
+  /* Drawing the night with a light in hand works even with no real canvas to cut it from. */
+  let threw = null;
+  try { LG.sky.draw(ctx2d, 800, 600, [], 1, { x: 400, y: 300, r: 160 }); } catch (e) { threw = e; }
+  ok(!threw, 'the sky draws with a light in it' + (threw ? ': ' + threw.message : ''));
+}
+
 section('eating out of a container leaves the container');
 {
   const L = LG.ledger;
@@ -1026,6 +1060,7 @@ section('a village, written down and read back');
   LG.config.settings.ttsKey = 'sk_not-a-real-voice-key';
   LG.ledger.state.deeds.push('Gave Mira a pie, got a shell.');
   LG.ledger.give('scarf', 1); LG.ledger.use('scarf');   // something worn, to come back worn
+  LG.ledger.give('oil_lamp', 1); LG.ledger.use('oil_lamp');   // and something lit, to come back lit
   LG.ledger.give('coins', 7);
   const someFact = Object.keys(plan.facts)[0];
   const holder = npcs.find(n => n.facts.indexOf(someFact) !== -1);
@@ -1058,7 +1093,7 @@ section('a village, written down and read back');
   const before = {
     seed: plan.seed, day: LG.time.day, frac: LG.time.frac,
     weather: LG.time.weather, snow: LG.time.snow,
-    worn: JSON.stringify(LG.ledger.state.worn),
+    worn: JSON.stringify(LG.ledger.state.worn), lit: JSON.stringify(LG.ledger.state.lit),
     inv: JSON.stringify(LG.ledger.state.inv), notes: JSON.stringify(LG.ledger.state.notes),
     deeds: JSON.stringify(LG.ledger.state.deeds),
     px: Math.round(LG.village.player.px * 10) / 10,
@@ -1102,6 +1137,7 @@ section('a village, written down and read back');
      'under the same sky, with the same snow lying');
   ok(JSON.stringify(LG.ledger.state.inv) === before.inv, 'with the same pockets');
   ok(JSON.stringify(LG.ledger.state.worn) === before.worn, 'wearing the same things');
+  ok(JSON.stringify(LG.ledger.state.lit) === before.lit && LG.ledger.state.lit.oil_lamp, 'with the same lamp lit');
   ok(JSON.stringify(LG.ledger.state.notes) === before.notes, 'the same notebook');
   ok(JSON.stringify(LG.ledger.state.deeds) === before.deeds, 'and the same deeds behind you');
   ok(Math.round(LG.village.player.px * 10) / 10 === before.px, 'standing where you were');

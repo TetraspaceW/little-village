@@ -146,24 +146,71 @@ LG.sky = (function () {
     return made;
   }
 
-  function draw(ctx, vw, vh, roofs, dpr) {
-    const info = LG.time.info || {};
+  /* The dark — the heavy-weather dim and the time-of-day wash — painted
+     onto `g`. Kept apart from the particles so that a light can take it
+     away without taking the rain with it. */
+  function paintDark(g, vw, vh, info, light) {
     const s = LG.time.season();
-
     // Darkening overlay for heavy weather only — see `dim` in time.js.
     // Off (0) by default.
     if (info.dim) {
-      ctx.globalAlpha = info.dim;
-      ctx.fillStyle = info.whiteout ? '#dce8f4' : (s.tone || '#5d6472');
-      ctx.fillRect(0, 0, vw, vh);
-      ctx.globalAlpha = 1;
+      g.globalAlpha = info.dim;
+      g.fillStyle = info.whiteout ? '#dce8f4' : (s.tone || '#5d6472');
+      g.fillRect(0, 0, vw, vh);
+      g.globalAlpha = 1;
     }
     // Time-of-day color wash
-    const light = daylight(LG.time.frac);
     if (light.alpha > 0.005) {
-      ctx.fillStyle = 'rgba(' + light.rgb.join(',') + ',' + light.alpha.toFixed(3) + ')';
-      ctx.fillRect(0, 0, vw, vh);
+      g.fillStyle = 'rgba(' + light.rgb.join(',') + ',' + light.alpha.toFixed(3) + ')';
+      g.fillRect(0, 0, vw, vh);
     }
+  }
+
+  /* A light the traveller is carrying (see LG.ledger.glow). It is not a
+     glow painted on top: the dark is drawn on a layer of its own, and the
+     light cuts it away, so inside `r` the village is in its own colours,
+     exactly as by day, with no tint at all. Only the last stretch fades
+     back into the night, eased so there's no visible ring. How much it
+     cuts follows how dark it is: a lantern does nothing at noon, and at
+     dusk it doesn't scrub out the sunset either. */
+  const CLEAR = 0.6;               // the part of the radius with no dark left in it at all
+  let darkLayer = null;
+  function darkness(light, info) {
+    const night = Math.min(1, Math.max(0, (light.alpha - 0.25) / 0.2));
+    return Math.max(night, Math.min(1, (info.dim || 0) / 0.3));
+  }
+  function cutLight(g, glow, k) {
+    const grad = g.createRadialGradient(glow.x, glow.y, 0, glow.x, glow.y, glow.r);
+    grad.addColorStop(0, 'rgba(0,0,0,' + k + ')');
+    grad.addColorStop(CLEAR, 'rgba(0,0,0,' + k + ')');
+    for (let i = 1; i <= 6; i++) {        // smoothstep from fully cut to not cut at all
+      const t = i / 6, e = 1 - t * t * (3 - 2 * t);
+      grad.addColorStop(CLEAR + (1 - CLEAR) * t, 'rgba(0,0,0,' + (k * e).toFixed(3) + ')');
+    }
+    g.globalCompositeOperation = 'destination-out';
+    g.fillStyle = grad;
+    g.beginPath(); g.arc(glow.x, glow.y, glow.r, 0, Math.PI * 2); g.fill();
+    g.globalCompositeOperation = 'source-over';
+  }
+
+  /* `glow`, when there is one, is { x, y, r } in screen pixels. */
+  function draw(ctx, vw, vh, roofs, dpr, glow) {
+    const info = LG.time.info || {};
+    const light = daylight(LG.time.frac);
+    const k = glow && glow.r > 0 ? darkness(light, info) : 0;
+    if (k > 0.01 && typeof document !== 'undefined') {
+      const d = dpr || 1, w = Math.ceil(vw * d), h = Math.ceil(vh * d);
+      if (!darkLayer) darkLayer = document.createElement('canvas');
+      if (darkLayer.width !== w || darkLayer.height !== h) { darkLayer.width = w; darkLayer.height = h; }
+      const g = darkLayer.getContext && darkLayer.getContext('2d');
+      if (g && typeof g.createRadialGradient === 'function') {
+        g.setTransform(d, 0, 0, d, 0, 0);
+        g.clearRect(0, 0, vw, vh);
+        paintDark(g, vw, vh, info, light);
+        cutLight(g, glow, k);
+        ctx.drawImage(darkLayer, 0, 0, vw, vh);
+      } else paintDark(ctx, vw, vh, info, light);
+    } else paintDark(ctx, vw, vh, info, light);
 
     // draw active particles
     const clipped = (kind === 'rain' || kind === 'snow' || kind === 'sand')

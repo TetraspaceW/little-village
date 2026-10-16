@@ -852,91 +852,83 @@ LG.ITEMS = {
      fishing.js) ---------------------------------------------------------
      Everything that lives in a freshwater pond: one of each genus of
      Linnaeus's Pisces (Systema Naturae, 10th edition, 1758) with a species
-     found in still fresh water, a couple more of his Cyprinus, and the
-     small things that aren't fish at all. And a robot fish.
+     found in still fresh water, and the small things that aren't fish at
+     all. And a robot fish.
      Tagged only `catch`, which the errand generator never asks for, so
      nothing you can pull out of the water is ever anyone's errand, and
      every seed's chain stays as it was. The fisherman buys them by that
      tag. */
   carp: {
     icon: '🐟', tags: ['catch'], price: 2, en: 'carp', full: 'a carp',
-    ru: 'карп', zh: '鲤鱼', ja: 'コイ', fr: 'carpe', es: 'carpa', ar: 'سمك الشبوط', pl: 'karp', tok: 'kala suli'
+    ru: 'карп', zh: '鲤鱼', ja: 'コイ', fr: 'carpe', es: 'carpa', ar: 'سمك الشبوط', pl: 'karp', tok: 'kala Cyprinus'
   },
   perch: {
     icon: '🐟', tags: ['catch'], price: 2, en: 'perch', full: 'a perch',
-    ru: 'окунь', zh: '河鲈', ja: 'パーチ', fr: 'perche', es: 'perca', ar: 'سمك الفرخ', pl: 'okoń', tok: 'kala laso'
-  },
-  minnow: {
-    icon: '🐟', tags: ['catch'], price: 1, en: 'minnow', full: 'a minnow',
-    ru: 'пескарь', zh: '鲦鱼', ja: 'ハヤ', fr: 'vairon', es: 'piscardo', ar: 'سمكة صغيرة', pl: 'strzebla', tok: 'kala lili'
+    ru: 'окунь', zh: '河鲈', ja: 'ヨーロピアンパーチ', fr: 'perche', es: 'perca', ar: 'سمك الفرخ', pl: 'okoń', tok: 'kala Perca'
   },
   pike: {
     icon: '🐟', tags: ['catch'], price: 4, en: 'pike', full: 'a pike',
-    ru: 'щука', zh: '狗鱼', ja: 'カワカマス', fr: 'brochet', es: 'lucio', ar: 'سمك الكراكي', pl: 'szczupak', tok: 'kala utala'
+    ru: 'щука', zh: '狗鱼', ja: 'カワカマス', fr: 'brochet', es: 'lucio', ar: 'سمك الكراكي', pl: 'szczupak', tok: 'kala Esox'
   },
   trout: {
     icon: '🐟', tags: ['catch'], price: 3, en: 'trout', full: 'a trout',
-    ru: 'форель', zh: '鳟鱼', ja: 'マス', fr: 'truite', es: 'trucha', ar: 'سمك السلمون المرقط', pl: 'pstrąg', tok: 'kala pi telo tawa'
+    ru: 'форель', zh: '鳟鱼', ja: 'マス', fr: 'truite', es: 'trucha', ar: 'سلمون مرقط', pl: 'pstrąg', tok: 'kala Salmo'
   },
   eel: {
     icon: '🐍', tags: ['catch'], price: 4, en: 'eel', full: 'an eel',
-    ru: 'угорь', zh: '鳗鱼', ja: 'ウナギ', fr: 'anguille', es: 'anguila', ar: 'سمك الأنقليس', pl: 'węgorz', tok: 'kala linja'
+    ru: 'угорь', zh: '鳗鱼', ja: 'ウナギ', fr: 'anguille', es: 'anguila', ar: 'سمك الأنقليس', pl: 'węgorz', tok: 'kala Muraena'
   },
   catfish: {
     icon: '🐟', tags: ['catch'], price: 3, en: 'catfish', full: 'a catfish',
-    ru: 'сом', zh: '鲶鱼', ja: 'ナマズ', fr: 'silure', es: 'siluro', ar: 'سمك السلور', pl: 'sum', tok: 'kala pi linja uta'
-  },
-  goldfish: {
-    icon: '🐠', tags: ['catch'], price: 3, en: 'goldfish', full: 'a goldfish',
-    ru: 'золотая рыбка', zh: '金鱼', ja: '金魚', fr: 'poisson rouge', es: 'pez de colores', ar: 'سمكة ذهبية', pl: 'złota rybka', tok: 'kala jelo'
+    ru: 'сом', zh: '鲶鱼', ja: 'ナマズ', fr: 'silure', es: 'siluro', ar: 'سمك السلور', pl: 'sum', tok: 'kala Silurus'
   },
   crayfish: {
     icon: '🦞', tags: ['catch'], price: 2, en: 'crayfish', full: 'a crayfish',
-    ru: 'рак', zh: '小龙虾', ja: 'ザリガニ', fr: 'écrevisse', es: 'cangrejo de río', ar: 'جراد النهر', pl: 'rak', tok: 'pipi telo loje'
+    ru: 'рак', zh: '小龙虾', ja: 'ザリガニ', fr: 'écrevisse', es: 'cangrejo de río', ar: 'جراد المياه العذبة', pl: 'rak', tok: 'pipi telo loje'
   },
   shrimp: {
     icon: '🦐', tags: ['catch'], price: 2, en: 'shrimp', full: 'a shrimp',
-    ru: 'креветка', zh: '虾', ja: 'エビ', fr: 'crevette', es: 'gamba', ar: 'روبيان', pl: 'krewetka', tok: 'pipi telo lili'
+    ru: 'креветка', zh: '虾', ja: 'エビ', fr: 'crevette', es: 'camarón', ar: 'جمبري', pl: 'krewetka', tok: 'pipi telo lili'
   },
   copepod: {
     icon: '🦠', tags: ['catch'], price: 1, en: 'copepod', full: 'a copepod',
-    ru: 'веслоногий рачок', zh: '桡足类', ja: 'カイアシ', fr: 'copépode', es: 'copépodo', ar: 'مجدافي الأرجل', pl: 'widłonóg', tok: 'pipi telo lili lili'
+    ru: 'веслоногий рачок', zh: '桡足类', ja: 'カイアシ', fr: 'copépode', es: 'copépodo', ar: 'مجدافية الأرجل', pl: 'widłonóg', tok: 'pipi telo lili lili'
   },
   knifefish: {
     icon: '🐟', tags: ['catch'], price: 4, en: 'banded knifefish', full: 'a banded knifefish',
-    ru: 'полосатый гимнот', zh: '裸背电鳗', ja: 'バンデッドナイフフィッシュ', fr: 'gymnote carapo', es: 'carapo', ar: 'سمكة السكين المخططة', pl: 'nożowiec prążkowany', tok: 'kala palisa'
+    ru: 'обыкновенный гимнот', zh: '圭亚那裸背电鳗', ja: 'バンデッド・ナイフフィッシュ', fr: 'gymnote rayé', es: 'morenita', ar: 'جمنوت', pl: 'Gymnotus carapo', tok: 'kala Gymnotus'
   },
   bullhead: {
     icon: '🐟', tags: ['catch'], price: 2, en: 'bullhead', full: 'a bullhead',
-    ru: 'подкаменщик', zh: '杜父鱼', ja: 'カジカ', fr: 'chabot', es: 'cavilat', ar: 'سمكة الرأس الثوري', pl: 'głowacz', tok: 'kala lawa suli'
+    ru: 'подкаменщик', zh: '杜父鱼', ja: 'カジカ', fr: 'chabot', es: 'cavilat', ar: 'قد الأنهار', pl: 'głowacz', tok: 'kala Cottus'
   },
   tilapia: {
     icon: '🐟', tags: ['catch'], price: 2, en: 'tilapia', full: 'a tilapia',
-    ru: 'тиляпия', zh: '罗非鱼', ja: 'ティラピア', fr: 'tilapia', es: 'tilapia', ar: 'سمك البلطي', pl: 'tilapia', tok: 'kala Tilapija'
+    ru: 'тиляпия', zh: '罗非鱼', ja: 'ティラピア', fr: 'tilapia', es: 'tilapia', ar: 'سمك البلطي', pl: 'tilapia', tok: 'kala Sparus'
   },
   paradise_fish: {
     icon: '🐠', tags: ['catch'], price: 3, en: 'paradise fish', full: 'a paradise fish',
-    ru: 'макропод', zh: '叉尾斗鱼', ja: 'タイワンキンギョ', fr: 'poisson du paradis', es: 'pez del paraíso', ar: 'سمكة الجنة', pl: 'wielkopłetw', tok: 'kala pi ma sewi'
+    ru: 'макропод', zh: '叉尾斗鱼', ja: 'タイワンキンギョ', fr: 'macropode', es: 'pez paraíso', ar: 'سمك الجنة', pl: 'wielkopłetw', tok: 'kala Labrus'
   },
   stickleback: {
     icon: '🐟', tags: ['catch'], price: 1, en: 'stickleback', full: 'a stickleback',
-    ru: 'колюшка', zh: '刺鱼', ja: 'イトヨ', fr: 'épinoche', es: 'espinoso', ar: 'سمك أبو شوكة', pl: 'ciernik', tok: 'kala pi palisa lili'
+    ru: 'колюшка', zh: '三刺鱼', ja: 'イトヨ', fr: 'épinoche', es: 'espinoso', ar: 'أبو شوكة', pl: 'ciernik', tok: 'kala Gasterosteus'
   },
   weatherfish: {
     icon: '🐟', tags: ['catch'], price: 2, en: 'weatherfish', full: 'a weatherfish',
-    ru: 'вьюн', zh: '泥鳅', ja: 'ドジョウ', fr: 'loche d’étang', es: 'locha de estanque', ar: 'سمك اللوش', pl: 'piskorz', tok: 'kala ko'
+    ru: 'вьюн', zh: '泥鳅', ja: 'ヨーロッパドジョウ', fr: 'loche d’étang', es: 'misgurno', ar: 'سمك اللخ', pl: 'piskorz', tok: 'kala Cobitis'
   },
   hatchetfish: {
     icon: '🐟', tags: ['catch'], price: 3, en: 'hatchetfish', full: 'a hatchetfish',
-    ru: 'клинобрюшка', zh: '银斧鱼', ja: 'ハチェットフィッシュ', fr: 'poisson-hachette', es: 'pez hacha', ar: 'سمكة الفأس', pl: 'toporek', tok: 'kala pi ilo kipisi'
+    ru: 'клинобрюшка', zh: '胸斧鱼', ja: 'ハチェットフィッシュ', fr: 'poisson-hachette', es: 'pechito', ar: 'سمك المياه العذبة الفأسي', pl: 'pstrążeń', tok: 'kala Clupea'
   },
   elephantfish: {
     icon: '🐟', tags: ['catch'], price: 5, en: 'elephantfish', full: 'an elephantfish',
-    ru: 'рыба-слон', zh: '象鼻鱼', ja: 'エレファントノーズ', fr: 'poisson-éléphant', es: 'pez elefante', ar: 'سمكة الفيل', pl: 'mruk', tok: 'kala pi nena suli'
+    ru: 'слонорыл', zh: '长颌鱼', ja: 'モルミルス', fr: 'mormyre', es: 'pez elefante', ar: 'قنومة', pl: 'Mormyrus', tok: 'kala Mormyrus'
   },
   fahaka: {
     icon: '🐡', tags: ['catch'], price: 5, en: 'Fahaka pufferfish', full: 'a Fahaka pufferfish',
-    ru: 'фахака', zh: '尼罗河豚', ja: 'ファハカフグ', fr: 'tétraodon fahaka', es: 'pez globo del Nilo', ar: 'سمكة الفهقة', pl: 'fahaka', tok: 'kala sike'
+    ru: 'фахака', zh: '尼罗鲀', ja: 'テトラオドン・ファハカ', fr: 'tétrodon fahaka', es: 'pez globo fahaka', ar: 'ينفوخ نيلي', pl: 'kolcobrzuch nilowy', tok: 'kala Tetraodon'
   },
   robot_fish: {
     icon: '🤖', tags: ['catch'], price: 10, en: 'robot fish', full: 'a robot fish',
@@ -1045,7 +1037,6 @@ LG.RECIPES = [
    night; without it, it's about at any hour. The names, prices and icons
    are in LG.ITEMS like everything else you can carry. */
 LG.CATCHES = [
-  { id: 'minnow',        weight: 22, bite: 1.1 },
   { id: 'perch',         weight: 18, bite: 0.9 },
   { id: 'carp',          weight: 16, bite: 0.9 },
   { id: 'stickleback',   weight: 14, bite: 1.1 },
@@ -1058,7 +1049,6 @@ LG.CATCHES = [
   { id: 'eel',           weight: 7,  bite: 0.6, when: 'night' },
   { id: 'bullhead',      weight: 6,  bite: 0.9 },
   { id: 'weatherfish',   weight: 6,  bite: 0.8 },
-  { id: 'goldfish',      weight: 5,  bite: 0.8, when: 'day' },
   { id: 'paradise_fish', weight: 5,  bite: 0.8, when: 'day' },
   { id: 'pike',          weight: 5,  bite: 0.5 },
   { id: 'knifefish',     weight: 4,  bite: 0.6, when: 'night' },

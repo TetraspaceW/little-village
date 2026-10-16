@@ -764,7 +764,7 @@ section('fishing at the pond');
   const was = { x: me.px, y: me.py };
   const at = (x, y) => { me.px = x; me.py = y; me.tx = (x / 32) | 0; me.ty = (y / 32) | 0; };
   const caught = LG.CATCHES.map(c => c.id);
-  ok(caught.length >= 21 && caught.every(k => LG.ITEMS[k]), 'many kinds of thing bite, each a real item');
+  ok(caught.length >= 19 && caught.every(k => LG.ITEMS[k]), 'many kinds of thing bite, each a real item');
   ok(['robot_fish', 'shrimp', 'copepod'].every(k => caught.indexOf(k) !== -1),
      'among them a robot fish, shrimp and a copepod');
   ok(['saury', 'sea_slug', 'squid', 'pufferfish'].every(k => !LG.ITEMS[k]), 'and nothing out of the sea');

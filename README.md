@@ -112,13 +112,12 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
   pockets, stand on the bank of the pond and press **E** (or tap the water)
   to cast. Then watch the float: when it's pulled under, press **E** (or tap
   anywhere) to pull back. Too soon and there's nothing on the hook; too late
-  and it gets away. A shiver is only a nibble. Twenty-one things bite:
+  and it gets away. A shiver is only a nibble. Nineteen things bite:
   one fish of every genus in Linnaeus's 1758 *Systema Naturae* that has
   a species living in still fresh water (eel, perch, catfish, trout,
   pike, carp, knifefish, bullhead, tilapia, paradise fish, stickleback,
   weatherfish, hatchetfish, elephantfish and Fahaka pufferfish), plus
-  minnows, goldfish, shrimp, crayfish, copepods and, very rarely, a
-  robot fish. Some only come out by day and some only by
+  shrimp, crayfish, copepods and, very rarely, a robot fish. Some only come out by day and some only by
   night, and the rarer ones let go quicker. Walking off reels the line in,
   and you can't fish through ice. Yuri buys what you catch, and the fish
   that are good to eat grill at an oven. Anyone nearby sees what you land.

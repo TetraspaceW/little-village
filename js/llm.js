@@ -93,11 +93,14 @@ LG.llm = (function () {
       );
     }
     if (res.status === 404) {
-      throw new Error(
-        'The model "' +
-          (body.model || "?") +
-          '" was not found on this provider, ' +
-          "or your key has no access to it.",
+      throw withStatus(
+        new Error(
+          'The model "' +
+            (body.model || "?") +
+            '" was not found on this provider, ' +
+            "or your key has no access to it.",
+        ),
+        404,
       );
     }
     if (res.status === 429)
@@ -107,11 +110,19 @@ LG.llm = (function () {
       try {
         detail = (await res.text()).slice(0, 240);
       } catch (e) {}
-      throw new Error(
-        "API error " + res.status + (detail ? ": " + detail : ""),
+      throw withStatus(
+        new Error("API error " + res.status + (detail ? ": " + detail : "")),
+        res.status,
       );
     }
     return res.json();
+  }
+
+  /* Tags an error with the HTTP status that caused it, so providerCall
+     can tell "no provider takes this schema" from everything else. */
+  function withStatus(e, status) {
+    e.status = status;
+    return e;
   }
 
   /* The system prompt as text blocks, cut where each of `prefixes` ends,
@@ -227,7 +238,16 @@ LG.llm = (function () {
      accepted, and failure is treated as "no" — a failed/unknown lookup
      falls back to prompt-only JSON with repair, same as before this
      existed. */
-  const SCHEMA_OK = {}; // 'provider:model' -> true | false, cached after first check
+  /* 'provider:model' -> false, true, or a list of prices. A list holds
+     one entry per OpenRouter provider of that model that takes a schema,
+     as {prompt, completion} in $/M tokens, so schemaOK can tell whether
+     one of them is also under the price cap a request will carry -- a
+     schema sent with require_parameters (see send) to a model whose only
+     schema-capable providers are over the cap would fail outright. true
+     means the model takes a schema somewhere but its providers couldn't
+     be looked up; a call that then finds none recovers on its own (see
+     providerCall). */
+  const SCHEMA_OK = {};
   let orModels = null; // OpenRouter's model list, fetched once and shared with the price lookup below
 
   async function getJSON(url, headers) {
@@ -242,7 +262,14 @@ LG.llm = (function () {
 
   /* Synchronous check so the send path never blocks on it. Unresolved/unknown reads as false. */
   function schemaOK(cfg, model) {
-    return SCHEMA_OK[schemaKey(cfg, model || cfg.model)] === true;
+    const v = SCHEMA_OK[schemaKey(cfg, model || cfg.model)];
+    if (v === true) return true;
+    if (!Array.isArray(v) || !v.length) return false;
+    // the same cap send will attach; none resolved means none is sent
+    const cap = maxPriceCache[cfg.fast ? "fast" : "big"];
+    if (!cap) return true;
+    const under = (a, b) => a <= b * 1.000001;
+    return v.some((p) => under(p.prompt, cap.prompt) && under(p.completion, cap.completion));
   }
 
   async function probeOne(cfg, model) {
@@ -252,13 +279,31 @@ LG.llm = (function () {
     // Logfare picks its own backing model, so there's no catalogue to
     // query -- fails closed the same as any other unresolvable lookup.
     if (cfg.provider !== "openrouter") return false;
+    const takes = (x) =>
+      (x.supported_parameters || []).indexOf("structured_outputs") !== -1;
+    try {
+      // Per-provider listing first: which providers take a schema, at what price.
+      const d = await getJSON(
+        "https://openrouter.ai/api/v1/models/" + model + "/endpoints",
+      );
+      const eps = (d.data && d.data.endpoints) || [];
+      SCHEMA_OK[key] = eps
+        .filter(takes)
+        .map((e) => ({
+          prompt: Number((e.pricing || {}).prompt) * 1e6,
+          completion: Number((e.pricing || {}).completion) * 1e6,
+        }))
+        .filter((p) => isFinite(p.prompt) && isFinite(p.completion));
+      return SCHEMA_OK[key];
+    } catch (e) {
+      /* no per-provider listing (a router like openrouter/auto has none);
+         fall back to the model list's flag below */
+    }
     try {
       if (!orModels) orModels = getJSON("https://openrouter.ai/api/v1/models");
       const d = await orModels;
       const m = (d.data || []).find((x) => x.id === model);
-      SCHEMA_OK[key] =
-        !!m &&
-        (m.supported_parameters || []).indexOf("structured_outputs") !== -1;
+      SCHEMA_OK[key] = !!m && takes(m);
     } catch (e) {
       orModels = null; // don't cache a failed fetch -- allow retrying later
     }
@@ -273,6 +318,9 @@ LG.llm = (function () {
       await Promise.all([
         probeOne(cfg, cfg.model),
         probeOne(cfg, helperModel(cfg)),
+        // resolved now so schemaOK can compare against them from the first call
+        cfg.provider === "openrouter" ? maxPriceFor("big") : null,
+        cfg.provider === "openrouter" ? maxPriceFor("fast") : null,
       ]);
     } catch (e) {
       /* fails closed on its own */
@@ -480,14 +528,52 @@ LG.llm = (function () {
     }
   }
 
+  /* A strict JSON Schema object: every property required and nothing
+     else allowed, the one shape strict structured outputs accept.
+     `props` maps each field to its type plus a `description` that says
+     what goes in it in the same words the prompt uses, so a model that
+     reads the schema rather than the prompt still knows what to write.
+     Fields that only sometimes apply are left out by the caller rather
+     than made optional. */
+  function strict(props) {
+    return {
+      type: "object",
+      properties: props,
+      required: Object.keys(props),
+      additionalProperties: false,
+    };
+  }
+  const str = (description) => ({ type: "string", description });
+  const strs = (description) => ({
+    type: "array",
+    items: { type: "string" },
+    description,
+  });
+
   /* Every API call goes through here. Callers pass the schema they want
      without needing to know whether the target model actually supports
      structured outputs — that check (schemaOK) happens centrally. */
   function providerCall(cfg, system, messages, schema, opts) {
     const s = schema && schemaOK(cfg, cfg.model) ? schema : null;
-    return audited(cfg, system, messages, () =>
-      send(cfg, system, messages, s, opts),
-    );
+    /* Helper calls that don't name a session of their own get one per
+       kind of job, so each kind keeps to one OpenRouter provider and
+       its warm cache (see `session` in send) instead of being spread
+       across whichever is fastest. */
+    if (cfg.fast && !(opts && opts.session))
+      opts = Object.assign({}, opts, { session: "helper-" + kindOf(system) });
+    const run = (sc) =>
+      audited(cfg, system, messages, () => send(cfg, system, messages, sc, opts));
+    if (!s) return run(null);
+    /* OpenRouter answers 404 (or 400) when no provider it may use takes
+       the schema -- the lookup was stale, or the cap or session ruled
+       the capable ones out. That isn't worth failing the call over: stop
+       sending this model a schema for the rest of the session and ask
+       again without one, which falls back to prompt-only JSON. */
+    return run(s).catch((e) => {
+      if (e.status !== 404 && e.status !== 400) throw e;
+      SCHEMA_OK[schemaKey(cfg, cfg.model)] = false;
+      return run(null);
+    });
   }
 
   function dump() {
@@ -564,6 +650,11 @@ LG.llm = (function () {
       if (price) body.provider = { sort: "throughput", max_price: price };
     }
     if (schema) {
+      /* The model list's structured_outputs flag means some provider of
+         the model takes a schema, not every one -- without this,
+         OpenRouter can route to one that silently drops it. Logfare
+         never gets a schema (schemaOK), so this is OpenRouter's alone. */
+      body.provider = Object.assign({}, body.provider, { require_parameters: true });
       body.response_format = {
         type: "json_schema",
         json_schema: { name: "reply", strict: true, schema: schema },
@@ -784,6 +875,16 @@ LG.llm = (function () {
         vcfg,
         "You keep one person's beliefs up to date. Answer with JSON only.",
         [{ role: "user", content: ask }],
+        strict({
+          n: {
+            type: "integer",
+            description:
+              "the number of the line that is out of date, or 0 if nothing is",
+          },
+          line: str(
+            "that line rewritten so it is true now, in the same voice, still saying what used to be the case -- empty string if n is 0",
+          ),
+        }),
       );
       const obj = parseJSON(raw);
       const n = obj && Number(obj.n);
@@ -826,6 +927,19 @@ LG.llm = (function () {
         vcfg,
         "You translate and romanise single lines. Answer with JSON only.",
         [{ role: "user", content: ask }],
+        strict(
+          Object.assign(
+            { translation: str("a plain English translation of the line") },
+            o.romanLabel
+              ? {
+                  roman: str(
+                    "the " + o.romanLabel + " of the line" +
+                      (o.romanNote ? ", " + o.romanNote : ""),
+                  ),
+                }
+              : {},
+          ),
+        ),
       );
       const o2 = parseJSON(raw);
       return o2 || null;
@@ -895,9 +1009,24 @@ LG.llm = (function () {
     const sys =
       "You note what people took away from a conversation. Answer with JSON only.";
     try {
-      const raw = await providerCall(vcfg, sys, [
-        { role: "user", content: lines },
-      ]);
+      const took = (who) =>
+        strict({
+          remembers: strs(
+            "what " + who.name + " would come away remembering, each a short plain-English sentence naming who it is about -- [] if nothing was worth keeping",
+          ),
+          said: strs(
+            "the ids, as written, of the statements " + who.name + " actually said out loud -- [] if none",
+          ),
+        });
+      const shape = {};
+      shape[o.a.name] = took(o.a);
+      shape[o.b.name] = took(o.b);
+      const raw = await providerCall(
+        vcfg,
+        sys,
+        [{ role: "user", content: lines }],
+        strict(shape),
+      );
       const obj = parseJSON(raw);
       if (!obj) return null;
       const pick = (n) => {
@@ -1226,9 +1355,42 @@ LG.llm = (function () {
     const sys =
       "You decide whether a villager posts a notice, and write it if so. Answer with JSON only.";
     try {
-      const raw = await providerCall(vcfg, sys, [
-        { role: "user", content: lines },
-      ]);
+      const raw = await providerCall(
+        vcfg,
+        sys,
+        [{ role: "user", content: lines }],
+        strict(
+          Object.assign(
+            {
+              post: {
+                type: "boolean",
+                description:
+                  "true if you pin something up, false if you have nothing worth posting",
+              },
+              text: str(
+                "what you pin up, in " + o.langName + " -- empty string if post is false",
+              ),
+              translation: str(
+                "plain English, or empty string if post is false",
+              ),
+            },
+            o.romanLabel
+              ? {
+                  roman: str(
+                    o.romanLabel +
+                      (o.romanNote ? ", " + o.romanNote : "") +
+                      ", or empty string if post is false",
+                  ),
+                }
+              : {},
+            {
+              revealed: strs(
+                "ids from what you know that this notice states outright -- [] if none or if post is false",
+              ),
+            },
+          ),
+        ),
+      );
       const obj = parseJSON(raw);
       if (!obj) return null;
       return obj;
@@ -1277,7 +1439,6 @@ LG.llm = (function () {
         ? null
         : o.them.name + ", " + o.them.job + ", is here too." +
           (o.them.persona ? " " + o.them.persona : ""),
-      o.when || null,
       "",
       /* Roster of everyone else in the village by name/job/persona —
          same background info a villager gets when talking to the player.
@@ -1302,15 +1463,11 @@ LG.llm = (function () {
          another — so describing tradeable goods just led to villagers
          "agreeing" to deals that never actually happened. This will come
          back if/when that mechanic is implemented. */
-      said.length
-        ? "So far:\n" + said.join("\n")
-        : "Neither of you has said anything yet.",
-      "",
-      o.closing
-        ? "This is the last thing you will say in this conversation."
-        : null,
-      "Say your next line. A line or two.",
-      "",
+      /* Everything from the top through this block is the same on every
+         turn a villager takes in one conversation, so it's a prefix the
+         provider can read back from cache. What changes turn to turn --
+         the time (only the first turn states it), the transcript, the
+         closing note -- comes after it. */
       ("In " + o.langName + ". " + (o.register || "")).trim(),
       /* The player reads these lines too, so they need to actually be
          sentences. This rule exists in the player-facing prompt but was
@@ -1323,7 +1480,7 @@ LG.llm = (function () {
          "terse" as the instruction, over-shortening replies. How long a
          villager's lines are is a character trait; whether they're
          grammatical sentences is not negotiable. */
-      "Say it the way a real " +
+      "Say each line the way a real " +
         o.langName +
         " speaker would actually say it out loud.",
       /* Villager-to-villager dialogue is logged verbatim, and that log
@@ -1374,6 +1531,16 @@ LG.llm = (function () {
             '"'
           : "") +
         "}",
+      "",
+      o.when || null,
+      said.length
+        ? "So far:\n" + said.join("\n")
+        : "Neither of you has said anything yet.",
+      "",
+      o.closing
+        ? "This is the last thing you will say in this conversation."
+        : null,
+      "Say your next line. A line or two.",
     ]
       .filter((x) => x !== null && x !== undefined)
       .join("\n");
@@ -1381,9 +1548,32 @@ LG.llm = (function () {
     const sys =
       "You play one villager in a two-person conversation. Answer with JSON only.";
     try {
-      const raw = await providerCall(vcfg, sys, [
-        { role: "user", content: lines },
-      ]);
+      const raw = await providerCall(
+        vcfg,
+        sys,
+        [{ role: "user", content: lines }],
+        strict(
+          Object.assign(
+            {
+              say: str(
+                "your line, in " + o.langName +
+                  (o.furigana ? ", with the furigana as above" : "") +
+                  (o.diacritics ? ", fully vocalised as above" : ""),
+              ),
+              translation: str("the same line in plain English"),
+            },
+            o.romanLabel
+              ? {
+                  roman: str(
+                    "the " + o.romanLabel + " of your line" +
+                      (o.romanNote ? ", " + o.romanNote : ""),
+                  ),
+                }
+              : {},
+          ),
+        ),
+        { session: o.session },
+      );
       const obj = parseJSON(raw);
       if (!obj || !obj.say) return null;
       return obj;

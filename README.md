@@ -188,8 +188,16 @@ gives you the real figure for a real session.
 ### Structured output
 
 Where the model supports it, replies are constrained with a JSON Schema
-(`response_format` on OpenRouter) rather than just requested in the prompt. Support is checked per model when the key
-connects; anything unrecognised falls back to prompt-based JSON with repair.
+(`response_format` on OpenRouter) rather than just requested in the prompt:
+the villager's reply to you, and the helper's conversation lines, recall,
+belief revisions, glosses and notices. Each field in a schema carries the same
+description the prompt gives it. Support is checked per model when the key
+connects, against OpenRouter's per-provider listing: a model gets a schema only
+if at least one of its providers takes one at a price under the request's price
+cap. A request with a schema is sent with `provider.require_parameters`, so
+OpenRouter only routes it to such a provider; if it finds none anyway, the call
+is retried once without the schema and that model gets none for the rest of the
+session. Anything unrecognised falls back to prompt-based JSON with repair.
 
 ## Languages and difficulty
 

@@ -126,6 +126,7 @@ for (const f of files) {
 console.log('   ' + files.length + ' files: ' + files.map(f => path.basename(f)).join(' '));
 
 const LG = sandbox.LG;
+const realConverse = LG.llm.converse;
 
 /* Starts the game exactly as index.html does. No API key is set, so no request is ever sent. */
 sandbox.LG.game.init();
@@ -644,8 +645,14 @@ async function promptCached() {
   const sent = [];
   const realFetch = sandbox.fetch, audit = LG.llm.audit;
   sandbox.fetch = async (url, init) => {
-    // no body: OpenRouter's model list, looked up for its price cap
-    if (!init || !init.body) return { ok: true, json: async () => ({ data: [] }) };
+    // no body: a lookup. Per-provider listings say which providers take a schema...
+    if ((!init || !init.body) && url.indexOf('/endpoints') !== -1)
+      return { ok: true, json: async () => ({ data: { endpoints: [
+        { supported_parameters: ['structured_outputs'],
+          pricing: { prompt: '0.0000001', completion: '0.0000004' } }] } }) };
+    // ...and the model list gives the price cap
+    if (!init || !init.body) return { ok: true, json: async () => ({ data: [
+      { id: 'deepseek/deepseek-v4.1-flash', supported_parameters: ['structured_outputs'] }] }) };
     sent.push({ url: url, body: JSON.parse(init.body) });
     const reply = '{"say": "Hm."}';
     return { ok: true, status: 200, json: async () => ({
@@ -656,16 +663,26 @@ async function promptCached() {
   const opts = { cachePrefixes: [built.core, built.stable], session: 'npc-' + n.id };
   const model = { provider: 'openrouter', apiKey: 'k', model: 'deepseek/deepseek-v4.1-flash' };
   try {
+    await LG.llm.probe(model);
     await LG.llm.speak(model, built.text, msgs, null, opts);
     await LG.llm.speak(model, built.text, msgs, null);
+    await LG.llm.gloss(model, 'Hm.', { langName: 'Japanese' });
+    const me = { name: 'Ana', job: 'baker', persona: 'Brisk.' };
+    const them = { name: 'Bo', job: 'smith', persona: 'Slow.' };
+    const chat = { me: me, them: them, held: ['the well is dry'], langName: 'Japanese',
+                   session: 'chat-ana' };
+    // the real one: villagersTalking() below stubs LG.llm.converse for good
+    await realConverse(model, Object.assign({}, chat, { transcript: [], when: 'Morning.' }));
+    await realConverse(model, Object.assign({}, chat, { when: '', closing: true,
+      transcript: [{ who: 'Ana', say: 'Hm.' }, { who: 'Bo', say: 'Mm.' }] }));
   } finally {
     sandbox.fetch = realFetch;
     LG.llm.audit = audit;
   }
 
   const api = sent.filter(r => r.url.indexOf('openrouter.ai/api/v1/chat') !== -1);
-  ok(api.length === 2, 'two requests went out');
-  if (api.length !== 2) return;
+  ok(api.length === 5, 'five requests went out');
+  if (api.length !== 5) return;
   const o = api[0].body, plain = api[1].body;
 
   ok(built.stable.indexOf(built.core) === 0 && built.core.length < built.stable.length &&
@@ -689,6 +706,62 @@ async function promptCached() {
 
   ok(plain.messages[0].content === built.text && !('session_id' in plain),
      'with no prefix given, the system prompt goes as a plain string');
+
+  ok(api[2].body.session_id === 'helper-gloss',
+     'a helper call with no session of its own gets one for its kind of job');
+  const t0 = api[3].body, t2 = api[4].body;
+  ok(t0.session_id === 'chat-ana' && t2.session_id === 'chat-ana',
+     'a villager-to-villager turn carries the speaker\u2019s session');
+  const p0 = t0.messages[1].content, p2 = t2.messages[1].content;
+  const lead = p0.slice(0, p0.indexOf('Morning.'));
+  ok(lead.length > 0 && p2.indexOf(lead) === 0 && lead.indexOf('Reply with only a JSON object') !== -1,
+     'and the same speaker\u2019s turns share everything up to the time, instructions included');
+
+  const fmt = b => b.response_format && b.response_format.json_schema;
+  ok(!fmt(o) && !(o.provider && o.provider.require_parameters),
+     'a call that asks for no schema sends none');
+  const g = fmt(api[2].body), c = fmt(t0);
+  ok(g && g.strict && g.schema.required.join() === 'translation' &&
+     g.schema.additionalProperties === false,
+     'a helper call on a model that takes a schema sends a strict one');
+  ok(c && c.schema.required.join() === 'say,translation' &&
+     /in Japanese/.test(c.schema.properties.say.description),
+     'and each field says what goes in it, not just its type');
+  ok(api[2].body.provider.require_parameters === true && t0.provider.require_parameters === true,
+     'and the request only goes to a provider that will honour it');
+
+  /* No provider OpenRouter may use takes the schema after all: the call
+     still goes through, without one, and the model stops getting one. */
+  const fussy = { provider: 'openrouter', apiKey: 'k', model: 'deepseek/deepseek-v4.1-flash',
+                  helper: 'x/fussy' };
+  const tries = [];
+  sandbox.fetch = async (url, init) => {
+    if (!init || !init.body)
+      return { ok: true, json: async () => ({ data: { endpoints: [
+        { supported_parameters: ['structured_outputs'], pricing: { prompt: '0', completion: '0' } }] } }) };
+    const body = JSON.parse(init.body);
+    tries.push(body);
+    if (body.response_format)
+      return { ok: false, status: 404, text: async () => 'No endpoints found' };
+    return { ok: true, status: 200, json: async () => ({
+      choices: [{ message: { content: '{"translation": "Hm."}' }, finish_reason: 'stop' }] }) };
+  };
+  LG.llm.audit = false;
+  let got;
+  try {
+    await LG.llm.probe(fussy);
+    ok(LG.llm.schemaOK({ provider: 'openrouter', model: 'x/fussy', fast: true }),
+       'a model whose providers take a schema reads as taking one');
+    got = await LG.llm.gloss(fussy, 'Hm.', { langName: 'Japanese' });
+  } finally {
+    sandbox.fetch = realFetch;
+    LG.llm.audit = audit;
+  }
+  ok(tries.length === 2 && tries[0].response_format && !tries[1].response_format,
+     'turned away with a schema, the call is asked again without one');
+  ok(got && got.translation === 'Hm.', 'and its answer comes back as usual');
+  ok(!LG.llm.schemaOK({ provider: 'openrouter', model: 'x/fussy', fast: true }),
+     'and that model gets no schema from then on');
 }
 
 /* ---------------------------------------------------------- a key per provider

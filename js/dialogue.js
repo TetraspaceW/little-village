@@ -338,8 +338,17 @@ LG.dialogue = (function () {
       fields.push({ k: 'price', type: { type: ['number', 'null'] },
         desc: 'the coins agreed for all of it together, as a number — only with sell or buy' });
     }
+    /* Says what each action means, not just which exist: the schema
+       carries this description too, and a bare "none | trade" told a
+       model reading only the schema nothing about when to pick which. */
+    const means = {
+      none: 'nothing changed hands this turn',
+      trade: 'you hand over your side of the deal, this very turn',
+      sell: 'you hand goods over and take the money, this very turn',
+      buy: 'you take something off the traveller and pay for it, this very turn'
+    };
     fields.push({ k: 'action', type: { type: 'string', enum: acts },
-      desc: acts.join(' | ') });
+      desc: acts.map(a => a + ' (' + means[a] + ')').join(' | ') });
 
     /* Everything in `stable` up to here is the same for this villager
        whatever their shop and deal are doing; the reply format below
@@ -411,7 +420,12 @@ LG.dialogue = (function () {
        what the prompt itself says: nothing is ever omitted, and "nothing
        to report" is spelled out as null, [], or "none". */
     const props = {}, required = [];
-    fields.forEach(f => { props[f.k] = f.type; required.push(f.k); });
+    /* Each property carries the same description the prompt shows for
+       it, so the schema says what goes in a field and not just its type. */
+    fields.forEach(f => {
+      props[f.k] = Object.assign({ description: f.desc }, f.type);
+      required.push(f.k);
+    });
 
     /* `core` and `stable` are returned alongside the combined `text` so
        the caller can hand them to llm.js as cache prefixes — breakpoints
@@ -994,7 +1008,9 @@ LG.dialogue = (function () {
           stageInLang: !!L.stageInLang,
           romanLabel: L.romanize ? L.romanLabel : null,
           grammarNote: L.grammarNote || '',
-          register: (LG.LEVELS[s.level] || {}).register || ''
+          register: (LG.LEVELS[s.level] || {}).register || '',
+          // one per speaker: each villager's turns share a prefix (see converse)
+          session: 'chat-' + me.def.id
         });
         if (!turn) break;
         if (a.frozen || b.frozen) break;

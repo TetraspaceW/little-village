@@ -764,7 +764,7 @@ section('fishing at the pond');
   const was = { x: me.px, y: me.py };
   const at = (x, y) => { me.px = x; me.py = y; me.tx = (x / 32) | 0; me.ty = (y / 32) | 0; };
   const caught = LG.CATCHES.map(c => c.id);
-  ok(caught.length >= 19 && caught.every(k => LG.ITEMS[k]), 'many kinds of thing bite, each a real item');
+  ok(caught.length >= 18 && caught.every(k => LG.ITEMS[k]), 'many kinds of thing bite, each a real item');
   ok(['robot_fish', 'shrimp', 'copepod'].every(k => caught.indexOf(k) !== -1),
      'among them a robot fish, shrimp and a copepod');
   ok(['saury', 'sea_slug', 'squid', 'pufferfish'].every(k => !LG.ITEMS[k]), 'and nothing out of the sea');
@@ -826,6 +826,22 @@ section('fishing at the pond');
   const day = pool(false), dark = pool(true);
   ok(!day.has('eel') && !day.has('knifefish') && dark.has('eel'), 'eels come out at night');
   ok(!dark.has('trout') && day.has('trout'), 'and the trout keep to the day');
+
+  /* The season shifts the odds, but never shuts anything out. */
+  const c = id => LG.CATCHES.find(x => x.id === id);
+  ok(F.odds(c('tilapia'), 'summer', 'day') > 10 * F.odds(c('tilapia'), 'winter', 'day'),
+     'tilapia bite far better in summer than in winter');
+  ok(F.odds(c('eel'), 'autumn', 'night') > F.odds(c('eel'), 'summer', 'night'), 'the eels run in autumn');
+  ok(F.odds(c('pike'), 'winter', 'day') > F.odds(c('pike'), 'summer', 'day'), 'and pike feed through the cold');
+  ok(F.odds(c('robot_fish'), 'winter', 'day') === c('robot_fish').weight, 'a catch with no seasons is the same all year');
+  ok(LG.CATCHES.every(x => !x.seasons || Object.keys(x.seasons).every(k =>
+       LG.time.SEASONS.some(z => z.id === k) && x.seasons[k] > 0)),
+     'every season named is a real one, and none takes a catch to nothing');
+  const inWinter = () => { const was = [LG.time.season, LG.time.isNight];
+    LG.time.season = () => ({ id: 'winter' }); LG.time.isNight = () => false;
+    const seen = new Set(); for (let i = 0; i < 4000; i++) seen.add(F.pick().id);
+    [LG.time.season, LG.time.isNight] = was; return seen; };
+  ok(inWinter().has('tilapia'), 'so a tilapia can still turn up in winter, now and then');
 
   ok(LG.RECIPES.some(r => r.needs.tilapia && r.makes === 'grilled_fish'), 'a tilapia grills');
   const yuri = LG.NPCS.find(d => d.id === 'yuri');

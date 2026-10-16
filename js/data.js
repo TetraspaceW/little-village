@@ -884,10 +884,6 @@ LG.ITEMS = {
     icon: '🐟', tags: ['catch'], price: 3, en: 'catfish', full: 'a catfish',
     ru: 'сом', zh: '鲶鱼', ja: 'ナマズ', fr: 'silure', es: 'siluro', ar: 'سمك السلور', pl: 'sum', tok: 'kala Silulu'
   },
-  crayfish: {
-    icon: '🦞', tags: ['catch'], price: 2, en: 'crayfish', full: 'a crayfish',
-    ru: 'рак', zh: '小龙虾', ja: 'ザリガニ', fr: 'écrevisse', es: 'cangrejo de río', ar: 'جراد المياه العذبة', pl: 'rak', tok: 'pipi telo loje'
-  },
   shrimp: {
     icon: '🦐', tags: ['catch'], price: 2, en: 'shrimp', full: 'a shrimp',
     ru: 'креветка', zh: '虾', ja: 'エビ', fr: 'crevette', es: 'camarón', ar: 'جمبري', pl: 'krewetka', tok: 'pipi telo lili'
@@ -1033,30 +1029,33 @@ LG.RECIPES = [
 
 /* ------------------------------------------------------------- catches
    What bites at the pond (see fishing.js). `weight` is how often it's the
-   one on the end of the line, against the rest that are about at that
-   hour; `bite` is how many seconds the float stays under before it gets
-   away — the rarer, the quicker. `when` keeps a fish to the day or the
-   night; without it, it's about at any hour. The names, prices and icons
-   are in LG.ITEMS like everything else you can carry. */
+   one on the end of the line, against the rest that are about; `bite` is
+   how many seconds the float stays under before it gets away — the rarer,
+   the quicker. `when` keeps a fish to the day or the night; without it,
+   it's about at any hour. `seasons` multiplies its weight in a season (1
+   if unnamed), following when it feeds: warm-water fish sulk in the
+   cold, pike, perch and trout feed through it, eels run in autumn, and
+   sticklebacks spawn and copepods bloom in spring. Never 0, since a
+   season is hours of real play. The names, prices and icons are in
+   LG.ITEMS like everything else you can carry. */
 LG.CATCHES = [
-  { id: 'perch',         weight: 18, bite: 0.9 },
-  { id: 'carp',          weight: 16, bite: 0.9 },
-  { id: 'stickleback',   weight: 14, bite: 1.1 },
-  { id: 'crayfish',      weight: 10, bite: 1.0 },
-  { id: 'shrimp',        weight: 10, bite: 1.0 },
-  { id: 'copepod',       weight: 8,  bite: 1.2 },
-  { id: 'tilapia',       weight: 8,  bite: 0.9, when: 'day' },
-  { id: 'trout',         weight: 8,  bite: 0.7, when: 'day' },
-  { id: 'catfish',       weight: 8,  bite: 0.8, when: 'night' },
-  { id: 'eel',           weight: 7,  bite: 0.6, when: 'night' },
-  { id: 'bullhead',      weight: 6,  bite: 0.9 },
-  { id: 'weatherfish',   weight: 6,  bite: 0.8 },
-  { id: 'paradise_fish', weight: 5,  bite: 0.8, when: 'day' },
-  { id: 'pike',          weight: 5,  bite: 0.5 },
-  { id: 'knifefish',     weight: 4,  bite: 0.6, when: 'night' },
-  { id: 'hatchetfish',   weight: 4,  bite: 0.7, when: 'day' },
-  { id: 'elephantfish',  weight: 3,  bite: 0.6, when: 'night' },
-  { id: 'fahaka',        weight: 2,  bite: 0.6 },
+  { id: 'perch',         weight: 18, bite: 0.9, seasons: { autumn: 1.5, winter: 1.5 } },
+  { id: 'carp',          weight: 16, bite: 0.9, seasons: { summer: 2, autumn: 0.8, winter: 0.3 } },
+  { id: 'stickleback',   weight: 14, bite: 1.1, seasons: { spring: 2.5, winter: 0.6 } },
+  { id: 'shrimp',        weight: 10, bite: 1.0, seasons: { summer: 1.3, winter: 0.6 } },
+  { id: 'copepod',       weight: 8,  bite: 1.2, seasons: { spring: 2.5, winter: 0.5 } },
+  { id: 'tilapia',       weight: 8,  bite: 0.9, when: 'day',   seasons: { summer: 2.5, spring: 0.8, autumn: 0.6, winter: 0.1 } },
+  { id: 'trout',         weight: 8,  bite: 0.7, when: 'day',   seasons: { summer: 0.5, autumn: 1.5, winter: 1.5 } },
+  { id: 'catfish',       weight: 8,  bite: 0.8, when: 'night', seasons: { summer: 2, winter: 0.2 } },
+  { id: 'eel',           weight: 7,  bite: 0.6, when: 'night', seasons: { autumn: 3, summer: 1.2, winter: 0.2 } },
+  { id: 'bullhead',      weight: 6,  bite: 0.9, seasons: { summer: 0.7, winter: 1.2 } },
+  { id: 'weatherfish',   weight: 6,  bite: 0.8, seasons: { summer: 1.3, winter: 0.4 } },
+  { id: 'paradise_fish', weight: 5,  bite: 0.8, when: 'day',   seasons: { summer: 2, winter: 0.3 } },
+  { id: 'pike',          weight: 5,  bite: 0.5, seasons: { summer: 0.7, autumn: 2, winter: 1.5 } },
+  { id: 'knifefish',     weight: 4,  bite: 0.6, when: 'night', seasons: { summer: 2, winter: 0.1 } },
+  { id: 'hatchetfish',   weight: 4,  bite: 0.7, when: 'day',   seasons: { summer: 2, winter: 0.1 } },
+  { id: 'elephantfish',  weight: 3,  bite: 0.6, when: 'night', seasons: { summer: 2, winter: 0.1 } },
+  { id: 'fahaka',        weight: 2,  bite: 0.6, seasons: { summer: 2, winter: 0.1 } },
   { id: 'robot_fish',    weight: 1,  bite: 0.4 }
 ];
 

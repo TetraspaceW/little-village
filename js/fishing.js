@@ -10,8 +10,8 @@
    Walking off, frozen water, or handing over the rod reels the line in.
 
    What bites is LG.CATCHES (data.js): how common each thing is, which
-   hour it's about at, and how long it holds the float under — the rare
-   ones let go quickest. A catch goes into the pockets like anything else,
+   hour it's about at, how the season shifts its odds, and how long it
+   holds the float under — the rare ones let go quickest. A catch goes into the pockets like anything else,
    and any villager out of doors close enough to see remembers it.
 
    The line lives only here and isn't saved: a reload finds you with the
@@ -84,13 +84,24 @@ LG.fishing = (function () {
     return true;
   }
 
-  /* Something about at this hour, weighted by how common it is. */
+  /* How likely a catch is to be the one on the line, this season and at
+     this hour: its weight, times its season's multiplier (1 if it has
+     none), or 0 at the wrong time of day. Seasons only shift the odds —
+     a season is hours of real play, and nothing should be out of reach
+     for a whole playthrough. */
+  function odds(c, season, hour) {
+    if (c.when && c.when !== hour) return 0;
+    const m = c.seasons && c.seasons[season];
+    return c.weight * (m == null ? 1 : m);
+  }
+
+  /* Something about now, weighted by `odds`. */
   function pick(rnd) {
     const r = rnd || Math.random;
-    const hour = LG.time.isNight() ? 'night' : 'day';
-    const pool = LG.CATCHES.filter(c => !c.when || c.when === hour);
-    let roll = r() * pool.reduce((n, c) => n + c.weight, 0);
-    for (const c of pool) { roll -= c.weight; if (roll < 0) return c; }
+    const season = LG.time.season().id, hour = LG.time.isNight() ? 'night' : 'day';
+    const pool = LG.CATCHES.filter(c => odds(c, season, hour) > 0);
+    let roll = r() * pool.reduce((n, c) => n + odds(c, season, hour), 0);
+    for (const c of pool) { roll -= odds(c, season, hour); if (roll < 0) return c; }
     return pool[pool.length - 1];
   }
 
@@ -189,7 +200,7 @@ LG.fishing = (function () {
     ctx.restore();
   }
 
-  return { out: () => !!line, canCast, stopped, isWater, cast, pull, tick, draw, pick,
+  return { out: () => !!line, canCast, stopped, isWater, cast, pull, tick, draw, pick, odds,
            get phase() { return line ? line.phase : null; },
            // for the tests: skip to the next thing the float does
            _debugSkip: () => { if (line) line.t = 0; },

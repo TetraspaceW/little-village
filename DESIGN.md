@@ -53,7 +53,7 @@ the game made of it, or in a prompt sentence that did something other than what 
 
 ## Jev: fixed-choice questions (OpenRouter only)
 
-TypeSafe's Jev (`typesafe/jev-1.13`) takes `{state, questions}` and returns one named
+TypeSafe's Jev (`~typesafe/jev-latest`, which OpenRouter redirects to the newest Jev) takes `{state, questions}` and returns one named
 option per question, with a probability. It's billed on input tokens only. It uses
 OpenRouter's decisions endpoint (`decisionPost`/`askJev` in `js/llm.js`), not
 `/chat/completions`, so it can't be offered as a main or helper model.
@@ -124,28 +124,24 @@ OpenRouter's decisions endpoint (`decisionPost`/`askJev` in `js/llm.js`), not
 
 ## Structured output and reply parsing
 
-- **Every structured call sends a JSON Schema where the model takes one** (OpenRouter
-  `response_format`), main model and helper alike. When hedges like *OPTIONAL* and
-  *[] if none* were on every field except `say`, a third of replies came back as bare
-  `{"say": …}`. Furigana is the one exception: its reply is the sentence itself.
-- Support is per endpoint. `providerCall` looks each model up in `supported_parameters`
-  before its first call (concurrent calls share the lookup), so keys from `.env` or a
-  changed model are covered. A failed lookup is retried after a minute. **Fail closed:**
-  OpenRouter rejects a schema sent to an unsupported model, so anything unknown gets
-  prompt-based JSON plus repair. Logfare has no catalogue and never gets a schema.
-- The prompt's field list and the schema are rendered **from one array** (`buildReply`
-  for the villager, `replyShape` for helper calls). Every field is required. Optional
-  ones are nullable, and "nothing happened" is spelled `null`, `[]`, or `"none"`. A
-  schema's root must be an object, so the fact check replies `{"told": […]}` and the
-  trade check `{"answer": "yes" | "no"}`; a bare list or a plain "yes" still parses.
-  The log records whether each call was schema-checked.
+- **Use a JSON Schema where supported** (OpenRouter `response_format`): the villager's
+  reply and the helper calls that want JSON (README, Structured output). When hedges
+  like *OPTIONAL* and *[] if none* were on every field except `say`, a third of replies
+  came back as bare `{"say": …}`.
+- Support is per endpoint, looked up from OpenRouter's per-provider listing when a key
+  connects (at startup, on Save, or from `.env`) and cached. **Fail closed:** anything
+  unknown is treated as unsupported and gets prompt-based JSON plus repair, and a call
+  refused for its schema is retried once without it.
+- The prompt's field list and the schema are rendered **from one array**. Every field is
+  required. Optional ones are nullable, and "nothing happened" is spelled `null`, `[]`,
+  or `"none"`. The log records whether each call was schema-checked.
 - **History replays whole replies** (`pastReply`, `js/dialogue.js`): every field of the
   current format, with furigana inline. Replayed as `{"say": …}` it showed the model
   its own turns in the bare shape the prompt forbids.
 - The parser strips fences, repairs common breakage, and falls back to pulling out
   fields by hand. It **never shows raw text**. An unreadable reply becomes a failed
   turn, never a brace in a speech bubble.
-- If the translation contains non-Latin script (`looksEnglish`, `js/dialogue.js`), it's
+- If the translation contains non-Latin script (`looksEnglish`, `js/text.js`), it's
   discarded and the helper model re-glosses the line.
 
 ## Furigana
@@ -271,12 +267,12 @@ Each of these was a bug first:
   world facts (item collected, trade completed), and the notebook has no `done` field
   or saved flag. There used to be three separate answers, which disagreed. Spent leads
   are struck through, not deleted.
-- **One note per fact.** `learn` guards with `hasNote` (`js/game.js`), and `restore`
+- **One note per fact.** `learn` guards with `hasNote` (`js/ledger.js`), and `restore`
   applies the same rule when loading a save, keeping the first occurrence.
 
 ## Names
 
-- `LG.game.displayName` returns the villager's job until `nameKnown` is set. It's set
+- `LG.actors.displayName` returns the villager's job until `nameKnown` is set. It's set
   only when **that villager** states their own name. Hearsay doesn't count.
 - Detection is a regex over `reply.translation` (guaranteed English), run before any
   non-English blanking. There's no schema field or extra call, because a wrong answer
@@ -386,19 +382,27 @@ everything at every level. The README has the table.
   `beginPath` still can't join circles. Ground-pass fills went from 166 to 26. Passes
   keep the old in-tile order (trunk, canopy, highlight, snow), which is safe because
   tiles don't overlap. Snow crowns are stamped from one sprite per tenth of depth.
-  Falling snow is stamped from six flake sprites (`flakes`, `js/sky.js`): a blizzard
-  is ~380 flakes a frame.
 - **Sprites blit one texel per device pixel, at whole device pixels.** Stretched by a
   fraction, which edge column survived depended on float noise in the layer's position,
   so two paints of the same tree disagreed.
+- **Characters, bubbles and snowflakes are sprites** (`drawCharacter`/`drawBubble` in
+  `js/npc.js`, `flake` in `js/sky.js`). Drawn live, the village cost ~0.4 ms a frame in
+  Firefox, four bubbles ~0.5 ms, and a blizzard's 384 flakes ~0.7 ms. A body has a sprite
+  per quarter device pixel of its bob; a smoothed fractional blit made walking villagers
+  half again as costly. One batched path for the flakes saved nothing.
+- **The screen canvas is opaque and cleared before the ground copy** (`draw()` in
+  `js/game.js`): the copy fell from ~2.4 to ~1.4 ms in Firefox. Keep the ground layer
+  transparent. Opaque, it saved Firefox another ~0.3 ms, but gave headless Chrome a steady
+  run of 11 ms frames. Firefox also gives text on an opaque canvas colour-fringed subpixel
+  antialiasing; the screen canvas gets only emoji and sprites.
 - **The ground layer scrolls.** When the camera leaves it, the painted layer is slid onto
   a spare canvas and only the newly exposed strip is painted, clipped, from two tiles
   further out (`scrollGroundLayer` in `js/game.js`). Full repaints every 96 px were the
   walking stutter, worst in the forest. A snow-depth change (every ~0.6 s while it
   snows) repaints one band a frame over six frames. Anything the layer draws must depend
   only on `refreshGroundLayer`'s keys, or a strip will disagree with what's beside it.
-- **Profile in Firefox, not just Chrome.** The user plays in Floorp, whose software canvas
-  rasterises on the call. Chrome hid a 45–70 ms snowy repaint that Firefox felt. The
+- **Profile in Firefox, not just Chrome.** The user plays in Firefox (Floorp before
+  2026-10), whose software canvas rasterises on the call. Chrome hid a 45–70 ms snowy repaint that Firefox felt. The
   vignette is a CSS gradient over the canvas: filled into it every frame it cost Firefox
   ~5 ms at 1900×1350.
 - **Keep the console light.** A Floorp profile showed the game's frames stalling for
@@ -427,8 +431,10 @@ inside the narrow-screen media query, and gestures bind only to non-mouse pointe
 - **Overlay sizing uses `visualViewport`** (`trackViewport`, `js/game.js`), because
   keyboards overlay the page rather than resizing it. It sets `cramped`/`tight` classes
   on `<body>` by visible height (`CRAMPED` 460, `TIGHT` 320). Size is decided by height,
-  not focus: tapping **Say it** blurs the input while the keyboard stays up. The canvas
-  isn't resized.
+  not focus: the keyboard can be up with nothing focused. The canvas isn't resized.
+- **Sending keeps the keyboard.** **Say it** cancels its `mousedown` so the input keeps
+  focus, and the textarea has `enterkeyhint="send"`. A phrase chip fills the input
+  without focusing it on touch, so it doesn't raise the keyboard.
 - **When cramped, the composer never shrinks.** The chrome and conversation give up
   space first, then the phrase trays drop to one scrolling row, then they're hidden.
 - Focusing the input on touch **only collapses** the trays, never expands them, so it

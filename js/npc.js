@@ -19,7 +19,7 @@ LG.actors = (function () {
       bubble: null, bubbleT: 0,
       gossipCool: 5 + Math.random() * 10,
       metPlayer: false, tradeDone: false,
-      // Whether they've told the player their name (LG.game.displayName); talking isn't enough.
+      // Whether they've told the player their name (displayName below); talking isn't enough.
       nameKnown: false,
       patch: def.home,          // rectangle they currently wander within
       route: null,              // path currently being walked, if any
@@ -167,6 +167,95 @@ LG.actors = (function () {
     }
   }
 
+  /* ---------------------------------------------------------- beliefs
+     What a villager believes, and what the player has been told about
+     them. Everything that changes a villager's memory goes through here,
+     whichever module the news arrives from. */
+  /* A villager's name is unknown to the player until that villager
+     actually states it — same rule the notebook applies to every other
+     fact a villager knows, extended to cover names, which used to be
+     shown for free. Every place that would otherwise print
+     `npc.def.name` directly to the player goes through this function
+     instead. Doesn't affect what the model itself is told (its own name
+     in its system prompt) — only what the *player* has been told.
+     `nameKnown` is set only when a villager's own reply states their
+     name — see the check in dialogue.js — never by a fact arriving via
+     any other source, however reliable, since that isn't the villager
+     telling the player their name. */
+  function displayName(n) {
+    return (n.nameKnown && n.def.name) || n.def.job;
+  }
+  /* Like displayName, but for text written *in the village's language*
+     — an English job description there would read as an out-of-place
+     foreign word. Uses the emoji instead, matching how every character
+     is already marked on screen (see drawCharacter): identifiable, if
+     not yet named. */
+  function nameOrEmoji(n) {
+    return (n.nameKnown && n.def.name) || n.def.emoji;
+  }
+
+  /* Adds a memory entry for `npc`.
+
+     This is the only entry point for anything a villager comes to
+     believe, so every memory carries the same two fields: when it was
+     learned (`at`) and who told them (`from`, null for something they
+     witnessed themselves). No memory is inherently more authoritative
+     than another -- a chain fact dealt at game start and a rumor picked
+     up on the green are structurally the same kind of entry, only
+     distinguished by recency and source.
+
+     Memories used to be stored as bare strings, with no way to compare
+     two of them. A villager could end up holding two contradictory bare
+     strings (e.g. "X is looking for shoes" and "X received shoes") with
+     no way to determine which was more current -- they could only notice
+     the contradiction, not resolve it. Dating and sourcing every entry
+     fixes that.
+
+     Note: noticeItemGone in village.js covers the one fact in the errand that
+     can become false during play -- an item lying in the world getting
+     picked up. Since chain facts are only dealt once, at game start,
+     without that separate handling a villager could keep directing
+     people to an item's location long after it's gone. Walking there
+     and finding nothing is what corrects that (see noticeItemGone). */
+  function remember(npc, text, from) {
+    if (!text || typeof text !== 'string' || text.length < 3) return false;
+    npc.memory = npc.memory || [];
+    if (npc.memory.some(m => (m && m.text) === text)) return false;
+    npc.memory.push({ at: LG.time.clock(), text: text, from: from || null });
+    if (npc.memory.length > 24) npc.memory.shift();
+    return true;
+  }
+
+  /* Records when/from-whom a chain fact was learned, same as `remember`
+     does for memories. Facts dealt at game start are left unstamped,
+     which is what makes them read as something the villager has simply
+     always known. */
+  function noteFactSource(npc, id, from) {
+    npc.factAt = npc.factAt || {};
+    if (!npc.factAt[id]) npc.factAt[id] = { at: LG.time.clock(), from: from || null };
+  }
+
+  /* Logs each villager decision with its stated reason to the console.
+     Without this, there was no way to tell from the outside whether a
+     villager's movement decision was reasoned or effectively random.
+     Tagged in the villager's own color so a busy village stays readable.
+     `LG.actors.thoughts = false` disables this; it's off anyway unless
+     LG.consoleLog is on. */
+  let thoughts = true;
+  function think(n, what, detail) {
+    // The log keeps these whether or not the console is printing them.
+    if (LG.logbook) LG.logbook.note('villager', n.def ? n.def.name : '?', what,
+      { detail: detail || '', where: n.px !== undefined ? LG.view.where(n) : '',
+        clock: LG.time && LG.time.clock ? LG.time.clock() : '' });
+    if (!LG.consoleLog || !thoughts || typeof console === 'undefined' || !console.log) return;
+    const c = (n.def && n.def.color) || '#888';
+    console.log('%c ' + (n.def ? n.def.name : '?') + ' %c ' + what +
+                (detail ? '%c  ' + detail : ''),
+      'background:' + c + ';color:#fff;border-radius:3px;font-weight:600',
+      'color:inherit',
+      'color:#888;font-style:italic');
+  }
+
   /* ------------------------------------------------------------- gossip */
   /* Two idle villagers who meet stop and talk (`onChat`, or mimed bubbles
      with no key). What each takes away is worked out afterwards from what
@@ -179,7 +268,9 @@ LG.actors = (function () {
         if (a.frozen || b.frozen || a.gossipCool > 0 || b.gossipCool > 0) continue;
         if (a.chatting || b.chatting) continue;
         if (Math.hypot(a.px - b.px, a.py - b.py) > TILE * 2.2) continue;
-        a.gossipCool = b.gossipCool = 22 + Math.random() * 25;
+        /* Holds them apart while they talk; a spoken conversation resets
+           it again once it's over (LG.dialogue), so the rest starts then. */
+        a.gossipCool = b.gossipCool = gossipRest();
         a.pauseT = b.pauseT = 4 + Math.random() * 3;      // stop and talk
         a.route = b.route = null;
         faceEachOther(a, b);
@@ -187,11 +278,14 @@ LG.actors = (function () {
         if (!spoken) {                                     // no key: they mime it
           a.bubble = chatterLine(); a.bubbleT = 5;
           b.bubble = chatterLine(); b.bubbleT = 5;
-          log(LG.game.displayName(a) + ' and ' + LG.game.displayName(b) + ' stopped for a word.');
+          log(displayName(a) + ' and ' + displayName(b) + ' stopped for a word.');
         }
       }
     }
   }
+
+  /* Seconds a villager waits before stopping for another word. */
+  function gossipRest() { return 40 + Math.random() * 40; }
 
   function faceEachOther(a, b) {
     const dx = b.px - a.px, dy = b.py - a.py;
@@ -215,70 +309,138 @@ LG.actors = (function () {
     ctx.closePath();
   }
 
-  function drawCharacter(ctx, a, opts) {
-    const x = a.px, y = a.py;
-    const bob = a.frozen ? 0 : Math.sin(performance.now() / 220 + x) * 0.8;
-
+  /* A character is three layers: a shadow and a name tag that stay put,
+     and between them a body that bobs. Each is painted by one of these,
+     into a sprite (see drawCharacter) or, with no canvas for one, live. */
+  function paintShadow(ctx, x, y) {
     ctx.fillStyle = 'rgba(0,0,0,.22)';
     ctx.beginPath(); ctx.ellipse(x, y + 12, 10, 4.5, 0, 0, Math.PI * 2); ctx.fill();
+  }
 
+  function paintBody(ctx, a, opts, x, y) {
     if (a.isBeast) {
       // A halo, or a small dark animal vanishes into the grass.
       ctx.fillStyle = 'rgba(253,246,232,.55)';
-      ctx.beginPath(); ctx.arc(x, y + bob, 15, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x, y, 15, 0, Math.PI * 2); ctx.fill();
 
       // An emoji is drawn at the alpha fillStyle last carried: reset, or the animal is translucent.
       ctx.fillStyle = '#000';
       ctx.font = '30px system-ui'; ctx.textAlign = 'center';
-      ctx.fillText(a.emoji, x, y + 11 + bob);
-      if (opts && opts.name) {
-        ctx.font = '600 11px system-ui';
-        const w = ctx.measureText(opts.name).width + 10;
-        ctx.fillStyle = 'rgba(28,24,20,.6)';
-        roundRect(ctx, x - w / 2, y - 22, w, 15, 7); ctx.fill();
-        ctx.fillStyle = '#fdf6e8';
-        ctx.fillText(opts.name, x, y - 11);
-      }
+      ctx.fillText(a.emoji, x, y + 11);
       return;
     }
 
     const c = opts.color;
     // body
     ctx.fillStyle = c;
-    roundRect(ctx, x - 8, y - 6 + bob, 16, 18, 5); ctx.fill();
+    roundRect(ctx, x - 8, y - 6, 16, 18, 5); ctx.fill();
     // arms
     ctx.fillStyle = shade(c, -18);
-    ctx.fillRect(x - 11, y - 3 + bob, 3, 10);
-    ctx.fillRect(x + 8, y - 3 + bob, 3, 10);
+    ctx.fillRect(x - 11, y - 3, 3, 10);
+    ctx.fillRect(x + 8, y - 3, 3, 10);
     // head
     ctx.fillStyle = opts.skin || '#f0c8a0';
-    ctx.beginPath(); ctx.arc(x, y - 13 + bob, 8.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y - 13, 8.5, 0, Math.PI * 2); ctx.fill();
     // hair
     ctx.fillStyle = opts.hair || '#4a3728';
     ctx.beginPath();
-    ctx.arc(x, y - 15 + bob, 8.5, Math.PI * (a.dir === 'up' ? 0 : 1), Math.PI * (a.dir === 'up' ? 2 : 2));
+    ctx.arc(x, y - 15, 8.5, Math.PI * (a.dir === 'up' ? 0 : 1), Math.PI * (a.dir === 'up' ? 2 : 2));
     ctx.fill();
     // eyes (not when facing away)
     if (a.dir !== 'up') {
       ctx.fillStyle = '#2b2118';
       const off = a.dir === 'left' ? -2 : a.dir === 'right' ? 2 : 0;
-      ctx.beginPath(); ctx.arc(x - 3 + off, y - 12 + bob, 1.4, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(x + 3 + off, y - 12 + bob, 1.4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x - 3 + off, y - 12, 1.4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x + 3 + off, y - 12, 1.4, 0, Math.PI * 2); ctx.fill();
     }
     // role badge
     if (opts.emoji) {
       ctx.font = '14px system-ui'; ctx.textAlign = 'center';
-      ctx.fillText(opts.emoji, x + 13, y - 16 + bob);
+      ctx.fillText(opts.emoji, x + 13, y - 16);
     }
-    // name
-    if (opts.name) {
-      ctx.font = '600 11px system-ui'; ctx.textAlign = 'center';
-      const w = ctx.measureText(opts.name).width + 10;
-      ctx.fillStyle = 'rgba(28,24,20,.6)';
-      roundRect(ctx, x - w / 2, y - 38, w, 15, 7); ctx.fill();
-      ctx.fillStyle = '#fdf6e8';
-      ctx.fillText(opts.name, x, y - 27);
+  }
+
+  // `top` is the tag's top edge: 38 px above a villager's anchor, 22 above an animal's.
+  const TAG_FONT = '600 11px system-ui';
+  function paintName(ctx, name, x, top) {
+    ctx.font = TAG_FONT; ctx.textAlign = 'center';
+    const w = ctx.measureText(name).width + 10;
+    ctx.fillStyle = 'rgba(28,24,20,.6)';
+    roundRect(ctx, x - w / 2, top, w, 15, 7); ctx.fill();
+    ctx.fillStyle = '#fdf6e8';
+    ctx.fillText(name, x, top + 11);
+  }
+
+  /* Characters and bubbles are stamped from sprites. Drawn live, a character
+     was ~10 path fills and two text draws a frame and a bubble re-wrapped
+     its text every frame: ~0.4 ms each for the village and four bubbles in
+     Firefox. Bodies are shared by look and facing; a name tag or bubble
+     belongs to its character and is repainted when its text changes.
+     Painted at device resolution, and stamped one texel to a device pixel
+     at whole device pixels (as in world.js). A body's bob is under a pixel,
+     so it has a sprite per quarter of a device pixel down, painted that far
+     into it; drawn smoothed at its fractional height instead, walking
+     villagers cost half again as much. sprite() returns null with no
+     canvas to paint into, and the caller paints live. */
+  function sprite(w, h, ox, oy, d, paint) {
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(w * d); canvas.height = Math.ceil(h * d);
+    const g = canvas.getContext && canvas.getContext('2d');
+    if (!g || typeof g.arc !== 'function') return null;
+    g.setTransform(d, 0, 0, d, 0, 0);
+    paint(g, ox, oy);
+    return { canvas, w: canvas.width / d, h: canvas.height / d, ox, oy };
+  }
+  function snap(v, d) { return Math.round(v * d) / d; }
+  function stamp(ctx, s, x, y, d) {
+    ctx.drawImage(s.canvas, snap(x - s.ox, d), snap(y - s.oy, d), s.w, s.h);
+  }
+
+  // Body sprite boxes: width, height, and where the anchor sits. Room for the
+  // emoji, as a badge's glyph or an animal's can overhang its nominal size.
+  const BEAST_BOX = [52, 54, 26, 28], PERSON_BOX = [48, 54, 16, 37], BOB_STEPS = 4;
+  const bodies = new Map(), tags = new WeakMap(), bubbles = new WeakMap();
+  let bodiesDpr = 0, shadow = null;
+  function bodySprite(a, opts, d, step) {
+    if (d !== bodiesDpr) { bodies.clear(); shadow = null; bodiesDpr = d; }
+    if (!shadow) shadow = sprite(24, 12, 12, -6, d, (g, x, y) => paintShadow(g, x, y));
+    const key = (a.isBeast ? 'beast|' + a.emoji
+                           : [opts.color, opts.skin, opts.hair, opts.emoji, a.dir].join('|')) + '|' + step;
+    if (!bodies.has(key)) {
+      const [w, h, ox, oy] = a.isBeast ? BEAST_BOX : PERSON_BOX, down = step / (BOB_STEPS * d);
+      bodies.set(key, sprite(w, h, ox, oy, d, (g, x, y) => paintBody(g, a, opts, x, y + down)));
     }
+    return shadow && bodies.get(key);
+  }
+  function tagSprite(ctx, a, name, d) {
+    const key = name + '|' + d, had = tags.get(a);
+    if (had && had.key === key) return had.s;
+    ctx.font = TAG_FONT;
+    const w = 2 * Math.ceil((ctx.measureText(name).width + 10) / 2) + 4;
+    const s = sprite(w, 17, w / 2, 1, d, (g, x, top) => paintName(g, name, x, top));
+    tags.set(a, { key, s });
+    return s;
+  }
+
+  function drawCharacter(ctx, a, opts, dpr) {
+    const x = a.px, y = a.py, name = opts && opts.name;
+    const bob = a.frozen ? 0 : Math.sin(performance.now() / 220 + x) * 0.8;
+    const top = y - (a.isBeast ? 22 : 38);
+    // The body sprite's top edge in device pixels, split into a whole pixel and quarters.
+    const edge = dpr ? (y + bob - (a.isBeast ? BEAST_BOX : PERSON_BOX)[3]) * dpr : 0;
+    let row = Math.floor(edge), step = Math.round((edge - row) * BOB_STEPS);
+    if (step === BOB_STEPS) { row++; step = 0; }
+    const body = dpr ? bodySprite(a, opts, dpr, step) : null;
+    const tag = body && name ? tagSprite(ctx, a, name, dpr) : null;
+    if (!body || (name && !tag)) {
+      paintShadow(ctx, x, y);
+      paintBody(ctx, a, opts, x, y + bob);
+      if (name) paintName(ctx, name, x, top);
+      return;
+    }
+    stamp(ctx, shadow, x, y, dpr);
+    ctx.drawImage(body.canvas, snap(x - body.ox, dpr), row / dpr, body.w, body.h);
+    if (tag) stamp(ctx, tag, x, top, dpr);
   }
 
   function shade(hex, amt) {
@@ -332,33 +494,51 @@ LG.actors = (function () {
     return lines;
   }
 
-  function drawBubble(ctx, a, font) {
+  // A bubble's lines (see wrap) and its size.
+  const LINE_H = 17;
+  function bubbleLayout(ctx, text, font) {
+    ctx.font = font;
+    const lines = wrap(ctx, text);
+    const bw = Math.min(BUBBLE_W, Math.max.apply(null, lines.map(l => ctx.measureText(l).width))) + 18;
+    return { lines, bw, bh: lines.length * LINE_H + 12 };
+  }
+
+  // The bubble's tail points at (x, y - 38).
+  function paintBubble(ctx, L, font, x, y) {
+    const bx = x - L.bw / 2, by = y - 46 - L.bh;
+    ctx.fillStyle = '#fdf8ec';
+    roundRect(ctx, bx, by, L.bw, L.bh, 9); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x - 6, by + L.bh); ctx.lineTo(x, by + L.bh + 8); ctx.lineTo(x + 6, by + L.bh);
+    ctx.closePath(); ctx.fill();
+    ctx.font = font; ctx.fillStyle = '#2b2118'; ctx.textAlign = 'center';
+    L.lines.forEach((l, i) => ctx.fillText(l, x, by + 20 + i * LINE_H));
+  }
+
+  /* A sprite fades as one piece; drawn live, the text faded over an
+     already-faded bubble. */
+  function drawBubble(ctx, a, font, dpr) {
     if (!a.bubble || a.bubbleT <= 0) return;
     const f = '13px ' + (font || 'system-ui');
-    ctx.font = f;
-    // Wrapped once per line said, not every frame.
-    if (!a.bubbleWrap || a.bubbleWrap.text !== a.bubble || a.bubbleWrap.font !== f) {
-      const lines = wrap(ctx, a.bubble);
-      a.bubbleWrap = { text: a.bubble, font: f, lines: lines,
-                       width: Math.max.apply(null, lines.map(l => ctx.measureText(l).width)) };
+    let s = null;
+    if (dpr) {
+      const key = f + '\n' + a.bubble + '\n' + dpr, had = bubbles.get(a);
+      if (had && had.key === key) s = had.s;
+      else {
+        const L = bubbleLayout(ctx, a.bubble, f), w = 2 * Math.ceil(L.bw / 2) + 2;
+        s = sprite(w, L.bh + 10, w / 2, L.bh + 47, dpr, (g, x, y) => paintBubble(g, L, f, x, y));
+        bubbles.set(a, { key, s });
+      }
     }
-    const lines = a.bubbleWrap.lines;
-    const lh = 17;
-    const bw = Math.min(BUBBLE_W, a.bubbleWrap.width) + 18;
-    const bh = lines.length * lh + 12;
-    const bx = a.px - bw / 2, by = a.py - 46 - bh;
-    const alpha = Math.min(1, a.bubbleT);
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = '#fdf8ec';
-    roundRect(ctx, bx, by, bw, bh, 9); ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(a.px - 6, by + bh); ctx.lineTo(a.px, by + bh + 8); ctx.lineTo(a.px + 6, by + bh);
-    ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#2b2118'; ctx.textAlign = 'center';
-    lines.forEach((l, i) => ctx.fillText(l, a.px, by + 20 + i * lh));
+    ctx.globalAlpha = Math.min(1, a.bubbleT);
+    if (s) stamp(ctx, s, a.px, a.py, dpr);
+    else paintBubble(ctx, bubbleLayout(ctx, a.bubble, f), f, a.px, a.py);
     ctx.globalAlpha = 1;
   }
 
-  return { makeNPC, makeCreature, wander, walk, routine, stepTowards, meet, drawCharacter, drawBubble, roundRect,
+  return { makeNPC, makeCreature, wander, walk, routine, stepTowards, meet, gossipRest, drawCharacter, drawBubble, roundRect,
+           displayName, nameOrEmoji, remember, noteFactSource, think,
+           set thoughts(v) { thoughts = !!v; },
+           get thoughts() { return thoughts; },
            _wrap: wrap };
 })();

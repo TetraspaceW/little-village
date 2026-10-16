@@ -29,7 +29,7 @@ LG.view = (function () {
   function firstOf(list, n) { return n ? list.slice(0, n) : list.slice(); }
   function lastOf(list, n) { return n ? list.slice(-n) : list.slice(); }
 
-  function plan() { return LG.game && LG.game.plan; }
+  function plan() { return LG.village.plan; }
   function roleOf(n) {
     const p = plan();
     return (p && p.roles[n.def.id]) || { goal: '', trade: null, link: -1 };
@@ -89,7 +89,7 @@ LG.view = (function () {
 
   // Who they can see, and where, so "Sanna has the cards" can be acted on.
   function folk(n) {
-    const all = (LG.game && LG.game.npcs) || [];
+    const all = LG.village.npcs;
     return all.filter(o => o !== n && near(n, o, SIGHT))
               .map(o => ({ id: o.def.id, name: o.def.name, job: o.def.job, where: where(o) }));
   }
@@ -98,7 +98,7 @@ LG.view = (function () {
      living alongside them would tell anyone. Where they are and what
      they're doing today stays with `folk` and what they've been told. */
   function roster(n) {
-    const all = (LG.game && LG.game.npcs) || [];
+    const all = LG.village.npcs;
     return all.filter(o => o !== n)
       .map(o => ({ id: o.def.id, name: o.def.name, job: o.def.job, persona: o.def.persona }));
   }
@@ -116,7 +116,7 @@ LG.view = (function () {
 
   // The animal following the player, if any: anyone talking to the player can see it.
   function companion() {
-    const beast = LG.game && LG.game.beast;
+    const beast = LG.village.beast;
     return (beast && beast.following) ? { name: beast.name, item: beast.item } : null;
   }
 

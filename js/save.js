@@ -87,12 +87,12 @@ LG.save = (function () {
 
   /* ------------------------------------------------------------ snapshot */
   function snapshot() {
-    const g = LG.game, plan = g.plan;
+    const V = LG.village, plan = V.plan;
     if (!plan) return null;
-    const st = g.state, p = g.player;
+    const st = LG.ledger.state, p = V.player;
 
     const villagers = {};
-    g.npcs.forEach(n => {
+    V.npcs.forEach(n => {
       villagers[n.id] = {
         x: round(n.px), y: round(n.py), tx: n.tx, ty: n.ty, dir: n.dir,
         facts: n.facts.slice(),
@@ -113,14 +113,14 @@ LG.save = (function () {
       };
     });
 
-    const t = g.beast
+    const t = V.beast
       // `home` changes in play (a returned goat lives in the farmer's yard), so it's saved too.
-      ? { kind: 'beast', x: round(g.beast.px), y: round(g.beast.py),
-          tx: g.beast.tx, ty: g.beast.ty, home: rectOut(g.beast.home),
-          caught: !!g.beast.caught, following: !!g.beast.following }
-      : g.worldItem
-        ? { kind: 'item', x: round(g.worldItem.px), y: round(g.worldItem.py),
-            taken: !!g.worldItem.taken }
+      ? { kind: 'beast', x: round(V.beast.px), y: round(V.beast.py),
+          tx: V.beast.tx, ty: V.beast.ty, home: rectOut(V.beast.home),
+          caught: !!V.beast.caught, following: !!V.beast.following }
+      : V.worldItem
+        ? { kind: 'item', x: round(V.worldItem.px), y: round(V.worldItem.py),
+            taken: !!V.worldItem.taken }
         : null;
 
     return {
@@ -128,7 +128,7 @@ LG.save = (function () {
       game: 'little-village',
       saved: new Date().toISOString(),
       // The plan itself, not a copy: nothing changes it once it's built.
-      village: { seed: plan.seed, level: g.settings.level, lang: g.settings.lang, plan },
+      village: { seed: plan.seed, level: LG.config.settings.level, lang: LG.config.settings.lang, plan },
       // The sky and the snow lying come back as they were, not re-rolled.
       time: { day: LG.time.day, frac: LG.time.frac, weather: LG.time.weather,
               hold: LG.time.weatherLeft, snow: LG.time.snow },
@@ -153,7 +153,7 @@ LG.save = (function () {
   function restore(data) {
     const why = check(data);
     if (why) return why;
-    const g = LG.game;
+    const g = LG.game, V = LG.village;
 
     /* Everything is checked before any game state is touched, so a refused
        save (possibly from the server, mid-session) leaves the village
@@ -166,8 +166,8 @@ LG.save = (function () {
     if (bad) return bad;
     plan = settle(plan);
 
-    g.settings.lang = data.village.lang;
-    g.settings.level = data.village.level;
+    LG.config.settings.lang = data.village.lang;
+    LG.config.settings.level = data.village.level;
     // Lays the save over a village built from its own plan; newVillage doesn't save it bare first.
     g.newVillage(plan.seed, true, plan);
 
@@ -176,30 +176,30 @@ LG.save = (function () {
     LG.time.setWeather(tm.weather, tm.hold);
     LG.time.setSnow(tm.snow);
 
-    const p = g.player;
+    const p = V.player;
     p.px = data.player.x; p.py = data.player.y; p.dir = data.player.dir || 'down';
     p.tx = (p.px / LG.world.TILE) | 0; p.ty = (p.py / LG.world.TILE) | 0;
 
-    const st = g.state;
+    const st = LG.ledger.state;
     st.inv = Object.assign({}, data.inventory);
     // One note per fact, first one kept, as `learn` guarantees in play; a file can say otherwise.
     const noted = new Set();
     st.notes = (data.notes || [])
-      .filter(n => g.plan.facts[n.id] && !noted.has(n.id) && noted.add(n.id))
+      .filter(n => V.plan.facts[n.id] && !noted.has(n.id) && noted.add(n.id))
       .map(n => ({ id: n.id, text: n.text, ruby: n.ruby || null }));
     st.deeds = (data.deeds || []).slice();
     st.board = (data.board || []).map(b => ({
       npcId: b.npcId, name: b.name, text: b.text,
       translation: b.translation || '', roman: b.roman || '',
-      factIds: (b.factIds || []).filter(id => g.plan.facts[id]), at: b.at || ''
+      factIds: (b.factIds || []).filter(id => V.plan.facts[id]), at: b.at || ''
     }));
     st.won = !!data.won;
 
-    g.npcs.forEach(n => {
+    V.npcs.forEach(n => {
       const s = (data.villagers || {})[n.id];
       if (!s) return;
       n.px = s.x; n.py = s.y; n.tx = s.tx; n.ty = s.ty; n.dir = s.dir || 'down';
-      n.facts = (s.facts || []).filter(id => g.plan.facts[id]);
+      n.facts = (s.facts || []).filter(id => V.plan.facts[id]);
       // Older saves kept memories as bare strings: undated, as if long held.
       n.memory = (s.memory || []).map(m =>
         typeof m === 'string' ? { at: null, text: m, from: null } : m).filter(m => m && m.text);
@@ -224,18 +224,18 @@ LG.save = (function () {
     });
 
     const t = data.terminal;
-    if (t && t.kind === 'beast' && g.beast) {
-      g.beast.px = t.x; g.beast.py = t.y; g.beast.tx = t.tx; g.beast.ty = t.ty;
-      g.beast.caught = !!t.caught; g.beast.following = !!t.following;
-      if (t.home) g.beast.home = rectOut(t.home);
-    } else if (t && t.kind === 'item' && g.worldItem) {
-      g.worldItem.px = t.x; g.worldItem.py = t.y; g.worldItem.taken = !!t.taken;
+    if (t && t.kind === 'beast' && V.beast) {
+      V.beast.px = t.x; V.beast.py = t.y; V.beast.tx = t.tx; V.beast.ty = t.ty;
+      V.beast.caught = !!t.caught; V.beast.following = !!t.following;
+      if (t.home) V.beast.home = rectOut(t.home);
+    } else if (t && t.kind === 'item' && V.worldItem) {
+      V.worldItem.px = t.x; V.worldItem.py = t.y; V.worldItem.taken = !!t.taken;
     }
 
     resumed = true;
     off = false;
     since = 0;
-    g.renderHUD();
+    LG.ledger.render();
     return null;
   }
 

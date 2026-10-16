@@ -124,10 +124,9 @@ client-side either way.
   has no Jev (see below), it also confirms which facts a villager actually
   revealed, confirms trades, and chooses where each villager goes.
 
-On OpenRouter the main model is DeepSeek V4.1 Flash
-(`deepseek/deepseek-v4.1-flash`) and the helper is GLM-5.3 Flash
-(`z-ai/glm-5.3-flash`); any other OpenRouter model ID can be typed into the
-**Other** field for either. Typing `openrouter/auto` lets OpenRouter pick the
+On OpenRouter both the main model and the helper are DeepSeek V4.1 Flash
+(`deepseek/deepseek-v4.1-flash`); any other OpenRouter model ID can be typed
+into the **Other** field for either. Typing `openrouter/auto` lets OpenRouter pick the
 underlying model per request, sent at `reasoning.effort: "high"` for the main
 model and `"medium"` for the helper. Both models are `logfare/auto` on
 Logfare — there is nothing to pick.
@@ -139,7 +138,7 @@ Use a fast, non-reasoning model for the helper if you can — see below.
 
 ### Jev, for what has a fixed set of answers
 
-On OpenRouter, three of the helper model's jobs go to [TypeSafe's Jev](https://openrouter.ai/typesafe/jev-1.13)
+On OpenRouter, three of the helper model's jobs go to [TypeSafe's Jev](https://openrouter.ai/~typesafe/jev-latest)
 instead, automatically — there's no setting for it, and no way to turn it off short of
 switching to Logfare. Jev doesn't generate text — given a fixed set of typed questions, it
 answers each with one of a named list of options and a probability, for $0.042 per
@@ -189,8 +188,16 @@ gives you the real figure for a real session.
 ### Structured output
 
 Where the model supports it, replies are constrained with a JSON Schema
-(`response_format` on OpenRouter) rather than just requested in the prompt. Support is checked per model when the key
-connects; anything unrecognised falls back to prompt-based JSON with repair.
+(`response_format` on OpenRouter) rather than just requested in the prompt:
+the villager's reply to you, and the helper's conversation lines, recall,
+belief revisions, glosses and notices. Each field in a schema carries the same
+description the prompt gives it. Support is checked per model when the key
+connects, against OpenRouter's per-provider listing: a model gets a schema only
+if at least one of its providers takes one at a price under the request's price
+cap. A request with a schema is sent with `provider.require_parameters`, so
+OpenRouter only routes it to such a provider; if it finds none anyway, the call
+is retried once without the schema and that model gets none for the rest of the
+session. Anything unrecognised falls back to prompt-based JSON with repair.
 
 ## Languages and difficulty
 
@@ -296,13 +303,17 @@ isn't running, the game detects this on first write, disables logging, and
 continues normally.
 
 The browser console mirrors this live: each API call prints as a collapsed
-group, and each villager's decisions print in their own colour.
+group, and each villager's decisions print in their own colour. This only
+happens when the `LG_CONSOLE_LOG` environment variable is `TRUE`; the log
+server sets it for itself (set `LG_CONSOLE_LOG=FALSE` to opt out), and
+anywhere else — another static server, `file://` — the console stays quiet.
 
 ```js
 LG.llm.transcript          // full call records, newest last
 LG.llm.dump()               // all of it as plain text
+LG.consoleLog = true          // turn console logging on by hand
 LG.llm.audit = false         // stop console logging (recording continues)
-LG.game.thoughts = false     // stop printing villager decisions
+LG.actors.thoughts = false     // stop printing villager decisions
 ```
 
 ## Project structure
@@ -313,17 +324,23 @@ css/style.css
 js/logbook.js       ships everything the village does to the log server
 js/time.js           calendar: hours, seasons, weather
 js/data.js           languages, phrasebook, place names, ~140 items, 24 places, 13 villagers
+js/text.js           escaping, furigana and romanization checks (pure functions)
 js/chain.js          errand chain generator + associated facts
 js/llm.js            provider abstraction, key validation, reply parsing
+js/config.js         the player's settings, their storage, llm/tts call configs
 js/tts.js            ElevenLabs voice casting and playback
 js/world.js          tile map, forest, station, collision, pathfinding, interiors, rendering
 js/sky.js            hour/season colour, precipitation
 js/view.js           per-villager prompt assembly (single source of truth)
 js/touch.js          the joystick and the tap: touch gestures, on a canvas
-js/npc.js            villager movement, meetings, rendering
-js/dialogue.js       prompt building, conversation UI, trades
+js/npc.js            villager movement, meetings, beliefs and naming, rendering
+js/village.js        the village as it stands: chain, cast, traveller, the thing to find
+js/ledger.js         the traveller's pockets, notebook, deeds and log, and the HUD
+js/trade.js          buying and selling for coin: prices, refunds, the till
+js/dialogue.js       prompt building, conversation UI
 js/save.js           save format: snapshot/restore, both storage locations
-js/game.js           game state, main loop, input, notebook, settings
+js/settings-panel.js the settings panel and front-door gate, keys from .env
+js/game.js           main loop and drawing, input, noticeboard, errand trades
 tools/logserver.js   serves the game, exposes .env, collects logs, keeps the save
 tests/smoke.js       headless test of the full game
 ```

@@ -63,6 +63,12 @@ function loadEnvFile() {
 }
 const ENV_LOADED = loadEnvFile();
 
+/* The page only prints to the browser console when LG_CONSOLE_LOG is
+   TRUE (served to it via /env). Running under this server turns that on;
+   anywhere else it stays off. An explicit LG_CONSOLE_LOG -- exported or
+   in .env -- still wins, so FALSE silences it here too. */
+if (process.env.LG_CONSOLE_LOG === undefined) process.env.LG_CONSOLE_LOG = 'TRUE';
+
 // read after .env, so PORT can be set there like anything else
 const PORT = Number(process.env.PORT || 8787);
 
@@ -80,7 +86,8 @@ function settingsFromEnv() {
     model: pick('LG_MODEL', 'MODEL'),
     helper: pick('LG_HELPER', 'HELPER'),
     lang: pick('LG_LANG', 'LANG_CHOICE'),
-    level: pick('LG_LEVEL', 'LEVEL')
+    level: pick('LG_LEVEL', 'LEVEL'),
+    consoleLog: pick('LG_CONSOLE_LOG')
   };
 }
 

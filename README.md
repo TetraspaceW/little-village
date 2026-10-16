@@ -293,11 +293,15 @@ isn't running, the game detects this on first write, disables logging, and
 continues normally.
 
 The browser console mirrors this live: each API call prints as a collapsed
-group, and each villager's decisions print in their own colour.
+group, and each villager's decisions print in their own colour. This only
+happens when the `LG_CONSOLE_LOG` environment variable is `TRUE`; the log
+server sets it for itself (set `LG_CONSOLE_LOG=FALSE` to opt out), and
+anywhere else — another static server, `file://` — the console stays quiet.
 
 ```js
 LG.llm.transcript          // full call records, newest last
 LG.llm.dump()               // all of it as plain text
+LG.consoleLog = true          // turn console logging on by hand
 LG.llm.audit = false         // stop console logging (recording continues)
 LG.actors.thoughts = false     // stop printing villager decisions
 ```

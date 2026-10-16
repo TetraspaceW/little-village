@@ -188,7 +188,7 @@ LG.tts = (function () {
     if (!res.ok) {
       state = 'error';
       lastError = await describe(res);
-      if (typeof console !== 'undefined' && console.warn) console.warn('[voices] ' + lastError);
+      if (LG.consoleLog && typeof console !== 'undefined' && console.warn) console.warn('[voices] ' + lastError);
       return false;
     }
     try {

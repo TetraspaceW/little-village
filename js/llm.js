@@ -343,7 +343,8 @@ LG.llm = (function () {
      have come from mismatches between what the model actually returned
      and what the game did with it, which a cleaned-up log would hide.
 
-       LG.llm.audit = false     stop printing (still recorded)
+       LG.llm.audit = false     stop printing (still recorded); nothing is
+                                printed anyway unless LG.consoleLog is on
        LG.llm.transcript        the records, newest last
        LG.llm.dump()            the lot as plain text, for copying out */
   /* Identifies which kind of call a log entry is by matching the opening
@@ -422,7 +423,7 @@ LG.llm = (function () {
     transcript.push(entry);
     if (transcript.length > KEEP) transcript.shift();
     if (LG.logbook) LG.logbook.call(entry); // also persist to disk, if logging is active
-    if (audit && typeof console !== "undefined" && console.log) {
+    if (LG.consoleLog && audit && typeof console !== "undefined" && console.log) {
       const u = entry.usage || {};
       const tok = u.prompt_tokens
         ? "  " + u.prompt_tokens + "\u2192" + (u.completion_tokens || 0) + " tok"
@@ -1547,7 +1548,7 @@ LG.llm = (function () {
     const obj = parseJSON(raw);
     if (!obj || !obj.say) {
       // Never show the player raw/malformed JSON -- let the caller report a failure instead.
-      if (typeof console !== "undefined" && console.warn) {
+      if (LG.consoleLog && typeof console !== "undefined" && console.warn) {
         console.warn(
           "[dialogue] could not read this reply:\n" + String(raw).slice(0, 600),
         );

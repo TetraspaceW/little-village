@@ -80,6 +80,7 @@ LG.settingsPanel = (function () {
   }
 
   function useEnv(env) {
+    LG.consoleLog = /^true$/i.test(String(env.consoleLog || ''));
     const was = { lang: settings.lang, level: settings.level };
     if (LG.llm.MODELS[env.provider]) settings.provider = env.provider;
     if (env.openrouterKey) settings.keys.openrouter = env.openrouterKey;

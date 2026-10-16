@@ -11,6 +11,13 @@
    fire several LLM calls a second, and each entry carries a full prompt. */
 window.LG = window.LG || {};
 
+/* Master switch for everything the game prints to the browser console
+   (API calls, villager decisions, warnings). Off unless the log server's
+   environment has LG_CONSOLE_LOG=TRUE -- which tools/logserver.js sets
+   for itself -- and is picked up from /env by settings-panel.js. Can also
+   be flipped by hand: `LG.consoleLog = true`. */
+LG.consoleLog = false;
+
 LG.logbook = (function () {
   const ENDPOINT = '/log';
   const FLUSH_MS = 1500;

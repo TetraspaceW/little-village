@@ -890,7 +890,7 @@ LG.dialogue = (function () {
       }
     }
     // Nothing usable. Say so rather than leaving the player wondering.
-    if (typeof console !== 'undefined' && console.warn) {
+    if (LG.consoleLog && typeof console !== 'undefined' && console.warn) {
       console.warn('[furigana] gave up on this line.\n  said:     ' + spoken +
                    '\n  returned: ' + last);
     }

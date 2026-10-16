@@ -410,6 +410,9 @@ ruby rb{font-size:1em}
   font-size:14px;color:#4a3b2a}
 .recipe:last-child{border-bottom:none}
 .recipe .parts{flex:1}
+/* Each ingredient is its own island, so an Arabic name doesn't run on into
+   the next one and turn "wheat → bread" round inside an English line. */
+.recipe .parts > span{unicode-bidi:isolate}
 .recipe .lack{opacity:.45}
 .recipe .kept{border:1px dashed #b5a07c;border-radius:999px;padding:1px 7px}
 .recipe .chip:disabled{opacity:.45;cursor:default}

@@ -540,6 +540,18 @@ section('eating, drinking and wearing what is in your pockets');
     if (was) LG.ITEMS[lk.wants].use = was; else delete LG.ITEMS[lk.wants].use;
   }
   L.take(food, L.count(food) - f0); L.take(crown, 1);
+
+  /* "(worn)" agrees with the thing worn wherever the language needs it to. */
+  const wearable = Object.keys(LG.ITEMS).filter(k => LG.ITEMS[k].use === 'wear');
+  ['ru', 'fr', 'es', 'pl'].forEach(lang => {
+    ok(wearable.every(k => LG.ITEMS[k].g && LG.WORN[lang][LG.ITEMS[k].g[lang]]),
+       'every wearable has a form of "(worn)" in ' + lang);
+  });
+  ok(LG.wornMark('hat', 'ru') === '(надета)' && LG.wornMark('trousers', 'fr') === '(porté)' &&
+     LG.wornMark('boots', 'es') === '(puestas)' && LG.wornMark('dress', 'pl') === '(założona)',
+     'and it is the right one');
+  ok(Object.keys(LG.LANGUAGES).every(lang => typeof LG.wornMark('hat', lang) === 'string'),
+     'and every language has one');
 }
 
 /* -------------------------------------------------------- one sale, rung twice

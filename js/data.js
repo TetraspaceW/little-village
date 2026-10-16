@@ -267,7 +267,10 @@ LG.LEVELS = {
    things you could eat or drink as they come are marked — a raw onion
    or a joint of meat isn't a snack. Worn things take a `slot`, and
    putting something on takes off whatever else was in that slot, so
-   you can't wear boots over your shoes.                                */
+   you can't wear boots over your shoes. `g` is the item name's
+   grammatical gender and number, in the languages where "(worn)" has to
+   agree with it (see LG.WORN): m, f, n or p(lural) in Russian and
+   Polish, m, f, mp or fp in French and Spanish.                       */
 LG.ITEMS = {
   shiny_rock: {
     icon: '💎', tags: ['hold', 'ground', 'prize'], en: 'shiny rock', full: 'a shiny rock',
@@ -318,7 +321,7 @@ LG.ITEMS = {
     ru: 'яблоко', zh: '苹果', fr: 'pomme', es: 'manzana', ja: 'りんご', ar: 'تفاحة', pl: 'jabłko', tok: 'kili loje'
   },
   hat: {
-    icon: '🎩', tags: ['hold', 'ground'], use: 'wear', slot: 'head', en: 'hat', full: 'a hat',
+    icon: '🎩', tags: ['hold', 'ground'], use: 'wear', slot: 'head', g: { ru: 'f', fr: 'm', es: 'm', pl: 'm' }, en: 'hat', full: 'a hat',
     ru: 'шляпа', zh: '帽子', fr: 'chapeau', es: 'sombrero', ja: '帽子', ar: 'قبعة', pl: 'kapelusz', tok: 'len lawa'
   },
   candle: {
@@ -334,7 +337,7 @@ LG.ITEMS = {
     ru: 'клубок шерсти', zh: '一团羊毛', fr: 'pelote de laine', es: 'ovillo de lana', ja: '毛糸玉', ar: 'كرة صوف', pl: 'kłębek wełny', tok: 'sike pi linja soweli'
   },
   boots: {
-    icon: '🥾', tags: ['hold', 'ground'], use: 'wear', slot: 'feet', en: 'boots', full: 'a pair of boots',
+    icon: '🥾', tags: ['hold', 'ground'], use: 'wear', slot: 'feet', g: { ru: 'p', fr: 'fp', es: 'fp', pl: 'p' }, en: 'boots', full: 'a pair of boots',
     ru: 'сапоги', zh: '靴子', fr: 'bottes', es: 'botas', ja: 'ブーツ', ar: 'حذاء طويل', pl: 'botki', tok: 'len noka suli'
   },
   lantern: {
@@ -652,15 +655,15 @@ LG.ITEMS = {
     ru: 'кошелёк', zh: '钱包', ja: 'さいふ', fr: 'porte-monnaie', es: 'monedero', ar: 'محفظة', pl: 'sakiewka', tok: 'poki mani'
   },
   backpack: {
-    icon: '🎒', tags: ['hold', 'shop'], use: 'wear', slot: 'back', en: 'backpack', full: 'a backpack',
+    icon: '🎒', tags: ['hold', 'shop'], use: 'wear', slot: 'back', g: { ru: 'm', fr: 'm', es: 'f', pl: 'm' }, en: 'backpack', full: 'a backpack',
     ru: 'рюкзак', zh: '背包', ja: 'リュック', fr: 'sac à dos', es: 'mochila', ar: 'حقيبة ظهر', pl: 'plecak', tok: 'poki monsi'
   },
   ring: {
-    icon: '💍', tags: ['hold', 'ground', 'prize'], use: 'wear', slot: 'finger', en: 'ring', full: 'a ring',
+    icon: '💍', tags: ['hold', 'ground', 'prize'], use: 'wear', slot: 'finger', g: { ru: 'n', fr: 'f', es: 'm', pl: 'm' }, en: 'ring', full: 'a ring',
     ru: 'кольцо', zh: '戒指', ja: 'ゆびわ', fr: 'bague', es: 'anillo', ar: 'خاتم', pl: 'pierścionek', tok: 'sike luka'
   },
   crown: {
-    icon: '👑', tags: ['hold', 'prize'], use: 'wear', slot: 'head', en: 'crown', full: 'a crown',
+    icon: '👑', tags: ['hold', 'prize'], use: 'wear', slot: 'head', g: { ru: 'f', fr: 'f', es: 'f', pl: 'f' }, en: 'crown', full: 'a crown',
     ru: 'корона', zh: '王冠', ja: 'おうかん', fr: 'couronne', es: 'corona', ar: 'تاج', pl: 'korona', tok: 'sike lawa'
   },
   crystal_ball: {
@@ -668,43 +671,43 @@ LG.ITEMS = {
     ru: 'хрустальный шар', zh: '水晶球', ja: '水晶玉', fr: 'boule de cristal', es: 'bola de cristal', ar: 'كرة بلورية', pl: 'kryształowa kula', tok: 'sike pi kiwen lukin'
   },
   coat: {
-    icon: '🧥', tags: ['hold', 'shop'], use: 'wear', slot: 'over', en: 'coat', full: 'a coat',
+    icon: '🧥', tags: ['hold', 'shop'], use: 'wear', slot: 'over', g: { ru: 'n', fr: 'm', es: 'm', pl: 'm' }, en: 'coat', full: 'a coat',
     ru: 'пальто', zh: '外套', ja: 'コート', fr: 'manteau', es: 'abrigo', ar: 'معطف', pl: 'płaszcz', tok: 'len lete'
   },
   scarf: {
-    icon: '🧣', tags: ['hold', 'shop', 'prize'], use: 'wear', slot: 'neck', en: 'scarf', full: 'a scarf',
+    icon: '🧣', tags: ['hold', 'shop', 'prize'], use: 'wear', slot: 'neck', g: { ru: 'm', fr: 'f', es: 'f', pl: 'm' }, en: 'scarf', full: 'a scarf',
     ru: 'шарф', zh: '围巾', ja: 'マフラー', fr: 'écharpe', es: 'bufanda', ar: 'وشاح', pl: 'szalik', tok: 'len pi anpa lawa'
   },
   gloves: {
-    icon: '🧤', tags: ['hold', 'shop', 'ground'], use: 'wear', slot: 'hands', en: 'gloves', full: 'a pair of gloves',
+    icon: '🧤', tags: ['hold', 'shop', 'ground'], use: 'wear', slot: 'hands', g: { ru: 'p', fr: 'mp', es: 'mp', pl: 'p' }, en: 'gloves', full: 'a pair of gloves',
     ru: 'перчатки', zh: '手套', ja: 'てぶくろ', fr: 'gants', es: 'guantes', ar: 'قفازات', pl: 'rękawiczki', tok: 'len luka'
   },
   socks: {
-    icon: '🧦', tags: ['hold', 'shop'], use: 'wear', slot: 'socks', en: 'socks', full: 'a pair of socks',
+    icon: '🧦', tags: ['hold', 'shop'], use: 'wear', slot: 'socks', g: { ru: 'p', fr: 'fp', es: 'mp', pl: 'p' }, en: 'socks', full: 'a pair of socks',
     ru: 'носки', zh: '袜子', ja: 'くつした', fr: 'chaussettes', es: 'calcetines', ar: 'جوارب', pl: 'skarpetki', tok: 'len noka lili'
   },
   shirt: {
-    icon: '👕', tags: ['hold', 'shop'], use: 'wear', slot: 'top', en: 'shirt', full: 'a shirt',
+    icon: '👕', tags: ['hold', 'shop'], use: 'wear', slot: 'top', g: { ru: 'f', fr: 'f', es: 'f', pl: 'f' }, en: 'shirt', full: 'a shirt',
     ru: 'рубашка', zh: '衬衫', ja: 'シャツ', fr: 'chemise', es: 'camisa', ar: 'قميص', pl: 'koszula', tok: 'len sijelo'
   },
   trousers: {
-    icon: '👖', tags: ['hold', 'shop'], use: 'wear', slot: 'legs', en: 'trousers', full: 'a pair of trousers',
+    icon: '👖', tags: ['hold', 'shop'], use: 'wear', slot: 'legs', g: { ru: 'p', fr: 'm', es: 'mp', pl: 'p' }, en: 'trousers', full: 'a pair of trousers',
     ru: 'штаны', zh: '裤子', ja: 'ズボン', fr: 'pantalon', es: 'pantalones', ar: 'بنطال', pl: 'spodnie', tok: 'len pi noka tu'
   },
   dress: {
-    icon: '👗', tags: ['hold', 'shop', 'prize'], use: 'wear', slot: 'top', en: 'dress', full: 'a dress',
+    icon: '👗', tags: ['hold', 'shop', 'prize'], use: 'wear', slot: 'top', g: { ru: 'n', fr: 'f', es: 'm', pl: 'f' }, en: 'dress', full: 'a dress',
     ru: 'платье', zh: '连衣裙', ja: 'ワンピース', fr: 'robe', es: 'vestido', ar: 'فستان', pl: 'sukienka', tok: 'len suli'
   },
   shoes: {
-    icon: '👞', tags: ['hold', 'shop', 'ground'], use: 'wear', slot: 'feet', en: 'shoes', full: 'a pair of shoes',
+    icon: '👞', tags: ['hold', 'shop', 'ground'], use: 'wear', slot: 'feet', g: { ru: 'p', fr: 'fp', es: 'mp', pl: 'p' }, en: 'shoes', full: 'a pair of shoes',
     ru: 'туфли', zh: '鞋', ja: 'くつ', fr: 'chaussures', es: 'zapatos', ar: 'حذاء', pl: 'buty', tok: 'len noka'
   },
   glasses: {
-    icon: '👓', tags: ['hold', 'shop', 'ground'], use: 'wear', slot: 'eyes', en: 'glasses', full: 'a pair of glasses',
+    icon: '👓', tags: ['hold', 'shop', 'ground'], use: 'wear', slot: 'eyes', g: { ru: 'p', fr: 'fp', es: 'fp', pl: 'p' }, en: 'glasses', full: 'a pair of glasses',
     ru: 'очки', zh: '眼镜', ja: 'めがね', fr: 'lunettes', es: 'gafas', ar: 'نظارة', pl: 'okulary', tok: 'ilo lukin'
   },
   ribbon: {
-    icon: '🎀', tags: ['hold', 'shop', 'prize'], use: 'wear', slot: 'hair', en: 'ribbon', full: 'a ribbon',
+    icon: '🎀', tags: ['hold', 'shop', 'prize'], use: 'wear', slot: 'hair', g: { ru: 'm', fr: 'm', es: 'm', pl: 'f' }, en: 'ribbon', full: 'a ribbon',
     ru: 'бант', zh: '蝴蝶结', ja: 'リボン', fr: 'ruban', es: 'lazo', ar: 'شريط', pl: 'wstążka', tok: 'linja kule'
   },
   feather: {
@@ -966,9 +969,24 @@ LG.itemSaid = function (id, lang, short) {
    speech. */
 LG.CONJ = { ru: 'и', en: 'and', zh: '和', ja: 'と', fr: 'et', es: 'y', ar: 'و', pl: 'i', tok: 'en' };
 /* The mark beside something the traveller has on, in the Pockets box,
-   brackets included: Chinese and Japanese use their own full-width ones. */
-LG.WORN = { ru: '(надето)', en: '(worn)', zh: '（穿戴中）', ja: '（着用中）', fr: '(porté)',
-            es: '(puesto)', ar: '(مرتدى)', pl: '(założone)', tok: '(lon sijelo)' };
+   brackets included: Chinese and Japanese use their own full-width ones.
+   Where the word agrees with the noun, it's picked by the item's `g`
+   (see LG.ITEMS). Polish uses one form for neuter and for plurals that
+   aren't men, which is all its plurals here. */
+LG.WORN = {
+  en: '(worn)', zh: '（穿戴中）', ja: '（着用中）', ar: '(مرتدى)', tok: '(lon sijelo)',
+  ru: { m: '(надет)', f: '(надета)', n: '(надето)', p: '(надеты)' },
+  fr: { m: '(porté)', f: '(portée)', mp: '(portés)', fp: '(portées)' },
+  es: { m: '(puesto)', f: '(puesta)', mp: '(puestos)', fp: '(puestas)' },
+  pl: { m: '(założony)', f: '(założona)', n: '(założone)', p: '(założone)' }
+};
+/* "(worn)" for one item in one language, agreeing with it where it has to. */
+LG.wornMark = function (id, lang) {
+  const t = LG.WORN[lang] || LG.WORN.en;
+  if (typeof t === 'string') return t;
+  const g = (LG.ITEMS[id] && LG.ITEMS[id].g) || {};
+  return t[g[lang]] || t.m;
+};
 
 LG.TXN = {
   buy: {

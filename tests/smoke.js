@@ -278,6 +278,49 @@ section('a walk cut short is taken up again');
   keep.forEach(([k, v]) => { n[k] = v; });
 }
 
+/* Everyone has a bed, and at night they go to it: villagers out in the
+   street at dark used to be the only thing awake in the village. */
+section('at night everyone goes to bed');
+{
+  const W = LG.world, T = W.TILE;
+  const beds = npcs.map(n => n.bed);
+  ok(beds.every(Boolean), 'every villager has a bed');
+  ok(new Set(beds.map(b => b && b.x + ',' + b.y)).size === npcs.length, 'and nobody shares one');
+  const from = W.nearestOpen(LG.START.x, LG.START.y), open = W._flood(from.x, from.y);
+  for (const n of npcs) {
+    const b = n.bed;
+    if (!b) continue;
+    const room = W.buildingAt(b.x, b.y);
+    ok(room && room.label === b.label, n.def.name + '’s bed is inside the ' + b.label);
+    // The bed covers its own tile and most of the one below it.
+    const clash = room && room.furniture.find(f => f.type !== 'bed' &&
+      f.y >= b.y && f.y <= b.y + 1 && b.x >= f.x && b.x < f.x + (f.w || 1));
+    ok(!clash, n.def.name + '’s bed has room to stand' + (clash ? ' (under a ' + clash.type + ')' : ''));
+    ok(open.has(b.y * W.W + b.x), n.def.name + ' can get to their bed');
+  }
+
+  const day = LG.time.day, frac = LG.time.frac, weather = LG.time.weather,
+        left = LG.time.weatherLeft, snow = LG.time.snow;
+  const at = f => { LG.time.start(day, f); LG.time.setWeather(weather, left); LG.time.setSnow(snow); };
+  at(0.86);
+  for (let i = 0; i < 30 * 150; i++) LG.game._debugTick(1 / 30);
+  ok(LG.time.isNight(), 'still night after two and a half minutes');
+  const awake = npcs.filter(n => !n.asleep);
+  ok(!awake.length, 'by then everyone is asleep' +
+     (awake.length ? ' (not ' + awake.map(n => n.def.name + ', ' + LG.view.where(n)).join('; ') + ')' : ''));
+  ok(npcs.every(n => !n.asleep || (n.tx === n.bed.x && n.ty === n.bed.y)), 'each in their own bed');
+  ok(npcs.every(n => !n.asleep || W.buildingUnder(n) === W.buildingAt(n.bed.x, n.bed.y)),
+     'and indoors, under the roof');
+  const still = npcs.map(n => n.px + ',' + n.py);
+  for (let i = 0; i < 300; i++) LG.game._debugTick(1 / 30);
+  ok(npcs.every((n, i) => n.px + ',' + n.py === still[i]), 'and a sleeper stays put');
+
+  at(0.3);
+  LG.game._debugTick(1 / 30);
+  ok(npcs.every(n => !n.asleep), 'in the morning everyone is up');
+  at(frac);
+}
+
 /* "Open" isn't the same as "reachable" -- a forest is where that gap
    matters most, since chain.js can leave the errand's terminal item in
    any glade, and a glade sealed off by trees would make the errand

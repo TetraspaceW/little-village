@@ -404,6 +404,7 @@ LG.game = (function () {
      two villagers (see villagerTalk). `wentAfter` is read and cleared
      here, once (LG.view.arrived). */
   function talkTo(n) {
+    if (n.asleep) { aside(displayName(n) + ' is asleep.'); return; }
     const sought = n.wentAfter === 'player';
     const why = sought ? (n.why || '') : null;
     if (sought) { LG.view.arrived(n); n.bubble = null; n.bubbleT = 0; }
@@ -798,9 +799,11 @@ LG.game = (function () {
 
     nearby = null;
     let best = REACH;
+    // Someone awake within reach comes before someone asleep nearer by.
     for (const n of npcs) {
       const d = dist(player, n);
-      if (d < best) { best = d; nearby = n; }
+      if (d < best && !(nearby && !nearby.asleep && n.asleep)) { best = d; nearby = n; }
+      else if (nearby && nearby.asleep && !n.asleep && d < REACH) { best = d; nearby = n; }
     }
 
     if (nudgeT > 0) nudgeT -= dt;
@@ -812,6 +815,8 @@ LG.game = (function () {
       // nothing, over an open panel
     } else if (nudgeT > 0) {
       say = nudge;
+    } else if (nearby && nearby.asleep) {
+      say = displayName(nearby) + ' is asleep';
     } else if (nearby) {
       say = tap ? 'Tap ' + displayName(nearby) + ' to talk'
                 : 'Press E to talk to ' + displayName(nearby);
@@ -985,10 +990,12 @@ LG.game = (function () {
         A.drawCharacter(ctx, a, { name: a.caught ? '' : a.name }, dpr);
       } else {
         // The role emoji is always shown -- only the name is withheld until known.
-        A.drawCharacter(ctx, a, {
+        const look = {
           color: a.def.color, emoji: a.def.emoji, name: a.nameKnown ? a.def.name : '?',
           skin: '#f0c8a0', hair: '#3b2b20'
-        }, dpr);
+        };
+        if (a.asleep) A.drawSleeper(ctx, a, look);
+        else A.drawCharacter(ctx, a, look, dpr);
       }
     }
     for (const a of drawables) {

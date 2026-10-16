@@ -50,6 +50,11 @@ the game made of it, or in a prompt sentence that did something other than what 
   player, a chase or a reload can clear the route partway. Picking the same place again
   only counts as staying put if they're standing in it (`routine()` in `js/npc.js`).
 - Mikhalych's rice hut exists because a villager once hallucinated it (`OLD-LI.md`).
+- **Night is for sleeping.** From nightfall to first light a villager walks to their own
+  bed and lies down, and no model is asked where to go (`sleep()` in `js/npc.js`). Beds
+  are ordinary furniture (`furnish()` in `js/world.js`); each villager gets one where they
+  work, else in the building they shelter in (`js/village.js`). Sleep isn't saved: a
+  village reloaded at night sends everyone back to bed. A sleeper can't be talked to.
 
 ## Jev: fixed-choice questions (OpenRouter only)
 

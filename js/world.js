@@ -384,7 +384,10 @@ LG.world = (function () {
   }
 
   /* Places furniture in each building, enough that a room reads as
-     recognizably a bakery, smithy, etc. from the doorway. */
+     recognizably a bakery, smithy, etc. from the doorway. A bed covers its
+     own tile and most of the one below, so both are kept clear. There's a
+     bed for every villager: one where they work, and the rest in the
+     building each of the others shelters in (village.js hands them out). */
   function furnish() {
     const put = (label, items) => {
       const b = buildingByLabel(label);
@@ -394,21 +397,25 @@ LG.world = (function () {
         type: f[0], x: i.x + f[1], y: i.y + f[2], w: f[3] || 1
       })).filter(f => f.x < i.x + i.w && f.y < i.y + i.h);
     };
-    put('Bakery',       [['oven', 0, 0], ['counter', 3, 2, 2], ['shelf', 3, 0, 2], ['sack', 0, 2]]);
-    put('Shop',         [['counter', 1, 2, 3], ['shelf', 0, 0, 5], ['barrel', 0, 2], ['sack', 4, 2]]);
+    put('Bakery',       [['oven', 0, 0], ['counter', 3, 2, 2], ['shelf', 3, 0, 2], ['sack', 0, 2],
+                         ['bed', 2, 0]]);
+    put('Shop',         [['counter', 1, 2, 3], ['shelf', 0, 0, 4], ['barrel', 0, 2], ['sack', 4, 2],
+                         ['bed', 4, 0]]);
     put('Inn',          [['counter', 0, 0, 3], ['barrel', 4, 0], ['table', 1, 2], ['stool', 0, 2],
-                         ['stool', 2, 2], ['table', 4, 2], ['stool', 3, 3]]);
+                         ['stool', 2, 2], ['table', 4, 2], ['stool', 3, 3], ['bed', 3, 0], ['bed', 5, 0]]);
     put('Farmhouse',    [['table', 1, 1], ['stool', 0, 1], ['stool', 2, 1], ['bed', 4, 0], ['sack', 3, 2]]);
     put('Mill',         [['sack', 0, 0], ['sack', 1, 0], ['sack', 0, 2], ['barrel', 5, 0],
-                         ['counter', 2, 2, 3], ['shelf', 3, 0, 2]]);
+                         ['counter', 2, 2, 3], ['shelf', 3, 0, 2], ['bed', 5, 1]]);
     put('School',       [['desk', 0, 1], ['desk', 2, 1], ['desk', 4, 1], ['desk', 0, 2],
-                         ['desk', 2, 2], ['desk', 4, 2], ['shelf', 0, 0, 3], ['table', 5, 0]]);
-    put('Chapel',       [['pew', 0, 1, 4], ['pew', 0, 2, 4], ['table', 2, 0]]);
+                         ['desk', 2, 2], ['desk', 4, 2], ['shelf', 0, 0, 3], ['table', 5, 0],
+                         ['bed', 3, 0]]);
+    put('Chapel',       [['pew', 0, 1, 4], ['pew', 0, 2, 4], ['table', 2, 0], ['bed', 4, 0]]);
     put('Smithy',       [['forge', 0, 0], ['anvil', 2, 1], ['barrel', 4, 0], ['shelf', 2, 0, 2],
-                         ['counter', 3, 2, 2]]);
+                         ['counter', 3, 2, 2], ['bed', 1, 0]]);
     put('Hut',          [['sack', 0, 0], ['sack', 1, 0], ['bed', 3, 0], ['counter', 0, 1, 3]]);
     put('Village Hall', [['table', 3, 1], ['table', 5, 1], ['stool', 2, 1], ['stool', 6, 1],
-                         ['pew', 1, 3, 4], ['pew', 5, 3, 4], ['shelf', 0, 0, 3], ['desk', 8, 1]]);
+                         ['pew', 1, 3, 4], ['pew', 5, 3, 4], ['shelf', 0, 0, 3], ['desk', 8, 1],
+                         ['bed', 4, 0], ['bed', 7, 0], ['bed', 9, 0]]);
   }
 
   const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];

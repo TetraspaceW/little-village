@@ -733,6 +733,26 @@ section('pockets.js: the oven, and the Pockets box it describes');
   at(was.x, was.y);
 }
 
+section('a drink or two');
+{
+  const L = LG.ledger, P = LG.pockets;
+  ok(P.tipsy() === 0, 'sober to start with');
+  L.give('milk', 1); P.use('milk');
+  ok(P.tipsy() === 0, 'milk doesn\'t go to your head');
+  L.give('wine', 1); L.give('beer', 1);
+  P.use('wine');
+  ok(Math.abs(P.tipsy() - 1) < 1e-6, 'a bottle of wine is an hour of wobbling');
+  P.use('beer');
+  ok(Math.abs(P.tipsy() - 2) < 1e-6, 'and a beer after it, another hour on top');
+  const saved = LG.save.snapshot();
+  if (saved) ok(saved.tipsy === L.state.tipsy, 'a save remembers it');
+  LG.time.tick(1.5 * 12 * 60 / 24);       // an hour and a half of village time, in real seconds
+  ok(Math.abs(P.tipsy() - 0.5) < 1e-3, 'it wears off as the village clock runs');
+  LG.time.tick(12 * 60 / 24);
+  ok(P.tipsy() === 0, 'and is gone once the hours are up');
+  ['bottle', 'mug'].forEach(k => L.take(k, 1));
+}
+
 section('toys: the die, the ball and the kite');
 {
   const L = LG.ledger, T = LG.toys, W = LG.world, me = LG.village.player, TILE = 32;

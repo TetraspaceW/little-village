@@ -96,9 +96,19 @@ LG.pockets = (function () {
         L.take(id);
         if (it.leaves) L.give(it.leaves, 1);   // the jar, cup or bowl it came in
         say(id, it.use, it.full);
+        if (it.alcohol) state.tipsy = Math.max(now(), state.tipsy || 0) + 1 / 24;
         return true;
     }
   }
+
+  /* --------------------------------------------------------------- tipsy
+     Each drink of something strong is another village hour of walking
+     unsteadily. `state.tipsy` is the moment it wears off, in village days
+     (day + time of day), so it runs on the village clock and stands still
+     in a conversation like the clock does. */
+  const now = () => LG.time.day + LG.time.frac;
+  // How many village hours of wobble are left: 0 once sober.
+  function tipsy() { return Math.max(0, ((state.tipsy || 0) - now()) * 24); }
 
   /* ---------------------------------------------- what others can tell */
   const shown = set => Object.keys(set).filter(k => L.count(k) > 0)
@@ -234,5 +244,5 @@ LG.pockets = (function () {
     renderOven();
   }
 
-  return { use, canCook, cook, atOven, ovenOnTile, openOven, wornList, litList, glow };
+  return { use, canCook, cook, atOven, ovenOnTile, openOven, wornList, litList, glow, tipsy };
 })();

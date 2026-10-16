@@ -136,6 +136,7 @@ LG.save = (function () {
       inventory: Object.assign({}, st.inv),
       worn: Object.keys(st.worn || {}),
       lit: Object.keys(st.lit || {}),
+      tipsy: st.tipsy || 0,
       // no `done`: whether a lead is spent is read off the world, not stored
       notes: st.notes.map(n => ({ id: n.id, text: n.text, ruby: n.ruby || null })),
       deeds: st.deeds.slice(),
@@ -190,6 +191,7 @@ LG.save = (function () {
       if (st.inv[k] > 0 && LG.ITEMS[k] && LG.ITEMS[k].use === 'wear') st.worn[k] = true;
     });
     st.out = {};                       // a toy that was out comes back to the pockets
+    st.tipsy = typeof data.tipsy === 'number' && isFinite(data.tipsy) ? data.tipsy : 0;
     st.lit = {};
     (data.lit || []).forEach(k => {
       if (st.inv[k] > 0 && LG.ITEMS[k] && LG.ITEMS[k].use === 'light') st.lit[k] = true;

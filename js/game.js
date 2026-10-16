@@ -713,6 +713,15 @@ LG.game = (function () {
     const len = Math.hypot(dx, dy);
     if (!len) return;
     const scale = len > 1 ? 1 / len : 1;
+    /* After a drink (LG.pockets.tipsy) the way you're heading swings from
+       side to side, on two slow waves so it never settles into a pattern,
+       and steadies over the last half hour as it wears off. */
+    const tipsy = Math.min(1, LG.pockets.tipsy() * 2);
+    if (tipsy) {
+      const t = performance.now() / 1000;
+      const a = tipsy * (0.6 * Math.sin(t * 1.7) + 0.35 * Math.sin(t * 3.3 + 1.3));
+      [dx, dy] = [dx * Math.cos(a) - dy * Math.sin(a), dx * Math.sin(a) + dy * Math.cos(a)];
+    }
     const speed = running() ? RUN_SPEED : WALK_SPEED;
     const nx = player.px + dx * scale * speed * dt;
     const ny = player.py + dy * scale * speed * dt;

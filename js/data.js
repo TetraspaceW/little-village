@@ -174,7 +174,8 @@ LG.LEVELS = {
 
    `use`, where present, is what the traveller can do with it out of
    their own pockets (click it in the Pockets box): 'eat' and 'drink'
-   use it up; 'wear' puts it on, and clicking again takes it off. Only
+   use it up, and each drink marked `alcohol` makes the traveller's walk
+   wobble for another village hour (see LG.pockets.tipsy); 'wear' puts it on, and clicking again takes it off. Only
    things you could eat or drink as they come are marked — a raw onion
    or a joint of meat isn't a snack. Worn things take a `slot`, and
    putting something on takes off whatever else was in that slot, so
@@ -415,11 +416,11 @@ LG.ITEMS = {
     ru: 'кофе', zh: '咖啡', ja: 'コーヒー', fr: 'café', es: 'café', ar: 'كوب قهوة', pl: 'filiżanka kawy', tok: 'telo pimeja'
   },
   wine: {
-    icon: '🍷', tags: ['hold', 'shop', 'prize'], use: 'drink', leaves: 'bottle', en: 'wine', full: 'a bottle of wine',
+    icon: '🍷', tags: ['hold', 'shop', 'prize'], use: 'drink', alcohol: true, leaves: 'bottle', en: 'wine', full: 'a bottle of wine',
     ru: 'вино', zh: '葡萄酒', ja: 'ワイン', fr: 'vin', es: 'vino', ar: 'زجاجة نبيذ', pl: 'butelka wina', tok: 'telo nasa'
   },
   beer: {
-    icon: '🍺', tags: ['hold', 'shop'], use: 'drink', leaves: 'mug', en: 'beer', full: 'a mug of beer',
+    icon: '🍺', tags: ['hold', 'shop'], use: 'drink', alcohol: true, leaves: 'mug', en: 'beer', full: 'a mug of beer',
     ru: 'пиво', zh: '啤酒', ja: 'ビール', fr: 'bière', es: 'cerveza', ar: 'كوب بيرة', pl: 'kufel piwa', tok: 'telo nasa pan'
   },
   hammer: {

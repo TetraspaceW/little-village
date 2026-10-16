@@ -25,7 +25,7 @@ LG.ledger = (function () {
   const settings = LG.config.settings, C = LG.config;
   const { escapeHTML, rubyHTML } = LG.text;
 
-  const state = { inv: {}, worn: {}, lit: {}, out: {}, notes: [], deeds: [], won: false, board: [] };
+  const state = { inv: {}, worn: {}, lit: {}, out: {}, tipsy: 0, notes: [], deeds: [], won: false, board: [] };
   const logLines = [];
   let plan = null;
   let isSpent = () => false;
@@ -36,7 +36,7 @@ LG.ledger = (function () {
     plan = newPlan;
     isSpent = spent || (() => false);
     state.inv = { coins: 10 };          // a little money to be going on with
-    state.worn = {}; state.lit = {}; state.out = {};
+    state.worn = {}; state.lit = {}; state.out = {}; state.tipsy = 0;
     state.notes = []; state.deeds = []; state.won = false; state.board = [];
     logLines.length = 0;
   }

@@ -170,18 +170,22 @@ LG.pockets = (function () {
   /* Lists only the recipes the traveller has at least one ingredient
      for — a list of every dish the village knows would read as a
      shopping list, and finding out what wheat is good for is half the fun.
-     Things only needed, not used up (the teapot), sit in a dashed outline. */
+     An ingredient the errand is still waiting on doesn't count, since it
+     can't go in the pot (see `spare`): carrying the farmer's wheat
+     shouldn't put bread on the list. Holding a kept tool (the teapot)
+     does show its recipe; those sit in a dashed outline. Anything you
+     can't put in, missing or spoken for, is greyed. */
   function renderOven() {
     const lang = LG.config.language(), box = document.getElementById('ovenList');
     const part = (id, n, kept) => {
-      const it = item(id), short = L.count(id) < n;
+      const it = item(id), short = (kept ? L.count(id) : spare(id)) < n;
       return '<span class="' + (short ? 'lack' : '') + (kept ? ' kept' : '') + '" title="' +
              escapeHTML(it.en + (kept ? ' (kept)' : '')) + '">' + it.icon +
              ' <span lang="' + lang.tag + '">' + escapeHTML(label(id)) +
              (n > 1 ? ' ×' + n : '') + '</span></span>';
     };
-    const known = LG.RECIPES.filter(r => Object.keys(r.needs).concat(Object.keys(r.with || {}))
-                                               .some(k => L.count(k) > 0));
+    const known = LG.RECIPES.filter(r => Object.keys(r.needs).some(k => spare(k) > 0) ||
+                                         Object.keys(r.with || {}).some(k => L.count(k) > 0));
     box.innerHTML = known.length
       ? known.map(r => '<div class="recipe"><span class="parts">' +
           Object.keys(r.needs).map(k => part(k, r.needs[k]))

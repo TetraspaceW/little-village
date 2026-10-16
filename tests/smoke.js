@@ -633,6 +633,26 @@ section('pockets.js: the oven, and the Pockets box it describes');
      'and once on, says it comes off, with "(worn)" in the village\'s language');
   ok(!/data-use="rope"/.test((LG.ledger.give('rope', 1), els.inv.innerHTML)), 'rope is a plain pill');
   LG.pockets.use('hat'); LG.ledger.take('hat', 1); LG.ledger.take('rope', 1);
+
+  /* A recipe whose only ingredient you hold is one the errand needs isn't listed; a spare one is. */
+  const lk = plan.links.find(l => l.wants !== 'coins' && LG.ITEMS[l.wants].tags.indexOf('beast') === -1);
+  if (lk) {
+    const list = () => sandbox.document.getElementById('ovenList').innerHTML;
+    const n0 = LG.ledger.count(lk.wants), mine = LG.RECIPES.length;
+    LG.RECIPES.push({ needs: { [lk.wants]: 1 }, makes: 'popcorn' });
+    if (n0) LG.ledger.take(lk.wants, n0);   // (0 would mean 1 to take and give: see `n || 1`)
+    LG.ledger.give(lk.wants, lk.wantsCount || 1);
+    at((farm.x + 1) * 32, (farm.y + 1) * 32 + 8);
+    P.openOven();
+    ok(list().indexOf('data-recipe="' + mine + '"') === -1,
+       'a recipe whose only ingredient is one the errand needs is not on the oven\'s list');
+    LG.ledger.give(lk.wants, 1);
+    P.openOven();
+    ok(list().indexOf('data-recipe="' + mine + '"') !== -1, 'with a spare, it is');
+    LG.RECIPES.pop();
+    LG.ledger.take(lk.wants, LG.ledger.count(lk.wants));
+    if (n0) LG.ledger.give(lk.wants, n0);
+  }
   at(was.x, was.y);
 }
 

@@ -139,16 +139,20 @@ OpenRouter's decisions endpoint (`decisionPost`/`askJev` in `js/llm.js`), not
 
 ## Structured output and reply parsing
 
-- **Use a JSON Schema where supported** (OpenRouter `response_format`). When hedges like
-  *OPTIONAL* and *[] if none* were on every field except `say`, a third of replies came
-  back as bare `{"say": …}`.
-- Support is per endpoint. It's looked up once at connect time from
-  `supported_parameters` (`js/llm.js`) and cached. **Fail closed:** OpenRouter rejects a
-  schema sent to an unsupported model, so anything unknown is treated as unsupported
-  and gets prompt-based JSON plus repair.
+- **Use a JSON Schema where supported** (OpenRouter `response_format`): the villager's
+  reply and the helper calls that want JSON (README, Structured output). When hedges
+  like *OPTIONAL* and *[] if none* were on every field except `say`, a third of replies
+  came back as bare `{"say": …}`.
+- Support is per endpoint, looked up from OpenRouter's per-provider listing when a key
+  connects (at startup, on Save, or from `.env`) and cached. **Fail closed:** anything
+  unknown is treated as unsupported and gets prompt-based JSON plus repair, and a call
+  refused for its schema is retried once without it.
 - The prompt's field list and the schema are rendered **from one array**. Every field is
   required. Optional ones are nullable, and "nothing happened" is spelled `null`, `[]`,
   or `"none"`. The log records whether each call was schema-checked.
+- **History replays whole replies** (`pastReply`, `js/dialogue.js`): every field of the
+  current format, with furigana inline. Replayed as `{"say": …}` it showed the model
+  its own turns in the bare shape the prompt forbids.
 - The parser strips fences, repairs common breakage, and falls back to pulling out
   fields by hand. It **never shows raw text**. An unreadable reply becomes a failed
   turn, never a brace in a speech bubble.
@@ -177,8 +181,11 @@ OpenRouter's decisions endpoint (`decisionPost`/`askJev` in `js/llm.js`), not
 
 - All API traffic goes through two functions in `js/llm.js`. Each call is logged in
   full: system prompt, messages, **raw reply**, reasoning (both providers return it in
-  a separate field), model, latency, usage, and errors. It prints as a collapsed console
-  group and goes to `logs/` via the log server.
+  a separate field), model, latency, usage, and errors. It prints as one console line
+  with the record attached, and goes to `logs/` via the log server.
+- **Each caller names its call** (`kind`: villager, chatter, intent, notebook, trade, …;
+  `who`: the villager). Reading it back off the system prompt needed a table kept in step
+  with every prompt, twice, and misfiled the Jev calls, which have no prompt.
 - **Cost is tracked as villager vs helper.** Over 2.8 h of play, the main model made
   ~60 calls/h and the helper ~1,200/h, which put 3.5× more cost on the helper side.
   `tools/latency-report.js` uses the same split, by which model answered, so chatter
@@ -301,7 +308,7 @@ Each of these was a bug first:
 - As a result, gossip is lossy, and a pair can part having learned nothing. That's
   intended.
 - **Overheard talk** reaches the event log only when the player is nearby. It's shown in
-  the village language, and the gloss stays blurred **even with translations on**,
+  the village language, with its gloss blurred until clicked, like every gloss,
   because overhearing is a comprehension test.
 
 ## Noticeboard
@@ -339,15 +346,14 @@ everything at every level. The README has the table.
 
 ## Old-save migration
 
-- Saves from before the map shift are migrated, not refused. The shift was uniform (+40
-  tiles in y), so every point and rectangle gets the same offset (`js/save-migrate.js`).
-- **Seeds depend on list order.** `pick(LG.PLACES, rnd)` reads only the index, so growing
-  `LG.PLACES` from 17 to 24 entries changed the terminal item for unchanged seeds. Old
-  villages are regenerated against `PLACES_V1_IDS` via `withPlaces`, which swaps the
-  global for one synchronous call and restores it in `finally`.
-- "Needs the old list" is a property of the **seed**, not the file version. It's stored
-  as `_placesV1` on the plan and written into `village.placesV1` by **every**
-  `snapshot`. Keying it on file version broke the second load of a migrated save.
+- Saves from before the map shift (v1) are migrated, not refused. The shift was uniform
+  (+40 tiles in y), so every point and rectangle gets the same offset
+  (`js/save-migrate.js`).
+- v1 and v2 saves held only a seed and a digest. `regenerate` rebuilds their plan once,
+  and they're written back as v3 with the plan in them.
+- **Seeds depend on list order.** `pick(LG.PLACES, rnd)` reads only the index, so a v1
+  seed is replayed against `PLACES_V1_IDS` (and a v2 seed against its own
+  `placesSnapshot`) via `withPlaces`, which swaps the global for one synchronous call.
 
 ## Weather and rendering
 
@@ -356,8 +362,9 @@ everything at every level. The README has the table.
   screen, which leaves it clean about 83% of the time (asserted in tests).
   Villager sheltering is a separate switch from darkness, because drizzle is worth
   sheltering from but barely shows.
-- Rain and snow are clipped out of building footprints (even-odd clip). Fog and haze are
-  not.
+- Rain, snow and sand fall over every roof (seen from above, they're in the air over it),
+  and are clipped out only of the building the player is in (even-odd clip). Fog and
+  haze are never clipped.
 - **Snow depth is its own state.** It builds while snowing, holds in a hard frost, and
   melts at a seasonal rate. It's drawn on ground, canopies, fence tops, and roofs; the
   pond freezes and the fountain stops. Streets hold the least snow so paths stay
@@ -481,10 +488,13 @@ inside the narrow-screen media query, and gestures bind only to non-mouse pointe
 - **One format** (`js/save.js`: `snapshot`/`restore`), written as the same bytes to
   `localStorage` and `saves/village.json`. Either works without the other. On load, the
   local copy restores instantly, and the server copy wins only if it's newer.
-- **Only the seed is stored**, plus a digest of the generated village. If the digest
-  doesn't match, the save is refused with an explicit message, because notebook fact
-  ids would no longer mean the same facts. Changing the generator therefore invalidates
-  saves, unless you add a migration (see above).
+- **The plan is stored, not just the seed.** The generator draws from `LG.ITEMS`,
+  `NPCS`, `PLACES`, `REASONS`, `OPINIONS` and `BEAST_NAMES`, so a seed alone built a
+  different village as soon as any of them grew: one new item refused every save.
+  Notebook fact ids keep meaning the same facts because the facts travel with them.
+- A save is refused only if its plan names an item, villager or place this version
+  doesn't have. On load the errand's place is read off today's map, and a villager
+  added since gets a plain role (`settle`, `js/save.js`).
 - In-progress state isn't saved: routes, bubbles, pending decisions, conversations.
   Villagers re-think on load.
 - **Exception: who is chasing the player** (and why) *is* saved and always restored.
@@ -502,6 +512,9 @@ over `.env` keys, and stores the save.
   proxy API calls, so the game still works as a plain static page.
 - It binds to `127.0.0.1` only, refuses `/env` to non-local connections, and won't serve
   dotfiles or `logs/`.
+- Under it, `.env` decides the models on every load (`useEnv`). Blank `LG_MODEL` /
+  `LG_HELPER` mean the defaults in `js/llm.js`, not what `lg-settings` last held; a model
+  picked in the panel lasts the session. Blank `LG_LANG` / `LG_LEVEL` leave the browser's.
 
 ## Voices
 

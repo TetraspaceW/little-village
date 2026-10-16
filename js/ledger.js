@@ -15,7 +15,8 @@
    without storing a flag that could go stale.
 
    What the traveller can *do* with their things — eat, wear, light, play,
-   cook — is pockets.js. The record of it (what's worn, what's lit) is
+   cook, play with — is pockets.js. The record of it (what's worn, what's
+   lit, which toy is out of the pockets and being played with) is
    kept here with everything else a save carries; how an item's pill reads
    and what clicking it does comes from whoever called `describeWith`. */
 window.LG = window.LG || {};
@@ -24,7 +25,7 @@ LG.ledger = (function () {
   const settings = LG.config.settings, C = LG.config;
   const { escapeHTML, rubyHTML } = LG.text;
 
-  const state = { inv: {}, worn: {}, lit: {}, notes: [], deeds: [], won: false, board: [] };
+  const state = { inv: {}, worn: {}, lit: {}, out: {}, tipsy: 0, notes: [], deeds: [], won: false, board: [] };
   const logLines = [];
   let plan = null;
   let isSpent = () => false;
@@ -35,7 +36,7 @@ LG.ledger = (function () {
     plan = newPlan;
     isSpent = spent || (() => false);
     state.inv = { coins: 10 };          // a little money to be going on with
-    state.worn = {}; state.lit = {};
+    state.worn = {}; state.lit = {}; state.out = {}; state.tipsy = 0;
     state.notes = []; state.deeds = []; state.won = false; state.board = [];
     logLines.length = 0;
   }
@@ -54,8 +55,8 @@ LG.ledger = (function () {
   function take(id, n) {
     if (many(n) <= 0) return;
     state.inv[id] = Math.max(0, (state.inv[id] || 0) - many(n));
-    // Can't wear, or carry a flame in, what you've handed over.
-    if (!state.inv[id]) { delete state.inv[id]; delete state.worn[id]; delete state.lit[id]; }
+    // Can't wear, carry a flame in, or play with what you've handed over.
+    if (!state.inv[id]) { delete state.inv[id]; delete state.worn[id]; delete state.lit[id]; delete state.out[id]; }
     render();
   }
   /* `exclude` omits one item from the list entirely -- used for a
@@ -96,9 +97,8 @@ LG.ledger = (function () {
     const L = C.language();
     const line = fillTemplate(set[settings.lang] || set.en, native);
     const gloss = fillTemplate(set.en, english);
-    const hide = settings.showTranslation ? '' : ' hidden-tr';
     pushLog(icon + ' <span class="heard" lang="' + L.tag + '">' + escapeHTML(line) + '</span>' +
-            '<span class="gloss' + hide + '" lang="en" title="click to read">' + escapeHTML(gloss) + '</span>');
+            '<span class="gloss hidden-tr" lang="en" title="click to read">' + escapeHTML(gloss) + '</span>');
   }
 
   /* ------------------------------------------------------------ notebook
@@ -139,22 +139,14 @@ LG.ledger = (function () {
     if (logLines.length > 5) logLines.shift();
     const box = document.getElementById('log');
     box.innerHTML = logLines.map(l => '<div>' + l + '</div>').join('');
-    Array.prototype.forEach.call(box.querySelectorAll('.gloss.hidden-tr'), el => {
-      el.onclick = () => el.classList.remove('hidden-tr');
-    });
   }
 
   function log(msg) { pushLog(escapeHTML(msg)); }
 
-  /* Logs a line overheard between two villagers.
-
-     Villagers speak to each other only in their own language — no
-     English shown by default, matching the exchange itself. The line
-     shown carries furigana/romanization like any other displayed line.
-     The English gloss is available to self-check against but stays
-     blurred until clicked, and unlike other lines it stays blurred even
-     with translations turned on globally — showing it by default would
-     let the player skip understanding the overheard language entirely. */
+  /* Logs a line overheard between two villagers, in their language with
+     furigana or romanisation like any other line. The English gloss is
+     there to check yourself against, blurred until clicked: overhearing
+     is a comprehension test. */
   function logSpeech(name, said, ruby, roman, gloss) {
     const L = C.language();
     const heard = (ruby && L.furigana) ? rubyHTML(ruby) : escapeHTML(said);
@@ -200,19 +192,15 @@ LG.ledger = (function () {
       .concat(state.notes.map(n => {
         const heard = (n.ruby && L.furigana) ? rubyHTML(n.ruby) : escapeHTML(n.text);
         const gloss = plan.facts[n.id].text;
-        const hide = settings.showTranslation ? '' : ' hidden-tr';
         const done = isSpent(n.id);            // read off the world, never stored
         return '<div class="q' + (done ? ' done' : '') + '"><span class="heard" lang="' +
                L.tag + '"' + (L.furigana && n.ruby ? ' style="line-height:2"' : '') +
                '>' + (done ? '\u2714 ' : '\u2022 ') + heard + '</span>' +
-               '<span class="gloss' + hide + '" lang="en" title="' + escapeHTML(gloss) + '">' +
+               '<span class="gloss hidden-tr" lang="en" title="' + escapeHTML(gloss) + '">' +
                escapeHTML(gloss) + '</span></div>';
       }));
     nb.innerHTML = rows.length ? rows.join('')
       : '<div class="q muted">Nothing yet. Try asking around!</div>';
-    Array.prototype.forEach.call(nb.querySelectorAll('.gloss.hidden-tr'), el => {
-      el.onclick = () => el.classList.remove('hidden-tr');
-    });
   }
 
   return { state, begin, count, give, take, inventoryList, hasNote, learn,

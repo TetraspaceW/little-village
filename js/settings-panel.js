@@ -38,9 +38,9 @@ LG.settingsPanel = (function () {
     };
     // Not `= submitSettings`: the click event would arrive as a truthy forceNewVillage.
     document.getElementById('setSave').onclick = () => submitSettings(false);
-    document.getElementById('setProvider').onchange = () => { swapKeyField(); refreshModelList(); refreshHelperList(); };
-    document.getElementById('setModel').onchange = syncModelBox;
-    document.getElementById('setHelper').onchange = syncHelperBox;
+    document.getElementById('setProvider').onchange = () => { swapKeyField(); refreshPickers(); };
+    document.getElementById('setModel').onchange = () => syncPicker('model');
+    document.getElementById('setHelper').onchange = () => syncPicker('helper');
   }
 
   /* Decides whether the player is let straight in (a key is already
@@ -89,14 +89,20 @@ LG.settingsPanel = (function () {
     let got = [];
     if ({ openrouter: env.openrouterKey, logfare: env.logfareKey }[settings.provider]) got.push('the model key');
     if (env.ttsKey) { settings.ttsKey = env.ttsKey; settings.voices = true; got.push('a voice key'); }
-    if (env.model) settings.model = env.model;
-    if (env.helper) settings.helper = env.helper;
+    /* Under the log server .env decides the models: left blank they are the
+       defaults, not whatever this browser last used. A blank helper is the
+       provider's default (LG.llm.helperModel). */
+    settings.model = env.model || LG.llm.MODELS[settings.provider][0].id;
+    settings.helper = env.helper || '';
     if (env.lang && LG.LANGUAGES[env.lang]) settings.lang = env.lang;
     if (env.level && LG.LEVELS[env.level]) settings.level = env.level;
+    if (gated) openSettings(true);            // the gate was drawn before .env was read
     if (!got.length && was.lang === settings.lang && was.level === settings.level) return;
 
     fromEnv = true;
     C.save();
+    // Keys and models from .env count as a settings change for the schema lookup too.
+    if (settings.apiKey) LG.llm.probe(C.llm());
     /* The village is generated from language + difficulty, so changing
        either normally means regenerating it -- fine, since nothing has
        happened yet in a fresh session. Except when a village was already
@@ -139,17 +145,10 @@ LG.settingsPanel = (function () {
       provider: document.getElementById('setProvider').value,
       apiKey: document.getElementById('setKey').value.trim(),
       keys: Object.assign({}, draftKeys),
-      model: readModel() || settings.model,
-      helper: readHelper(),
-      // No longer player-configurable: gossip is always on, translations
-      // always start blurred, voices are always curated, and speech
-      // speed always matches difficulty.
-      showTranslation: false,
-      npcChatter: true,
+      model: readPicker('model') || settings.model,
+      helper: readPicker('helper'),
       voices: document.getElementById('setVoices').checked,
-      ttsKey: document.getElementById('setTtsKey').value.trim(),
-      voiceSpeed: 'auto',
-      voiceQuality: 'curated'
+      ttsKey: document.getElementById('setTtsKey').value.trim()
     };
     err.textContent = '';
 
@@ -246,8 +245,7 @@ LG.settingsPanel = (function () {
     }
     document.getElementById('setVoices').checked = settings.voices;
     document.getElementById('setTtsKey').value = settings.ttsKey;
-    refreshModelList();
-    refreshHelperList();
+    refreshPickers();
     showSaveNote();
     s.classList.add('open');
   }
@@ -271,64 +269,49 @@ LG.settingsPanel = (function () {
       ')' + (LG.save.onServer ? ' and in saves/village.json' : '') + '.';
   }
 
-  /* "Other" reveals a free-text box, so a model newer than this
-     picker's hardcoded list can still be used without editing the
-     source. */
-  function readModel() {
-    const sel = document.getElementById('setModel');
-    if (sel.value !== 'other') return sel.value;
-    return document.getElementById('setModelCustom').value.trim();
+  /* The model and helper pickers: the provider's offered models, plus
+     "Other", which reveals a box for any model id, so a model newer than
+     the list can be used without editing the source. `role` is the
+     setting each one fills in. */
+  const PICKERS = {
+    model: { sel: 'setModel', custom: 'setModelCustom', list: () => LG.llm.MODELS },
+    helper: { sel: 'setHelper', custom: 'setHelperCustom', list: () => LG.llm.HELPERS }
+  };
+
+  function readPicker(role) {
+    const p = PICKERS[role], sel = document.getElementById(p.sel);
+    return sel.value !== 'other' ? sel.value : document.getElementById(p.custom).value.trim();
   }
 
-  function readHelper() {
-    const sel = document.getElementById('setHelper');
-    if (sel.value !== 'other') return sel.value;
-    return document.getElementById('setHelperCustom').value.trim();
-  }
-
-  function refreshHelperList() {
+  function refreshPicker(role) {
+    const p = PICKERS[role], current = settings[role];
     const prov = document.getElementById('setProvider').value;
-    const sel = document.getElementById('setHelper');
-    const list = LG.llm.HELPERS[prov] || [];
+    const sel = document.getElementById(p.sel);
+    const list = p.list()[prov] || [];
     // Logfare has exactly one model and always picks it — nothing to override.
     const fixed = prov === 'logfare';
     sel.innerHTML = list.map(m => '<option value="' + m.id + '">' + m.label + '</option>').join('')
       + (fixed ? '' : '<option value="other">Other — type an id below</option>');
     sel.disabled = fixed;
-    const known = list.some(m => m.id === settings.helper);
+    const known = list.some(m => m.id === current);
     sel.value = fixed ? list[0].id
-              : settings.helper && !known ? 'other' : (settings.helper || (list[0] && list[0].id) || 'other');
-    document.getElementById('setHelperCustom').value = fixed || known ? '' : settings.helper;
-    syncHelperBox();
+              : current && !known ? 'other' : (current || (list[0] && list[0].id) || 'other');
+    document.getElementById(p.custom).value = fixed || known ? '' : current;
+    syncPicker(role);
   }
 
-  function syncHelperBox() {
-    const other = document.getElementById('setHelper').value === 'other';
-    document.getElementById('setHelperCustom').style.display = other ? '' : 'none';
+  function syncPicker(role) {
+    const p = PICKERS[role];
+    const other = document.getElementById(p.sel).value === 'other';
+    document.getElementById(p.custom).style.display = other ? '' : 'none';
   }
 
-  function refreshModelList() {
-    const prov = document.getElementById('setProvider').value;
-    const sel = document.getElementById('setModel');
-    const list = LG.llm.MODELS[prov] || [];
-    // Logfare has exactly one model and always picks it — nothing to override.
-    const fixed = prov === 'logfare';
-    sel.innerHTML = list.map(m => '<option value="' + m.id + '">' + m.label + '</option>').join('')
-      + (fixed ? '' : '<option value="other">Other — type an id below</option>');
-    sel.disabled = fixed;
-    const known = list.some(m => m.id === settings.model);
-    sel.value = fixed ? list[0].id
-              : settings.model && !known ? 'other' : (settings.model || (list[0] && list[0].id) || 'other');
-    document.getElementById('setModelCustom').value = fixed || known ? '' : settings.model;
-    syncModelBox();
-    document.getElementById('keyHint').textContent = prov === 'logfare'
+  function refreshPickers() {
+    refreshPicker('model');
+    refreshPicker('helper');
+    document.getElementById('keyHint').textContent = document.getElementById('setProvider').value === 'logfare'
       ? 'From logfare.ai/register — free and instant, no email needed.'
       : 'From openrouter.ai/keys.';
-  }
-
-  function syncModelBox() {
-    const other = document.getElementById('setModel').value === 'other';
-    document.getElementById('setModelCustom').style.display = other ? '' : 'none';
   }
 
   return { init, start, open: openSettings, openTheDoor,

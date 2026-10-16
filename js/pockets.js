@@ -1,6 +1,6 @@
 /* pockets.js — what the traveller can do with their own things: eat or
-   drink them, put them on, light them, play them, and cook with them at
-   an oven.
+   drink them, put them on, light them, play them, play with them (the
+   toys themselves are LG.toys), and cook with them at an oven.
 
    The record of what they have stays in ledger.js; this is everything it
    means. From outside it is a handful of calls — `use` (an item in the
@@ -85,6 +85,9 @@ LG.pockets = (function () {
         say(id, it.rung ? 'ring' : 'play', 'the ' + it.en);
         heard(id);
         return true;
+      case 'roll': LG.toys.openDice(); return true;
+      case 'kick': return LG.toys.useBall();
+      case 'fly': return LG.toys.useKite();
       default:                         // eat, drink
         if (spare(id) < 1) {
           L.log('You had better hang on to the ' + it.en + ' for now.');
@@ -93,9 +96,19 @@ LG.pockets = (function () {
         L.take(id);
         if (it.leaves) L.give(it.leaves, 1);   // the jar, cup or bowl it came in
         say(id, it.use, it.full);
+        if (it.alcohol) state.tipsy = Math.max(now(), state.tipsy || 0) + 1 / 24;
         return true;
     }
   }
+
+  /* --------------------------------------------------------------- tipsy
+     Each drink of something strong is another village hour of walking
+     unsteadily. `state.tipsy` is the moment it wears off, in village days
+     (day + time of day), so it runs on the village clock and stands still
+     in a conversation like the clock does. */
+  const now = () => LG.time.day + LG.time.frac;
+  // How many village hours of wobble are left: 0 once sober.
+  function tipsy() { return Math.max(0, ((state.tipsy || 0) - now()) * 24); }
 
   /* ---------------------------------------------- what others can tell */
   const shown = set => Object.keys(set).filter(k => L.count(k) > 0)
@@ -110,15 +123,16 @@ LG.pockets = (function () {
   }
 
   /* --------------------------------------------------- the Pockets box */
-  const VERB = { eat: 'Eat', drink: 'Drink', wear: 'Put on', light: 'Light', play: 'Play' };
-  const UNDO = { wear: 'Take off', light: 'Put out' };
+  const VERB = { eat: 'Eat', drink: 'Drink', wear: 'Put on', light: 'Light', play: 'Play',
+                 roll: 'Roll', kick: 'Put down', fly: 'Fly' };
+  const UNDO = { wear: 'Take off', light: 'Put out', kick: 'Pick up', fly: 'Reel in' };
   /* How the ledger should draw an item's pill: null for a plain one, or
      its tooltip, the mark beside its name ("(worn)", "(lit)") in the
      village's language, whether it's on, and what a click does. */
   function pill(id) {
     const it = item(id);
     if (!it || !it.use) return null;
-    const on = !!(state.worn[id] || state.lit[id]);
+    const on = !!(state.worn[id] || state.lit[id] || state.out[id]);
     return {
       title: (on ? UNDO[it.use] : it.rung ? 'Ring' : VERB[it.use]) + ' the ' + it.en,
       mark: state.worn[id] ? LG.wornMark(id, settings.lang)
@@ -162,7 +176,7 @@ LG.pockets = (function () {
 
   function openOven() {
     const panel = document.getElementById('oven');
-    document.getElementById('ovenClose').onclick = () => panel.classList.remove('open');
+    document.getElementById('ovenClose').onclick = () => { stopCooking(); panel.classList.remove('open'); };
     renderOven();
     panel.classList.add('open');
   }
@@ -195,8 +209,27 @@ LG.pockets = (function () {
           (canCook(r) ? '' : ' disabled') + '>Cook</button></div>').join('')
       : '<div class="notice muted">Nothing in your pockets that wants cooking.</div>';
     Array.prototype.forEach.call(box.querySelectorAll('[data-recipe]'), el => {
-      el.onclick = () => cookAt(LG.RECIPES[+el.dataset.recipe]);
+      el.onclick = () => startCooking(el, LG.RECIPES[+el.dataset.recipe]);
     });
+  }
+
+  /* Cooking takes COOK_TIME, while the Cook button fills from left to
+     right (the `cooking` class in style.css, timed by --cook) and the other
+     buttons wait. Nothing goes in the pot until it's done, so closing the
+     oven partway through loses nothing. */
+  const COOK_TIME = 3;                 // seconds
+  let cooking = null;
+  function startCooking(button, recipe) {
+    if (cooking) return;
+    const box = document.getElementById('ovenList');
+    Array.prototype.forEach.call(box.querySelectorAll('[data-recipe]'), el => { el.disabled = el !== button; });
+    button.style.setProperty('--cook', COOK_TIME + 's');
+    button.classList.add('cooking');
+    button.textContent = 'Cooking…';
+    cooking = setTimeout(() => { cooking = null; cookAt(recipe); }, COOK_TIME * 1000);
+  }
+  function stopCooking() {
+    if (cooking) { clearTimeout(cooking); cooking = null; }
   }
 
   /* Anyone in the room sees it done, and it's theirs to mention — the
@@ -211,5 +244,5 @@ LG.pockets = (function () {
     renderOven();
   }
 
-  return { use, canCook, cook, atOven, ovenOnTile, openOven, wornList, litList, glow };
+  return { use, canCook, cook, atOven, ovenOnTile, openOven, wornList, litList, glow, tipsy };
 })();

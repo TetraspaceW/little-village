@@ -184,6 +184,16 @@ LG.dialogue = (function () {
         v.trade.buys.forEach(w => volatile.push('- ' + LG.itemSaid(w.i, s.lang) + ' — you would pay about ' +
           coins(w.p) + ' [' + w.i + ']'));
       }
+      /* The fisherman buys what comes out of the pond by its tag, `catch`;
+         spelt out, or he would turn away a carp he'd happily pay for.
+         Paid at half what it's worth, the same as priceFrom in trade.js. */
+      if (v.trade.buysTags.indexOf('catch') !== -1) {
+        const also = Object.keys(LG.ITEMS)
+          .filter(k => !v.trade.buys.some(w => w.i === k) && LG.ITEMS[k].tags.indexOf('catch') !== -1);
+        if (also.length) volatile.push('You would also buy anything the traveller has caught in the water, at about half what it is worth: ' +
+          also.map(k => LG.itemSaid(k, s.lang, true) + ' ' + coins(Math.max(1, Math.round(LG.priceOf(k) * 0.5))) +
+                        ' [' + k + ']').join(', ') + '.');
+      }
       volatile.push('The traveller has ' + coins(LG.ledger.count('coins')) + ' on them.');
 
       volatile.push('Offer your goods the way you would to any customer, and haggle if it suits you.');

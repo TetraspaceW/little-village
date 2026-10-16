@@ -848,6 +848,91 @@ LG.ITEMS = {
     ru: 'пони', zh: '小马', ja: 'ポニー', fr: 'poney', es: 'poni', ar: 'حصان صغير', pl: 'kucyk', tok: 'soweli tawa lili'
   },
 
+  /* ---- caught at the pond with a fishing rod (see LG.CATCHES and
+     fishing.js) ---------------------------------------------------------
+     Everything that lives in a freshwater pond: one of each genus of
+     Linnaeus's Pisces (Systema Naturae, 10th edition, 1758) with a species
+     found in still fresh water, and the small things that aren't fish at
+     all. And a robot fish. In toki pona each fish is "kala" and its
+     modern genus, written in toki pona's letters: Muraena anguilla is
+     Anguilla now, so the eel is kala Ankila.
+     Tagged only `catch`, which the errand generator never asks for, so
+     nothing you can pull out of the water is ever anyone's errand, and
+     every seed's chain stays as it was. The fisherman buys them by that
+     tag. */
+  carp: {
+    icon: '🐟', tags: ['catch'], price: 2, en: 'carp', full: 'a carp',
+    ru: 'карп', zh: '鲤鱼', ja: 'コイ', fr: 'carpe', es: 'carpa', ar: 'سمك الشبوط', pl: 'karp', tok: 'kala Kipinu'
+  },
+  perch: {
+    icon: '🐟', tags: ['catch'], price: 2, en: 'perch', full: 'a perch',
+    ru: 'окунь', zh: '河鲈', ja: 'ヨーロピアンパーチ', fr: 'perche', es: 'perca', ar: 'سمك الفرخ', pl: 'okoń', tok: 'kala Peka'
+  },
+  pike: {
+    icon: '🐟', tags: ['catch'], price: 4, en: 'pike', full: 'a pike',
+    ru: 'щука', zh: '狗鱼', ja: 'カワカマス', fr: 'brochet', es: 'lucio', ar: 'سمك الكراكي', pl: 'szczupak', tok: 'kala Esoko'
+  },
+  trout: {
+    icon: '🐟', tags: ['catch'], price: 3, en: 'trout', full: 'a trout',
+    ru: 'форель', zh: '鳟鱼', ja: 'マス', fr: 'truite', es: 'trucha', ar: 'سلمون مرقط', pl: 'pstrąg', tok: 'kala Samo'
+  },
+  eel: {
+    icon: '🐍', tags: ['catch'], price: 4, en: 'eel', full: 'an eel',
+    ru: 'угорь', zh: '鳗鱼', ja: 'ウナギ', fr: 'anguille', es: 'anguila', ar: 'سمك الأنقليس', pl: 'węgorz', tok: 'kala Ankila'
+  },
+  catfish: {
+    icon: '🐟', tags: ['catch'], price: 3, en: 'catfish', full: 'a catfish',
+    ru: 'сом', zh: '鲶鱼', ja: 'ナマズ', fr: 'silure', es: 'siluro', ar: 'سمك السلور', pl: 'sum', tok: 'kala Silulu'
+  },
+  shrimp: {
+    icon: '🦐', tags: ['catch'], price: 2, en: 'shrimp', full: 'a shrimp',
+    ru: 'креветка', zh: '虾', ja: 'エビ', fr: 'crevette', es: 'camarón', ar: 'جمبري', pl: 'krewetka', tok: 'pipi telo lili'
+  },
+  copepod: {
+    icon: '🦠', tags: ['catch'], price: 1, en: 'copepod', full: 'a copepod',
+    ru: 'веслоногий рачок', zh: '桡足类', ja: 'カイアシ', fr: 'copépode', es: 'copépodo', ar: 'مجدافية الأرجل', pl: 'widłonóg', tok: 'pipi telo lili lili'
+  },
+  knifefish: {
+    icon: '🐟', tags: ['catch'], price: 4, en: 'banded knifefish', full: 'a banded knifefish',
+    ru: 'обыкновенный гимнот', zh: '圭亚那裸背电鳗', ja: 'バンデッド・ナイフフィッシュ', fr: 'gymnote rayé', es: 'morenita', ar: 'جمنوت', pl: 'Gymnotus', tok: 'kala Kinotu'
+  },
+  bullhead: {
+    icon: '🐟', tags: ['catch'], price: 2, en: 'bullhead', full: 'a bullhead',
+    ru: 'подкаменщик', zh: '杜父鱼', ja: 'カジカ', fr: 'chabot', es: 'cavilat', ar: 'قد الأنهار', pl: 'głowacz', tok: 'kala Kotu'
+  },
+  tilapia: {
+    icon: '🐟', tags: ['catch'], price: 2, en: 'tilapia', full: 'a tilapia',
+    ru: 'тиляпия', zh: '罗非鱼', ja: 'ティラピア', fr: 'tilapia', es: 'tilapia', ar: 'سمك البلطي', pl: 'tilapia', tok: 'kala Saloteloton'
+  },
+  paradise_fish: {
+    icon: '🐠', tags: ['catch'], price: 3, en: 'paradise fish', full: 'a paradise fish',
+    ru: 'макропод', zh: '叉尾斗鱼', ja: 'タイワンキンギョ', fr: 'macropode', es: 'pez paraíso', ar: 'سمك الجنة', pl: 'wielkopłetw', tok: 'kala Makopotu'
+  },
+  stickleback: {
+    icon: '🐟', tags: ['catch'], price: 1, en: 'stickleback', full: 'a stickleback',
+    ru: 'колюшка', zh: '三刺鱼', ja: 'イトヨ', fr: 'épinoche', es: 'espinoso', ar: 'أبو شوكة', pl: 'ciernik', tok: 'kala Kasetelosetu'
+  },
+  weatherfish: {
+    icon: '🐟', tags: ['catch'], price: 2, en: 'weatherfish', full: 'a weatherfish',
+    ru: 'вьюн', zh: '泥鳅', ja: 'ヨーロッパドジョウ', fr: 'loche d’étang', es: 'misgurno', ar: 'سمك اللخ', pl: 'piskorz', tok: 'kala Misukunu'
+  },
+  hatchetfish: {
+    icon: '🐟', tags: ['catch'], price: 3, en: 'hatchetfish', full: 'a hatchetfish',
+    ru: 'клинобрюшка', zh: '胸斧鱼', ja: 'ハチェットフィッシュ', fr: 'poisson-hachette', es: 'pechito', ar: 'سمك المياه العذبة الفأسي', pl: 'pstrążeń', tok: 'kala Kasetelopeleku'
+  },
+  elephantfish: {
+    icon: '🐟', tags: ['catch'], price: 5, en: 'elephantfish', full: 'an elephantfish',
+    ru: 'слонорыл', zh: '长颌鱼', ja: 'モルミルス', fr: 'mormyre', es: 'pez elefante', ar: 'قنومة', pl: 'Mormyrus', tok: 'kala Momilu'
+  },
+  fahaka: {
+    icon: '🐡', tags: ['catch'], price: 5, en: 'Fahaka pufferfish', full: 'a Fahaka pufferfish',
+    ru: 'фахака', zh: '尼罗鲀', ja: 'テトラオドン・ファハカ', fr: 'tétrodon fahaka', es: 'pez globo fahaka', ar: 'ينفوخ نيلي', pl: 'kolcobrzuch nilowy', tok: 'kala Tetaton'
+  },
+  robot_fish: {
+    icon: '🤖', tags: ['catch'], price: 10, en: 'robot fish', full: 'a robot fish',
+    ru: 'рыба-робот', zh: '机器鱼', ja: 'ロボット魚', fr: 'poisson-robot', es: 'pez robot', ar: 'سمكة آلية', pl: 'ryba-robot', tok: 'kala ilo'
+  },
+
   /* ---- only ever made at an oven (see LG.RECIPES) ----------------------
      No tags, so the errand generator never picks them: they can't be
      anyone's errand, and adding them leaves every seed's chain as it was. */
@@ -931,9 +1016,47 @@ LG.RECIPES = [
   { needs: { bacon: 1 }, makes: 'fried_bacon' },
   { needs: { bacon: 1, bread: 1 }, makes: 'sandwich' },
   { needs: { fish: 1 }, makes: 'grilled_fish' },
+  { needs: { carp: 1 }, makes: 'grilled_fish' },
+  { needs: { perch: 1 }, makes: 'grilled_fish' },
+  { needs: { trout: 1 }, makes: 'grilled_fish' },
+  { needs: { pike: 1 }, makes: 'grilled_fish' },
+  { needs: { catfish: 1 }, makes: 'grilled_fish' },
+  { needs: { tilapia: 1 }, makes: 'grilled_fish' },
   { needs: { mushrooms: 1 }, makes: 'fried_mushrooms' },
   { needs: { potato: 1 }, makes: 'baked_potato' },
   { needs: { herbs: 1 }, with: { teapot: 1 }, makes: 'tea' }
+];
+
+/* ------------------------------------------------------------- catches
+   What bites at the pond (see fishing.js). `weight` is how often it's the
+   one on the end of the line, against the rest that are about; `bite` is
+   how many seconds the float stays under before it gets away — the rarer,
+   the quicker. `when` keeps a fish to the day or the night; without it,
+   it's about at any hour. `seasons` multiplies its weight in a season (1
+   if unnamed), following when it feeds: warm-water fish sulk in the
+   cold, pike, perch and trout feed through it, eels run in autumn, and
+   sticklebacks spawn and copepods bloom in spring. Never 0, since a
+   season is hours of real play. The names, prices and icons are in
+   LG.ITEMS like everything else you can carry. */
+LG.CATCHES = [
+  { id: 'perch',         weight: 18, bite: 0.9, seasons: { autumn: 1.5, winter: 1.5 } },
+  { id: 'carp',          weight: 16, bite: 0.9, seasons: { summer: 2, autumn: 0.8, winter: 0.3 } },
+  { id: 'stickleback',   weight: 14, bite: 1.1, seasons: { spring: 2.5, winter: 0.6 } },
+  { id: 'shrimp',        weight: 10, bite: 1.0, seasons: { summer: 1.3, winter: 0.6 } },
+  { id: 'copepod',       weight: 8,  bite: 1.2, seasons: { spring: 2.5, winter: 0.5 } },
+  { id: 'tilapia',       weight: 8,  bite: 0.9, when: 'day',   seasons: { summer: 2.5, spring: 0.8, autumn: 0.6, winter: 0.1 } },
+  { id: 'trout',         weight: 8,  bite: 0.7, when: 'day',   seasons: { summer: 0.5, autumn: 1.5, winter: 1.5 } },
+  { id: 'catfish',       weight: 8,  bite: 0.8, when: 'night', seasons: { summer: 2, winter: 0.2 } },
+  { id: 'eel',           weight: 7,  bite: 0.6, when: 'night', seasons: { autumn: 3, summer: 1.2, winter: 0.2 } },
+  { id: 'bullhead',      weight: 6,  bite: 0.9, seasons: { summer: 0.7, winter: 1.2 } },
+  { id: 'weatherfish',   weight: 6,  bite: 0.8, seasons: { summer: 1.3, winter: 0.4 } },
+  { id: 'paradise_fish', weight: 5,  bite: 0.8, when: 'day',   seasons: { summer: 2, winter: 0.3 } },
+  { id: 'pike',          weight: 5,  bite: 0.5, seasons: { summer: 0.7, autumn: 2, winter: 1.5 } },
+  { id: 'knifefish',     weight: 4,  bite: 0.6, when: 'night', seasons: { summer: 2, winter: 0.1 } },
+  { id: 'hatchetfish',   weight: 4,  bite: 0.7, when: 'day',   seasons: { summer: 2, winter: 0.1 } },
+  { id: 'elephantfish',  weight: 3,  bite: 0.6, when: 'night', seasons: { summer: 2, winter: 0.1 } },
+  { id: 'fahaka',        weight: 2,  bite: 0.6, seasons: { summer: 2, winter: 0.1 } },
+  { id: 'robot_fish',    weight: 1,  bite: 0.4 }
 ];
 
 /* Fallback price when an item has no explicit `price` field. */
@@ -1246,6 +1369,62 @@ LG.TXN = {
     ar: 'تم إعداد {item} في الفرن.',
     pl: 'Przygotowujesz w piecu: {item}.',
     tok: 'sina pali e {item} kepeken ilo seli.'
+  },
+  /* Fishing (see fishing.js). The catch takes the same colon as cooking. */
+  cast: {
+    en: 'You cast your line.',
+    ru: 'Вы забрасываете удочку.',
+    zh: '你抛出了鱼线。',
+    ja: '釣り糸を垂らした。',
+    fr: 'Vous lancez votre ligne.',
+    es: 'Lanzas el sedal.',
+    ar: 'تم رمي الصنارة.',
+    pl: 'Zarzucasz wędkę.',
+    tok: 'sina pana e linja tawa telo.'
+  },
+  reelIn: {
+    en: 'You reel in your line.',
+    ru: 'Вы сматываете удочку.',
+    zh: '你收回了鱼线。',
+    ja: '釣り糸を巻き上げた。',
+    fr: 'Vous ramenez votre ligne.',
+    es: 'Recoges el sedal.',
+    ar: 'تم سحب الخيط.',
+    pl: 'Zwijasz wędkę.',
+    tok: 'sina kama jo e linja.'
+  },
+  tooSoon: {
+    en: 'Too soon: there is nothing on the hook.',
+    ru: 'Слишком рано: на крючке ничего нет.',
+    zh: '太早了，鱼钩上什么也没有。',
+    ja: '早すぎた。針には何もかかっていない。',
+    fr: 'Trop tôt : il n’y a rien au bout de la ligne.',
+    es: 'Demasiado pronto: no hay nada en el anzuelo.',
+    ar: 'مبكر جدًا، لا شيء في الصنارة.',
+    pl: 'Za wcześnie: na haczyku nic nie ma.',
+    tok: 'tenpo li lili. ijo li lon ala linja.'
+  },
+  gotAway: {
+    en: 'Too late: it got away.',
+    ru: 'Поздно: сорвалась.',
+    zh: '太晚了，它逃走了。',
+    ja: '遅すぎた。逃げられた。',
+    fr: 'Trop tard : il s’est échappé.',
+    es: 'Demasiado tarde: se ha escapado.',
+    ar: 'متأخر جدًا، لقد أفلت.',
+    pl: 'Za późno: uciekło.',
+    tok: 'tenpo li pini. ona li tawa weka.'
+  },
+  landed: {
+    en: 'You catch {item}.',
+    ru: 'Вы поймали: {item}.',
+    zh: '你钓到了{item}。',
+    ja: '{item}を釣り上げた。',
+    fr: 'Vous attrapez : {item}.',
+    es: 'Pescas: {item}.',
+    ar: 'تم اصطياد {item}.',
+    pl: 'Łowisz: {item}.',
+    tok: 'sina alasa e {item}.'
   }
 };
 /* All other languages' lines put the traveller in the grammatical
@@ -1388,8 +1567,8 @@ LG.NPCS = [
     x: 12, y: 67, home: { x: 6, y: 66, w: 11, h: 2 },
     voice: { gender: 'male', age: 'middle' },
     workRect: { x: 6, y: 65, w: 12, h: 3 }, workLabel: 'the lake',
-    sells: [{ i: 'fish', p: 2 }, { i: 'rope', p: 3 }],
-    buys: [{ i: 'bread', p: 2 }, { i: 'beer', p: 2 }]
+    sells: [{ i: 'fish', p: 2 }, { i: 'rope', p: 3 }, { i: 'fishing_rod', p: 4 }],
+    buys: [{ i: 'bread', p: 2 }, { i: 'beer', p: 2 }], buysTags: ['catch']
   },
 
   {

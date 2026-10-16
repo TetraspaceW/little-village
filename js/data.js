@@ -186,7 +186,11 @@ LG.LEVELS = {
    and anyone near enough hears it; a `rung` thing is rung rather than
    played. The bell is tubular bells an octave up, where they ring like a
    handbell: the soundfont's "tinkle bell" is a click a tenth of a second long. `leaves` is the container left in
-   your pockets once something has been eaten or drunk out of it. `g` is the item name's
+   your pockets once something has been eaten or drunk out of it. The
+   toys have a use each of their own (see LG.toys): 'roll' throws a
+   twenty-sided die, 'kick' puts a ball down to be kicked about and picks
+   it up again, and 'fly' sends a kite up, which it will only go on a
+   windy day out of doors. `g` is the item name's
    grammatical gender and number, in the languages where "(worn)" or
    "(lit)" has to agree with it (see LG.WORN, LG.LIT): m, f, n or
    p(lural) in Russian and Polish, m, f, mp or fp in French and Spanish,
@@ -675,11 +679,11 @@ LG.ITEMS = {
     ru: 'гитара', zh: '吉他', ja: 'ギター', fr: 'guitare', es: 'guitarra', ar: 'جيتار', pl: 'gitara', tok: 'ilo kalama pi linja luka'
   },
   kite: {
-    icon: '🪁', tags: ['hold', 'ground', 'prize'], en: 'kite', full: 'a kite',
+    icon: '🪁', tags: ['hold', 'ground', 'prize'], use: 'fly', en: 'kite', full: 'a kite',
     ru: 'воздушный змей', zh: '风筝', ja: 'たこ', fr: 'cerf-volant', es: 'cometa', ar: 'طائرة ورقية', pl: 'latawiec', tok: 'len pi tawa sewi'
   },
   ball: {
-    icon: '⚽', tags: ['hold', 'shop', 'ground', 'prize'], en: 'ball', full: 'a ball',
+    icon: '⚽', tags: ['hold', 'shop', 'ground', 'prize'], use: 'kick', en: 'ball', full: 'a ball',
     ru: 'мяч', zh: '球', ja: 'ボール', fr: 'ballon', es: 'pelota', ar: 'كرة', pl: 'piłka', tok: 'sike musi'
   },
   teddy: {
@@ -687,7 +691,7 @@ LG.ITEMS = {
     ru: 'плюшевый мишка', zh: '泰迪熊', ja: 'テディベア', fr: 'ours en peluche', es: 'osito de peluche', ar: 'دب محشو', pl: 'miś pluszowy', tok: 'soweli len'
   },
   dice: {
-    icon: '🎲', tags: ['hold', 'ground'], en: 'dice', full: 'a pair of dice',
+    icon: '🎲', tags: ['hold', 'ground'], use: 'roll', en: 'dice', full: 'a pair of dice',
     ru: 'кубики', zh: '骰子', ja: 'サイコロ', fr: 'dés', es: 'dados', ar: 'زهر النرد', pl: 'kości do gry', tok: 'kiwen musi'
   },
   cards: {
@@ -935,6 +939,26 @@ LG.itemSaid = function (id, lang, short) {
   return lang === 'en' ? en : en + ' (“' + LG.itemName(id, lang) + '”)';
 };
 
+/* A number as the village writes it, for the faces of the die: Eastern
+   Arabic digits in Arabic, Chinese numerals in Chinese and Japanese (十七,
+   二十), and toki pona's own counting, where five is luka and twenty
+   mute (seventeen is luka luka luka tu). The rest use the digits English does. */
+LG.numeral = function (n, lang) {
+  if (lang === 'ar') return String(n).replace(/[0-9]/g, d => '٠١٢٣٤٥٦٧٨٩'[d]);
+  if (lang === 'zh' || lang === 'ja') {
+    const D = '〇一二三四五六七八九', tens = Math.floor(n / 10), ones = n % 10;
+    if (n < 10) return D[n];
+    return (tens > 1 ? D[tens] : '') + '十' + (ones ? D[ones] : '');
+  }
+  if (lang === 'tok') {
+    const words = [];
+    for (const [w, v] of [['mute', 20], ['luka', 5], ['tu', 2], ['wan', 1]])
+      while (n >= v) { words.push(w); n -= v; }
+    return words.join(' ') || 'ala';
+  }
+  return String(n);
+};
+
 /* --------------------------------------------------------- what the game says
    The game's own lines about a deal, in the village's language ("you hand
    over the rope" is as much to learn from as anything said to you), with
@@ -1110,6 +1134,74 @@ LG.TXN = {
     ar: 'تم قرع {item}.',
     pl: 'Dzwonisz: {item}.',
     tok: 'sina kalama e {item}.'
+  },
+  /* The toys' lines name their toy outright rather than through {item},
+     so each can take the case its verb wants (запускаете воздушного змея). */
+  roll: {
+    en: 'You roll {n}.',
+    ru: 'Выпало {n}.',
+    zh: '你掷出了{n}。',
+    ja: '{n}が出た。',
+    fr: 'Vous faites {n}.',
+    es: 'Sacas un {n}.',
+    ar: 'تم رمي النرد: {n}.',
+    pl: 'Wyrzucasz {n}.',
+    tok: 'nanpa {n} li kama.'
+  },
+  ballDown: {
+    en: 'You put the ball down.',
+    ru: 'Вы кладёте мяч на землю.',
+    zh: '你把球放在地上。',
+    ja: 'ボールを地面に置いた。',
+    fr: 'Vous posez le ballon par terre.',
+    es: 'Dejas la pelota en el suelo.',
+    ar: 'تم وضع الكرة على الأرض.',
+    pl: 'Kładziesz piłkę na ziemi.',
+    tok: 'sina pana e sike musi tawa ma.'
+  },
+  ballUp: {
+    en: 'You pick up the ball.',
+    ru: 'Вы поднимаете мяч.',
+    zh: '你捡起了球。',
+    ja: 'ボールを拾った。',
+    fr: 'Vous ramassez le ballon.',
+    es: 'Recoges la pelota.',
+    ar: 'تم التقاط الكرة.',
+    pl: 'Podnosisz piłkę.',
+    tok: 'sina kama jo e sike musi.'
+  },
+  kiteUp: {
+    en: 'You let the kite up into the wind.',
+    ru: 'Вы запускаете воздушного змея.',
+    zh: '你放起了风筝。',
+    ja: 'たこをあげた。',
+    fr: 'Vous faites voler le cerf-volant.',
+    es: 'Haces volar la cometa.',
+    ar: 'تم إطلاق الطائرة الورقية في الريح.',
+    pl: 'Puszczasz latawca.',
+    tok: 'sina tawa e len pi tawa sewi lon kon.'
+  },
+  kiteIn: {
+    en: 'You reel in the kite.',
+    ru: 'Вы сматываете воздушного змея.',
+    zh: '你收起了风筝。',
+    ja: 'たこを下ろした。',
+    fr: 'Vous ramenez le cerf-volant.',
+    es: 'Recoges la cometa.',
+    ar: 'تم سحب الطائرة الورقية.',
+    pl: 'Zwijasz latawca.',
+    tok: 'sina kama jo sin e len pi tawa sewi.'
+  },
+  kiteFalls: {
+    en: 'The wind drops, and the kite comes down.',
+    ru: 'Ветер стихает, и змей опускается.',
+    zh: '风停了，风筝落了下来。',
+    ja: '風がやんで、たこが落ちてきた。',
+    fr: 'Le vent tombe, et le cerf-volant redescend.',
+    es: 'El viento amaina y la cometa baja.',
+    ar: 'هدأت الريح فهبطت الطائرة الورقية.',
+    pl: 'Wiatr cichnie i latawiec opada.',
+    tok: 'kon li pini, la len pi tawa sewi li kama anpa.'
   },
   /* A colon before the dish, where the language allows it, keeps the item
      name in the form LG.ITEMS gives it from having to change its ending. */

@@ -733,6 +733,125 @@ section('pockets.js: the oven, and the Pockets box it describes');
   at(was.x, was.y);
 }
 
+section('toys: the die, the ball and the kite');
+{
+  const L = LG.ledger, T = LG.toys, W = LG.world, me = LG.village.player, TILE = 32;
+  const was = { x: me.px, y: me.py, dir: me.dir };
+  const at = (x, y) => { me.px = x; me.py = y; me.tx = Math.floor(x / TILE); me.ty = Math.floor(y / TILE); };
+  const frame = (vx, vy) => { me.vx = vx; me.vy = vy; T.update(1 / 60); };
+
+  // The die, numbered as the village writes numbers.
+  ok(LG.numeral(17, 'ar') === '١٧' && LG.numeral(20, 'ar') === '٢٠', 'Arabic numbers are Eastern Arabic digits');
+  ok(LG.numeral(20, 'zh') === '二十' && LG.numeral(11, 'ja') === '十一' && LG.numeral(7, 'zh') === '七',
+     'Chinese and Japanese ones are Chinese numerals');
+  ok(LG.numeral(17, 'tok') === 'luka luka luka tu' && LG.numeral(20, 'tok') === 'mute' && LG.numeral(1, 'tok') === 'wan',
+     'toki pona counts in its own words');
+  ok(LG.numeral(17, 'ru') === '17' && LG.numeral(17, 'fr') === '17', 'and the rest use digits');
+  L.give('dice', 1);
+  ok(LG.pockets.use('dice') && sandbox.document.getElementById('dice').classList.contains('open'), 'rolling the dice opens the die');
+  const rolls = new Set();
+  for (let i = 0; i < 400; i++) { const n = T.roll(true); ok(n >= 1 && n <= 20 && n === (n | 0), 'a roll is a whole number from 1 to 20'); rolls.add(n); }
+  ok(rolls.size === 20, 'and every face comes up');
+  const lang = LG.config.settings.lang;
+  ok(T._face(17).indexOf(LG.text.escapeHTML(LG.numeral(17, lang).split(' ')[0])) !== -1, 'the face shows the number in the village\'s numerals');
+  ok(L.count('dice') === 1, 'and rolling keeps the dice');
+  sandbox.document.getElementById('dice').classList.remove('open');
+  L.take('dice', 1);
+
+  /* The ball. Somewhere open on the green with a wall of water, a fence or a
+     building a few tiles to the right: a row of five open tiles and then a solid one. */
+  let spot = null;
+  for (let y = 2; y < W.H - 2 && !spot; y++) for (let x = 2; x < W.W - 8 && !spot; x++) {
+    const open = i => !W.isSolid(x + i, y) && !W.isSolid(x + i, y - 1) && !W.isSolid(x + i, y + 1) &&
+                      !W.buildingUnder({ tx: x + i, ty: y, px: (x + i) * TILE, py: y * TILE });
+    if ([0, 1, 2, 3, 4].every(open) && W.isSolid(x + 5, y) && W.isSolid(x + 5, y - 1) && W.isSolid(x + 5, y + 1)) spot = { x, y };
+  }
+  ok(spot, 'there is somewhere to kick a ball against a wall');
+  if (spot) {
+    const B = T._ball, wallX = (spot.x + 5) * TILE;
+    L.give('ball', 1);
+    at(spot.x * TILE + 16, spot.y * TILE + 4); me.dir = 'right';
+    ok(LG.pockets.use('ball') && L.state.out.ball && L.count('ball') === 1, 'playing with the ball puts it down and keeps it yours');
+    ok(!T._blocked(B.px, B.py) && B.px > me.px, 'in front of you, clear of any wall');
+    ok(/title="Pick up the ball"/.test(sandbox.document.getElementById('inv').innerHTML), 'its pill now picks it up');
+
+    // Walking into it kicks it the way you're walking, once (after a moment: not as it's put down).
+    for (let i = 0; i < 15; i++) frame(0, 0);
+    at(B.px - 12, B.py - 8);
+    frame(132, 0);
+    const v1 = B.vx;
+    ok(v1 > 300 && Math.abs(B.vy) < 1e-9, 'walking into the ball kicks it the way you are walking');
+    frame(132, 0); frame(132, 0);
+    ok(B.vx <= v1, 'and walking on into it straight away does not kick it again');
+    me.vx = me.vy = 0;
+
+    // It flies at the wall, bounces off softly, and never goes into it or shakes.
+    let inside = false, maxX = 0, turned = 0, lastSign = 1;
+    for (let i = 0; i < 600; i++) {
+      T.update(1 / 60);
+      if (T._blocked(B.px, B.py) || B.px + 6 > wallX) inside = true;
+      maxX = Math.max(maxX, B.px);
+      const sg = Math.sign(B.vx);
+      if (sg && sg !== lastSign) { turned++; lastSign = sg; }
+    }
+    ok(!inside, 'a kicked ball never goes into the wall');
+    ok(turned <= 1, 'it bounces off the wall at most once, and does not rattle against it');
+    ok(B.vx === 0 && B.vy === 0, 'and comes to rest');
+
+    // Pinned against the wall, walking into it over and over doesn't make it judder.
+    B.px = wallX - 6.5; B.py = spot.y * TILE + 16; B.vx = B.vy = 0; B.cool = 0;
+    ok(!T._blocked(B.px, B.py), '(the ball is right up against the wall)');
+    let moved = 0;
+    for (let i = 0; i < 240; i++) {
+      at(B.px - 12, B.py - 8);
+      const x0 = B.px;
+      frame(210, 0);
+      moved = Math.max(moved, Math.abs(B.px - x0), Math.abs(B.vx));
+    }
+    ok(moved === 0 && !T._blocked(B.px, B.py), 'a ball against a wall stays put however often you walk into it');
+    // Walking into it slantwise slides it along the wall instead.
+    at(B.px - 9, B.py - 8 - 5);
+    frame(150, 150);
+    ok(B.vx === 0 && B.vy > 0, 'and a kick at a slant slides it along the wall');
+    for (let i = 0; i < 300; i++) T.update(1 / 60);
+    ok(!T._blocked(B.px, B.py), 'without going into anything');
+
+    // Picking it up: only from beside it.
+    at(B.px - 200, B.py);
+    ok(!LG.pockets.use('ball') && L.state.out.ball, 'you can\'t pick the ball up from across the green');
+    at(B.px, B.py - 8);
+    ok(T.nearBall(me) && LG.pockets.use('ball') && !L.state.out.ball && L.count('ball') === 1, 'but can from beside it');
+    LG.pockets.use('ball');
+    L.take('ball', 1);
+    ok(!L.state.out.ball, 'handing the ball over takes it out of play');
+  }
+
+  // The kite: only in a wind, only outside, and it follows you.
+  const sky = { w: LG.time.weather, left: LG.time.weatherLeft };
+  L.give('kite', 1);
+  const outside = spot ? { x: spot.x * TILE + 16, y: spot.y * TILE + 16 } : { x: was.x, y: was.y };
+  at(outside.x, outside.y);
+  LG.time.setWeather('clear', 1);
+  ok(!T.windy() && !LG.pockets.use('kite') && !L.state.out.kite, 'no kite flies on a still day');
+  LG.time.setWeather('wind', 1);
+  const room = W.buildings[0];
+  at((room.x + 2) * TILE, (room.y + 2) * TILE);
+  if (W.buildingUnder(me)) ok(!LG.pockets.use('kite') && !L.state.out.kite, 'nor indoors');
+  at(outside.x, outside.y);
+  ok(T.windy() && LG.pockets.use('kite') && L.state.out.kite && L.count('kite') === 1, 'but in a high wind it goes up');
+  for (let i = 0; i < 240; i++) T.update(1 / 60);
+  ok(T._kite.y < me.py - 60 && T._kite.x > me.px, 'and hangs downwind, above you');
+  at(outside.x - 64, outside.y);
+  for (let i = 0; i < 240; i++) T.update(1 / 60);
+  ok(T._kite.x > me.px && T._kite.x < me.px + 120, 'and follows you when you move');
+  LG.time.setWeather('clear', 1);
+  T.update(1 / 60);
+  ok(!L.state.out.kite && L.count('kite') === 1, 'when the wind drops it comes down, back to your pockets');
+  L.take('kite', 1);
+  LG.time.setWeather(sky.w, sky.left);
+  at(was.x, was.y); me.dir = was.dir; me.vx = me.vy = 0;
+}
+
 section('lights');
 {
   const L = LG.ledger;

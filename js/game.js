@@ -414,6 +414,7 @@ LG.game = (function () {
     if (nearby) { talkTo(nearby); return; }
     if (beast && !beast.caught && dist(player, beast) < TILE * 1.4) catchBeast();
     else if (worldItem && !worldItem.taken && dist(player, worldItem) < TILE * 1.4) pickUp();
+    else if (LG.toys.nearBall(player)) LG.toys.useBall();
     else if (nearBoard()) openBoard();
     else if (LG.pockets.atOven()) LG.pockets.openOven();
   }
@@ -700,6 +701,7 @@ LG.game = (function () {
      normalised only above length 1: keyboard diagonals stay full speed and
      a half-pushed stick walks at half speed. */
   function movePlayer(dt) {
+    player.vx = player.vy = 0;
     if (uiBlocked()) return;
     let dx = 0, dy = 0;
     if (held.left) dx -= 1;
@@ -714,8 +716,11 @@ LG.game = (function () {
     const speed = running() ? RUN_SPEED : WALK_SPEED;
     const nx = player.px + dx * scale * speed * dt;
     const ny = player.py + dy * scale * speed * dt;
+    // How fast they really went, walls and all: it's what kicks the ball (LG.toys).
+    const x0 = player.px, y0 = player.py;
     if (canStand(nx, player.py)) player.px = nx;
     if (canStand(player.px, ny)) player.py = ny;
+    if (dt) { player.vx = (player.px - x0) / dt; player.vy = (player.py - y0) / dt; }
     player.tx = (player.px / TILE) | 0;
     player.ty = (player.py / TILE) | 0;
     if (Math.abs(dx) > Math.abs(dy)) player.dir = dx > 0 ? 'right' : 'left';
@@ -769,6 +774,7 @@ LG.game = (function () {
     if (el && el.textContent !== label) el.textContent = label;
 
     movePlayer(dt);
+    LG.toys.update(dt);
 
     for (const n of npcs) {
       const wasFollowing = n.followingPlayer;
@@ -825,6 +831,8 @@ LG.game = (function () {
       say = (tap ? 'Tap to pick up ' : 'Press E to pick up ') + beast.name;
     } else if (worldItem && !worldItem.taken && dist(player, worldItem) < TILE * 1.8) {
       say = tap ? 'Tap to pick it up' : 'Press E to pick it up';
+    } else if (LG.toys.nearBall(player)) {
+      say = tap ? 'Walk into the ball to kick it' : 'Walk into the ball to kick it, or press E to pick it up';
     } else if (nearBoard()) {
       say = tap ? 'Tap the noticeboard to read it'
                 : 'Press E to read the noticeboard';
@@ -971,6 +979,7 @@ LG.game = (function () {
 
     W.drawAnimated(ctx, c, vw, vh);
     drawWorldItem();
+    LG.toys.drawGround(ctx, room);
 
     /* Nobody inside a building the player isn't in (the roof lifts only on
        the player's own room), and nobody off screen; the margin is for
@@ -999,6 +1008,7 @@ LG.game = (function () {
         }, dpr);
       }
     }
+    LG.toys.drawSky(ctx);
     for (const a of drawables) {
       if (a.bubble) A.drawBubble(ctx, a, C.language().fontStack, dpr);
     }

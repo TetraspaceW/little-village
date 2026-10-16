@@ -15,7 +15,8 @@
    without storing a flag that could go stale.
 
    What the traveller can *do* with their things — eat, wear, light, play,
-   cook — is pockets.js. The record of it (what's worn, what's lit) is
+   cook, play with — is pockets.js. The record of it (what's worn, what's
+   lit, which toy is out of the pockets and being played with) is
    kept here with everything else a save carries; how an item's pill reads
    and what clicking it does comes from whoever called `describeWith`. */
 window.LG = window.LG || {};
@@ -24,7 +25,7 @@ LG.ledger = (function () {
   const settings = LG.config.settings, C = LG.config;
   const { escapeHTML, rubyHTML } = LG.text;
 
-  const state = { inv: {}, worn: {}, lit: {}, notes: [], deeds: [], won: false, board: [] };
+  const state = { inv: {}, worn: {}, lit: {}, out: {}, notes: [], deeds: [], won: false, board: [] };
   const logLines = [];
   let plan = null;
   let isSpent = () => false;
@@ -35,7 +36,7 @@ LG.ledger = (function () {
     plan = newPlan;
     isSpent = spent || (() => false);
     state.inv = { coins: 10 };          // a little money to be going on with
-    state.worn = {}; state.lit = {};
+    state.worn = {}; state.lit = {}; state.out = {};
     state.notes = []; state.deeds = []; state.won = false; state.board = [];
     logLines.length = 0;
   }
@@ -54,8 +55,8 @@ LG.ledger = (function () {
   function take(id, n) {
     if (many(n) <= 0) return;
     state.inv[id] = Math.max(0, (state.inv[id] || 0) - many(n));
-    // Can't wear, or carry a flame in, what you've handed over.
-    if (!state.inv[id]) { delete state.inv[id]; delete state.worn[id]; delete state.lit[id]; }
+    // Can't wear, carry a flame in, or play with what you've handed over.
+    if (!state.inv[id]) { delete state.inv[id]; delete state.worn[id]; delete state.lit[id]; delete state.out[id]; }
     render();
   }
   /* `exclude` omits one item from the list entirely -- used for a

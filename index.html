@@ -260,6 +260,9 @@
         <li>A <b>drum</b>, <b>violin</b>, <b>guitar</b> or <b>bell</b> can be played the same way —
             and anyone nearby will hear it. <small>(Instrument sounds: FluidR3 GM soundfont by
             Frank Wen, CC BY 3.0.)</small></li>
+        <li>The <b>dice</b> roll a twenty-sided die, numbered the way the village writes its numbers.
+            A <b>ball</b> can be put down and kicked about by walking into it (press <b>E</b> beside it
+            to pick it up again), and a <b>kite</b> can be flown out of doors when the wind is up.</li>
         <li>They remember what you tell them — and they repeat it to each other.</li>
         <li>Nobody's <b>name</b> is on screen until they tell you it. Ask
             <em>"What is your name?"</em> — it's in the Phrases row.</li>
@@ -299,6 +302,16 @@
     </div>
   </div>
 
+  <!-- ------------------------------------------------------------ dice -->
+  <div id="dice" class="panel">
+    <div class="panel-card dice-card">
+      <h2>🎲 Dice</h2>
+      <div id="diceFace"></div>
+      <button id="diceRoll" class="primary">Roll</button>
+      <button id="diceClose" class="secondary">Close</button>
+    </div>
+  </div>
+
   <!-- ---------------------------------------------------------- ending -->
   <div id="ending" class="panel">
     <div class="panel-card">
@@ -328,6 +341,7 @@
 <script src="js/village.js"></script>
 <script src="js/sound.js"></script>
 <script src="js/ledger.js"></script>
+<script src="js/toys.js"></script>
 <script src="js/pockets.js"></script>
 <script src="js/trade.js"></script>
 <script src="js/settings-panel.js"></script>

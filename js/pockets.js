@@ -1,6 +1,6 @@
 /* pockets.js — what the traveller can do with their own things: eat or
-   drink them, put them on, light them, play them, and cook with them at
-   an oven.
+   drink them, put them on, light them, play them, play with them (the
+   toys themselves are LG.toys), and cook with them at an oven.
 
    The record of what they have stays in ledger.js; this is everything it
    means. From outside it is a handful of calls — `use` (an item in the
@@ -85,6 +85,9 @@ LG.pockets = (function () {
         say(id, it.rung ? 'ring' : 'play', 'the ' + it.en);
         heard(id);
         return true;
+      case 'roll': LG.toys.openDice(); return true;
+      case 'kick': return LG.toys.useBall();
+      case 'fly': return LG.toys.useKite();
       default:                         // eat, drink
         if (spare(id) < 1) {
           L.log('You had better hang on to the ' + it.en + ' for now.');
@@ -110,15 +113,16 @@ LG.pockets = (function () {
   }
 
   /* --------------------------------------------------- the Pockets box */
-  const VERB = { eat: 'Eat', drink: 'Drink', wear: 'Put on', light: 'Light', play: 'Play' };
-  const UNDO = { wear: 'Take off', light: 'Put out' };
+  const VERB = { eat: 'Eat', drink: 'Drink', wear: 'Put on', light: 'Light', play: 'Play',
+                 roll: 'Roll', kick: 'Put down', fly: 'Fly' };
+  const UNDO = { wear: 'Take off', light: 'Put out', kick: 'Pick up', fly: 'Reel in' };
   /* How the ledger should draw an item's pill: null for a plain one, or
      its tooltip, the mark beside its name ("(worn)", "(lit)") in the
      village's language, whether it's on, and what a click does. */
   function pill(id) {
     const it = item(id);
     if (!it || !it.use) return null;
-    const on = !!(state.worn[id] || state.lit[id]);
+    const on = !!(state.worn[id] || state.lit[id] || state.out[id]);
     return {
       title: (on ? UNDO[it.use] : it.rung ? 'Ring' : VERB[it.use]) + ' the ' + it.en,
       mark: state.worn[id] ? LG.wornMark(id, settings.lang)

@@ -189,6 +189,7 @@ LG.save = (function () {
     (data.worn || []).forEach(k => {
       if (st.inv[k] > 0 && LG.ITEMS[k] && LG.ITEMS[k].use === 'wear') st.worn[k] = true;
     });
+    st.out = {};                       // a toy that was out comes back to the pockets
     st.lit = {};
     (data.lit || []).forEach(k => {
       if (st.inv[k] > 0 && LG.ITEMS[k] && LG.ITEMS[k].use === 'light') st.lit[k] = true;

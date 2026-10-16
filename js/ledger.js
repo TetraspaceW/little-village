@@ -9,13 +9,15 @@
    carries; it's one object mutated in place, so a reference taken once
    stays current across new villages.
 
-   A village is attached with `begin(plan, isSpent, keep)`: the plan says
-   which facts exist to be learned, and `isSpent(factId)` asks the world
-   whether a note is already done with, so the notebook can strike it
-   through without storing a flag that could go stale. `keep(itemId)` asks
-   how many of an item the errand still needs, so eating or drinking
-   can't use up the one thing somebody is waiting on. `heard(itemId)` is
-   told when the traveller plays something, so the village can hear it. */
+   A village is attached with `begin(plan, isSpent)`: the plan says which
+   facts exist to be learned, and `isSpent(factId)` asks the world whether
+   a note is already done with, so the notebook can strike it through
+   without storing a flag that could go stale.
+
+   What the traveller can *do* with their things — eat, wear, light, play,
+   cook — is pockets.js. The record of it (what's worn, what's lit) is
+   kept here with everything else a save carries; how an item's pill reads
+   and what clicking it does comes from whoever called `describeWith`. */
 window.LG = window.LG || {};
 
 LG.ledger = (function () {
@@ -26,15 +28,12 @@ LG.ledger = (function () {
   const logLines = [];
   let plan = null;
   let isSpent = () => false;
-  let keep = () => 0;
-  let heard = () => {};
+  let describe = () => null;
 
   /* Starts the record afresh for a new (or about-to-be-restored) village. */
-  function begin(newPlan, spent, needed, onPlay) {
+  function begin(newPlan, spent) {
     plan = newPlan;
     isSpent = spent || (() => false);
-    keep = needed || (() => 0);
-    heard = onPlay || (() => {});
     state.inv = { coins: 10 };          // a little money to be going on with
     state.worn = {}; state.lit = {};
     state.notes = []; state.deeds = []; state.won = false; state.board = [];
@@ -53,7 +52,7 @@ LG.ledger = (function () {
   /* `exclude` omits one item from the list entirely -- used for a
      caught animal following the player, which isn't really "in a
      pocket" and is described separately (see LG.view.companion). */
-  /* What's worn is listed by `wornList` instead, so a hat on the
+  /* What's worn is listed by LG.pockets.wornList instead, so a hat on the
      traveller's head isn't also described as being in a pocket. */
   function inventoryList(exclude) {
     const carried = k => state.inv[k] - (state.worn[k] ? 1 : 0);
@@ -63,84 +62,11 @@ LG.ledger = (function () {
     return ks.map(k => LG.itemSaid(k, settings.lang, true) +
                        (carried(k) > 1 ? ' x' + carried(k) : '')).join(', ');
   }
-  function wornList() {
-    return Object.keys(state.worn).filter(k => state.inv[k] > 0)
-      .map(k => LG.itemSaid(k, settings.lang, true)).join(', ');
-  }
-  function litList() {
-    return Object.keys(state.lit).filter(k => state.inv[k] > 0)
-      .map(k => LG.itemSaid(k, settings.lang, true)).join(', ');
-  }
-  /* How far, in tiles, the brightest light the traveller has burning
-     reaches — 0 with none lit. */
-  function glow() {
-    return Object.keys(state.lit).reduce((r, k) =>
-      state.inv[k] > 0 ? Math.max(r, LG.ITEMS[k].glow || 0) : r, 0);
-  }
   function itemLabel(id) { return LG.itemName(id, settings.lang); }
 
-  /* Eats, drinks, puts on or takes off one of the traveller's own things
-     (see `use` on LG.ITEMS). Returns whether anything happened. Eating
-     or drinking refuses to touch anything the errand is still waiting on
-     — there's no getting a second goal item once the first is gone, and
-     a dead-ended village isn't a fair price for a snack. */
-  function use(id) {
-    const it = LG.ITEMS[id];
-    if (!it || !it.use || !count(id)) return false;
-    const say = (key, english) => txn(it.icon, key, { item: itemLabel(id) }, { item: english });
-    if (it.use === 'wear') {
-      if (state.worn[id]) {
-        delete state.worn[id];
-        say('takeOff', 'the ' + it.en);
-      } else {
-        Object.keys(state.worn).forEach(k => {
-          if (LG.ITEMS[k].slot === it.slot) delete state.worn[k];
-        });
-        state.worn[id] = true;
-        say('wear', it.full);
-      }
-      render();
-      return true;
-    }
-    if (it.use === 'play') {
-      LG.sound.play(it.gm, it.note);
-      say(it.rung ? 'ring' : 'play', 'the ' + it.en);
-      heard(id);
-      return true;
-    }
-    if (it.use === 'light') {
-      if (state.lit[id]) { delete state.lit[id]; say('putOut', 'the ' + it.en); }
-      else { state.lit[id] = true; say('light', 'the ' + it.en); }
-      render();
-      return true;
-    }
-    if (count(id) <= keep(id)) {
-      log('You had better hang on to the ' + it.en + ' for now.');
-      return false;
-    }
-    take(id);
-    if (it.leaves) give(it.leaves, 1);   // the jar, cup or bowl it came in
-    say(it.use, it.full);
-    return true;
-  }
-  /* Can one of LG.RECIPES be made from what's in the pockets? Same rule as
-     eating: nothing the errand is still waiting on goes in the pot. */
-  function canCook(recipe) {
-    const kept = recipe.with || {};   // only has to be there, so the errand loses nothing
-    return Object.keys(recipe.needs).every(k => count(k) - keep(k) >= recipe.needs[k]) &&
-           Object.keys(kept).every(k => count(k) >= kept[k]);
-  }
-  function cook(recipe) {
-    if (!canCook(recipe)) return false;
-    Object.keys(recipe.needs).forEach(k => take(k, recipe.needs[k]));
-    give(recipe.makes, 1);
-    const it = LG.ITEMS[recipe.makes];
-    txn(it.icon, 'cook', { item: itemLabel(recipe.makes) }, { item: it.full });
-    return true;
-  }
-
-  const VERB = { eat: 'Eat', drink: 'Drink', wear: 'Put on', light: 'Light', play: 'Play' };
-  const UNDO = { wear: 'Take off', light: 'Put out' };
+  /* How an item's pill reads and what clicking it does: `fn(itemId)` gives
+     null for a plain pill, or { title, mark, on, act } — see LG.pockets. */
+  function describeWith(fn) { describe = fn; }
   /* "(worn)" or "(lit)" in the village's language; a full-width bracket
      brings its own spacing. */
   function markTag(t) {
@@ -241,26 +167,23 @@ LG.ledger = (function () {
     const inv = document.getElementById('inv');
     const L = C.language();
     const ks = Object.keys(state.inv).filter(k => state.inv[k] > 0 && k !== 'coins');
-    /* Anything with a `use` is a button: click it to eat, drink, put it
-       on or light it (and click again to take it off or put it out). The tooltip says which, in
-       English like the plain pills' tooltips. */
+    /* Anything that can be used is a button; `describe` (see
+       describeWith) says what its tooltip and mark are and what a click
+       does. Plain pills' tooltips are the English name. */
+    const pills = {};
     inv.innerHTML = ks.length
       ? ks.map(k => {
-          const it = LG.ITEMS[k], on = !!(state.worn[k] || state.lit[k]);
+          const it = LG.ITEMS[k], d = pills[k] = describe(k);
           const body = it.icon + ' <span lang="' + L.tag + '">' + escapeHTML(itemLabel(k)) +
             (state.inv[k] > 1 ? ' ×' + state.inv[k] : '') +
-            (state.worn[k] ? markTag(LG.wornMark(k, settings.lang)) : '') +
-            (state.lit[k] ? markTag(LG.litMark(k, settings.lang)) : '') +
-            '</span>';
-          if (!it.use) return '<span class="pill" title="' + it.en + '">' + body + '</span>';
-          const verb = on ? UNDO[it.use] : it.rung ? 'Ring' : VERB[it.use];
-          // Worn and lit look the same: something you've got going.
-          return '<button type="button" class="pill use' + (on ? ' worn' : '') +
-                 '" data-use="' + k + '" title="' + verb + ' the ' + it.en + '">' + body + '</button>';
+            (d && d.mark ? markTag(d.mark) : '') + '</span>';
+          if (!d) return '<span class="pill" title="' + escapeHTML(it.en) + '">' + body + '</span>';
+          return '<button type="button" class="pill use' + (d.on ? ' worn' : '') +
+                 '" data-use="' + k + '" title="' + escapeHTML(d.title) + '">' + body + '</button>';
         }).join('')
       : '<span class="muted">empty pockets</span>';
     Array.prototype.forEach.call(inv.querySelectorAll('[data-use]'), el => {
-      el.onclick = () => use(el.dataset.use);
+      el.onclick = () => pills[el.dataset.use].act();
     });
 
     const nb = document.getElementById('notebook');
@@ -283,7 +206,6 @@ LG.ledger = (function () {
     });
   }
 
-  return { state, begin, count, give, take, use, canCook, cook, inventoryList, wornList, litList, glow,
-           hasNote, learn,
-           log, logSpeech, txn, render };
+  return { state, begin, count, give, take, inventoryList, hasNote, learn,
+           log, logSpeech, txn, render, describeWith };
 })();

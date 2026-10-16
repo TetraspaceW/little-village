@@ -350,6 +350,7 @@ js/npc.js            villager movement, meetings, beliefs and naming, rendering
 js/village.js        the village as it stands: chain, cast, traveller, the thing to find
 js/sound.js          the instruments' notes: soundfont samples, fetched and played
 js/ledger.js         the traveller's pockets, notebook, deeds and log, and the HUD
+js/pockets.js        what you can do with your things: eat, wear, light, play, cook at an oven
 js/trade.js          buying and selling for coin: prices, refunds, the till
 js/dialogue.js       prompt building, conversation UI
 js/save.js           save format: snapshot/restore, both storage locations

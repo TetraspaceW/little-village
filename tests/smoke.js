@@ -504,24 +504,24 @@ section('eating, drinking and wearing what is in your pockets');
 
   const f0 = L.count(food);
   L.give(food, 2);
-  ok(L.use(food) && L.count(food) === f0 + 1, 'eating something uses one up');
+  ok(LG.pockets.use(food) && L.count(food) === f0 + 1, 'eating something uses one up');
   L.take(drink, L.count(drink));
   L.give(drink, 1);
-  ok(L.use(drink) && L.count(drink) === 0, 'and so does drinking');
-  ok(!L.use(drink), 'and you cannot drink what you no longer have');
-  ok(!L.use('coins') && !L.use('rope'), 'coins and rope are not for eating');
+  ok(LG.pockets.use(drink) && L.count(drink) === 0, 'and so does drinking');
+  ok(!LG.pockets.use(drink), 'and you cannot drink what you no longer have');
+  ok(!LG.pockets.use('coins') && !LG.pockets.use('rope'), 'coins and rope are not for eating');
 
   L.give(hat, 1); L.give(crown, 1);
-  ok(L.use(hat) && L.state.worn[hat] && L.count(hat) === 1, 'putting on a hat keeps it, worn');
+  ok(LG.pockets.use(hat) && L.state.worn[hat] && L.count(hat) === 1, 'putting on a hat keeps it, worn');
   const villager = npcs.find(n => n.def.id !== 'petra') || npcs[0];
   const said = LG.itemSaid(hat, LG.config.settings.lang, true);
   const prompt = LG.dialogue._debugPrompt(villager, null);
   ok(prompt.indexOf('They are wearing: ' + said) !== -1, 'villagers can see it on you');
   ok(L.inventoryList().indexOf(said) === -1, 'and it is not also in your pockets');
-  ok(L.use(crown) && L.state.worn[crown] && !L.state.worn[hat],
+  ok(LG.pockets.use(crown) && L.state.worn[crown] && !L.state.worn[hat],
      'putting on a crown takes the hat off — one thing on your head at a time');
-  ok(L.use(crown) && !L.state.worn[crown] && L.count(crown) === 1, 'and clicking again takes it off');
-  L.use(hat);
+  ok(LG.pockets.use(crown) && !L.state.worn[crown] && L.count(crown) === 1, 'and clicking again takes it off');
+  LG.pockets.use(hat);
   L.take(hat, 1);
   ok(!L.state.worn[hat], 'handing over what you are wearing takes it off');
 
@@ -532,10 +532,10 @@ section('eating, drinking and wearing what is in your pockets');
     LG.ITEMS[lk.wants].use = 'eat';
     const n0 = L.count(lk.wants);
     L.give(lk.wants, lk.wantsCount || 1);
-    ok(!L.use(lk.wants) && L.count(lk.wants) === n0 + (lk.wantsCount || 1),
+    ok(!LG.pockets.use(lk.wants) && L.count(lk.wants) === n0 + (lk.wantsCount || 1),
        'you will not eat something the errand still needs');
     L.give(lk.wants, 1);
-    ok(L.use(lk.wants), 'though a spare is fair game');
+    ok(LG.pockets.use(lk.wants), 'though a spare is fair game');
     L.take(lk.wants, L.count(lk.wants) - n0);
     if (was) LG.ITEMS[lk.wants].use = was; else delete LG.ITEMS[lk.wants].use;
   }
@@ -579,9 +579,9 @@ section('cooking at an oven');
   const [a, b] = Object.keys(r.needs);
   const before = { a: L.count(a), b: L.count(b), out: L.count(r.makes) };
   L.give(a, 1);
-  ok(!L.canCook(r) && !L.cook(r) && L.count(a) === before.a + 1, 'half a recipe cooks nothing');
+  ok(!LG.pockets.canCook(r) && !LG.pockets.cook(r) && L.count(a) === before.a + 1, 'half a recipe cooks nothing');
   L.give(b, 1);
-  ok(L.cook(r) && L.count(a) === before.a && L.count(b) === before.b &&
+  ok(LG.pockets.cook(r) && L.count(a) === before.a && L.count(b) === before.b &&
      L.count(r.makes) === before.out + 1, 'the whole recipe turns into ' + LG.ITEMS[r.makes].full);
   L.take(r.makes, 1);
 
@@ -591,7 +591,7 @@ section('cooking at an oven');
     const fake = { needs: { [lk.wants]: 1 }, makes: 'popcorn' };
     const n0 = L.count(lk.wants);
     L.give(lk.wants, lk.wantsCount || 1);
-    ok(!L.cook(fake), 'the errand\'s own things are not for cooking');
+    ok(!LG.pockets.cook(fake), 'the errand\'s own things are not for cooking');
     L.take(lk.wants, L.count(lk.wants) - n0);
   }
 
@@ -602,31 +602,57 @@ section('cooking at an oven');
   const pot0 = L.count('teapot'), herbs0 = L.count('herbs'), tea0 = L.count('tea');
   L.take('teapot', pot0);
   L.give('herbs', 1);
-  ok(!L.cook(tea), 'no tea without a teapot');
+  ok(!LG.pockets.cook(tea), 'no tea without a teapot');
   L.give('teapot', 1);
-  ok(L.cook(tea) && L.count('teapot') === 1 && L.count('herbs') === herbs0 && L.count('tea') === tea0 + 1,
+  ok(LG.pockets.cook(tea) && L.count('teapot') === 1 && L.count('herbs') === herbs0 && L.count('tea') === tea0 + 1,
      'with one, the herbs make tea and the teapot is still there');
   L.take('tea', 1); L.take('teapot', 1); L.give('teapot', pot0);
   }
+}
+
+section('pockets.js: the oven, and the Pockets box it describes');
+{
+  const P = LG.pockets, W = LG.world, me = LG.village.player;
+  const was = { x: me.px, y: me.py };
+  const at = (x, y) => { me.px = x; me.py = y; me.tx = (x / 32) | 0; me.ty = (y / 32) | 0; };
+  const farm = W.ovens().find(o => o.building.label === 'Farmhouse');
+  at((farm.x + 1) * 32, (farm.y + 1) * 32 + 8);
+  ok(P.atOven(), 'standing in front of the farmhouse oven, you are at an oven');
+  ok(P.ovenOnTile(farm.x, farm.y), 'and can tap it');
+  at(LG.BOARD_SPOT.x * 32, LG.BOARD_SPOT.y * 32);
+  ok(!P.atOven() && !P.ovenOnTile(farm.x, farm.y), 'from out on the green you are not, and cannot see it to tap');
+
+  // The ledger draws the pill; what it says and does comes from pockets.js.
+  const els = { get inv() { return sandbox.document.getElementById('inv'); } };
+  LG.ledger.give('hat', 1);
+  LG.ledger.render();
+  const inv = els.inv.innerHTML;
+  ok(/data-use="hat"[^>]*title="Put on the hat"/.test(inv), 'a hat in your pockets is a button saying it can be put on');
+  LG.pockets.use('hat');
+  ok(/title="Take off the hat"/.test(els.inv.innerHTML) && els.inv.innerHTML.indexOf(LG.wornMark('hat', LG.config.settings.lang)) !== -1,
+     'and once on, says it comes off, with "(worn)" in the village\'s language');
+  ok(!/data-use="rope"/.test((LG.ledger.give('rope', 1), els.inv.innerHTML)), 'rope is a plain pill');
+  LG.pockets.use('hat'); LG.ledger.take('hat', 1); LG.ledger.take('rope', 1);
+  at(was.x, was.y);
 }
 
 section('lights');
 {
   const L = LG.ledger;
   ['candle', 'lantern'].forEach(k => L.take(k, L.count(k)));
-  ok(L.glow() === 0, 'nothing lit, no light');
+  ok(LG.pockets.glow() === 0, 'nothing lit, no light');
   L.give('candle', 1); L.give('lantern', 1);
-  ok(L.use('candle') && L.state.lit.candle && L.count('candle') === 1, 'lighting a candle keeps it, lit');
-  ok(L.glow() === LG.ITEMS.candle.glow, 'and it lights the dark around you');
-  L.use('lantern');
-  ok(L.glow() === LG.ITEMS.lantern.glow && LG.ITEMS.lantern.glow > LG.ITEMS.candle.glow,
+  ok(LG.pockets.use('candle') && L.state.lit.candle && L.count('candle') === 1, 'lighting a candle keeps it, lit');
+  ok(LG.pockets.glow() === LG.ITEMS.candle.glow, 'and it lights the dark around you');
+  LG.pockets.use('lantern');
+  ok(LG.pockets.glow() === LG.ITEMS.lantern.glow && LG.ITEMS.lantern.glow > LG.ITEMS.candle.glow,
      'a lantern as well reaches further than the candle alone');
   const said = LG.itemSaid('lantern', LG.config.settings.lang, true);
   ok(LG.dialogue._debugPrompt(npcs[0], null).indexOf('They are carrying, lit: ') !== -1,
      'villagers can see you have a light burning');
-  ok(L.use('lantern') && !L.state.lit.lantern && L.glow() === LG.ITEMS.candle.glow, 'and it can be put out');
+  ok(LG.pockets.use('lantern') && !L.state.lit.lantern && LG.pockets.glow() === LG.ITEMS.candle.glow, 'and it can be put out');
   L.take('candle', 1);
-  ok(!L.state.lit.candle && L.glow() === 0, 'handing over a lit candle puts it out of your hands');
+  ok(!L.state.lit.candle && LG.pockets.glow() === 0, 'handing over a lit candle puts it out of your hands');
   L.take('lantern', 1);
 
   const lights = Object.keys(LG.ITEMS).filter(k => LG.ITEMS[k].use === 'light');
@@ -678,10 +704,10 @@ section('instruments');
   const n0 = L.count('violin');
   L.give('violin', 1);
   const heard = n => (n.memory || []).some(m => m.text.indexOf('play a violin') !== -1);
-  ok(L.use('violin') && L.count('violin') === n0 + 1, 'playing the violin keeps it');
+  ok(LG.pockets.use('violin') && L.count('violin') === n0 + 1, 'playing the violin keeps it');
   ok(heard(near) && !heard(far), 'a villager beside you hears it, and one far off does not');
   L.give('bell', 1);
-  L.use('bell');
+  LG.pockets.use('bell');
   ok((near.memory || []).some(m => m.text.indexOf('ring a bell') !== -1), 'a bell is rung, not played');
   L.take('violin', 1); L.take('bell', 1);
   near.px = at.nx; near.py = at.ny; far.px = at.fx; far.py = at.fy;
@@ -701,7 +727,7 @@ section('eating out of a container leaves the container');
   eaten.filter(k => LG.ITEMS[k].leaves && !chainItem[k]).slice(0, 4).forEach(k => {
     const box = LG.ITEMS[k].leaves, had = L.count(box), n0 = L.count(k);
     L.give(k, 1);
-    ok(L.use(k) && L.count(k) === n0 && L.count(box) === had + 1,
+    ok(LG.pockets.use(k) && L.count(k) === n0 && L.count(box) === had + 1,
        LG.ITEMS[k].full + ' leaves ' + LG.ITEMS[box].full.replace(/^an? (empty )?/, 'the '));
     L.take(box, 1);
   });
@@ -1103,8 +1129,8 @@ section('a village, written down and read back');
   LG.config.settings.apiKey = 'sk-not-a-real-key';        // must not reach the file
   LG.config.settings.ttsKey = 'sk_not-a-real-voice-key';
   LG.ledger.state.deeds.push('Gave Mira a pie, got a shell.');
-  LG.ledger.give('scarf', 1); LG.ledger.use('scarf');   // something worn, to come back worn
-  LG.ledger.give('oil_lamp', 1); LG.ledger.use('oil_lamp');   // and something lit, to come back lit
+  LG.ledger.give('scarf', 1); LG.pockets.use('scarf');   // something worn, to come back worn
+  LG.ledger.give('oil_lamp', 1); LG.pockets.use('oil_lamp');   // and something lit, to come back lit
   LG.ledger.give('coins', 7);
   const someFact = Object.keys(plan.facts)[0];
   const holder = npcs.find(n => n.facts.indexOf(someFact) !== -1);

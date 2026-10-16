@@ -166,7 +166,7 @@ LG.sky = (function () {
     }
   }
 
-  /* A light: one the traveller is carrying (see LG.ledger.glow), or a
+  /* A light: one the traveller is carrying (see LG.pockets.glow), or a
      street lamp (LG.world.lamps). It is not a glow painted on top: the dark is drawn on a layer of its own, and the
      light cuts it away, so inside `r` the village is in its own colours,
      exactly as by day, with no tint at all. Only the last stretch fades

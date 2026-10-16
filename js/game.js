@@ -86,27 +86,6 @@ LG.game = (function () {
   let nudge = '', nudgeT = 0;
 
   /* ------------------------------------------------------------- trading */
-  /* How many of an item the errand is still waiting on: every link not
-     yet traded that wants it. Read live off the villagers, like
-     factSpent, so it can't fall out of step with what has happened. */
-  function stillNeeded(id) {
-    return plan.links.reduce((sum, lk) => {
-      if (lk.wants !== id) return sum;
-      const owner = npcs.find(n => n.def.id === lk.npcId);
-      return owner && owner.tradeDone ? sum : sum + (lk.wantsCount || 1);
-    }, 0);
-  }
-
-  /* Anyone within earshot of an instrument hears it, walls or no walls,
-     and it's theirs to bring up. Remembering the same thing twice is a
-     no-op (see A.remember), so a tune doesn't fill anyone's memory. */
-  const EARSHOT = 12;           // tiles
-  function playedNear(id) {
-    const it = LG.ITEMS[id];
-    npcs.filter(n => dist(player, n) < EARSHOT * TILE).forEach(n =>
-      remember(n, 'You heard the traveller ' + (it.rung ? 'ring ' : 'play ') + it.full + ' nearby.'));
-  }
-
   function doTrade(npc, trade) {
     const needN = trade.wantsCount || 1, giveN = trade.givesCount || 1;
     take(trade.wants, needN);
@@ -225,7 +204,7 @@ LG.game = (function () {
        around is a poor way to start a game. */
     LG.time.start();
 
-    LG.ledger.begin(plan, factSpent, stillNeeded, playedNear);
+    LG.ledger.begin(plan, factSpent);
     LG.trade.begin(plan);
 
     renderHUD();
@@ -578,8 +557,6 @@ LG.game = (function () {
       document.getElementById('help').classList.remove('open');
     document.getElementById('boardClose').onclick = () =>
       document.getElementById('board').classList.remove('open');
-    document.getElementById('ovenClose').onclick = () =>
-      document.getElementById('oven').classList.remove('open');
     document.getElementById('endingClose').onclick = () =>
       document.getElementById('ending').classList.remove('open');
     document.getElementById('endingAgain').onclick = () => {
@@ -618,7 +595,7 @@ LG.game = (function () {
     if (beast && !beast.caught && dist(player, beast) < TILE * 1.4) catchBeast();
     else if (worldItem && !worldItem.taken && dist(player, worldItem) < TILE * 1.4) pickUp();
     else if (nearBoard()) openBoard();
-    else if (ovenHere()) openOven();
+    else if (LG.pockets.atOven()) LG.pockets.openOven();
   }
 
   /* ------------------------------------------------------------------ a tap */
@@ -690,10 +667,8 @@ LG.game = (function () {
       else aside('Walk over to the noticeboard to read it.');
       return;
     }
-    // Ovens are indoors, so only one in the room you're in can be seen to tap.
-    const oven = W.ovens().find(o => nearRect(spot, o, 0) && o.building === W.buildingUnder(player));
-    if (oven) {
-      if (nearRect(player, oven, 1)) openOven();
+    if (LG.pockets.ovenOnTile(spot.tx, spot.ty)) {
+      if (LG.pockets.atOven()) LG.pockets.openOven();
       else aside('Walk over to the oven first.');
     }
   }
@@ -719,58 +694,6 @@ LG.game = (function () {
 
   /* Reuses world.js's rectangle-proximity check. */
   const nearRect = W.nearRect;
-
-  /* ---------------------------------------------------------------- ovens
-     An oven you're standing beside, in the same room as you — the one in
-     the farmhouse kitchen can't be reached through its wall. */
-  function ovenHere() {
-    const room = W.buildingUnder(player);
-    return room ? W.ovens().find(o => o.building === room && nearRect(player, o, 1)) : null;
-  }
-
-  function openOven() {
-    renderOven();
-    document.getElementById('oven').classList.add('open');
-  }
-
-  /* Lists only the recipes the traveller has at least one ingredient
-     for — a list of every dish the village knows would read as a
-     shopping list, and finding out what wheat is good for is half the fun. */
-  function renderOven() {
-    const L = C.language(), box = document.getElementById('ovenList');
-    const part = (id, n, kept) => {
-      const it = LG.ITEMS[id], short = LG.ledger.count(id) < n;
-      return '<span class="' + (short ? 'lack' : '') + (kept ? ' kept' : '') + '" title="' +
-             escapeHTML(it.en + (kept ? ' (kept)' : '')) + '">' + it.icon +
-             ' <span lang="' + L.tag + '">' + escapeHTML(LG.itemName(id, settings.lang)) +
-             (n > 1 ? ' ×' + n : '') + '</span></span>';
-    };
-    /* Things only needed, not used up (the teapot), sit in a dashed outline. */
-    const shown = LG.RECIPES.filter(r => Object.keys(r.needs).concat(Object.keys(r.with || {}))
-                                               .some(k => LG.ledger.count(k) > 0));
-    box.innerHTML = shown.length
-      ? shown.map((r, i) => '<div class="recipe"><span class="parts">' +
-          Object.keys(r.needs).map(k => part(k, r.needs[k]))
-            .concat(Object.keys(r.with || {}).map(k => part(k, r.with[k], true))).join(' + ') +
-          ' → ' + part(r.makes, 0) +
-          '</span><button type="button" class="chip" data-recipe="' + LG.RECIPES.indexOf(r) + '"' +
-          (LG.ledger.canCook(r) ? '' : ' disabled') + '>Cook</button></div>').join('')
-      : '<div class="notice muted">Nothing in your pockets that wants cooking.</div>';
-    Array.prototype.forEach.call(box.querySelectorAll('[data-recipe]'), el => {
-      el.onclick = () => cookAt(LG.RECIPES[+el.dataset.recipe]);
-    });
-  }
-
-  /* Anyone in the room sees it done, and it's theirs to mention — the
-     farmer will know who has been at the oven. */
-  function cookAt(recipe) {
-    const oven = ovenHere();
-    if (!oven || !LG.ledger.cook(recipe)) { renderOven(); return; }
-    npcs.filter(n => W.buildingUnder(n) === oven.building).forEach(n =>
-      remember(n, 'The traveller cooked ' + LG.ITEMS[recipe.makes].full + ' in the oven in the ' +
-                  oven.building.label + ' while you watched.'));
-    renderOven();
-  }
 
   /* Trading hours and counter-proximity checks now live in LG.view,
      alongside everything else a villager can observe about their own
@@ -1200,7 +1123,7 @@ LG.game = (function () {
     } else if (nearBoard()) {
       say = tap ? 'Tap the noticeboard to read it'
                 : 'Press E to read the noticeboard';
-    } else if (ovenHere()) {
+    } else if (LG.pockets.atOven()) {
       say = tap ? 'Tap the oven to cook' : 'Press E to cook at the oven';
     }
     // Same as the clock: touched only on a change. A hidden hint keeps its
@@ -1396,7 +1319,7 @@ LG.game = (function () {
 
     ctx.restore();
     // A light in the traveller's hand, centred on them rather than their feet, and the street lamps by night.
-    const reach = LG.ledger.glow(), glows = [];
+    const reach = LG.pockets.glow(), glows = [];
     if (reach) glows.push({ x: player.px - c.x, y: player.py - c.y - 8, r: reach * TILE });
     if (LG.time.isNight()) W.lamps().forEach(l => glows.push({ x: l.x - c.x, y: l.y - c.y, r: l.r }));
     LG.sky.draw(ctx, vw, vh, W.roofRects(cam, vw, vh, dpr), dpr, glows);

@@ -1,4 +1,4 @@
 .env
 logs/session-*.jsonl
-saves/village.json
+saves/*.json
 .claude

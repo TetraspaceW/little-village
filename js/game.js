@@ -18,23 +18,16 @@ LG.game = (function () {
 
   let canvas, ctx, cam = { x: 0, y: 0 }, vw = 0, vh = 0, dpr = 1;
 
-  /* Caches the ground/buildings/signs layer to its own offscreen canvas
-     and reuses it (a plain blit) instead of redrawing every frame — it
-     only visually changes when the player enters/exits a roofed area,
-     snow accumulation changes, night falls or lifts, or the display
-     language changes. It is painted OVERSCAN pixels bigger than the view
-     on every side, so a moving camera just blits it from a different
-     offset until it drifts off the painted area. Keyed on the exact
-     camera position instead, it missed on every frame the player walked.
-     When it does drift off, what's already painted is slid across onto a
-     second canvas and only the strip that came into view is painted:
-     repainting the whole layer every 96 px of walking was a visible
-     hitch, worst in the forest.
-     Water glints and the fountain move on their own, so they are drawn
-     on top every frame (W.drawAnimated), as are characters and weather. */
+  /* The ground, buildings and signs are painted to an offscreen layer and
+     blitted each frame; it changes only when the player enters or leaves a
+     room, snow depth moves, night falls or lifts, or the language changes.
+     It's OVERSCAN pixels bigger than the view on every side, so a moving
+     camera just blits from a new offset, and when the camera drifts off it
+     only the strip that came into view is painted (scrollGroundLayer).
+     Water glints, the fountain, characters and weather go on top each frame. */
   const OVERSCAN = 96;
   let groundCanvas = null, groundCtx = null, spareCanvas = null, spareCtx = null;
-  const groundSeen = { x: NaN, y: NaN, roomX: NaN, roomY: NaN, snow: -1, night: false, lang: '', trans: false };
+  const groundSeen = { x: NaN, y: NaN, roomX: NaN, roomY: NaN, snow: -1, night: false, lang: '' };
   /* The village itself lives in LG.village. These are this module's
      handles on it, for brevity in the loop and drawing code below; only
      adopt() rebinds them, straight after LG.village.create, so they can
@@ -62,27 +55,14 @@ LG.game = (function () {
   function isShift(e) { return e.code === 'ShiftLeft' || e.code === 'ShiftRight' || e.key === 'Shift'; }
 
   const held = { up: false, down: false, left: false, right: false, run: false };
-  /* Three ways to trigger running, all read from `running()`: holding
-     Shift (tracked per-frame via `held.run`, released the instant the
-     key is), a touch gesture (double-tap the ground and hold the second
-     finger down — implemented entirely in LG.touch, which already
-     tracks every active finger, and polled via `runHeld`), or the
-     `autorun` setting, which bypasses the gesture requirement entirely
-     rather than replacing it — Shift and double-tap-hold both still
-     work independently even with autorun on. A phone has no way to hold
-     a key without the same thumb that's steering the joystick covering
-     it, which is why touch needs its own separate gesture. */
+  /* Running: Shift, the touch gesture (double-tap and hold, tracked in
+     LG.touch, since a phone's steering thumb can't also hold a key), or the
+     `autorun` setting. Each works whatever the others are doing. */
   function running() { return settings.autorun || held.run || LG.touch.runHeld; }
-  /* Shared "close enough" distance, consolidated from three call sites
-     that each independently hardcoded TILE * 1.6 (one with a comment
-     claiming it matched the other two): the hint/E-key interaction
-     range, how close a chasing villager stops, and the tap-to-talk range. */
+  // Close enough to talk: the E key and a tap both, and where a chasing villager stops.
   const REACH = TILE * 1.6;
   let last = 0, nearby = null;
-  /* Holds a hint message the player specifically triggered (e.g. via a
-     tap), so it persists past the current frame — the hint is otherwise
-     recomputed from scratch every tick, which would erase a tap response
-     before it could be read. */
+  // A hint the player set off (an out-of-reach tap), kept on screen past the frame that recomputes the hint.
   let nudge = '', nudgeT = 0;
 
   /* ------------------------------------------------------------- trading */
@@ -103,30 +83,10 @@ LG.game = (function () {
       { item: oneItem(trade.gives, giveN, settings.lang), name: nameOrEmoji(npc) },
       { item: oneItem(trade.gives, giveN, 'en'), name: displayName(npc) });
 
-    /* Notes describing this deal are marked spent (struck through) in
-       the notebook UI rather than removed — a note that vanishes reads
-       as a bug and loses the record of who told the player. This
-       function does nothing to the notes list directly; `factSpent`
-       reads the completed trade state live and the notebook UI checks it.
-
-       Separately, the villager's own facts about the deal are removed
-       here (see `ofThisDeal` below) — a different question from
-       `factSpent`. `factSpent` answers "is this true of the world,"
-       which is what the *player's* notebook needs; this answers "did
-       *this villager* personally just do this," which only this
-       villager's own facts should reflect. Without this distinction, a
-       villager could be told an item changed hands because someone else
-       traded it, which isn't information they actually have. A
-       villager's facts are dealt once at the start of the game and
-       never automatically retired, so without this removal, a villager
-       who traded away a teapot would keep stating "I have a teapot" and
-       the terms for parting with it, even after handing it over. Only
-       this villager's own copy of the fact is removed — anyone else who
-       was told the same fact still believes it until someone tells them
-       otherwise, same as nobody automatically learns an item is gone
-       just because someone else took it. `remember` below (a plain
-       memory entry, not a chain fact) is how that news can then spread
-       through conversation. */
+    /* The player's notes on this deal stay, struck through (factSpent reads
+       the trade). This villager's own facts about it are retired, since
+       they did it themselves; anyone merely told keeps believing them until
+       they hear otherwise. */
     const ofThisDeal = id => {
       const f = plan.facts[id];
       return !!(f && f.link === (plan.roles[npc.def.id] || {}).link && f.type !== 'opinion');
@@ -140,18 +100,14 @@ LG.game = (function () {
       beast.home = npc.def.home;
       beast.tx = npc.tx; beast.ty = npc.ty;
     }
-    /* Records both sides of the exchange in the till. A trade used to
-       only record a memory like "the traveller brought me a bowl of
-       rice," omitting what was given back — so the villager kept trying
-       to complete an exchange that had already happened, and would
-       repeat the "trade" action. */
+    // Both sides of the exchange go in the till, so the villager knows it's done.
     npc.till = npc.till || [];
     npc.till.push({ act: 'trade', names: gave, gaveBack: got, coins: 0, asked: 0,
                     at: LG.time.clock() });
 
     if ((plan.roles[npc.def.id] || {}).link === 0) win();
     renderHUD();
-    // Save immediately -- losing chain progress to a closed tab before the next autosave isn't acceptable.
+    // Saved at once: chain progress shouldn't wait for the autosave.
     if (saving()) LG.save.write();
   }
 
@@ -172,12 +128,8 @@ LG.game = (function () {
     ctx = canvas.getContext('2d', { alpha: false });      // opaque: see draw()
     W.build();
 
-    /* A previously-visited village resumes exactly where it was left; a
-       new village is only generated on first-ever arrival. `resume`
-       restores the local save immediately and checks the log server's
-       copy asynchronously in the background, so a missing or slow server
-       never blocks startup — same tradeoff the settings panel makes
-       fetching keys from .env. */
+    /* A saved village resumes where it was left; `resume` restores the
+       local copy at once and checks the log server's in the background. */
     if (!LG.save.resume(log)) newVillage(null, true);
 
     LG.dialogue.init();
@@ -192,16 +144,14 @@ LG.game = (function () {
   }
 
   /* Generates a fresh errand chain and resets all state that depends on it.
-     `restoring` is set by LG.save.restore, which lays a save over the
-     result and must not have the bare village saved over it first. */
-  function newVillage(seed, quiet, restoring) {
-    V.create(seed, settings.level);
+     `given` is a saved plan from LG.save.restore, which lays the rest of
+     the save over the result and must not have the bare village saved
+     over it first. */
+  function newVillage(seed, quiet, given) {
+    V.create(seed, settings.level, given);
     adopt();
 
-    /* A new village rolls a fresh calendar too: a random day of the
-       year, with whatever weather that day has. The hour of arrival is
-       NOT randomized, though -- arriving at 3am in the dark with no one
-       around is a poor way to start a game. */
+    // A random day of the year, and its weather; always mid-morning, never 3am in the dark.
     LG.time.start();
 
     LG.ledger.begin(plan, factSpent);
@@ -213,10 +163,8 @@ LG.game = (function () {
                   : 'Use WASD or the arrow keys to walk. Press E next to someone to talk.')
               : 'A new village, in ' + LG.time.season().name.toLowerCase() +
                 '. Nobody has told you anything yet.');
-    /* Saved immediately rather than waiting for the next autosave, so
-       closing the tab within the first ~20 seconds doesn't bring back
-       the old village on reload. */
-    if (restoring) return;
+    // Saved at once, so closing the tab straight away doesn't bring back the old village.
+    if (given) return;
     LG.save.keep();
     if (saving()) LG.save.write();
   }
@@ -231,10 +179,7 @@ LG.game = (function () {
     ctx.imageSmoothingEnabled = false;
     readInsets();       // a phone that turned has swapped notch for home bar
 
-    /* The vignette is a page element over the canvas, not painted into it:
-       a screen-sized gradient fill every frame was the single biggest
-       cost of a frame in Firefox (~5 ms at 1900x1350), and the compositor
-       lays a gradient over the canvas for nothing. */
+    // The vignette is a CSS gradient over the canvas: filled into it every frame it cost Firefox ~5 ms.
     document.getElementById('vignette').style.background =
       'radial-gradient(circle at 50% 50%, rgba(20,14,8,0) ' + Math.round(Math.min(vw, vh) * 0.42) +
       'px, rgba(20,14,8,.3) ' + Math.round(Math.max(vw, vh) * 0.75) + 'px)';
@@ -251,38 +196,16 @@ LG.game = (function () {
   }
 
   /* ------------------------------------------------- what you can see of it
-     The canvas is fixed to the page and always fills it, but on a phone
-     the visible screen isn't necessarily the same size as the canvas.
-     Two things reduce the actually-visible area:
-
-       - The browser's visible window can be shorter than the page
-         whenever the browser toolbar is showing, and it can scroll
-         within that page. Opening the keyboard scrolls it down;
-         closing the keyboard doesn't reliably scroll back up. The
-         result is a visible strip missing part of the village off the
-         top of the screen.
-       - viewport-fit=cover requests the full screen, and on Android's
-         edge-to-edge Chrome that includes the area under the nav
-         buttons — so the edge of the canvas gets painted underneath
-         them. env(safe-area-inset-*), read via #safe in the page, gives
-         the size of that hidden margin.
-
-     Drawing under both of these is intentional -- the village should
-     fill the full screen, under the notch and behind the nav buttons.
-     But *framing the camera* around both is wrong: the camera centers
-     the player within the canvas, so near the bottom edge of the map
-     (where the camera itself can't scroll further), the player and the
-     bottom row of the village would end up hidden behind the nav
-     buttons with no way to see them. So the camera instead centers on
-     the actually-visible band, and the map's edges are clamped against
-     that band rather than the canvas edges. On desktop, where the
-     visible band equals the full canvas, this has no effect.
-
-     The visible band stops updating while a keyboard is open -- the
-     strip of screen above the keyboard shouldn't become the new camera
-     frame for the ten seconds a dialogue is open -- and while the page
-     is pinch-zoomed, since the camera re-centering under a zoomed,
-     panned finger would itself be a bug. */
+     The canvas always fills the page, but on a phone less of it is visible:
+     the browser's visible window can be shorter than the page and scrolled
+     within it (an on-screen keyboard scrolls it, and closing one doesn't
+     reliably scroll back), and viewport-fit=cover paints under the notch
+     and nav buttons (env(safe-area-inset-*), read off #safe).
+     The village is drawn under all of that, but the camera centres the
+     player in the visible band and clamps the map's edges to it, so the
+     bottom rows aren't stuck behind the nav buttons. On desktop the band is
+     the whole canvas. It isn't updated while a keyboard is up or the page
+     is pinch-zoomed. */
   let insets = { top: 0, right: 0, bottom: 0, left: 0 };
   let seenTop = 0, seenBottom = Infinity;    // the window, in page pixels
 
@@ -295,11 +218,9 @@ LG.game = (function () {
                bottom: n(cs.paddingBottom), left: n(cs.paddingLeft) };
   }
 
-  /* Returns the currently-visible band, in canvas pixels. Any
-     nonsensical measurement (e.g. taken before the first frame, or a
-     window somehow taller than its own page) falls back to the full
-     canvas -- the same result every browser without visualViewport
-     support gets by default. */
+  /* The visible band, in canvas pixels. A nonsensical measurement (before
+     the first frame, say) falls back to the whole canvas, as a browser
+     without visualViewport gets anyway. */
   function seen() {
     let top = Math.max(0, seenTop, insets.top);
     let bottom = Math.min(vh, seenBottom, vh - insets.bottom);
@@ -309,49 +230,19 @@ LG.game = (function () {
     return { top: top, bottom: bottom, left: left, right: right };
   }
 
-  /* A phone's on-screen keyboard doesn't shrink the page -- it overlays
-     a smaller visible window on top of it -- so a dialogue card sized to
-     the full page would end up half-hidden behind the keyboard, with
-     the text input itself out of view. `visualViewport` reports the
-     actually-visible area; the overlays and HUD are laid out to that,
-     while the canvas keeps filling the whole screen (scrolling the
-     village up on every keyboard-open would be worse than the problem
-     it solves -- see the camera handling above, which uses the same
-     measurement differently).
-
-     Two CSS classes (CRAMPED/TIGHT below) are derived from this same
-     height measurement, not from which element has focus -- deriving
-     layout from focus seemed natural but is wrong: tapping "Say it"
-     removes focus from the input while the keyboard stays open, and a
-     focus-based layout would spring back to its full-size layout in
-     space that hadn't actually grown, pushing the composer off-screen.
-     Height is what actually determines available space, so height is
-     what drives the CSS classes.
-
-     Browsers disagree on how they report this -- some shrink the page
-     itself under an open keyboard, others just overlay a smaller
-     visible window -- so both a fallback and multiple event listeners
-     exist to handle whichever behavior a given browser has. */
+  /* An on-screen keyboard overlays a smaller visible window rather than
+     shrinking the page, so the overlays and HUD are laid out to
+     visualViewport while the canvas keeps the whole screen. The cramped/
+     tight classes come from that height, not from focus: tapping "Say it"
+     blurs the input with the keyboard still up. */
   const CRAMPED = 460;             // below this height, trays lose their full size
   const TIGHT = 320;               // below this height, trays are hidden entirely
 
-  /* Approximately one row of on-screen keyboard keys. A window
-     size change smaller than this is treated as UI on top of the
-     keyboard (e.g. a suggestion strip), not the keyboard itself opening
-     or closing. */
+  // About one row of keys: a smaller change is a suggestion strip, not the keyboard.
   const KB_ROW = 96;
-  /* How long an increase in visible height (short of the keyboard fully
-     closing) must persist before it's trusted as real. A full
-     predictive-text suggestion-strip cycle (word committed, strip
-     disappears, next word starts, strip reappears) completes well
-     within this window, so ordinary typing never triggers a false
-     recovery. What this delay is actually guarding against is the
-     keyboard's own opening animation: visualViewport is documented to
-     report transient in-flight values during that animation, which can
-     overshoot past the keyboard's final resting height before settling
-     back to it. Without this delay, a card that latched onto one of
-     those transient readings would be stuck slightly too short for the
-     rest of the conversation -- short by whatever the overshoot was. */
+  /* How long a taller reading that isn't the keyboard closing must last
+     before it's believed: the keyboard's opening animation can overshoot
+     its resting height, and a card that latched on would stay too short. */
   const GROW_MS = 220;
   let fullH = 0, fullW = 0;   // the tallest this window has been at this width
   let heldH = 0;              // the height the overlays are being laid out to
@@ -368,40 +259,13 @@ LG.game = (function () {
     if (growTimer !== null) { clearTimeout(growTimer); growTimer = null; }
   }
 
-  /* An IME keyboard doesn't have one fixed height. A Japanese flick
-     keyboard's suggestion strip appears whenever there's something to
-     suggest and disappears on committing a word, each toggle firing a
-     one-row-tall visualViewport resize -- so a card pinned to the
-     bottom of the visible window would otherwise hop up and down with
-     every keystroke, right under the text being read. Chinese/Korean
-     input methods and English autocorrect bars behave the same way.
-
-     So the overlay height follows the window shrinking, but not
-     immediately when it grows back: while the keyboard is open and a
-     text input has focus, a height increase smaller than one keyboard
-     row is assumed to be the suggestion strip toggling, and ignored.
-     The card stays sized to the shortest (tallest-keyboard) state seen,
-     costing one strip-row of space at the bottom in exchange for a card
-     that doesn't visibly jump while typing.
-
-     Focus is used only to detect "still typing" here -- it never
-     triggers growing the layout. Losing focus (e.g. tapping "Say it",
-     which on some phones blurs the input while the keyboard stays open)
-     reverts to the real current measurement, which is still the short
-     one, so the composer still can't be pushed off-screen the way it
-     was under the old focus-based layout logic.
-
-     This height-holding behavior only applies on touch: a desktop
-     window resized while typing in the settings panel should update
-     immediately.
-
-     A height increase that isn't the strip toggling -- taller than the
-     currently-held value, but still well short of fullH -- is treated
-     with the same caution: not trusted immediately, in case it's the
-     keyboard's own opening animation overshooting past its final
-     resting height. It gets GROW_MS to prove it's stable before being
-     accepted -- short enough to not read as a delay to the user, but
-     comfortably longer than one animation overshoot's correction time. */
+  /* The height the overlays are laid out to. An IME's suggestion strip
+     comes and goes with each word, a one-row resize each time, so while
+     typing on touch the overlays follow the window down but ignore a grow
+     of less than a row: the card doesn't hop under the text being read.
+     A larger grow short of full height waits GROW_MS (see above). Losing
+     focus falls back to the real measurement. Desktop always follows the
+     real height. */
   function heightForOverlays(raw, w) {
     if (w !== fullW) { fullW = w; fullH = 0; heldH = 0; cancelGrow(); }   // the phone turned
     if (raw > fullH) fullH = raw;
@@ -433,10 +297,7 @@ LG.game = (function () {
       root.style.setProperty('--vv-h', h + 'px');
       root.style.setProperty('--vv-top', (vv ? vv.offsetTop : 0) + 'px');
     }
-    /* Feeds the camera the raw height, not the held one -- the height
-       hold above exists to keep the dialogue card from jumping while
-       the player types, and the village visible behind that card isn't
-       the thing being typed into. */
+    // The camera gets the raw height: the hold is for the card being typed into, not the village behind it.
     if (!kbUp && !(vv && vv.scale > 1.01)) {
       seenTop = vv ? vv.offsetTop : 0;
       seenBottom = vv ? vv.offsetTop + raw : Infinity;
@@ -446,37 +307,18 @@ LG.game = (function () {
       const wasCramped = b.classList.contains('cramped');
       b.classList.toggle('cramped', h > 0 && h < CRAMPED);
       b.classList.toggle('tight', h > 0 && h < TIGHT);
-      /* Android's back button (and some gesture-nav) can dismiss the
-         keyboard without blurring the input that raised it -- the input
-         stays focused, so anything keyed off focus (like the dialogue
-         tray's collapse) would keep thinking the keyboard is still open.
-         The visible height returning to normal is the one reliable
-         signal that the keyboard actually closed, independent of
-         whether the input itself noticed losing the keyboard -- so when
-         that's observed, blur the input explicitly, matching what
-         tapping the conversation area already does. Restricted to text
-         inputs: the canvas can also hold focus (for keyboard-based
-         play) and has nothing to lose by keeping it. A suggestion-strip
-         dismissal can't trigger this path, since the height-holding
-         logic above means `h` won't have actually changed for that case. */
+      /* Android's back gesture can close the keyboard without blurring the
+         input, so a return to full height blurs it, as tapping the
+         conversation does. Text inputs only; the canvas keeps its focus. */
       if (LG.touch.on && wasCramped && !b.classList.contains('cramped')) {
         const a = document.activeElement;
         if (a && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT')) a.blur();
       }
     }
   }
-  /* Workaround for observed Firefox-on-Android behavior: after a text
-     input gains focus and the keyboard is visibly open,
-     visualViewport.height can keep reporting the pre-keyboard value for
-     a moment, only correcting later in response to some unrelated event
-     (a scroll, etc.) rather than firing its own resize event. Without
-     this, the card would only catch up whenever that unrelated event
-     happens to occur, rather than when the keyboard finishes opening.
-     These extra re-checks after focus catch the correction proactively,
-     so the card is at most a few hundred ms late instead of late by
-     however long it takes something else to trigger a recheck.
-     Harmless when the browser wasn't late to begin with -- a recheck
-     that finds nothing changed just re-writes the same values. */
+  /* Firefox for Android can go on reporting the pre-keyboard height after
+     focus until some unrelated event, so a focused input is rechecked a
+     few times as the keyboard opens. */
   const FOCUS_RECHECK_MS = [80, 220, 450];
 
   function trackViewport() {
@@ -520,33 +362,15 @@ LG.game = (function () {
     });
     window.addEventListener('blur', () => { for (const k in held) held[k] = false; });
 
-    /* A click landing on a signboard is swallowed rather than read as a
-       click on the ground beneath it, so it's tested against whatever
-       signs are on screen first. */
-    const toWorld = e => {
-      const r = canvas.getBoundingClientRect();
-      return { x: (e.clientX - r.left) + cam.x, y: (e.clientY - r.top) + cam.y };
-    };
-    /* Touch input's equivalent goes through LG.touch below, which
-       suppresses the synthetic click event a tap also generates —
-       without that, a tapped sign would register twice (once from the
-       tap handler, once from the delayed synthetic click). The
-       `LG.touch.on` check here is a backup guard against anything that
-       fires a click event without a corresponding pointer. */
-    canvas.addEventListener('click', e => {
-      if (uiBlocked() || LG.touch.on) return;
-      const p = toWorld(e);
-      W.hitSign(p.x, p.y);
+    // A blurred gloss anywhere (the log, notebook, board or a conversation) comes clear when clicked.
+    document.addEventListener('click', e => {
+      const gloss = e.target && e.target.closest && e.target.closest('.hidden-tr');
+      if (gloss) gloss.classList.remove('hidden-tr');
     });
-    canvas.addEventListener('mousemove', e => {
-      const p = toWorld(e);
-      canvas.style.cursor = (!uiBlocked() && W.overSign(p.x, p.y)) ? 'pointer' : 'default';
-    });
+
     LG.touch.init(canvas, { blocked: uiBlocked, tap: tapAt });
 
-    /* The notebook and inventory boxes cover most of a phone screen —
-       clicking/tapping their headings folds them down, so the village
-       underneath is reachable without needing to look elsewhere first. */
+    // On a phone the HUD boxes cover the village: their headings fold them away.
     document.querySelectorAll('.hud-box h3').forEach(h => {
       h.onclick = () => h.parentElement.classList.toggle('folded');
     });
@@ -565,10 +389,8 @@ LG.game = (function () {
     };
   }
 
-  /* Whether there's a real playthrough worth saving. Before the
-     settings gate is passed, the village visible behind it is only a
-     decorative backdrop for the title screen -- saving it would
-     overwrite a real save with a village nobody has actually played. */
+  /* Before the settings gate is passed, the village behind it is a
+     backdrop, and saving it would overwrite a real save. */
   function saving() { return !P.gated && !!plan; }
 
   function panelOpen() { return !!document.querySelector('.panel.open'); }
@@ -578,11 +400,9 @@ LG.game = (function () {
     document.querySelectorAll('.panel.open').forEach(p => p.classList.remove('open'));
   }
 
-  /* A villager who sought out the player speaks first when the
-     conversation starts, matching the same rule `villagerTalk` applies
-     to two villagers who deliberately meet (see `sought` there).
-     `wentAfter` is read and cleared here exactly once, rather than left
-     for the conversation to re-check later — see LG.view.arrived. */
+  /* A villager who came looking for the player speaks first, as between
+     two villagers (see villagerTalk). `wentAfter` is read and cleared
+     here, once (LG.view.arrived). */
   function talkTo(n) {
     const sought = n.wentAfter === 'player';
     const why = sought ? (n.why || '') : null;
@@ -596,30 +416,22 @@ LG.game = (function () {
     if (nearby) { talkTo(nearby); return; }
     if (beast && !beast.caught && dist(player, beast) < TILE * 1.4) catchBeast();
     else if (worldItem && !worldItem.taken && dist(player, worldItem) < TILE * 1.4) pickUp();
+    else if (LG.toys.nearBall(player)) LG.toys.useBall();
     else if (nearBoard()) openBoard();
     else if (LG.pockets.atOven()) LG.pockets.openOven();
     else if (LG.fishing.canCast()) LG.fishing.cast();
   }
 
   /* ------------------------------------------------------------------ a tap */
-  /* Pressing E interacts with whatever's directly in front of the
-     player; a tap instead directly names a target, so the two need
-     separate handling. Both respect the same interaction range, though
-     — tapping a distant villager across the green doesn't start a
-     conversation any more than pressing E at them would — and an
-     out-of-range tap gives feedback (see `aside` below) rather than
-     doing nothing, since a tap with no visible response reads as a
-     broken control rather than as "too far away". */
+  /* A tap names its target, where E takes whatever's nearest, but both
+     have the same reach, and a tap out of reach says so (`aside`): one
+     that does nothing reads as a broken control. */
 
-  /* A villager's sprite is ~16px wide but a fingertip covers closer to
-     40px, so tap hit-testing pads well beyond the drawn sprite bounds.
-     Where two padded areas overlap, whichever target's center is
-     nearest wins. */
+  /* A villager is ~16px wide and a fingertip ~40px, so hit boxes are
+     padded; where two overlap, the nearer centre wins. */
   const TAP_PAD = 14;
   function tapPick(wx, wy) {
-    /* Only on-screen entities are tappable. A villager occluded by
-       another building's wall isn't drawn (see the roof-hiding logic in
-       draw()), so a tap there would otherwise target something invisible. */
+    // Only what's drawn can be tapped: not someone behind another building's walls.
     const room = W.buildingUnder(player);
     const seen = a => { const r = W.buildingUnder(a); return !r || r === room; };
     const marks = [];
@@ -642,16 +454,12 @@ LG.game = (function () {
 
   function aside(line) { nudge = line; nudgeT = 2.4; }
 
-  /* `sx`/`sy` are canvas-relative tap coordinates; adding the camera
-     offset converts them to world/village coordinates. */
+  // `sx`/`sy` are canvas coordinates; adding the camera gives the village's.
   function tapAt(sx, sy) {
     if (uiBlocked()) return;
     // With a line out, a tap anywhere strikes: a bite doesn't wait for aiming.
     if (LG.fishing.out()) { LG.fishing.pull(); return; }
     const wx = sx + cam.x, wy = sy + cam.y;
-    // A tap on a signboard is consumed there, not also treated as a tap on the ground beneath it.
-    if (W.hitSign(wx, wy)) return;
-
     const m = tapPick(wx, wy);
     if (m) {
       if (dist(player, m.a) > m.reach) {
@@ -663,9 +471,7 @@ LG.game = (function () {
       return;
     }
 
-    /* The noticeboard is a ground area, not a drawn sprite, so it's hit
-       by checking the tapped tile directly rather than a bounding box
-       around an image. */
+    // The noticeboard is a patch of ground, so it's hit by tile.
     const spot = { tx: (wx / TILE) | 0, ty: (wy / TILE) | 0 };
     if (nearRect(spot, LG.BOARD_SPOT, 0)) {
       if (nearBoard()) openBoard();
@@ -701,59 +507,36 @@ LG.game = (function () {
 
   function dist(a, b) { return Math.hypot(a.px - b.px, a.py - b.py); }
 
-  /* The noticeboard has no NPC/actor to measure distance from -- just a
-     ground rectangle, the same one villagers are sent to. */
+  // The noticeboard is the ground rectangle villagers are sent to.
   function nearBoard() { return nearRect(player, LG.BOARD_SPOT, 1); }
 
-  /* Reuses world.js's rectangle-proximity check. */
   const nearRect = W.nearRect;
 
-  /* Trading hours and counter-proximity checks now live in LG.view,
-     alongside everything else a villager can observe about their own
-     state. */
-
-  /* Where a villager goes is a decision made by the helper model from
-     their own goal and memory, not a dice roll -- this function just
-     supplies the options and records their choice. So e.g. the baker
-     opens the bakery because she's the baker, and a villager looking for
-     a saw walks toward wherever she last heard one was. */
+  /* Where a villager goes is decided from their goal and what they know
+     (Jev or the helper model), not a dice roll; PHASE_TABLE in npc.js is
+     the fallback. Asked at most once per DECIDE_COOL seconds. */
   const DECIDE_COOL = 25;
 
-  /* Builds the list of everywhere a villager could plausibly walk to,
-     including toward other villagers they can see.
-
-     A villager knowing that someone holds an item they want is only
-     actionable if there's a way to go find that person -- without
-     visible villagers being included as destinations, a model reasoned
-     that a target's home "isn't a listed place I can go" and simply
-     stood on the green hoping they'd show up instead. So anyone
-     currently visible is also a valid destination. */
+  /* Everywhere a villager could walk to, including after anyone they can
+     see: knowing who has something is only useful with a way to go and
+     find them. */
   function placesFor(n) {
     const out = [{ name: 'home', rect: n.def.home, note: 'your own place' }];
     let workLabel = null;
     if (n.work) {
-      // Uses the actual building name as the option label -- a literal
-      // "your work" option caused villagers to reason aloud about what
-      // and where "your work" was, rather than recognizing it. A
-      // villager with no workplace building falls back to `job`, which
-      // reads fine as a place ("the miner") for most villagers, but
-      // Petra's job is a description rather than a location, so
-      // `def.workLabel` lets a villager like her override it explicitly.
+      // Named as the building (or `def.workLabel`, for a job that isn't a place);
+      // an option called "your work" had models wondering where that was.
       workLabel = n.workBuilding ? n.workBuilding.label : (n.def.workLabel || n.def.job || 'your work');
       out.push({ name: workLabel, rect: n.work, note: 'where you work' });
     }
-    // Avoid listing the green twice under two different names, for a villager (Petra) whose workplace is the green itself.
+    // Not twice, for Petra, whose work is the green.
     if (workLabel !== 'the village green') {
       out.push({ name: 'the village green', rect: LG.GREEN, note: 'where people gather' });
     }
     out.push({ name: 'the noticeboard', rect: LG.BOARD_SPOT,
                note: 'where anyone may pin up a note for the village to read' });
-    /* Only these two far-off destinations are offered, not every
-       glade in the forest -- offering all six clearings to every
-       villager would spread them too thin to ever find, and a location
-       nobody can be reliably found at is one an errand can silently
-       fail at. One entry point into the woods and one exit from the
-       village is enough for either to plausibly be where someone is. */
+    /* One way into the woods and one to the station, not every clearing:
+       spread over six glades, villagers would be too thin to ever find. */
     const glade = (LG.PLACES.find(p => p.id === 'glade') || {}).rect;
     if (glade) out.push({ name: 'the big clearing', rect: glade,
                           note: 'up in the woods north of the village, a fair walk' });
@@ -770,14 +553,8 @@ LG.game = (function () {
       out.push({ name: 'after ' + o.def.name, rect: besideThem(o),
                  note: LG.view.where(o), after: o.def.id });
     });
-    /* The player is offered as a destination too, under the same
-       visibility rule as any other villager, rather than being a fixed
-       part of the map. Without this, a villager wanting to reach the
-       player would have no way to express that — the same gap
-       placesFor's roster addition (above) fixes for other villagers.
-       `after: 'player'` is read by decideWhereToGo and produces an
-       actual pursuit (see `followingPlayer`) rather than a one-time walk
-       to wherever the player happened to be standing when asked. */
+    /* The player too, when in sight. Going after them is a chase
+       (followPlayer), not a walk to where they stood. */
     if (LG.view.near(n, player, LG.view.SIGHT)) {
       out.push({ name: 'after you', rect: besideThem(player),
                  note: 'the traveller, wherever they get to', after: 'player' });
@@ -785,8 +562,7 @@ LG.game = (function () {
     return out;
   }
 
-  /* Returns a small area beside `o` so "go find them" walks the player
-     next to that villager, not exactly onto their own tile. */
+  // A small area beside `o`, so going after someone ends up next to them, not on their tile.
   function besideThem(o) {
     return { x: Math.max(0, o.tx - 2), y: Math.max(0, o.ty - 2), w: 5, h: 5 };
   }
@@ -796,14 +572,7 @@ LG.game = (function () {
     const opts = placesFor(n);
     const done = () => { n.deciding = false; n.decideCool = DECIDE_COOL; };
     think(n, 'wonders where to be', LG.view.where(n) + ', ' + LG.time.phase().name);
-    /* Uses the same LG.view assembly the player-facing prompt uses, so
-       the villager deciding where to walk is reasoning from the same
-       state the player will actually meet when they arrive. Passing
-       `held` (their full known-facts list) here used to be missing --
-       without it, a villager could be told rice was for sale nearby and
-       have no way to act on that knowledge when deciding where to walk,
-       since "what they know" and "what they decide" were reading from
-       different, disconnected data. */
+    // The same view of them as every other prompt, including what they know.
     const v = LG.view.of(n, 'intent');
     LG.llm.intent(C.llm(), {
       me: v,
@@ -816,10 +585,7 @@ LG.game = (function () {
     }).then(res => {
       done();
       if (!res) { think(n, 'could not decide', 'falling back to habit'); return; }
-      /* Matches the model's chosen destination string leniently.
-         Giving the model the exact valid strings reduces mismatches but
-         doesn't eliminate them -- "village green" vs "the village green"
-         shouldn't leave a villager stuck with no destination. */
+      // Matched leniently: "village green" is "the village green".
       const norm = x => String(x).toLowerCase()
         .replace(/^(the|a|an)\s+/, '').replace(/[^a-z0-9 ]/g, '').trim();
       const said = norm(res.go);
@@ -832,11 +598,7 @@ LG.game = (function () {
       }
       n.why = res.why || '';
       if (want.after === 'player') {
-        // Pursuing the player is an ongoing chase (see followPlayer),
-        // not a one-time walk to wherever they were standing when this
-        // decision was made -- `wantsGo` is deliberately left unset so a
-        // later decision (once the chase ends) won't find a stale
-        // target rect still waiting to be acted on.
+        // A chase, not a walk: no `wantsGo`, so nothing stale is left once it ends.
         n.followingPlayer = true;
         n.wentAfter = 'player';
       } else {
@@ -849,25 +611,14 @@ LG.game = (function () {
     return true;
   }
 
-  /* Starts a conversation between two villagers who've met. Nothing
-     about what will be said is pre-decided -- each has their own goal,
-     memory, and current weather/situation, and what they each take away
-     is determined afterward.
-
-     Both villagers' state is snapshotted once here (via LG.view.of),
-     rather than re-read live on every turn of the conversation. A
-     conversation reflects the two people as they were when it started;
-     re-reading live state partway through would let their state change
-     out from under an already-running exchange. */
+  /* Starts a conversation between two villagers who've met. Nothing is
+     decided in advance, and what each takes away is worked out afterwards.
+     Both are snapshotted once here, so the conversation is between them
+     as they were when it began. */
   function villagerTalk(a, b) {
     if (!settings.apiKey) return false;
     const va = LG.view.of(a, 'chat'), vb = LG.view.of(b, 'chat');
-    /* Whether either villager came looking for the other, resolved
-       once here (and cleared via LG.view.arrived) rather than read live
-       from a flag. The flag used to be set when a villager set off and
-       never cleared, so a villager who'd once deliberately sought out
-       another would keep greeting them with "I came looking for you" on
-       every subsequent, unrelated encounter that day. */
+    // Whether either came looking for the other, read once and cleared (LG.view.arrived).
     va.sought = va.errand.after === vb.id;
     vb.sought = vb.errand.after === va.id;
     LG.view.arrived(a); LG.view.arrived(b);
@@ -876,15 +627,12 @@ LG.game = (function () {
   }
 
   /* ------------------------------------------------------------- the board
-     A villager who chose to walk to the noticeboard (see `placesFor`)
-     may post something there -- what, if anything, isn't decided in
-     advance; it doesn't have to relate to their own errand at all.
-     Declining to post is a valid, expected outcome (same latitude
-     "remember" has in a player conversation), and this isn't even called
-     on every arrival -- only when the villager hasn't posted recently. */
+     A villager who walks to the noticeboard, and hasn't posted lately, is
+     asked whether they'd pin anything up. What is up to them, and nothing
+     is a fine answer. */
   const BOARD_MAX = 6;
   function maybePostNotice(n) {
-    if (!settings.apiKey || !settings.npcChatter) return;
+    if (!settings.apiKey) return;
     if (n.boardCool > 0) return;
     n.boardCool = 90 + Math.random() * 150;
     const v = LG.view.of(n, 'board');
@@ -918,10 +666,7 @@ LG.game = (function () {
     log('📌 ' + displayName(n) + ' pins something up at the noticeboard.');
     if (saving()) LG.save.write();
 
-    // Self-reported "revealed" facts are verified against the actual
-    // notice text, same as a villager's own self-reported reveals in
-    // dialogue -- a model will flag a fact just for using a related word,
-    // not only for actually stating it.
+    // Facts the notice claims to state are checked against its text, as in dialogue.
     const claimed = Array.isArray(res.revealed)
       ? res.revealed.map(id => String(id).replace(/[^\w]/g, ''))
                      .filter(id => plan.facts[id] && n.facts.indexOf(id) !== -1)
@@ -929,18 +674,14 @@ LG.game = (function () {
     if (!claimed.length) return;
     const candidates = claimed.map(id => ({ id, text: plan.facts[id].text }));
     const L = C.language();
-    LG.llm.judge(C.llm(), text, entry.translation, candidates, { langName: L.name })
+    LG.llm.judge(C.llm(), text, entry.translation, candidates, { who: n.def.name, langName: L.name })
       .then(confirmed => { confirmed.forEach(c => entry.factIds.push(c.id)); })
       .catch(() => {});
   }
 
-  /* Called when the player opens the noticeboard. Facts from confirmed
-     notices are added to the notebook here, at read time -- not when
-     they were originally posted, since a notice only reaches the
-     player's notebook once they've actually gone and read it, matching
-     how spoken facts work. `learn` is passed no source villager here: a
-     pinned notice is a fixed, standalone artifact, true independent of
-     whether its writer would still personally affirm it. */
+  /* A notice's confirmed facts reach the notebook when the player reads
+     it, not when it's pinned up. No source villager is passed: a notice
+     stands on its own. */
   function openBoard() {
     (state.board || []).forEach(entry => {
       entry.factIds.forEach(id => learn(id, null, entry.text, null));
@@ -953,39 +694,27 @@ LG.game = (function () {
     const L = C.language();
     const box = document.getElementById('boardList');
     const rows = (state.board || []).slice().reverse().map(entry => {
-      const hide = settings.showTranslation ? '' : ' hidden-tr';
-      // A notice always shows the poster's real name, unlike a nametag
-      // or spoken dialogue -- it's a public, written document, and a
-      // noticeboard that couldn't identify its own postings would defeat the point.
+      // A notice is signed: the poster's name shows, unlike a nametag.
       const who = entry.name;
       return '<div class="notice"><span class="who">' + escapeHTML(who) + '</span>' +
              '<span class="heard" lang="' + L.tag + '">' + escapeHTML(entry.text) + '</span>' +
              (entry.roman && L.romanize ? '<span class="roman" lang="' + L.romanTag + '">' +
                escapeHTML(entry.roman) + '</span>' : '') +
-             (entry.translation ? '<span class="gloss' + hide + '" lang="en" title="click to read">' +
+             (entry.translation ? '<span class="gloss hidden-tr" lang="en" title="click to read">' +
                escapeHTML(entry.translation) + '</span>' : '') +
              '</div>';
     });
     box.innerHTML = rows.length ? rows.join('')
       : '<div class="notice muted">Nothing pinned up yet.</div>';
-    Array.prototype.forEach.call(box.querySelectorAll('.gloss.hidden-tr'), el => {
-      el.onclick = () => el.classList.remove('hidden-tr');
-    });
   }
 
   /* ---------------------------------------------------------------- loop */
   const WALK_SPEED = 132, RUN_SPEED = 210;
-  /* Keyboard and joystick input add into the same dx/dy pair, so both
-     can be used simultaneously (e.g. a bluetooth keyboard alongside a
-     touchscreen) rather than requiring an exclusive input mode. Keyboard
-     input is digital (each direction contributes a full 1); the
-     joystick's magnitude already reflects how far it's pushed. Only
-     normalizing when the combined length exceeds 1 preserves full-speed
-     keyboard diagonals while still letting a half-pushed joystick move
-     at half speed. Running multiplies the same speed cap for both input
-     types, rather than the joystick needing its own separate speed
-     scaling. */
+  /* Keys and the stick add into one vector, so both work at once. It's
+     normalised only above length 1: keyboard diagonals stay full speed and
+     a half-pushed stick walks at half speed. */
   function movePlayer(dt) {
+    player.vx = player.vy = 0;
     if (uiBlocked()) return;
     let dx = 0, dy = 0;
     if (held.left) dx -= 1;
@@ -997,11 +726,23 @@ LG.game = (function () {
     const len = Math.hypot(dx, dy);
     if (!len) return;
     const scale = len > 1 ? 1 / len : 1;
+    /* After a drink (LG.pockets.tipsy) the way you're heading swings from
+       side to side, on two slow waves so it never settles into a pattern,
+       and steadies over the last half hour as it wears off. */
+    const tipsy = Math.min(1, LG.pockets.tipsy() * 2);
+    if (tipsy) {
+      const t = performance.now() / 1000;
+      const a = tipsy * (0.6 * Math.sin(t * 1.7) + 0.35 * Math.sin(t * 3.3 + 1.3));
+      [dx, dy] = [dx * Math.cos(a) - dy * Math.sin(a), dx * Math.sin(a) + dy * Math.cos(a)];
+    }
     const speed = running() ? RUN_SPEED : WALK_SPEED;
     const nx = player.px + dx * scale * speed * dt;
     const ny = player.py + dy * scale * speed * dt;
+    // How fast they really went, walls and all: it's what kicks the ball (LG.toys).
+    const x0 = player.px, y0 = player.py;
     if (canStand(nx, player.py)) player.px = nx;
     if (canStand(player.px, ny)) player.py = ny;
+    if (dt) { player.vx = (player.px - x0) / dt; player.vy = (player.py - y0) / dt; }
     player.tx = (player.px / TILE) | 0;
     player.ty = (player.py / TILE) | 0;
     if (Math.abs(dx) > Math.abs(dy)) player.dir = dx > 0 ? 'right' : 'left';
@@ -1016,20 +757,9 @@ LG.game = (function () {
     return true;
   }
 
-  /* Handles a villager actively chasing the player. Uses a real
-     pathfinding route, re-plotted every couple of seconds rather than
-     continuously -- the player keeps moving, so a route toward their old
-     position quickly goes stale, but re-running A* every frame would be
-     wasted work while the target hasn't moved far. Uses pathfinding
-     rather than a straight line so the chase respects walls and doors
-     like normal movement does: a villager only ever occupies a tile A*
-     actually returned, never the player's exact pixel position.
-
-     The chase times out rather than continuing indefinitely -- if a
-     villager can't close the distance for a while (player kept moving,
-     or reached somewhere hard to path to), the chase is abandoned, same
-     as any other villager plan that becomes unachievable gets dropped
-     rather than pursued forever. */
+  /* A villager chasing the player: a real route, replanned every second
+     or so rather than every frame, so the chase keeps to walls and doors.
+     Given up after FOLLOW_GIVE_UP seconds without catching up. */
   const CATCH_UP = REACH;                  // close enough to be spoken to
   const FOLLOW_RECALC = 1.2;               // seconds between replanning the route
   const FOLLOW_GIVE_UP = 50;               // seconds of chasing before it can wait
@@ -1058,28 +788,25 @@ LG.game = (function () {
 
   function update(dt) {
     if (saving()) LG.save.tick(dt);
-    // Game time is paused while a dialogue is open, so a long
-    // conversation doesn't burn in-game hours or change the weather mid-chat.
+    // Time stands still in a conversation, so a long one doesn't burn hours or turn the weather.
     if (!LG.dialogue.isOpen() && LG.time.tick(dt))
       log('🗓 ' + LG.time.season().name + ', day ' + LG.time.dayOfSeason() + '.');
-    // Written only when it changes: setting the same text still makes the
-    // browser recompute style and layout for the page, every frame.
+    // Written only on a change: setting the same text still makes the browser redo layout.
     const el = document.getElementById('clock'), label = LG.time.label();
     if (el && el.textContent !== label) el.textContent = label;
 
     movePlayer(dt);
     LG.fishing.tick(dt, uiBlocked());
+    LG.toys.update(dt);
 
     for (const n of npcs) {
       const wasFollowing = n.followingPlayer;
       const walking = wasFollowing ? followPlayer(n, dt) : !!(n.route && n.route.length);
       if (!wasFollowing)
-        A.routine(n, dt, LG.GREEN, settings.apiKey && settings.npcChatter ? decideWhereToGo : null);
+        A.routine(n, dt, LG.GREEN, settings.apiKey ? decideWhereToGo : null);
       if (n.wasWalking && !walking) {
         think(n, 'arrives', LG.view.where(n) + (n.why ? ' — ' + n.why : ''));
-        // `patch` still reflects wherever the villager last decided to
-        // go, not where a chase just ended -- so it's excluded here to
-        // avoid misreading a chase's end as "arrived at the noticeboard".
+        // Not after a chase: `patch` is still where they last decided to go.
         if (!wasFollowing && n.patch === LG.BOARD_SPOT) maybePostNotice(n);
       }
       n.wasWalking = walking;
@@ -1088,10 +815,8 @@ LG.game = (function () {
       if (n.bubbleT > 0) n.bubbleT -= dt;
       if (n.boardCool > 0) n.boardCool -= dt;
     }
-    if (settings.npcChatter) {
-      LG.dialogue.chatTick(dt);
-      A.meet(npcs, dt, log, LG.dialogue.chatterLine, villagerTalk);
-    }
+    LG.dialogue.chatTick(dt);
+    A.meet(npcs, dt, log, LG.dialogue.chatterLine, villagerTalk);
 
     if (beast) {
       if (beast.following) {
@@ -1101,10 +826,7 @@ LG.game = (function () {
         }
       } else {
         A.wander(beast, dt, beast.home, 26);
-        // Catching the animal requires an explicit action (see
-        // interact()/tapPick) -- just walking within reach must not
-        // auto-catch it the way picking up a dropped item does. The hint
-        // text already tells the player to press E.
+        // Catching it takes E or a tap; walking into it doesn't, unlike a dropped item.
       }
     }
     if (worldItem && !worldItem.taken && !uiBlocked() && dist(player, worldItem) < TILE * 0.7) pickUp();
@@ -1118,9 +840,7 @@ LG.game = (function () {
 
     if (nudgeT > 0) nudgeT -= dt;
     const hint = document.getElementById('hint');
-    /* On touch, the hint just names what's nearby, since the action is
-       simply tapping what's visible -- no key to name. On keyboard, it
-       needs to say which key to press. */
+    // On touch the hint names what's there to tap; on a keyboard it names the key.
     const tap = LG.touch.on;
     let say = '';
     if (uiBlocked()) {
@@ -1136,6 +856,8 @@ LG.game = (function () {
       say = (tap ? 'Tap to pick up ' : 'Press E to pick up ') + beast.name;
     } else if (worldItem && !worldItem.taken && dist(player, worldItem) < TILE * 1.8) {
       say = tap ? 'Tap to pick it up' : 'Press E to pick it up';
+    } else if (LG.toys.nearBall(player)) {
+      say = tap ? 'Walk into the ball to kick it' : 'Walk into the ball to kick it, or press E to pick it up';
     } else if (nearBoard()) {
       say = tap ? 'Tap the noticeboard to read it'
                 : 'Press E to read the noticeboard';
@@ -1149,13 +871,9 @@ LG.game = (function () {
     if (say && hint.textContent !== say) hint.textContent = say;
     hint.classList.toggle('show', !!say);
 
-    /* Camera is centered on the middle of the visible band (see seen()),
-       not the middle of the full canvas, and clamped so the map edge
-       aligns with the edge of the visible area rather than the canvas
-       edge -- this keeps map corners from being hidden under browser
-       chrome or on-screen phone controls. When the whole canvas is
-       visible (any desktop window), the visible band equals the canvas,
-       so this reduces to the original simple centering/clamping. */
+    /* The camera centres the player in the visible band (see seen()) and
+       clamps the map's edges to it, so corners aren't lost under browser
+       chrome or phone controls. On desktop the band is the whole canvas. */
     const band = seen();
     const bw = band.right - band.left, bh = band.bottom - band.top;
     cam.x = clamp(player.px - (band.left + band.right) / 2, -band.left, W.W * TILE - band.right);
@@ -1178,14 +896,9 @@ LG.game = (function () {
     ctx.fillText(LG.ITEMS[worldItem.item].icon, worldItem.px, worldItem.py + 4 + bob);
   }
 
-  /* Rounds the camera offset to whole *device* pixels, not CSS pixels
-     -- the canvas is scaled by dpr, so at a fractional dpr (125%/150%
-     display scaling is common), an offset that's only a whole CSS pixel
-     can still land a tile edge on a fractional device pixel, giving
-     adjacent ground tiles their own antialiased edges instead of a
-     shared crisp seam (visible as a faint lattice over the terrain).
-     Both draw() and refreshGroundLayer() call this, so the cached ground
-     layer stays aligned with where a live translate would place it. */
+  /* The camera offset on whole device pixels: at a fractional dpr, a whole
+     CSS pixel can land tile edges between device pixels and draw a faint
+     lattice over the ground. The cached layer uses it too, to stay aligned. */
   function roundedCam() {
     return { x: Math.round(cam.x * dpr) / dpr, y: Math.round(cam.y * dpr) / dpr };
   }
@@ -1195,8 +908,7 @@ LG.game = (function () {
      view. A strip is clipped to itself, and drawn from two tiles further
      out on every side, so what overhangs into it from just outside
      (roofs, drift shadows, a canopy's top) comes out exactly as a whole
-     repaint would draw it. Signs are always all drawn, clipped: drawing
-     them is also what lists where they can be clicked. */
+     repaint would draw it. Signs are drawn for the whole layer, clipped. */
   function paintGround(room, rx, ry, rw, rh) {
     const g = groundCtx, at = { x: groundSeen.x, y: groundSeen.y };
     const w = vw + 2 * OVERSCAN, h = vh + 2 * OVERSCAN;
@@ -1209,7 +921,7 @@ LG.game = (function () {
     g.translate(-at.x, -at.y);
     W.drawGround(g, part, pw, ph, dpr);
     W.drawBuildings(g, room, part, pw, ph);
-    W.drawSigns(g, at, w, h, settings.lang, settings.showTranslation, dpr);
+    W.drawSigns(g, at, w, h, settings.lang, dpr);
     g.restore();
   }
 
@@ -1234,17 +946,12 @@ LG.game = (function () {
     else if (dy < 0) paintGround(room, 0, 0, dw / dpr, -dy / dpr);
   }
 
-  /* Repaints the cached ground layer only when something visible in it
-     has actually changed: the camera leaving the painted area, entering/
-     exiting a roofed area, snow depth advancing a bucket (bucketed the
-     same way world.js does -- see readSnow() there), the lamps lighting
-     or going out, or a sign's language/reveal state. Otherwise draw()
-     just blits the existing cached layer from wherever the camera is.
-     A camera move only paints the strip that came into view (see
-     scrollGroundLayer), and a change of snow depth is repainted a band a
-     frame over GROUND_BANDS frames: it comes round every second or so
-     while snow is falling, and a whole snowy repaint in one frame was a
-     30-45 ms hitch in Firefox. */
+  /* Repaints the cached ground layer only when something in it changed: the
+     camera leaving it, entering or leaving a room, snow depth moving a
+     step, the lamps, or the signs' language. A camera move paints only the
+     strip that came into view, and a snow step repaints one band a frame
+     over GROUND_BANDS frames (a whole snowy repaint in one frame hitched
+     Firefox by 30-45 ms). */
   const GROUND_BANDS = 6;
   let bandNext = 0, bandsOwed = 0;
   function refreshGroundLayer(room) {
@@ -1259,7 +966,7 @@ LG.game = (function () {
     // Still the same picture, bar the snow and where it's been scrolled to.
     if (groundSeen.x === groundSeen.x &&                  // NaN until it's first painted
         roomX === groundSeen.roomX && roomY === groundSeen.roomY && night === groundSeen.night &&
-        settings.lang === groundSeen.lang && settings.showTranslation === groundSeen.trans &&
+        settings.lang === groundSeen.lang &&
         Math.abs(nx - groundSeen.x) < w / 2 && Math.abs(ny - groundSeen.y) < h / 2) {
       if (snow !== groundSeen.snow) { groundSeen.snow = snow; bandsOwed = GROUND_BANDS; }
       if (c.x < groundSeen.x || c.x > groundSeen.x + 2 * OVERSCAN ||
@@ -1275,7 +982,7 @@ LG.game = (function () {
     }
     groundSeen.x = nx; groundSeen.y = ny;
     groundSeen.roomX = roomX; groundSeen.roomY = roomY; groundSeen.snow = snow; groundSeen.night = night;
-    groundSeen.lang = settings.lang; groundSeen.trans = settings.showTranslation;
+    groundSeen.lang = settings.lang;
     bandsOwed = 0;
     paintGround(room, 0, 0, w, h);
   }
@@ -1299,14 +1006,11 @@ LG.game = (function () {
 
     W.drawAnimated(ctx, c, vw, vh);
     drawWorldItem();
+    LG.toys.drawGround(ctx, room);
 
-    /* A villager inside a building the player isn't in is not drawn --
-       the player can see into whatever room they're standing in (that's
-       what the roof-lifting effect is for), but not through another
-       building's walls, so e.g. the baker at her oven is genuinely
-       unreachable-looking until the player actually goes inside. Nor is
-       anyone off the screen; the margin is for a speech bubble, which
-       reaches well above and to either side of whoever is speaking. */
+    /* Nobody inside a building the player isn't in (the roof lifts only on
+       the player's own room), and nobody off screen; the margin is for
+       their speech bubble. */
     const onScreen = a => a.px > c.x - 240 && a.px < c.x + vw + 240 &&
                           a.py > c.y - 240 && a.py < c.y + vh + 240;
     const drawables = npcs.filter(a => {
@@ -1332,6 +1036,7 @@ LG.game = (function () {
       }
     }
     LG.fishing.draw(ctx);
+    LG.toys.drawSky(ctx);
     for (const a of drawables) {
       if (a.bubble) A.drawBubble(ctx, a, C.language().fontStack, dpr);
     }
@@ -1341,7 +1046,7 @@ LG.game = (function () {
     const reach = LG.pockets.glow(), glows = [];
     if (reach) glows.push({ x: player.px - c.x, y: player.py - c.y - 8, r: reach * TILE });
     if (LG.time.isNight()) W.lamps().forEach(l => glows.push({ x: l.x - c.x, y: l.y - c.y, r: l.r }));
-    LG.sky.draw(ctx, vw, vh, W.roofRects(cam, vw, vh, dpr), dpr, glows);
+    LG.sky.draw(ctx, vw, vh, W.roofRects(cam, vw, vh, dpr, room), dpr, glows);
 
     // Drawn on top of the weather -- it's a UI control, not part of the scenery.
     LG.touch.draw(ctx);

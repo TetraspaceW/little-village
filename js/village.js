@@ -22,11 +22,12 @@ LG.village = (function () {
 
   function dist(a, b) { return Math.hypot(a.px - b.px, a.py - b.py); }
 
-  /* Builds a fresh village from `seed` (or a random one) at `level`:
-     the chain, the cast at their posts, the traveller off the train,
-     and the terminal item or animal wherever the chain put it. */
-  function create(seed, level) {
-    plan = LG.chain.generate({ level: level, seed: seed || null });
+  /* Builds a fresh village from `seed` (or a random one) at `level`, or
+     from `given`, a saved plan: the chain, the cast at their posts, the
+     traveller off the train, and the terminal item or animal wherever the
+     chain put it. */
+  function create(seed, level, given) {
+    plan = given || LG.chain.generate({ level: level, seed: seed || null });
 
     /* The player arrives by train. The platform is at the far east end
        of the high street, so the walk into the village covers its full
@@ -77,29 +78,14 @@ LG.village = (function () {
     }
   }
 
-  /* Whether the terminal (chain-ending) item has been collected --
-     tracked as a one-way, once-ever flag. Trading it away afterward
-     doesn't put it back where it was lying. */
+  // Whether the item at the end of the chain has been collected: once, for good.
   function haveTerminal() {
     return !!((worldItem && worldItem.taken) || (beast && beast.caught));
   }
 
-  /* Has this fact already been resolved by the world state?
-
-     Previously this check was implemented three separate times, each
-     covering only one case: `learn` had its own logic that only knew
-     about the world-item location fact; `doTrade` had inline logic that
-     only knew about its own link and just deleted the note; picking up
-     the terminal item had a third, separate flag. As a result, a
-     villager could state a want that had already been fulfilled (e.g.
-     the goal item already delivered) and it would still show in the
-     notebook as an active lead, since whichever completion path had
-     actually happened wasn't checked by the note-writing code.
-
-     Now there's one function used everywhere, reading from two sources
-     that are both guaranteed one-way: `haveTerminal` is explicitly
-     once-ever, and a completed trade (`tradeDone`) never reverts. That
-     one-wayness is what makes this check safe to rely on globally. */
+  /* Whether a fact is spent: the one answer the notebook, learning and
+     trading all use. It reads two things that never revert, the end item
+     collected and a link's trade done, so nothing is stored to go stale. */
   function factSpent(id) {
     const f = plan && plan.facts[id];
     if (!f || f.type === 'opinion') return false;      // an opinion is never spent

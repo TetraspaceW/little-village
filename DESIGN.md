@@ -50,6 +50,15 @@ the game made of it, or in a prompt sentence that did something other than what 
   player, a chase or a reload can clear the route partway. Picking the same place again
   only counts as staying put if they're standing in it (`routine()` in `js/npc.js`).
 - Mikhalych's rice hut exists because a villager once hallucinated it (`OLD-LI.md`).
+- **Sleep is where they are, not where they're sent.** A villager standing at their own
+  bed at night lies down, and gets up at first light (`sleep()` in `js/npc.js`). Nothing
+  routes them there: "your bed" is one of their places, and with no model the dice favour
+  it at dusk and night (`PHASE_TABLE.bed`), as rough weather favours a roof. Each gets a
+  bed where they work, else in the building they shelter in (`js/village.js`). A sleeper
+  isn't asked where to go and can't be talked to; sleep itself isn't saved.
+- **Every place says whether it has a roof** ("indoors" or "out in the open", from the map,
+  in `placesFor`). Left to the name, "the mine" could be a tunnel, and a home that is a
+  patch of street was called "your own place" and read as a house.
 
 ## Jev: fixed-choice questions (OpenRouter only)
 
@@ -121,6 +130,21 @@ OpenRouter's decisions endpoint (`decisionPost`/`askJev` in `js/llm.js`), not
   `revealed`, `remember`, and an optional trade `action`.
 - **Stock is a prior, not a manifest.** A baker plausibly has a pain au chocolat. The
   only hard inventory is what the villager actually took from the player.
+- **Unlisted goods are minted, not refused.** A sale naming a tag the game doesn't
+  have used to be dropped ("could not be squared up") while the villager believed
+  they'd handed it over. Now the helper model either maps it to an existing item
+  under another name, says it isn't a thing that can be handed over, or describes
+  it (icon, English name, village name, usual price, and whether it's eaten, drunk,
+  worn, lit or played, with the slot, leftover container, light reach, General MIDI
+  instrument and note, and grammatical gender those need), and
+  `js/mint.js` registers it in `LG.ITEMS`. Values outside what shipped items use are
+  dropped, so a minted item is never half-usable. Something **raw** comes with up to
+  three oven recipes (into a dish the game has, or a new minted dish nobody sells),
+  added to `LG.RECIPES` and dropped if they'd make something inedible or need a thing
+  the game doesn't have. The helper is shown only the shipped recipes, so its prompt
+  stays cacheable. Minted items have **no tags**, so the errand generator can't pick
+  one and a seed still builds the same village. Only the villagers who minted one
+  sell it. They belong to one village: cleared by `newVillage`, carried in the save.
 
 ## Structured output and reply parsing
 

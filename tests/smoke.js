@@ -278,6 +278,79 @@ section('a walk cut short is taken up again');
   keep.forEach(([k, v]) => { n[k] = v; });
 }
 
+/* Everyone has a bed. One at their bed at night sleeps there, and at
+   night they tend to go to it. */
+section('a bed for everyone, and sleep at night');
+{
+  const W = LG.world, T = W.TILE;
+  const beds = npcs.map(n => n.bed);
+  ok(beds.every(Boolean), 'every villager has a bed');
+  ok(new Set(beds.map(b => b && b.x + ',' + b.y)).size === npcs.length, 'and nobody shares one');
+  const from = W.nearestOpen(LG.START.x, LG.START.y), open = W._flood(from.x, from.y);
+  for (const n of npcs) {
+    const b = n.bed;
+    if (!b) continue;
+    const room = W.buildingAt(b.x, b.y);
+    ok(room && room.label === b.label, n.def.name + '’s bed is inside the ' + b.label);
+    // The bed covers its own tile and most of the one below it.
+    const clash = room && room.furniture.find(f => f.type !== 'bed' &&
+      f.y >= b.y && f.y <= b.y + 1 && b.x >= f.x && b.x < f.x + (f.w || 1));
+    ok(!clash, n.def.name + '’s bed has room to stand' + (clash ? ' (under a ' + clash.type + ')' : ''));
+    ok(open.has(b.y * W.W + b.x), n.def.name + ' can get to their bed');
+  }
+
+  const day = LG.time.day, frac = LG.time.frac, weather = LG.time.weather,
+        left = LG.time.weatherLeft, snow = LG.time.snow;
+  const at = f => { LG.time.start(day, f); LG.time.setWeather(weather, left); LG.time.setSnow(snow); };
+
+  // Their bed is somewhere they can choose, and every place says whether it has a roof.
+  for (const v of npcs) {
+    const places = LG.game._placesFor(v);
+    ok(places.some(p => p.name === 'your bed' && p.rect === v.bed.rect), v.def.name + ' can choose their bed');
+    ok(places.every(p => p.after || p.name === 'your bed' || /(indoors|out in the open)$/.test(p.note)),
+       v.def.name + '’s places each say whether they are indoors');
+  }
+  const boris = npcs.find(v => v.def.id === 'boris');
+  const said = name => (LG.game._placesFor(boris).find(p => p.name === name) || {}).note || '';
+  ok(/out in the open$/.test(said('the mine')), 'the mine is out in the open');
+  ok(/out in the open$/.test(said('home')) && said('home').indexOf('your own place') === -1,
+     'and so is Boris’s home patch, which is not called a house');
+  ok(/indoors$/.test(said('Bakery')), 'the Bakery is indoors');
+
+  // Sleep is where they are, not where they're sent.
+  const n = npcs[0], A = LG.actors;
+  const keep = ['px', 'py', 'tx', 'ty', 'route', 'routeCool', 'thought', 'wantsGo', 'asleep', 'chatting', 'frozen']
+    .map(k => [k, n[k]]);
+  const put = (x, y) => { n.tx = x; n.ty = y; n.px = x * T + T / 2; n.py = y * T + T / 2;
+                          n.route = null; n.asleep = false; n.chatting = false; n.frozen = false; };
+  const spare = W.nearestOpen(n.bed.x + 1, n.bed.y + 1);
+  at(0.5); put(n.bed.x, n.bed.y); A.routine(n, 0.1, LG.GREEN, null);
+  ok(!n.asleep, 'by day, standing at their bed, ' + n.def.name + ' stays up');
+  at(0.9); put(spare.x, spare.y); A.routine(n, 0.1, LG.GREEN, () => true);
+  ok(!n.asleep, 'at night, away from their bed, they are not asleep on their feet');
+  put(n.bed.x, n.bed.y); A.routine(n, 0.1, LG.GREEN, () => true);
+  ok(n.asleep, 'at night, at their bed, they lie down');
+  ok(!n.deciding, 'and a sleeper is not asked where to go');
+  keep.forEach(([k, v]) => { n[k] = v; });
+
+  // With no model the dice lean towards bed at night, so most of the village ends up there.
+  at(0.86);
+  for (let i = 0; i < 30 * 200; i++) LG.game._debugTick(1 / 30);
+  ok(LG.time.isNight(), 'still night after two hundred seconds');
+  const abed = npcs.filter(n => n.asleep);
+  ok(abed.length >= npcs.length * 0.6, 'most of the village has gone to bed (' + abed.length + ' of ' + npcs.length + ')');
+  ok(abed.every(n => n.tx === n.bed.x && n.ty === n.bed.y), 'each in their own bed');
+  ok(abed.every(n => W.buildingUnder(n) === W.buildingAt(n.bed.x, n.bed.y)), 'and indoors, under the roof');
+  const still = abed.map(n => n.px + ',' + n.py);
+  for (let i = 0; i < 300; i++) LG.game._debugTick(1 / 30);
+  ok(abed.every((n, i) => n.px + ',' + n.py === still[i]), 'and a sleeper stays put');
+
+  at(0.3);
+  LG.game._debugTick(1 / 30);
+  ok(npcs.every(n => !n.asleep), 'in the morning everyone is up');
+  at(frac);
+}
+
 /* "Open" isn't the same as "reachable" -- a forest is where that gap
    matters most, since chain.js can leave the errand's terminal item in
    any glade, and a glade sealed off by trees would make the errand
@@ -2155,6 +2228,7 @@ async function villagersTalking() {
   await roomForTheComposer();
   escapeCloses();
   whatYouCanSee();
+  await mintedGoods();
 
   console.log('\n' + (failures ? failures + ' of ' + checks + ' CHECKS FAILED'
                                : 'SMOKE TEST PASSED (' + checks + ' checks)'));
@@ -2668,6 +2742,227 @@ function escapeCloses() {
      'Escape over a conversation closes the panel on top first');
   esc();
   ok(!s5.LG.dialogue.isOpen(), 'and then the conversation');
+}
+
+/* --------------------------------------------------- something not in the catalogue
+   A villager may sell what their trade would plausibly have, not only what
+   LG.ITEMS lists. The unknown tag becomes an item (mint.js) and the sale
+   goes through like any other. */
+async function mintedGoods() {
+  section('something the game never had can still be sold');
+  const real = LG.llm.mintItem;
+  let asked = 0, answer = null, lastAsk = null;
+  LG.llm.mintItem = async (cfg, o) => { asked++; lastAsk = o; return answer; };
+  const shippedRecipes = LG.RECIPES.length;
+  LG.config.settings.apiKey = 'not-a-real-key';          // the stub above, so nothing is sent
+  LG.time.start(LG.time.day, 0.5);
+
+  const cast = LG.village.npcs;
+  const seller = cast.find(n => (n.def.sells || []).length);
+  const other = cast.find(n => n !== seller);
+  const seed = LG.village.plan.seed, level = LG.config.settings.level;
+  const digest = LG.saveMigrate.digestOf(LG.chain.generate({ level: level, seed: seed }));
+  ok(LG.dialogue._debugPrompt(seller, null).indexOf('make up a short English [tag]') !== -1,
+     'a villager at work is told they can sell what is not listed');
+
+  answer = { thing: true, same: null, en: 'pain au chocolat', full: 'a pain au chocolat',
+             name: 'pain au chocolat', icon: '🥐', price: 3, use: 'eat', slot: null, leaves: null };
+  seller.till = []; seller.sold = {}; seller.stock = {}; seller.turns = 40;
+  seller.nameKnown = false;
+  LG.ledger.state.inv.coins = 20;
+  const ids = await LG.mint.sale(seller, ['pain_au_chocolat'], 'Voilà.', 'Here you are.');
+  ok(ids.length === 1 && ids[0] === 'pain_au_chocolat', 'the unknown tag becomes an item');
+  ok(sandbox.document.getElementById('log').innerHTML.indexOf(seller.def.name + ' has') === -1,
+     'and the log does not give away a name the traveller has not been told');
+  const it = LG.ITEMS.pain_au_chocolat;
+  ok(it && it.icon === '🥐' && it.en === 'pain au chocolat' && it.price === 3, 'described the way the helper put it');
+  ok(it && it.tags.length === 0, 'with no tags, so the errand generator never picks it');
+  ok(LG.saveMigrate.digestOf(LG.chain.generate({ level: level, seed: seed })) === digest,
+     'and the same seed still builds the same village');
+  ok(LG.trade.commerce(seller, 'sell', ids, 3), 'the sale goes through');
+  ok(LG.ledger.count('pain_au_chocolat') === 1 && LG.ledger.count('coins') === 17,
+     'the traveller has it, and paid for it');
+  ok(LG.dialogue._debugPrompt(seller, null).indexOf('pain au chocolat') !== -1,
+     'and the villager is told they sold it');
+  if (other) {
+    other.stock = {};
+    ok(LG.trade.commerce(other, 'sell', ['pain_au_chocolat'], 3) === false,
+       'someone else does not sell it just because it exists');
+  }
+
+  const n = asked;
+  ok((await LG.mint.sale(seller, 'pain_au_chocolat, bread', '', ''))
+       .join() === 'pain_au_chocolat,bread', 'a known tag is not asked about again');
+  ok(asked === n, 'not even an invented one');
+  answer = { thing: true, same: 'bread', en: 'loaf', full: 'a loaf', icon: '🍞', price: 2 };
+  ok((await LG.mint.sale(seller, ['baguette_loaf'], '', '')).join() === 'bread',
+     'another name for something the game has is that thing');
+  answer = { thing: false };
+  ok((await LG.mint.sale(seller, ['a_haircut'], '', '')).length === 0,
+     'and something that cannot be handed over is nothing');
+  answer = null;
+  ok((await LG.mint.sale(seller, ['mystery'], '', '')).length === 0, 'no answer is nothing too');
+
+  // What you can do with it from your pockets, the same as anything shipped.
+  ok(LG.ITEMS.pain_au_chocolat.use === 'eat', 'something to eat can be eaten');
+  answer = { thing: true, same: null, en: 'flask of cider', full: 'a flask of cider', icon: '🍶',
+             price: 3, use: 'drink', slot: null, leaves: 'bottle', alcohol: true };
+  const cider = (await LG.mint.sale(seller, ['cider_flask'], '', ''))[0];
+  ok(cider && LG.ITEMS[cider].leaves === 'bottle', 'and what it comes in is left behind');
+  LG.ledger.give(cider, 1);
+  LG.ledger.state.tipsy = 0;
+  const bottles = LG.ledger.count('bottle');
+  ok(LG.pockets.use(cider) && LG.ledger.count(cider) === 0 && LG.ledger.count('bottle') === bottles + 1,
+     'drinking it uses it up and leaves the bottle');
+  ok(Math.abs(LG.pockets.tipsy() - 1) < 1e-6, 'and cider goes to your head like wine');
+  answer = { thing: true, same: null, en: 'rum cake', full: 'a rum cake', icon: '🍰',
+             price: 3, use: 'eat', leaves: null, alcohol: true };
+  const cake = (await LG.mint.sale(seller, ['rum_cake'], '', ''))[0];
+  ok(cake && !LG.ITEMS[cake].alcohol, 'but only a drink can make you tipsy');
+  LG.ledger.state.tipsy = 0;
+  answer = { thing: true, same: null, en: 'straw hat', full: 'a straw hat', icon: '👒', price: 4,
+             use: 'wear', slot: 'head', leaves: null, g: 'f' };
+  const hat = (await LG.mint.sale(seller, ['straw_hat'], '', ''))[0];
+  LG.ledger.give(hat, 1);
+  ok(LG.ITEMS[hat].slot === 'head' && LG.pockets.use(hat) && LG.ledger.state.worn[hat],
+     'something to wear can be put on');
+  ok(LG.pockets.wornList().indexOf('straw hat') !== -1, 'and the villagers see it worn');
+  answer = { thing: true, same: null, en: 'odd cloak', full: 'an odd cloak', icon: '🧥', price: 4,
+             use: 'wear', slot: 'tail', leaves: 'teapot_of_doom' };
+  const cloak = (await LG.mint.sale(seller, ['odd_cloak'], '', ''))[0];
+  ok(cloak && !LG.ITEMS[cloak].use && !LG.ITEMS[cloak].slot && !LG.ITEMS[cloak].leaves,
+     'worn somewhere nothing is worn, it is just a thing to carry');
+
+  answer = { thing: true, same: null, en: 'storm lantern', full: 'a storm lantern', icon: '🏮',
+             price: 5, use: 'light', glow: 50 };
+  const lamp = (await LG.mint.sale(seller, ['storm_lantern'], '', ''))[0];
+  LG.ledger.give(lamp, 1);
+  ok(LG.ITEMS[lamp].glow === 6, 'a light reaches no further than the brightest the game has');
+  ok(LG.pockets.use(lamp) && LG.ledger.state.lit[lamp] && LG.pockets.glow() === 6,
+     'and it can be lit, and lights the dark');
+  answer = { thing: true, same: null, en: 'tin whistle', full: 'a tin whistle', icon: '🪈',
+             price: 2, use: 'play', gm: 'whistle', note: 'C5', rung: false };
+  const whistle = (await LG.mint.sale(seller, ['tin_whistle'], '', ''))[0];
+  LG.ledger.give(whistle, 1);
+  ok(LG.ITEMS[whistle].gm === 'whistle' && LG.ITEMS[whistle].note === 'C5' && !LG.ITEMS[whistle].rung &&
+     LG.pockets.use(whistle), 'an instrument can be played, on its own General MIDI instrument');
+  answer = { thing: true, same: null, en: 'kazoo', full: 'a kazoo', icon: '🎺',
+             price: 2, use: 'play', gm: 'kazoo', note: 'C4' };
+  const kazoo = (await LG.mint.sale(seller, ['kazoo'], '', ''))[0];
+  ok(kazoo && !LG.ITEMS[kazoo].use, 'one the soundfont has no instrument for is just a thing to carry');
+  answer = { thing: true, same: null, en: 'odd flute', full: 'an odd flute', icon: '🪈',
+             price: 2, use: 'play', gm: 'flute', note: 'C#4' };
+  const flute = (await LG.mint.sale(seller, ['odd_flute'], '', ''))[0];
+  ok(flute && !LG.ITEMS[flute].use, 'and so is one on a note the soundfont does not name');
+  answer = { thing: true, same: null, en: 'dark candle', full: 'a dark candle', icon: '🕯️',
+             price: 2, use: 'light', glow: 0 };
+  const dark = (await LG.mint.sale(seller, ['dark_candle'], '', ''))[0];
+  ok(dark && !LG.ITEMS[dark].use, 'and so is a light that lights nothing');
+
+  // Something raw comes with what an oven makes of it.
+  answer = { thing: true, same: null, en: 'sweet potato', full: 'a sweet potato', icon: '🍠', price: 2,
+             use: null, raw: true, recipes: [
+               { also: ['unobtainium'], makes: 'soup' },
+               { also: ['onion'], makes: 'soup' },
+               { also: [], dish: { en: 'sweet potato mash', full: 'a bowl of sweet potato mash', icon: '🥣',
+                                   price: 3, use: 'eat', leaves: 'bowl' } },
+               { also: [], makes: 'baked_potato' } ] };
+  const yam = (await LG.mint.sale(seller, ['sweet_potato'], '', ''))[0];
+  const mine = LG.RECIPES.filter(r => r.minted);
+  ok(mine.length === 2, 'a raw thing comes with recipes, the impossible one left out and no more than three tried');
+  ok(mine.some(r => r.needs[yam] && r.needs.onion && r.makes === 'soup'),
+     'one with something the game already has, making a dish it already has');
+  const mash = mine.map(r => r.makes).find(k => k !== 'soup');
+  ok(mash && LG.ITEMS[mash].use === 'eat' && LG.ITEMS[mash].leaves === 'bowl' && LG.ITEMS[mash].tags.length === 0,
+     'and one making a new dish, eaten from a bowl and no errand\'s');
+  ok(LG.mint.priceFor(seller, mash) === 0, 'which nobody sells: only an oven makes it');
+  ok(lastAsk.recipes.length === shippedRecipes, 'the helper is shown only the shipped recipes, so its prompt stays cacheable');
+  ok(LG.RECIPES.every(r => LG.ITEMS[r.makes] && Object.keys(r.needs).every(k => LG.ITEMS[k]) &&
+                           ['eat', 'drink'].indexOf(LG.ITEMS[r.makes].use) !== -1),
+     'every recipe is still made of real things, and makes something to eat');
+  const mashing = mine.find(r => r.makes === mash);
+  LG.ledger.give(yam, 1);
+  ok(LG.pockets.cook(mashing) && LG.ledger.count(yam) === 0 && LG.ledger.count(mash) === 1,
+     'and the oven cooks it');
+
+  answer = { thing: true, same: null, en: 'raw turnip', full: 'a raw turnip', icon: '🥔', price: 1,
+             raw: true, recipes: [{ also: [], makes: 'rope' }, { also: ['ghost'], makes: 'soup' }] };
+  await LG.mint.sale(seller, ['raw_turnip'], '', '');
+  ok(LG.RECIPES.filter(r => r.minted).length === 2, 'a recipe for something inedible, or from nothing, is not one');
+  answer = { thing: true, same: null, en: 'clay jug', full: 'a clay jug', icon: '🏺', price: 1,
+             raw: false, recipes: [{ also: [], makes: 'soup' }] };
+  await LG.mint.sale(seller, ['clay_jug'], '', '');
+  ok(LG.RECIPES.filter(r => r.minted).length === 2, 'and nothing that is not raw gets cooked');
+
+  const shot = JSON.parse(JSON.stringify(LG.save.snapshot()));
+  ok(shot.minted.some(m => m.id === 'pain_au_chocolat'), 'a save carries it');
+  LG.game.newVillage('yet-another-village', true);
+  ok(!LG.ITEMS.pain_au_chocolat, 'a new village does not have it');
+  ok(LG.RECIPES.length === shippedRecipes, 'or its recipes');
+  ok(LG.save.restore(shot) === null, 'the save loads');
+  ok(LG.ITEMS.pain_au_chocolat && LG.ledger.count('pain_au_chocolat') === 1,
+     'and it is back, in the traveller’s pocket');
+  ok(LG.mint.priceFor(LG.village.npcs.find(x => x.id === seller.id), 'pain_au_chocolat') === 3,
+     'still sold by the one who sold it');
+  ok(LG.ITEMS.pain_au_chocolat.use === 'eat' && LG.ITEMS[hat] && LG.ITEMS[hat].slot === 'head',
+     'still to be eaten, or worn');
+  ok(LG.ledger.state.worn[hat], 'and the hat is still on');
+  ok(LG.ledger.state.lit[lamp] && LG.ITEMS[lamp].glow === 6, 'the lantern is still lit');
+  ok(LG.ITEMS[whistle].gm === 'whistle' && LG.ITEMS[whistle].note === 'C5', 'and the whistle still plays');
+  ok(LG.RECIPES.filter(r => r.minted).length === 2 && LG.ledger.count(mash) === 1,
+     'the sweet potato\'s recipes are back, and so is the mash');
+
+  // "(worn)" agrees with a minted thing, in the languages where it has to.
+  LG.mint.restore([{ id: 'shawl', en: 'shawl', icon: '🧣', price: 3, use: 'wear', slot: 'neck',
+                     names: { ru: 'шаль' }, g: { ru: 'f', fr: 'zz' } }]);
+  ok(LG.wornMark('shawl', 'ru') === '(надета)', 'a feminine shawl is надета in Russian');
+  ok(!LG.ITEMS.shawl.g.fr, 'and a gender French does not have is dropped');
+  LG.mint.restore([{ id: 'torch', en: 'torch', icon: '🔥', price: 2, use: 'light', glow: 3,
+                     g: { ar: 'f' } }]);
+  ok(LG.litMark('torch', 'ar') === LG.LIT.ar.f, '"(lit)" agrees in Arabic, where only lights have a gender');
+
+  // A drink that goes to your head still does after a save.
+  LG.mint.restore([{ id: 'mead', en: 'mead', icon: '🍯', price: 4, use: 'drink', alcohol: true }]);
+  ok(LG.ITEMS.mead.alcohol === true && LG.mint.saved()[0].alcohol === true,
+     'a minted drink stays alcoholic through a save');
+
+  LG.llm.mintItem = real;
+
+  // The real call sends a strict schema, built from the same lists as the prompt.
+  const sent = [];
+  const realFetch = sandbox.fetch, audit = LG.llm.audit;
+  sandbox.fetch = async (url, init) => {
+    if ((!init || !init.body) && url.indexOf('/endpoints') !== -1)
+      return { ok: true, json: async () => ({ data: { endpoints: [
+        { supported_parameters: ['structured_outputs'],
+          pricing: { prompt: '0.0000001', completion: '0.0000004' } }] } }) };
+    if (!init || !init.body) return { ok: true, json: async () => ({ data: [] }) };
+    sent.push(JSON.parse(init.body));
+    return { ok: true, status: 200, json: async () => ({
+      choices: [{ message: { content: '{"thing": false}' }, finish_reason: 'stop' }] }) };
+  };
+  LG.llm.audit = false;
+  const model = { provider: 'openrouter', apiKey: 'k', model: 'deepseek/deepseek-v4.1-flash' };
+  try {
+    await LG.llm.probe(model);
+    await LG.llm.mintItem(model, { npcName: 'Ana', tag: 'x', known: ['bread: bread'], langName: 'Russian',
+                                   slots: ['head', 'neck'], containers: ['bottle'], genders: ['m', 'f'],
+                                   instruments: [], recipes: [] });
+  } finally {
+    sandbox.fetch = realFetch;
+    LG.llm.audit = audit;
+  }
+  const js = sent[0] && sent[0].response_format && sent[0].response_format.json_schema;
+  const sp = js && js.schema.properties;
+  ok(js && js.strict && js.schema.additionalProperties === false &&
+     js.schema.required.length === Object.keys(sp).length,
+     'the mint call sends a strict schema, every field required');
+  ok(sp && sp.alcohol.type === 'boolean' && sp.slot.enum.join() === 'head,neck,' &&
+     sp.g.enum.join() === 'm,f,',
+     'with the slots and genders the game has as its only choices');
+  const rp = sp && sp.recipes.items;
+  ok(rp && rp.additionalProperties === false && rp.properties.dish.anyOf[0].properties.alcohol,
+     'and a new dish is described the same way, alcohol included');
 }
 
 beliefsRevised().then(villagersTalking);

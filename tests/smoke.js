@@ -601,6 +601,31 @@ if (shop) {
   ok(purse - LG.ledger.count('coins') === ware.p, 'at the usual price');
 }
 
+/* A count of nothing moves nothing; left out, it means one. */
+{
+  const L = LG.ledger, c0 = L.count('coins'), r0 = L.count('rope');
+  L.give('coins', 0); L.take('rope', 0);
+  ok(L.count('coins') === c0 && L.count('rope') === r0, 'giving or taking 0 of something changes nothing');
+  L.give('rope'); ok(L.count('rope') === r0 + 1, 'and with no count, one');
+  L.take('rope'); ok(L.count('rope') === r0, 'either way');
+}
+
+/* A price that rounds to nothing pays nothing. A plain 0 is refused as
+   no deal at all (see commerce), but the reply schema's price is any
+   number, and a refund at 0.4 rounds to 0 coins — which used to pay a
+   coin, because the ledger read a count of 0 as 1. */
+if (shop) {
+  const ware = shop.def.sells.find(w => !chainItem[w.i]);
+  LG.ledger.state.inv.coins = 20;
+  shop.turns = (shop.turns || 0) + 5;
+  LG.trade.commerce(shop, 'sell', ware.i, ware.p);
+  const purse = LG.ledger.count('coins');
+  const held = LG.ledger.count(ware.i);
+  ok(LG.trade.commerce(shop, 'buy', ware.i, 0.4), shop.def.name + ' takes the ' + LG.ITEMS[ware.i].en + ' back for 0.4 of a coin');
+  ok(LG.ledger.count('coins') === purse && LG.ledger.count(ware.i) === held - 1,
+     'which rounds to nothing, and nothing is what the traveller is paid');
+}
+
 /* What a villager buys they hold, know they hold, and can say so. */
 const buyer = npcs.find(n => (n.def.buys || []).some(w => !chainItem[w.i]));
 if (buyer) {
@@ -616,6 +641,413 @@ if (buyer) {
      'and it reaches the prompt');
   ok(LG.dialogue._debugPrompt(buyer, null).indexOf('# The till') !== -1,
      'and the till records what actually happened');
+}
+
+/* -------------------------------------------------------- using your own things */
+section('eating, drinking and wearing what is in your pockets');
+{
+  const L = LG.ledger, usable = u => Object.keys(LG.ITEMS).filter(k => LG.ITEMS[k].use === u && !chainItem[k]);
+  const food = usable('eat')[0], drink = usable('drink')[0];
+  // Wearing never uses anything up, so the errand's own hat is as good as any.
+  const [hat, crown] = Object.keys(LG.ITEMS).filter(k => LG.ITEMS[k].slot === 'head');
+  ok(food && drink && hat && crown, 'there is something to eat, to drink, and two things for your head');
+
+  const f0 = L.count(food);
+  L.give(food, 2);
+  ok(LG.pockets.use(food) && L.count(food) === f0 + 1, 'eating something uses one up');
+  L.take(drink, L.count(drink));
+  L.give(drink, 1);
+  ok(LG.pockets.use(drink) && L.count(drink) === 0, 'and so does drinking');
+  ok(!LG.pockets.use(drink), 'and you cannot drink what you no longer have');
+  ok(!LG.pockets.use('coins') && !LG.pockets.use('rope'), 'coins and rope are not for eating');
+
+  L.give(hat, 1); L.give(crown, 1);
+  ok(LG.pockets.use(hat) && L.state.worn[hat] && L.count(hat) === 1, 'putting on a hat keeps it, worn');
+  const villager = npcs.find(n => n.def.id !== 'petra') || npcs[0];
+  const said = LG.itemSaid(hat, LG.config.settings.lang, true);
+  const prompt = LG.dialogue._debugPrompt(villager, null);
+  ok(prompt.indexOf('They are wearing: ' + said) !== -1, 'villagers can see it on you');
+  ok(L.inventoryList().indexOf(said) === -1, 'and it is not also in your pockets');
+  ok(LG.pockets.use(crown) && L.state.worn[crown] && !L.state.worn[hat],
+     'putting on a crown takes the hat off — one thing on your head at a time');
+  ok(LG.pockets.use(crown) && !L.state.worn[crown] && L.count(crown) === 1, 'and clicking again takes it off');
+  LG.pockets.use(hat);
+  L.take(hat, 1);
+  ok(!L.state.worn[hat], 'handing over what you are wearing takes it off');
+
+  /* The errand's own items are never used up: there is no second goal item. */
+  const lk = plan.links.find(l => l.wants !== 'coins' && LG.ITEMS[l.wants].tags.indexOf('beast') === -1);
+  if (lk) {
+    const was = LG.ITEMS[lk.wants].use;
+    LG.ITEMS[lk.wants].use = 'eat';
+    // Starting from none: the crown put on above may be the very thing the errand wants.
+    const n0 = L.count(lk.wants);
+    L.take(lk.wants, n0);
+    L.give(lk.wants, lk.wantsCount || 1);
+    ok(!LG.pockets.use(lk.wants) && L.count(lk.wants) === (lk.wantsCount || 1),
+       'you will not eat something the errand still needs');
+    L.give(lk.wants, 1);
+    ok(LG.pockets.use(lk.wants), 'though a spare is fair game');
+    L.take(lk.wants, L.count(lk.wants));
+    L.give(lk.wants, n0);
+    if (was) LG.ITEMS[lk.wants].use = was; else delete LG.ITEMS[lk.wants].use;
+  }
+  L.take(food, L.count(food) - f0); L.take(crown, 1);
+
+  /* "(worn)" agrees with the thing worn wherever the language needs it to. */
+  const wearable = Object.keys(LG.ITEMS).filter(k => LG.ITEMS[k].use === 'wear');
+  ['ru', 'fr', 'es', 'pl', 'ar'].forEach(lang => {
+    ok(wearable.every(k => LG.ITEMS[k].g && LG.WORN[lang][LG.ITEMS[k].g[lang]]),
+       'every wearable has a form of "(worn)" in ' + lang);
+  });
+  ok(LG.wornMark('hat', 'ru') === '(надета)' && LG.wornMark('trousers', 'fr') === '(porté)' &&
+     LG.wornMark('boots', 'es') === '(puestas)' && LG.wornMark('dress', 'pl') === '(założona)' &&
+     LG.wornMark('hat', 'ar') === '(مرتداة)' && LG.wornMark('coat', 'ar') === '(مرتدى)',
+     'and it is the right one');
+  ok(Object.keys(LG.LANGUAGES).every(lang => typeof LG.wornMark('hat', lang) === 'string'),
+     'and every language has one');
+}
+
+/* -------------------------------------------------------- the oven */
+section('cooking at an oven');
+{
+  const L = LG.ledger, W = LG.world;
+  const farm = W.ovens().find(o => o.building.label === 'Farmhouse');
+  ok(!!farm, 'there is an oven in the farmhouse');
+  ok(farm && W.isWalkable(farm.x, farm.y + 1) && W.buildingAt(farm.x, farm.y + 1) === farm.building,
+     'with floor in front of it, inside, to stand on');
+  ok(LG.RECIPES.every(r => LG.ITEMS[r.makes] && Object.keys(r.needs).every(k => LG.ITEMS[k])),
+     'every recipe is made of real things');
+  ok(LG.RECIPES.every(r => ['eat', 'drink'].indexOf(LG.ITEMS[r.makes].use) !== -1),
+     'and makes something you can eat or drink');
+  const cooked = ['roast', 'fried_egg', 'popcorn', 'fried_bacon', 'sandwich', 'grilled_fish',
+                  'fried_mushrooms', 'baked_potato', 'jar', 'jug', 'cup', 'mug', 'bowl'];
+  ok(cooked.every(k => LG.ITEMS[k].tags.length === 0),
+     'oven-only dishes have no tags, so the errand generator never picks them');
+  ok(cooked.every(k => Object.keys(LG.LANGUAGES).every(l => l === 'en' || LG.ITEMS[k][l])),
+     'and each has a name in every language');
+
+  const r = LG.RECIPES.find(x => Object.keys(x.needs).length === 2 &&
+                                 Object.keys(x.needs).every(k => !chainItem[k]) && !chainItem[x.makes]);
+  const [a, b] = Object.keys(r.needs);
+  const before = { a: L.count(a), b: L.count(b), out: L.count(r.makes) };
+  L.give(a, 1);
+  ok(!LG.pockets.canCook(r) && !LG.pockets.cook(r) && L.count(a) === before.a + 1, 'half a recipe cooks nothing');
+  L.give(b, 1);
+  ok(LG.pockets.cook(r) && L.count(a) === before.a && L.count(b) === before.b &&
+     L.count(r.makes) === before.out + 1, 'the whole recipe turns into ' + LG.ITEMS[r.makes].full);
+  L.take(r.makes, 1);
+
+  /* Nothing the errand is still waiting on goes in the pot. */
+  const lk = plan.links.find(l => l.wants !== 'coins' && LG.ITEMS[l.wants].tags.indexOf('beast') === -1);
+  if (lk) {
+    const fake = { needs: { [lk.wants]: 1 }, makes: 'popcorn' };
+    const n0 = L.count(lk.wants);
+    L.give(lk.wants, lk.wantsCount || 1);
+    ok(!LG.pockets.cook(fake), 'the errand\'s own things are not for cooking');
+    L.take(lk.wants, L.count(lk.wants) - n0);
+  }
+
+  /* Tea needs the teapot but doesn't use it up. (Not in a village whose
+     errand wants the herbs: those rightly stay out of the pot.) */
+  const tea = LG.RECIPES.find(x => x.makes === 'tea');
+  if (!chainItem.herbs) {
+  const pot0 = L.count('teapot'), herbs0 = L.count('herbs'), tea0 = L.count('tea');
+  L.take('teapot', pot0);
+  L.give('herbs', 1);
+  ok(!LG.pockets.cook(tea), 'no tea without a teapot');
+  L.give('teapot', 1);
+  ok(LG.pockets.cook(tea) && L.count('teapot') === 1 && L.count('herbs') === herbs0 && L.count('tea') === tea0 + 1,
+     'with one, the herbs make tea and the teapot is still there');
+  L.take('tea', 1); L.take('teapot', 1); L.give('teapot', pot0);
+  }
+}
+
+section('pockets.js: the oven, and the Pockets box it describes');
+{
+  const P = LG.pockets, W = LG.world, me = LG.village.player;
+  const was = { x: me.px, y: me.py };
+  const at = (x, y) => { me.px = x; me.py = y; me.tx = (x / 32) | 0; me.ty = (y / 32) | 0; };
+  const farm = W.ovens().find(o => o.building.label === 'Farmhouse');
+  at((farm.x + 1) * 32, (farm.y + 1) * 32 + 8);
+  ok(P.atOven(), 'standing in front of the farmhouse oven, you are at an oven');
+  ok(P.ovenOnTile(farm.x, farm.y), 'and can tap it');
+  at(LG.BOARD_SPOT.x * 32, LG.BOARD_SPOT.y * 32);
+  ok(!P.atOven() && !P.ovenOnTile(farm.x, farm.y), 'from out on the green you are not, and cannot see it to tap');
+
+  // The ledger draws the pill; what it says and does comes from pockets.js.
+  const els = { get inv() { return sandbox.document.getElementById('inv'); } };
+  LG.ledger.give('hat', 1);
+  LG.ledger.render();
+  const inv = els.inv.innerHTML;
+  ok(/data-use="hat"[^>]*title="Put on the hat"/.test(inv), 'a hat in your pockets is a button saying it can be put on');
+  LG.pockets.use('hat');
+  ok(/title="Take off the hat"/.test(els.inv.innerHTML) && els.inv.innerHTML.indexOf(LG.wornMark('hat', LG.config.settings.lang)) !== -1,
+     'and once on, says it comes off, with "(worn)" in the village\'s language');
+  ok(!/data-use="rope"/.test((LG.ledger.give('rope', 1), els.inv.innerHTML)), 'rope is a plain pill');
+  LG.pockets.use('hat'); LG.ledger.take('hat', 1); LG.ledger.take('rope', 1);
+
+  /* A recipe whose only ingredient you hold is one the errand needs isn't listed; a spare one is. */
+  const lk = plan.links.find(l => l.wants !== 'coins' && LG.ITEMS[l.wants].tags.indexOf('beast') === -1);
+  if (lk) {
+    const list = () => sandbox.document.getElementById('ovenList').innerHTML;
+    const n0 = LG.ledger.count(lk.wants), mine = LG.RECIPES.length;
+    LG.RECIPES.push({ needs: { [lk.wants]: 1 }, makes: 'popcorn' });
+    LG.ledger.take(lk.wants, n0);
+    LG.ledger.give(lk.wants, lk.wantsCount || 1);
+    at((farm.x + 1) * 32, (farm.y + 1) * 32 + 8);
+    P.openOven();
+    ok(list().indexOf('data-recipe="' + mine + '"') === -1,
+       'a recipe whose only ingredient is one the errand needs is not on the oven\'s list');
+    LG.ledger.give(lk.wants, 1);
+    P.openOven();
+    ok(list().indexOf('data-recipe="' + mine + '"') !== -1, 'with a spare, it is');
+    LG.RECIPES.pop();
+    LG.ledger.take(lk.wants, LG.ledger.count(lk.wants));
+    LG.ledger.give(lk.wants, n0);
+  }
+  at(was.x, was.y);
+}
+
+section('a drink or two');
+{
+  const L = LG.ledger, P = LG.pockets;
+  /* An earlier section may have drunk something strong (the first drink
+     the errand doesn't want can be wine), and the errand may want the wine
+     or beer, which can't then be drunk: so start sober, with spares. */
+  L.state.tipsy = 0;
+  ok(P.tipsy() === 0, 'sober to start with');
+  L.give('milk', 5); P.use('milk');
+  ok(P.tipsy() === 0, 'milk doesn\'t go to your head');
+  L.give('wine', 5); L.give('beer', 5);
+  P.use('wine');
+  ok(Math.abs(P.tipsy() - 1) < 1e-6, 'a bottle of wine is an hour of wobbling');
+  P.use('beer');
+  ok(Math.abs(P.tipsy() - 2) < 1e-6, 'and a beer after it, another hour on top');
+  const saved = LG.save.snapshot();
+  if (saved) ok(saved.tipsy === L.state.tipsy, 'a save remembers it');
+  LG.time.tick(1.5 * 12 * 60 / 24);       // an hour and a half of village time, in real seconds
+  ok(Math.abs(P.tipsy() - 0.5) < 1e-3, 'it wears off as the village clock runs');
+  LG.time.tick(12 * 60 / 24);
+  ok(P.tipsy() === 0, 'and is gone once the hours are up');
+  ['milk', 'wine', 'beer'].forEach(k => L.take(k, 4));
+  ['jug', 'bottle', 'mug'].forEach(k => L.take(k, 1));
+}
+
+section('toys: the die, the ball and the kite');
+{
+  const L = LG.ledger, T = LG.toys, W = LG.world, me = LG.village.player, TILE = 32;
+  const was = { x: me.px, y: me.py, dir: me.dir };
+  const at = (x, y) => { me.px = x; me.py = y; me.tx = Math.floor(x / TILE); me.ty = Math.floor(y / TILE); };
+  const frame = (vx, vy) => { me.vx = vx; me.vy = vy; T.update(1 / 60); };
+
+  // The die, numbered as the village writes numbers.
+  ok(LG.numeral(17, 'ar') === '١٧' && LG.numeral(20, 'ar') === '٢٠', 'Arabic numbers are Eastern Arabic digits');
+  ok(LG.numeral(20, 'zh') === '二十' && LG.numeral(11, 'ja') === '十一' && LG.numeral(7, 'zh') === '七',
+     'Chinese and Japanese ones are Chinese numerals');
+  ok(LG.numeral(17, 'tok') === 'luka luka luka tu' && LG.numeral(20, 'tok') === 'mute' && LG.numeral(1, 'tok') === 'wan',
+     'toki pona counts in its own words');
+  ok(LG.numeral(17, 'ru') === '17' && LG.numeral(17, 'fr') === '17', 'and the rest use digits');
+  L.give('dice', 1);
+  ok(LG.pockets.use('dice') && sandbox.document.getElementById('dice').classList.contains('open'), 'rolling the dice opens the die');
+  const rolls = new Set();
+  for (let i = 0; i < 400; i++) { const n = T.roll(true); ok(n >= 1 && n <= 20 && n === (n | 0), 'a roll is a whole number from 1 to 20'); rolls.add(n); }
+  ok(rolls.size === 20, 'and every face comes up');
+  const lang = LG.config.settings.lang;
+  ok(T._face(17).indexOf(LG.text.escapeHTML(LG.numeral(17, lang).split(' ')[0])) !== -1, 'the face shows the number in the village\'s numerals');
+  ok(L.count('dice') === 1, 'and rolling keeps the dice');
+  sandbox.document.getElementById('dice').classList.remove('open');
+  L.take('dice', 1);
+
+  /* The ball. Somewhere open on the green with a wall of water, a fence or a
+     building a few tiles to the right: a row of five open tiles and then a solid one. */
+  let spot = null;
+  for (let y = 2; y < W.H - 2 && !spot; y++) for (let x = 2; x < W.W - 8 && !spot; x++) {
+    const open = i => !W.isSolid(x + i, y) && !W.isSolid(x + i, y - 1) && !W.isSolid(x + i, y + 1) &&
+                      !W.buildingUnder({ tx: x + i, ty: y, px: (x + i) * TILE, py: y * TILE });
+    if ([0, 1, 2, 3, 4].every(open) && W.isSolid(x + 5, y) && W.isSolid(x + 5, y - 1) && W.isSolid(x + 5, y + 1)) spot = { x, y };
+  }
+  ok(spot, 'there is somewhere to kick a ball against a wall');
+  if (spot) {
+    const B = T._ball, wallX = (spot.x + 5) * TILE;
+    L.give('ball', 1);
+    at(spot.x * TILE + 16, spot.y * TILE + 4); me.dir = 'right';
+    ok(LG.pockets.use('ball') && L.state.out.ball && L.count('ball') === 1, 'playing with the ball puts it down and keeps it yours');
+    ok(!T._blocked(B.px, B.py) && B.px > me.px, 'in front of you, clear of any wall');
+    ok(/title="Pick up the ball"/.test(sandbox.document.getElementById('inv').innerHTML), 'its pill now picks it up');
+
+    // Walking into it kicks it the way you're walking, once (after a moment: not as it's put down).
+    for (let i = 0; i < 15; i++) frame(0, 0);
+    at(B.px - 12, B.py - 8);
+    frame(132, 0);
+    const v1 = B.vx;
+    ok(v1 > 300 && Math.abs(B.vy) < 1e-9, 'walking into the ball kicks it the way you are walking');
+    frame(132, 0); frame(132, 0);
+    ok(B.vx <= v1, 'and walking on into it straight away does not kick it again');
+    me.vx = me.vy = 0;
+
+    // It flies at the wall, bounces off softly, and never goes into it or shakes.
+    let inside = false, maxX = 0, turned = 0, lastSign = 1;
+    for (let i = 0; i < 600; i++) {
+      T.update(1 / 60);
+      if (T._blocked(B.px, B.py) || B.px + 6 > wallX) inside = true;
+      maxX = Math.max(maxX, B.px);
+      const sg = Math.sign(B.vx);
+      if (sg && sg !== lastSign) { turned++; lastSign = sg; }
+    }
+    ok(!inside, 'a kicked ball never goes into the wall');
+    ok(turned <= 1, 'it bounces off the wall at most once, and does not rattle against it');
+    ok(B.vx === 0 && B.vy === 0, 'and comes to rest');
+
+    // Pinned against the wall, walking into it over and over doesn't make it judder.
+    B.px = wallX - 6.5; B.py = spot.y * TILE + 16; B.vx = B.vy = 0; B.cool = 0;
+    ok(!T._blocked(B.px, B.py), '(the ball is right up against the wall)');
+    let moved = 0;
+    for (let i = 0; i < 240; i++) {
+      at(B.px - 12, B.py - 8);
+      const x0 = B.px;
+      frame(210, 0);
+      moved = Math.max(moved, Math.abs(B.px - x0), Math.abs(B.vx));
+    }
+    ok(moved === 0 && !T._blocked(B.px, B.py), 'a ball against a wall stays put however often you walk into it');
+    // Walking into it slantwise slides it along the wall instead.
+    at(B.px - 9, B.py - 8 - 5);
+    frame(150, 150);
+    ok(B.vx === 0 && B.vy > 0, 'and a kick at a slant slides it along the wall');
+    for (let i = 0; i < 300; i++) T.update(1 / 60);
+    ok(!T._blocked(B.px, B.py), 'without going into anything');
+
+    // Picking it up: only from beside it.
+    at(B.px - 200, B.py);
+    ok(!LG.pockets.use('ball') && L.state.out.ball, 'you can\'t pick the ball up from across the green');
+    at(B.px, B.py - 8);
+    ok(T.nearBall(me) && LG.pockets.use('ball') && !L.state.out.ball && L.count('ball') === 1, 'but can from beside it');
+    LG.pockets.use('ball');
+    L.take('ball', 1);
+    ok(!L.state.out.ball, 'handing the ball over takes it out of play');
+  }
+
+  // The kite: only in a wind, only outside, and it follows you.
+  const sky = { w: LG.time.weather, left: LG.time.weatherLeft };
+  L.give('kite', 1);
+  const outside = spot ? { x: spot.x * TILE + 16, y: spot.y * TILE + 16 } : { x: was.x, y: was.y };
+  at(outside.x, outside.y);
+  LG.time.setWeather('clear', 1);
+  ok(!T.windy() && !LG.pockets.use('kite') && !L.state.out.kite, 'no kite flies on a still day');
+  LG.time.setWeather('wind', 1);
+  const room = W.buildings[0];
+  at((room.x + 2) * TILE, (room.y + 2) * TILE);
+  if (W.buildingUnder(me)) ok(!LG.pockets.use('kite') && !L.state.out.kite, 'nor indoors');
+  at(outside.x, outside.y);
+  ok(T.windy() && LG.pockets.use('kite') && L.state.out.kite && L.count('kite') === 1, 'but in a high wind it goes up');
+  for (let i = 0; i < 240; i++) T.update(1 / 60);
+  ok(T._kite.y < me.py - 60 && T._kite.x > me.px, 'and hangs downwind, above you');
+  at(outside.x - 64, outside.y);
+  for (let i = 0; i < 240; i++) T.update(1 / 60);
+  ok(T._kite.x > me.px && T._kite.x < me.px + 120, 'and follows you when you move');
+  LG.time.setWeather('clear', 1);
+  T.update(1 / 60);
+  ok(!L.state.out.kite && L.count('kite') === 1, 'when the wind drops it comes down, back to your pockets');
+  L.take('kite', 1);
+  LG.time.setWeather(sky.w, sky.left);
+  at(was.x, was.y); me.dir = was.dir; me.vx = me.vy = 0;
+}
+
+section('lights');
+{
+  const L = LG.ledger;
+  ['candle', 'lantern'].forEach(k => L.take(k, L.count(k)));
+  ok(LG.pockets.glow() === 0, 'nothing lit, no light');
+  L.give('candle', 1); L.give('lantern', 1);
+  ok(LG.pockets.use('candle') && L.state.lit.candle && L.count('candle') === 1, 'lighting a candle keeps it, lit');
+  ok(LG.pockets.glow() === LG.ITEMS.candle.glow, 'and it lights the dark around you');
+  LG.pockets.use('lantern');
+  ok(LG.pockets.glow() === LG.ITEMS.lantern.glow && LG.ITEMS.lantern.glow > LG.ITEMS.candle.glow,
+     'a lantern as well reaches further than the candle alone');
+  const said = LG.itemSaid('lantern', LG.config.settings.lang, true);
+  ok(LG.dialogue._debugPrompt(npcs[0], null).indexOf('They are carrying, lit: ') !== -1,
+     'villagers can see you have a light burning');
+  ok(LG.pockets.use('lantern') && !L.state.lit.lantern && LG.pockets.glow() === LG.ITEMS.candle.glow, 'and it can be put out');
+  L.take('candle', 1);
+  ok(!L.state.lit.candle && LG.pockets.glow() === 0, 'handing over a lit candle puts it out of your hands');
+  L.take('lantern', 1);
+
+  const lights = Object.keys(LG.ITEMS).filter(k => LG.ITEMS[k].use === 'light');
+  ok(lights.length === 3 && lights.every(k => LG.ITEMS[k].glow > 0), 'three lights, each with a reach');
+  ok(LG.world.lamps().length >= 1 && LG.world.lamps().every(l => l.r > 0), 'and the street lamp has one too');
+  ['ru', 'fr', 'es', 'pl', 'ar'].forEach(lang => {
+    ok(lights.every(k => LG.LIT[lang][LG.ITEMS[k].g[lang]]), 'every light has a form of "(lit)" in ' + lang);
+  });
+  ok(LG.litMark('lantern', 'ru') === '(зажжён)' && LG.litMark('candle', 'ru') === '(зажжена)' &&
+     LG.litMark('candle', 'ar') === '(مضاءة)' && LG.litMark('lantern', 'ar') === '(مضاء)',
+     'and it agrees with the light');
+
+  /* Drawing the night with a light in hand works even with no real canvas to cut it from. */
+  let threw = null;
+  try { LG.sky.draw(ctx2d, 800, 600, [], 1, [{ x: 400, y: 300, r: 160 }, { x: 500, y: 300, r: 144 }]); } catch (e) { threw = e; }
+  ok(!threw, 'the sky draws with a light in it' + (threw ? ': ' + threw.message : ''));
+}
+
+section('instruments');
+{
+  const L = LG.ledger;
+  const played = Object.keys(LG.ITEMS).filter(k => LG.ITEMS[k].use === 'play');
+  ok(['drum', 'violin', 'guitar', 'bell'].every(k => played.indexOf(k) !== -1), 'the drum, violin, guitar and bell can be played');
+  const bad = played.filter(k => !LG.sound.known(LG.ITEMS[k].gm, LG.ITEMS[k].note));
+  ok(!bad.length, 'each names a real soundfont instrument and note' + (bad.length ? ': not ' + bad.join(', ') : ''));
+  ok(LG.sound.INSTRUMENTS.length === 128 && !LG.sound.known('violn', 'A4') && !LG.sound.known('violin', 'H4'),
+     'and a misspelt instrument or note is caught');
+  ok(!LG.sound.play('violin', 'A4'), 'with no Web Audio, playing is quietly nothing');
+  ok(/^https:\/\/cdn\.jsdelivr\.net\/gh\/gleitz\/midi-js-soundfonts@[0-9a-f]{40}\/FluidR3_GM\/violin-mp3\/A4\.mp3$/
+       .test(LG.sound.url('violin', 'A4')), 'notes come from the soundfont, pinned to one commit');
+
+  /* Balancing: a quiet held note and a loud short one come out at the same loudness, and nothing clips. */
+  const fake = (len, at) => ({ length: len, numberOfChannels: 1, sampleRate: 1000,
+                               getChannelData: () => Float32Array.from({ length: len }, (_, i) => at(i)) });
+  const held = fake(3000, i => 0.05 * Math.sin(i)), hit = fake(3000, i => i < 100 ? 0.4 * Math.sin(i) * (1 - i / 100) : 0);
+  const loudness = (b, g) => { const d = b.getChannelData(0); let m = 0;
+    for (let i = 0; i + 400 <= d.length; i += 50) { let s = 0; for (let j = i; j < i + 400; j++) s += d[j] * d[j]; m = Math.max(m, s / 400); }
+    return Math.sqrt(m) * g; };
+  const gh = LG.sound.balance(held), gk = LG.sound.balance(hit);
+  ok(Math.abs(loudness(held, gh) - loudness(hit, gk)) < 0.005,
+     'a quiet held note and a short loud one are brought to the same loudness');
+  ok(gh * 0.05 <= 0.9 + 1e-9 && gk * 0.4 <= 0.9 + 1e-9, 'without either clipping');
+
+  // Someone right beside you hears it; someone across the map doesn't.
+  const near = npcs[0], far = npcs[1], me = LG.village.player;
+  const at = { nx: near.px, ny: near.py, fx: far.px, fy: far.py };
+  near.px = me.px + 32; near.py = me.py;
+  far.px = me.px + 32 * 40; far.py = me.py;
+  const n0 = L.count('violin');
+  L.give('violin', 1);
+  const heard = n => (n.memory || []).some(m => m.text.indexOf('play a violin') !== -1);
+  ok(LG.pockets.use('violin') && L.count('violin') === n0 + 1, 'playing the violin keeps it');
+  ok(heard(near) && !heard(far), 'a villager beside you hears it, and one far off does not');
+  L.give('bell', 1);
+  LG.pockets.use('bell');
+  ok((near.memory || []).some(m => m.text.indexOf('ring a bell') !== -1), 'a bell is rung, not played');
+  L.take('violin', 1); L.take('bell', 1);
+  near.px = at.nx; near.py = at.ny; far.px = at.fx; far.py = at.fy;
+}
+
+section('eating out of a container leaves the container');
+{
+  const L = LG.ledger;
+  const contained = /\b(jar|jug|cup|mug|bowl|bottle|plate) of\b/;
+  const eaten = Object.keys(LG.ITEMS).filter(k => LG.ITEMS[k].use === 'eat' || LG.ITEMS[k].use === 'drink');
+  const missing = eaten.filter(k => contained.test(LG.ITEMS[k].full) && !LG.ITEMS[k].leaves);
+  ok(!missing.length, 'everything served in something says what it leaves' +
+     (missing.length ? ': not ' + missing.join(', ') : ''));
+  ok(eaten.every(k => !LG.ITEMS[k].leaves || (LG.ITEMS[LG.ITEMS[k].leaves] && !LG.ITEMS[LG.ITEMS[k].leaves].use)),
+     'and what it leaves is a real, empty thing');
+  // Never one the errand wants: that would rightly be refused.
+  eaten.filter(k => LG.ITEMS[k].leaves && !chainItem[k]).slice(0, 4).forEach(k => {
+    const box = LG.ITEMS[k].leaves, had = L.count(box), n0 = L.count(k);
+    L.give(k, 1);
+    ok(LG.pockets.use(k) && L.count(k) === n0 && L.count(box) === had + 1,
+       LG.ITEMS[k].full + ' leaves ' + LG.ITEMS[box].full.replace(/^an? (empty )?/, 'the '));
+    L.take(box, 1);
+  });
 }
 
 /* -------------------------------------------------------- one sale, rung twice
@@ -1188,6 +1620,8 @@ section('a village, written down and read back');
   LG.config.settings.apiKey = 'sk-not-a-real-key';        // must not reach the file
   LG.config.settings.ttsKey = 'sk_not-a-real-voice-key';
   LG.ledger.state.deeds.push('Gave Mira a pie, got a shell.');
+  LG.ledger.give('scarf', 1); LG.pockets.use('scarf');   // something worn, to come back worn
+  LG.ledger.give('oil_lamp', 1); LG.pockets.use('oil_lamp');   // and something lit, to come back lit
   LG.ledger.give('coins', 7);
   const someFact = Object.keys(plan.facts)[0];
   const holder = npcs.find(n => n.facts.indexOf(someFact) !== -1);
@@ -1220,6 +1654,7 @@ section('a village, written down and read back');
   const before = {
     seed: plan.seed, day: LG.time.day, frac: LG.time.frac,
     weather: LG.time.weather, snow: LG.time.snow,
+    worn: JSON.stringify(LG.ledger.state.worn), lit: JSON.stringify(LG.ledger.state.lit),
     inv: JSON.stringify(LG.ledger.state.inv), notes: JSON.stringify(LG.ledger.state.notes),
     deeds: JSON.stringify(LG.ledger.state.deeds),
     px: Math.round(LG.village.player.px * 10) / 10,
@@ -1262,6 +1697,8 @@ section('a village, written down and read back');
   ok(LG.time.weather === before.weather && Math.abs(LG.time.snow - before.snow) < 1e-9,
      'under the same sky, with the same snow lying');
   ok(JSON.stringify(LG.ledger.state.inv) === before.inv, 'with the same pockets');
+  ok(JSON.stringify(LG.ledger.state.worn) === before.worn, 'wearing the same things');
+  ok(JSON.stringify(LG.ledger.state.lit) === before.lit && LG.ledger.state.lit.oil_lamp, 'with the same lamp lit');
   ok(JSON.stringify(LG.ledger.state.notes) === before.notes, 'the same notebook');
   ok(JSON.stringify(LG.ledger.state.deeds) === before.deeds, 'and the same deeds behind you');
   ok(Math.round(LG.village.player.px * 10) / 10 === before.px, 'standing where you were');

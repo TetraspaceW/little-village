@@ -50,6 +50,15 @@ the game made of it, or in a prompt sentence that did something other than what 
   player, a chase or a reload can clear the route partway. Picking the same place again
   only counts as staying put if they're standing in it (`routine()` in `js/npc.js`).
 - Mikhalych's rice hut exists because a villager once hallucinated it (`OLD-LI.md`).
+- **Sleep is where they are, not where they're sent.** A villager standing at their own
+  bed at night lies down, and gets up at first light (`sleep()` in `js/npc.js`). Nothing
+  routes them there: "your bed" is one of their places, and with no model the dice favour
+  it at dusk and night (`PHASE_TABLE.bed`), as rough weather favours a roof. Each gets a
+  bed where they work, else in the building they shelter in (`js/village.js`). A sleeper
+  isn't asked where to go and can't be talked to; sleep itself isn't saved.
+- **Every place says whether it has a roof** ("indoors" or "out in the open", from the map,
+  in `placesFor`). Left to the name, "the mine" could be a tunnel, and a home that is a
+  patch of street was called "your own place" and read as a house.
 
 ## Jev: fixed-choice questions (OpenRouter only)
 

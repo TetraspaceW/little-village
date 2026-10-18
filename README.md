@@ -124,7 +124,7 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
   you did not already know is added to your notebook the same as if you had
   been told it in person.
 - **Autonomy.** Villagers move and talk to each other on their own schedule —
-  busiest around midday, home by dark — whether or not you're nearby. If
+  busiest around midday, mostly in bed after dark — whether or not you're nearby. If
   you're close enough to overhear, the exchange (in their language, with a
   blurred gloss) shows up in your event log.
 

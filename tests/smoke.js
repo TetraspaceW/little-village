@@ -278,6 +278,79 @@ section('a walk cut short is taken up again');
   keep.forEach(([k, v]) => { n[k] = v; });
 }
 
+/* Everyone has a bed. One at their bed at night sleeps there, and at
+   night they tend to go to it. */
+section('a bed for everyone, and sleep at night');
+{
+  const W = LG.world, T = W.TILE;
+  const beds = npcs.map(n => n.bed);
+  ok(beds.every(Boolean), 'every villager has a bed');
+  ok(new Set(beds.map(b => b && b.x + ',' + b.y)).size === npcs.length, 'and nobody shares one');
+  const from = W.nearestOpen(LG.START.x, LG.START.y), open = W._flood(from.x, from.y);
+  for (const n of npcs) {
+    const b = n.bed;
+    if (!b) continue;
+    const room = W.buildingAt(b.x, b.y);
+    ok(room && room.label === b.label, n.def.name + '’s bed is inside the ' + b.label);
+    // The bed covers its own tile and most of the one below it.
+    const clash = room && room.furniture.find(f => f.type !== 'bed' &&
+      f.y >= b.y && f.y <= b.y + 1 && b.x >= f.x && b.x < f.x + (f.w || 1));
+    ok(!clash, n.def.name + '’s bed has room to stand' + (clash ? ' (under a ' + clash.type + ')' : ''));
+    ok(open.has(b.y * W.W + b.x), n.def.name + ' can get to their bed');
+  }
+
+  const day = LG.time.day, frac = LG.time.frac, weather = LG.time.weather,
+        left = LG.time.weatherLeft, snow = LG.time.snow;
+  const at = f => { LG.time.start(day, f); LG.time.setWeather(weather, left); LG.time.setSnow(snow); };
+
+  // Their bed is somewhere they can choose, and every place says whether it has a roof.
+  for (const v of npcs) {
+    const places = LG.game._placesFor(v);
+    ok(places.some(p => p.name === 'your bed' && p.rect === v.bed.rect), v.def.name + ' can choose their bed');
+    ok(places.every(p => p.after || p.name === 'your bed' || /(indoors|out in the open)$/.test(p.note)),
+       v.def.name + '’s places each say whether they are indoors');
+  }
+  const boris = npcs.find(v => v.def.id === 'boris');
+  const said = name => (LG.game._placesFor(boris).find(p => p.name === name) || {}).note || '';
+  ok(/out in the open$/.test(said('the mine')), 'the mine is out in the open');
+  ok(/out in the open$/.test(said('home')) && said('home').indexOf('your own place') === -1,
+     'and so is Boris’s home patch, which is not called a house');
+  ok(/indoors$/.test(said('Bakery')), 'the Bakery is indoors');
+
+  // Sleep is where they are, not where they're sent.
+  const n = npcs[0], A = LG.actors;
+  const keep = ['px', 'py', 'tx', 'ty', 'route', 'routeCool', 'thought', 'wantsGo', 'asleep', 'chatting', 'frozen']
+    .map(k => [k, n[k]]);
+  const put = (x, y) => { n.tx = x; n.ty = y; n.px = x * T + T / 2; n.py = y * T + T / 2;
+                          n.route = null; n.asleep = false; n.chatting = false; n.frozen = false; };
+  const spare = W.nearestOpen(n.bed.x + 1, n.bed.y + 1);
+  at(0.5); put(n.bed.x, n.bed.y); A.routine(n, 0.1, LG.GREEN, null);
+  ok(!n.asleep, 'by day, standing at their bed, ' + n.def.name + ' stays up');
+  at(0.9); put(spare.x, spare.y); A.routine(n, 0.1, LG.GREEN, () => true);
+  ok(!n.asleep, 'at night, away from their bed, they are not asleep on their feet');
+  put(n.bed.x, n.bed.y); A.routine(n, 0.1, LG.GREEN, () => true);
+  ok(n.asleep, 'at night, at their bed, they lie down');
+  ok(!n.deciding, 'and a sleeper is not asked where to go');
+  keep.forEach(([k, v]) => { n[k] = v; });
+
+  // With no model the dice lean towards bed at night, so most of the village ends up there.
+  at(0.86);
+  for (let i = 0; i < 30 * 200; i++) LG.game._debugTick(1 / 30);
+  ok(LG.time.isNight(), 'still night after two hundred seconds');
+  const abed = npcs.filter(n => n.asleep);
+  ok(abed.length >= npcs.length * 0.6, 'most of the village has gone to bed (' + abed.length + ' of ' + npcs.length + ')');
+  ok(abed.every(n => n.tx === n.bed.x && n.ty === n.bed.y), 'each in their own bed');
+  ok(abed.every(n => W.buildingUnder(n) === W.buildingAt(n.bed.x, n.bed.y)), 'and indoors, under the roof');
+  const still = abed.map(n => n.px + ',' + n.py);
+  for (let i = 0; i < 300; i++) LG.game._debugTick(1 / 30);
+  ok(abed.every((n, i) => n.px + ',' + n.py === still[i]), 'and a sleeper stays put');
+
+  at(0.3);
+  LG.game._debugTick(1 / 30);
+  ok(npcs.every(n => !n.asleep), 'in the morning everyone is up');
+  at(frac);
+}
+
 /* "Open" isn't the same as "reachable" -- a forest is where that gap
    matters most, since chain.js can leave the errand's terminal item in
    any glade, and a glade sealed off by trees would make the errand
@@ -607,13 +680,16 @@ section('eating, drinking and wearing what is in your pockets');
   if (lk) {
     const was = LG.ITEMS[lk.wants].use;
     LG.ITEMS[lk.wants].use = 'eat';
+    // Starting from none: the crown put on above may be the very thing the errand wants.
     const n0 = L.count(lk.wants);
+    L.take(lk.wants, n0);
     L.give(lk.wants, lk.wantsCount || 1);
-    ok(!LG.pockets.use(lk.wants) && L.count(lk.wants) === n0 + (lk.wantsCount || 1),
+    ok(!LG.pockets.use(lk.wants) && L.count(lk.wants) === (lk.wantsCount || 1),
        'you will not eat something the errand still needs');
     L.give(lk.wants, 1);
     ok(LG.pockets.use(lk.wants), 'though a spare is fair game');
-    L.take(lk.wants, L.count(lk.wants) - n0);
+    L.take(lk.wants, L.count(lk.wants));
+    L.give(lk.wants, n0);
     if (was) LG.ITEMS[lk.wants].use = was; else delete LG.ITEMS[lk.wants].use;
   }
   L.take(food, L.count(food) - f0); L.take(crown, 1);
@@ -736,10 +812,14 @@ section('pockets.js: the oven, and the Pockets box it describes');
 section('a drink or two');
 {
   const L = LG.ledger, P = LG.pockets;
+  /* An earlier section may have drunk something strong (the first drink
+     the errand doesn't want can be wine), and the errand may want the wine
+     or beer, which can't then be drunk: so start sober, with spares. */
+  L.state.tipsy = 0;
   ok(P.tipsy() === 0, 'sober to start with');
-  L.give('milk', 1); P.use('milk');
+  L.give('milk', 5); P.use('milk');
   ok(P.tipsy() === 0, 'milk doesn\'t go to your head');
-  L.give('wine', 1); L.give('beer', 1);
+  L.give('wine', 5); L.give('beer', 5);
   P.use('wine');
   ok(Math.abs(P.tipsy() - 1) < 1e-6, 'a bottle of wine is an hour of wobbling');
   P.use('beer');
@@ -750,7 +830,8 @@ section('a drink or two');
   ok(Math.abs(P.tipsy() - 0.5) < 1e-3, 'it wears off as the village clock runs');
   LG.time.tick(12 * 60 / 24);
   ok(P.tipsy() === 0, 'and is gone once the hours are up');
-  ['bottle', 'mug'].forEach(k => L.take(k, 1));
+  ['milk', 'wine', 'beer'].forEach(k => L.take(k, 4));
+  ['jug', 'bottle', 'mug'].forEach(k => L.take(k, 1));
 }
 
 section('toys: the die, the ball and the kite');

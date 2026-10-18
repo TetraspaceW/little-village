@@ -39,12 +39,24 @@ LG.village = (function () {
     // Every villager gets an assigned workplace, and a fallback indoor shelter for bad weather.
     const publics = ['Inn', 'Village Hall', 'Chapel']
       .map(l => W.buildingByLabel(l)).filter(Boolean);
+    /* And a bed of their own: where they work, else where they shelter,
+       else any bed still free. Going to it is their choice (see sleep() in
+       npc.js). */
+    const taken = new Set();
+    const bedIn = b => {
+      const f = b && b.furniture.find(f => f.type === 'bed' && !taken.has(f));
+      if (!f) return null;
+      taken.add(f);
+      return { x: f.x, y: f.y, rect: { x: f.x, y: f.y, w: 1, h: 1 }, label: b.label };
+    };
     npcs.forEach((n, i) => {
       const b = n.def.workplace ? W.buildingByLabel(n.def.workplace) : null;
       n.work = b ? b.inside : (n.def.workRect || n.def.home);
       n.workBuilding = b;
       const refuge = b || publics[i % Math.max(1, publics.length)];
       n.shelter = refuge ? refuge.inside : n.def.home;
+      n.bed = bedIn(b) || bedIn(refuge);
+      for (const other of W.buildings) if (!n.bed) n.bed = bedIn(other);
     });
 
     /* Petra always greets a new arrival at the platform. This is scripted

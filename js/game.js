@@ -405,6 +405,7 @@ LG.game = (function () {
      two villagers (see villagerTalk). `wentAfter` is read and cleared
      here, once (LG.view.arrived). */
   function talkTo(n) {
+    if (n.asleep) { aside(displayName(n) + ' is asleep.'); return; }
     const sought = n.wentAfter === 'player';
     const why = sought ? (n.why || '') : null;
     if (sought) { LG.view.arrived(n); n.bubble = null; n.bubbleT = 0; }
@@ -509,7 +510,14 @@ LG.game = (function () {
      see: knowing who has something is only useful with a way to go and
      find them. */
   function placesFor(n) {
-    const out = [{ name: 'home', rect: n.def.home, note: 'your own place' }];
+    /* Which places have a roof is said, not left to the name: "the mine"
+       could be a tunnel or a pit, and most villagers' home is a patch of
+       street or yard, which "your own place" made sound like a house. */
+    const roofed = r => !!W.buildingAt(r.x + (r.w >> 1), r.y + (r.h >> 1));
+    const home = roofed(n.def.home) ? 'your own place' : 'your usual patch';
+    const out = [{ name: 'home', rect: n.def.home, note: home }];
+    if (n.bed) out.push({ name: 'your bed', rect: n.bed.rect, roofed: true,
+                          note: 'in the ' + n.bed.label + ', where you sleep' });
     let workLabel = null;
     if (n.work) {
       // Named as the building (or `def.workLabel`, for a job that isn't a place);
@@ -535,6 +543,10 @@ LG.game = (function () {
       if (n.workBuilding && b === n.workBuilding) return;
       out.push({ name: b.label, rect: b.inside });
     });
+    for (const o of out) {
+      if (o.roofed) continue;
+      o.note = (o.note ? o.note + ', ' : '') + (roofed(o.rect) ? 'indoors' : 'out in the open');
+    }
     npcs.forEach(o => {
       if (o === n) return;
       if (!LG.view.near(n, o, LG.view.SIGHT)) return;   // only people they can see
@@ -820,9 +832,11 @@ LG.game = (function () {
 
     nearby = null;
     let best = REACH;
+    // Someone awake within reach comes before someone asleep nearer by.
     for (const n of npcs) {
       const d = dist(player, n);
-      if (d < best) { best = d; nearby = n; }
+      if (d < best && !(nearby && !nearby.asleep && n.asleep)) { best = d; nearby = n; }
+      else if (nearby && nearby.asleep && !n.asleep && d < REACH) { best = d; nearby = n; }
     }
 
     if (nudgeT > 0) nudgeT -= dt;
@@ -834,6 +848,8 @@ LG.game = (function () {
       // nothing, over an open panel
     } else if (nudgeT > 0) {
       say = nudge;
+    } else if (nearby && nearby.asleep) {
+      say = displayName(nearby) + ' is asleep';
     } else if (nearby) {
       say = tap ? 'Tap ' + displayName(nearby) + ' to talk'
                 : 'Press E to talk to ' + displayName(nearby);
@@ -1012,10 +1028,12 @@ LG.game = (function () {
         A.drawCharacter(ctx, a, { name: a.caught ? '' : a.name }, dpr);
       } else {
         // The role emoji is always shown -- only the name is withheld until known.
-        A.drawCharacter(ctx, a, {
+        const look = {
           color: a.def.color, emoji: a.def.emoji, name: a.nameKnown ? a.def.name : '?',
           skin: '#f0c8a0', hair: '#3b2b20'
-        }, dpr);
+        };
+        if (a.asleep) A.drawSleeper(ctx, a, look);
+        else A.drawCharacter(ctx, a, look, dpr);
       }
     }
     LG.toys.drawSky(ctx);
@@ -1064,6 +1082,8 @@ LG.game = (function () {
            _debugViewport: () => { readInsets(); measureViewport(); },
            // Returns the resulting visible-canvas band (see seen()).
            _debugSeen: seen,
+           // Where a villager could choose to go, notes and all.
+           _placesFor: n => placesFor(n),
            doTrade, uiBlocked, newVillage,
            get saving() { return saving(); },
            get canvas() { return canvas; } };

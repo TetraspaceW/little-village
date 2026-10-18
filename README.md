@@ -99,7 +99,11 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
   will buy and sell — the baker sells bread, the smith sells tools, and so
   on. Prices are fixed per item with a haggling band either side. Villagers
   won't trade at night, away from their counter, or for a link of the errand
-  chain.
+  chain. Ask for something their trade would plausibly have that the game
+  doesn't list — a pain au chocolat at the bakery — and if they sell it to
+  you, it becomes a new item, with its own icon and name, for the rest of
+  that village — one you can eat, drink, wear, light or play if it's that sort of thing, and
+  cook at an oven if it's raw.
 - **Cooking.** The farmhouse kitchen has an oven, and so does the bakery.
   Stand beside one and press **E** (or tap it) to see what you could make
   from what you're carrying: wheat bakes into bread, an egg fries, two
@@ -362,6 +366,7 @@ js/sound.js          the instruments' notes: soundfont samples, fetched and play
 js/ledger.js         the traveller's pockets, notebook, deeds and log, and the HUD
 js/pockets.js        what you can do with your things: eat, wear, light, play, cook at an oven
 js/trade.js          buying and selling for coin: prices, refunds, the till
+js/mint.js           new items, made when a villager sells something unlisted
 js/dialogue.js       prompt building, conversation UI
 js/save.js           save format: snapshot/restore, both storage locations
 js/settings-panel.js the settings panel and front-door gate, keys from .env

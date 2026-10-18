@@ -137,6 +137,8 @@ LG.save = (function () {
       worn: Object.keys(st.worn || {}),
       lit: Object.keys(st.lit || {}),
       tipsy: st.tipsy || 0,
+      // things a villager sold that the game didn't ship with -- see mint.js
+      minted: LG.mint.saved(),
       // no `done`: whether a lead is spent is read off the world, not stored
       notes: st.notes.map(n => ({ id: n.id, text: n.text, ruby: n.ruby || null })),
       deeds: st.deeds.slice(),
@@ -183,8 +185,12 @@ LG.save = (function () {
     p.px = data.player.x; p.py = data.player.y; p.dir = data.player.dir || 'down';
     p.tx = (p.px / LG.world.TILE) | 0; p.ty = (p.py / LG.world.TILE) | 0;
 
+    /* Before the inventory: a pocket can hold something only this save's
+       village ever had, and everything that draws it looks it up. */
+    LG.mint.restore(data.minted);
     const st = LG.ledger.state;
-    st.inv = Object.assign({}, data.inventory);
+    st.inv = {};
+    Object.keys(data.inventory || {}).forEach(k => { if (LG.ITEMS[k]) st.inv[k] = data.inventory[k]; });
     // Older saves have no `worn`; and nothing is worn that isn't in the pockets or can't be worn.
     st.worn = {};
     (data.worn || []).forEach(k => {

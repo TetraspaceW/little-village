@@ -148,6 +148,7 @@ LG.game = (function () {
      the save over the result and must not have the bare village saved
      over it first. */
   function newVillage(seed, quiet, given) {
+    LG.mint.forget();                   // one village's inventions aren't the next one's
     V.create(seed, settings.level, given);
     adopt();
 

@@ -112,6 +112,23 @@ Opening `index.html` directly (`file://`) will also suffice to run the game loca
   you have at least one ingredient for are shown. Anyone in the room sees you
   do it and remembers. As with eating, nothing the errand still needs goes
   in the pot.
+- **Fishing.** Yuri the fisherman sells fishing rods. With one in your
+  pockets, stand on the bank of the pond and press **E** (or tap the water)
+  to cast. Then watch the float: when it's pulled under, press **E** (or tap
+  anywhere) to pull back. Too soon and there's nothing on the hook; too late
+  and it gets away. A shiver is only a nibble. Eighteen things bite:
+  one fish of every genus in Linnaeus's 1758 *Systema Naturae* that has
+  a species living in still fresh water (eel, perch, catfish, trout,
+  pike, carp, knifefish, bullhead, tilapia, paradise fish, stickleback,
+  weatherfish, hatchetfish, elephantfish and Fahaka pufferfish), plus
+  shrimp, copepods and, very rarely, a robot fish. Some only come out
+  by day and some only by night, and the rarer ones let go quicker. The
+  season changes the odds without ruling anything out: warm-water fish
+  bite best in summer and hardly at all in winter, pike, perch and trout
+  feed through the cold, eels run in autumn, and sticklebacks and
+  copepods swarm in spring. Walking off reels the line in,
+  and you can't fish through ice. Yuri buys what you catch, and the fish
+  that are good to eat grill at an oven. Anyone nearby sees what you land.
 - **Interiors.** Walking through a door lifts the roof off that building, and
   villagers who went inside are visible to you but not to anyone outside.
 - **Signs.** Every building, the noticeboard and the station platform has a

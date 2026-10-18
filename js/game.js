@@ -413,12 +413,15 @@ LG.game = (function () {
   }
 
   function interact() {
+    // A line in the water comes first: E is how you strike, whoever's beside you.
+    if (LG.fishing.out()) { LG.fishing.pull(); return; }
     if (nearby) { talkTo(nearby); return; }
     if (beast && !beast.caught && dist(player, beast) < TILE * 1.4) catchBeast();
     else if (worldItem && !worldItem.taken && dist(player, worldItem) < TILE * 1.4) pickUp();
     else if (LG.toys.nearBall(player)) LG.toys.useBall();
     else if (nearBoard()) openBoard();
     else if (LG.pockets.atOven()) LG.pockets.openOven();
+    else if (LG.fishing.canCast()) LG.fishing.cast();
   }
 
   /* ------------------------------------------------------------------ a tap */
@@ -456,6 +459,8 @@ LG.game = (function () {
   // `sx`/`sy` are canvas coordinates; adding the camera gives the village's.
   function tapAt(sx, sy) {
     if (uiBlocked()) return;
+    // With a line out, a tap anywhere strikes: a bite doesn't wait for aiming.
+    if (LG.fishing.out()) { LG.fishing.pull(); return; }
     const wx = sx + cam.x, wy = sy + cam.y;
     const m = tapPick(wx, wy);
     if (m) {
@@ -478,6 +483,14 @@ LG.game = (function () {
     if (LG.pockets.ovenOnTile(spot.tx, spot.ty)) {
       if (LG.pockets.atOven()) LG.pockets.openOven();
       else aside('Walk over to the oven first.');
+      return;
+    }
+    if (LG.fishing.isWater(spot.tx, spot.ty)) {
+      const why = LG.fishing.stopped();
+      if (!why) LG.fishing.cast();
+      else if (why === 'rod') aside('You need a fishing rod to fish here.');
+      else if (why === 'ice') aside('The water is frozen over.');
+      else aside('Walk down to the water\'s edge first.');
     }
   }
 
@@ -796,6 +809,7 @@ LG.game = (function () {
     if (el && el.textContent !== label) el.textContent = label;
 
     movePlayer(dt);
+    LG.fishing.tick(dt, uiBlocked());
     LG.toys.update(dt);
 
     for (const n of npcs) {
@@ -848,6 +862,8 @@ LG.game = (function () {
       // nothing, over an open panel
     } else if (nudgeT > 0) {
       say = nudge;
+    } else if (LG.fishing.out()) {
+      say = tap ? 'Tap when the float goes under' : 'Press E when the float goes under';
     } else if (nearby && nearby.asleep) {
       say = displayName(nearby) + ' is asleep';
     } else if (nearby) {
@@ -864,6 +880,8 @@ LG.game = (function () {
                 : 'Press E to read the noticeboard';
     } else if (LG.pockets.atOven()) {
       say = tap ? 'Tap the oven to cook' : 'Press E to cook at the oven';
+    } else if (LG.fishing.canCast()) {
+      say = tap ? 'Tap the water to cast your line' : 'Press E to cast your line';
     }
     // Same as the clock: touched only on a change. A hidden hint keeps its
     // last text, so it doesn't blank out while it fades.
@@ -1036,6 +1054,7 @@ LG.game = (function () {
         else A.drawCharacter(ctx, a, look, dpr);
       }
     }
+    LG.fishing.draw(ctx);
     LG.toys.drawSky(ctx);
     for (const a of drawables) {
       if (a.bubble) A.drawBubble(ctx, a, C.language().fontStack, dpr);

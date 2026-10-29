@@ -1531,13 +1531,13 @@ function glossesClearWhenClicked() {
   ok(blurred.classList.contains('hidden-tr'), 'and a click anywhere else leaves it be');
 }
 
-/* ---------------------------------------------------------- Jev, always
-   On OpenRouter every movement decision goes to Jev's decisions endpoint,
-   with nothing to switch on first; Logfare, which has no route to Jev,
+/* ---------------------------------------------------------- The decision model, always
+   On OpenRouter every movement decision goes to the decision model's decisions endpoint,
+   with nothing to switch on first; Logfare, which has no route to the decision model,
    still asks the helper model. Its own sandbox, since villagersTalking
    has already stubbed out LG.llm.intent in the main one. */
-async function jevPicksThePlace() {
-  section('on OpenRouter, Jev decides where a villager goes');
+async function decisionModelPicksThePlace() {
+  section('on OpenRouter, the decision model decides where a villager goes');
   const s4 = makeSandbox({});
   for (const f of files) {
     vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), s4, { filename: f });
@@ -1561,16 +1561,16 @@ async function jevPicksThePlace() {
 
   const onOR = await s4.LG.llm.intent(
     { provider: 'openrouter', apiKey: 'k', model: 'deepseek/deepseek-v4.1-flash' }, opts);
-  const jev = sent.filter(r => r.url.indexOf('/alpha/decisions') !== -1);
+  const decided = sent.filter(r => r.url.indexOf('/alpha/decisions') !== -1);
   const chat = sent.filter(r => r.url.indexOf('/chat/completions') !== -1);
-  ok(jev.length === 1 && jev[0].body.model === '~typesafe/jev-latest' && chat.length === 0,
-     'with no setting turned on, the call goes to Jev and not the helper model');
+  ok(decided.length === 1 && decided[0].body.model === '~liquid/d1-ultra-latest' && chat.length === 0,
+     'with no setting turned on, the call goes to the decision model and not the helper model');
   ok(!!onOR && onOR.go === 'the bakery' && !onOR.why, 'and comes back as a place, with no reason');
 
   sent.length = 0;
   const onLF = await s4.LG.llm.intent({ provider: 'logfare', apiKey: 'k', model: 'logfare/auto' }, opts);
   ok(sent.length === 1 && sent[0].url.indexOf('logfare.ai') !== -1,
-     'on Logfare, which has no route to Jev, the helper model is asked');
+     'on Logfare, which has no route to the decision model, the helper model is asked');
   ok(!!onLF && onLF.go === 'the bakery' && onLF.why === 'hungry', 'and still says why');
 
   section('each call is logged as what it is for, and who it is about');
@@ -1586,7 +1586,7 @@ async function jevPicksThePlace() {
   const deal = { npcName: 'Mira', wants: 'a pie', gives: 'a shell' };
   const facts = [{ id: 'f0', text: 'Mira has a shell.' }];
   for (const cfg of [or, lf]) {
-    const on = cfg === or ? ', by Jev' : ', on Logfare';
+    const on = cfg === or ? ', by the decision model' : ', on Logfare';
     await logged('a trade check' + on, () => L.confirmTrade(cfg, 'Da.', 'Yes.', deal), 'trade', 'Mira');
     await logged('a fact check' + on, () => L.judge(cfg, 'Da.', 'Yes.', facts, { who: 'Mira' }), 'notebook', 'Mira');
     await logged('a movement decision' + on, () => L.intent(cfg, opts), 'intent', 'Petra');
@@ -1603,8 +1603,8 @@ async function jevPicksThePlace() {
     () => L.recall(or, { transcript: [], a: { name: 'Mira', facts: [] }, b: { name: 'Olo', facts: [] } }),
     'recall', 'Mira & Olo');
   await logged('a notice', () => L.notice(or, { me: opts.me, langName: 'Russian' }), 'notice', 'Petra');
-  ok(L.transcript.filter(e => e.model === 'typesafe/jev-1.13').every(e => e.system === null),
-     'and a Jev call, which takes no system prompt, is logged without an invented one');
+  ok(L.transcript.filter(e => e.model === '~liquid/d1-ultra-latest').every(e => e.system === null),
+     'and a decision model call, which takes no system prompt, is logged without an invented one');
 }
 
 /* ------------------------------------------------------- what they believe now
@@ -2221,7 +2221,7 @@ async function villagersTalking() {
   await keysPerProvider();
   await envDecidesTheModels();
   glossesClearWhenClicked();
-  await jevPicksThePlace();
+  await decisionModelPicksThePlace();
   await namesUnknownUntilTold();
   await historyInFull();
   await touchControls();

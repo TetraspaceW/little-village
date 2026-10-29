@@ -18,7 +18,9 @@ LG.llm = (function () {
      in as a custom model id. */
   const AUTO_MODEL = "openrouter/auto";
 
-  /* Jev (TypeSafe AI) is a "System One" model: given free-text `state`
+  /* The decision model (OpenRouter's "decisions" output; Liquid AI's
+     d1-ultra, via the alias that follows its newest version) is a
+     "System One" model: given free-text `state`
      and a set of typed `questions`, it returns a typed choice with a
      probability attached -- no generated prose, no JSON-in-a-chat-reply
      to parse. That's a different shape from every other call in this
@@ -26,12 +28,12 @@ LG.llm = (function () {
      MODELS/HELPERS below and can't be typed into the "Other" box --
      picking it as a chat or helper model would leave dialogue with a
      model that cannot write dialogue. It gets its own request path
-     (decisionPost/askJev, below), reachable only over OpenRouter --
+     (decisionPost/askDecisionModel, below), reachable only over OpenRouter --
      there's no Logfare equivalent -- and used automatically whenever it
      is: movement decisions, and the bookkeeping checks (a trade
      completing, a fact actually stated) the helper model otherwise makes
      (see DESIGN.md). No setting turns it off. */
-  const JEV_MODEL = "~typesafe/jev-latest";
+  const DECISION_MODEL = "~liquid/d1-ultra-latest";
   const DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions";
 
   /* One offered model per role on OpenRouter; anything else goes in the
@@ -203,9 +205,9 @@ LG.llm = (function () {
     return data;
   }
 
-  /* Jev's decisions endpoint, not chat completions -- see JEV_MODEL
+  /* The decisions endpoint, not chat completions -- see DECISION_MODEL
      above. OpenRouter-only: there's no Logfare equivalent, and
-     decideByJev checks the provider before ever calling this. */
+     decideByDecisionModel checks the provider before ever calling this. */
   async function decisionPost(cfg, body) {
     const headers = {
       "content-type": "application/json",
@@ -678,10 +680,10 @@ LG.llm = (function () {
      unconfirmed gets recorded. */
   async function judge(cfg, said, translation, candidates, opts) {
     if (!candidates.length) return [];
-    /* Jev whenever it's reachable, same as intent() and confirmTrade()
+    /* The decision model whenever it's reachable, same as intent() and confirmTrade()
        below -- see DESIGN.md. */
     if (cfg.provider === "openrouter" && cfg.apiKey) {
-      return judgeByJev(cfg, said, translation, candidates, opts && opts.who);
+      return judgeByDecisionModel(cfg, said, translation, candidates, opts && opts.who);
     }
     const lang = (opts && opts.langName) || "the speaker\u2019s language";
     const lines = [
@@ -775,7 +777,7 @@ LG.llm = (function () {
      player action complete a trade on its own. */
   async function confirmTrade(cfg, said, translation, deal) {
     if (cfg.provider === "openrouter" && cfg.apiKey) {
-      return confirmTradeByJev(cfg, said, translation, deal);
+      return confirmTradeByDecisionModel(cfg, said, translation, deal);
     }
     const ask = [
       "One line of dialogue, and a question about it.",
@@ -1154,18 +1156,18 @@ LG.llm = (function () {
     }
   }
 
-  /* Shared plumbing for every Jev decisions-endpoint call: sends
+  /* Shared plumbing for every decisions-endpoint call: sends
      `{state, questions}`, logs it the same way as any other call (with
-     no system prompt, since Jev takes none, and `tag` as its {kind, who}),
+     no system prompt, since the decision model takes none, and `tag` as its {kind, who}),
      and hands back `data.answers` (or null on failure).
      Every caller builds its own state text and typed questions and
      reads back whichever `answers[key].choice` it asked for -- this
      only owns the request/response/logging shape they all share. */
-  async function askJev(cfg, tag, state, questions) {
-    const body = { model: JEV_MODEL, state, questions };
+  async function askDecisionModel(cfg, tag, state, questions) {
+    const body = { model: DECISION_MODEL, state, questions };
     // A trimmed-down cfg just for logging -- the real request always
-    // targets JEV_MODEL regardless of what cfg.model/helper name.
-    const lcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: JEV_MODEL };
+    // targets DECISION_MODEL regardless of what cfg.model/helper name.
+    const lcfg = { provider: cfg.provider, apiKey: cfg.apiKey, model: DECISION_MODEL };
     const msg = [
       {
         role: "user",
@@ -1180,7 +1182,7 @@ LG.llm = (function () {
         return {
           text: JSON.stringify(data),
           reasoning: null,
-          // Jev's usage names its fields input_tokens/output_tokens;
+          // The decision model's usage names its fields input_tokens/output_tokens;
           // aliased here too so the console log's token count (which
           // reads the OpenAI-shaped names) still shows one.
           usage: u
@@ -1191,7 +1193,7 @@ LG.llm = (function () {
             : null,
           stop: null,
           schema: true,
-          model: data.model || JEV_MODEL,
+          model: data.model || DECISION_MODEL,
         };
       }, tag);
       const data = JSON.parse(raw);
@@ -1201,8 +1203,8 @@ LG.llm = (function () {
     }
   }
 
-  /* Asks Jev to pick a destination, in place of the free-text call
-     below. Jev only takes typed questions over a fixed set of options,
+  /* Asks the decision model to pick a destination, in place of the free-text call
+     below. The decision model only takes typed questions over a fixed set of options,
      so this builds `state` from the same view data the chat prompt
      uses, minus the places list and closing instructions -- those
      become the Choice question's criteria/instructions instead -- and
@@ -1210,7 +1212,7 @@ LG.llm = (function () {
      returns a probability-weighted choice, not a reason for it, and
      decideWhereToGo (game.js) already treats a missing `why` as
      "nothing to report". Fails closed, same as intent() below. */
-  async function decideByJev(cfg, o) {
+  async function decideByDecisionModel(cfg, o) {
     const state = [
       "You are " + o.me.name + " — " + o.me.job + ". " + o.me.persona,
       o.goal ? "What you are about: " + o.goal : null,
@@ -1244,19 +1246,19 @@ LG.llm = (function () {
         criteria,
       },
     };
-    const answers = await askJev(cfg, { kind: "intent", who: o.me.name }, state, questions);
+    const answers = await askDecisionModel(cfg, { kind: "intent", who: o.me.name }, state, questions);
     const ans = answers && answers.go;
     const choice = ans && typeof ans.choice === "string" ? ans.choice : null;
     return choice ? { go: choice } : null;
   }
 
-  /* Asks Jev whether a line of dialogue actually completed a trade, in
+  /* Asks the decision model whether a line of dialogue actually completed a trade, in
      place of the free-text yes/no call confirmTrade makes below -- same
-     fixed-choice shape as decideByJev, just two named options instead
-     of a place list. confirmTrade reaches this whenever Jev is reachable
+     fixed-choice shape as decideByDecisionModel, just two named options instead
+     of a place list. confirmTrade reaches this whenever the decision model is reachable
      at all (see DESIGN.md); it checks that itself before ever calling
      here. */
-  async function confirmTradeByJev(cfg, said, translation, deal) {
+  async function confirmTradeByDecisionModel(cfg, said, translation, deal) {
     const state = [
       deal.npcName + " said: " + JSON.stringify(said),
       translation ? "In English, that is: " + JSON.stringify(translation) : null,
@@ -1277,20 +1279,20 @@ LG.llm = (function () {
         },
       },
     };
-    const answers = await askJev(cfg, { kind: "trade", who: deal.npcName }, state, questions);
+    const answers = await askDecisionModel(cfg, { kind: "trade", who: deal.npcName }, state, questions);
     return !!(answers && answers.deal && answers.deal.choice === "yes");
   }
 
-  /* Asks Jev which of several candidate facts a line of dialogue
+  /* Asks the decision model which of several candidate facts a line of dialogue
      actually stated outright, one choice question per candidate settled
      in a single call -- cheaper than the helper-model call judge() makes
-     below, since Jev is priced by input tokens alone. It cannot write
+     below, since the decision model is priced by input tokens alone. It cannot write
      the note in the player's language the way the helper model does --
-     no generated prose, see JEV_MODEL above -- so a confirmed fact comes
+     no generated prose, see DECISION_MODEL above -- so a confirmed fact comes
      back with no note, the same shape judge() itself returns when the
      model left one out; verifyRevealed already falls back to the line
      as spoken in that case. */
-  async function judgeByJev(cfg, said, translation, candidates, who) {
+  async function judgeByDecisionModel(cfg, said, translation, candidates, who) {
     const state = [
       "The speaker said: " + JSON.stringify(said),
       translation ? "In English, that is: " + JSON.stringify(translation) : null,
@@ -1309,7 +1311,7 @@ LG.llm = (function () {
         },
       };
     });
-    const answers = await askJev(cfg, { kind: "notebook", who: who }, state, questions);
+    const answers = await askDecisionModel(cfg, { kind: "notebook", who: who }, state, questions);
     if (!answers) return [];
     return candidates
       .filter((c) => answers[c.id] && answers[c.id].choice === "yes")
@@ -1330,12 +1332,12 @@ LG.llm = (function () {
      villager isn't re-asked. */
   async function intent(cfg, opts) {
     const o = opts || {};
-    /* Movement only -- Jev has no route through Logfare and nothing to
+    /* Movement only -- the decision model has no route through Logfare and nothing to
        say for dialogue or chatter, which need generated text (see
-       JEV_MODEL above). Used whenever it's reachable at all; there's no
+       DECISION_MODEL above). Used whenever it's reachable at all; there's no
        setting to turn it off. */
     if (cfg.provider === "openrouter" && cfg.apiKey) {
-      return decideByJev(cfg, o);
+      return decideByDecisionModel(cfg, o);
     }
     const lines = [
       "You are " + o.me.name + " — " + o.me.job + ". " + o.me.persona,

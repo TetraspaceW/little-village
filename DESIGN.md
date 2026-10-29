@@ -35,7 +35,7 @@ the game made of it, or in a prompt sentence that did something other than what 
 - A model picks each villager's destination from a named list of places. It sees their
   goal, what they know, their recent memories, the hour and weather, where they are, and
   **who they've seen and where**, so "go find Sanna" is expressible. The decision goes to
-  Jev on OpenRouter and to the helper model on Logfare (see below).
+  the decision model on OpenRouter and to the helper model on Logfare (see below).
 - It's asked only when something changes (arrival, hour, weather, new information), with
   a cooldown (`DECIDE_COOL` in `js/game.js`). If there's no key or the call fails, it
   falls back to the old probability table (`PHASE_TABLE` in `js/npc.js`), so the village
@@ -60,21 +60,22 @@ the game made of it, or in a prompt sentence that did something other than what 
   in `placesFor`). Left to the name, "the mine" could be a tunnel, and a home that is a
   patch of street was called "your own place" and read as a house.
 
-## Jev: fixed-choice questions (OpenRouter only)
+## The decision model: fixed-choice questions (OpenRouter only)
 
-TypeSafe's Jev (`~typesafe/jev-latest`, which OpenRouter redirects to the newest Jev) takes `{state, questions}` and returns one named
+The decision model is Liquid AI's d1-ultra (`~liquid/d1-ultra-latest`, which OpenRouter
+redirects to the newest d1-ultra; `DECISION_MODEL` in `js/llm.js`). It takes `{state, questions}` and returns one named
 option per question, with a probability. It's billed on input tokens only. It uses
-OpenRouter's decisions endpoint (`decisionPost`/`askJev` in `js/llm.js`), not
+OpenRouter's decisions endpoint (`decisionPost`/`askDecisionModel` in `js/llm.js`), not
 `/chat/completions`, so it can't be offered as a main or helper model.
 
-- It handles three jobs: where a villager goes (`intent` → `decideByJev`), whether a
-  trade completed (`confirmTrade` → `confirmTradeByJev`), and which self-reported facts
-  a line actually stated (`judge` → `judgeByJev`). All three are fixed questions with a
+- It handles three jobs: where a villager goes (`intent` → `decideByDecisionModel`), whether a
+  trade completed (`confirmTrade` → `confirmTradeByDecisionModel`), and which self-reported facts
+  a line actually stated (`judge` → `judgeByDecisionModel`). All three are fixed questions with a
   fixed set of answers.
 - It's used automatically whenever `provider === "openrouter"` and a key is present.
   There's deliberately no setting. Opt-in toggles meant almost nobody used it. Each
   function checks the provider itself, and Logfare gets the helper-model version.
-- Tradeoffs accepted: Jev returns no text. Movement loses its "why" (the console prints
+- Tradeoffs accepted: The decision model returns no text. Movement loses its "why" (the console prints
   only the destination), and confirmed facts get no player-language note.
   `verifyRevealed` already falls back to the line as spoken when a note is missing.
 - `judge` sends one question per candidate fact in a single request.
@@ -194,7 +195,7 @@ OpenRouter's decisions endpoint (`decisionPost`/`askJev` in `js/llm.js`), not
   with the record attached, and goes to `logs/` via the log server.
 - **Each caller names its call** (`kind`: villager, chatter, intent, notebook, trade, …;
   `who`: the villager). Reading it back off the system prompt needed a table kept in step
-  with every prompt, twice, and misfiled the Jev calls, which have no prompt.
+  with every prompt, twice, and misfiled the decision model calls, which have no prompt.
 - **Cost is tracked as villager vs helper.** Over 2.8 h of play, the main model made
   ~60 calls/h and the helper ~1,200/h, which put 3.5× more cost on the helper side.
   `tools/latency-report.js` uses the same split, by which model answered, so chatter
@@ -241,7 +242,7 @@ Each of these was a bug first:
 - **Errand items can't be sold for coins.** Villagers decline this themselves. Otherwise
   selling a chain item was a silent dead end. Trading is unaffected.
 - **A gesture is not a bargain.** Offering an item completes a trade only if the villager
-  agrees. If the reply agrees but doesn't flag it, the helper model or Jev confirms.
+  agrees. If the reply agrees but doesn't flag it, the helper model or the decision model confirms.
   Interest, questions, and "later" all count as no.
 
 ## Finished exchanges
@@ -284,7 +285,7 @@ Each of these was a bug first:
 ## The notebook
 
 - **Nominate, then verify.** A villager's reply nominates fact tags in `revealed`. The
-  helper model or Jev checks them against the spoken line (`verifyRevealed`), after the
+  helper model or the decision model checks them against the spoken line (`verifyRevealed`), after the
   reply is on screen, and fails closed. Self-reports alone flag facts the villager
   merely used a word from.
 - **Whether a lead is spent is derived, never stored.** One predicate reads two one-way

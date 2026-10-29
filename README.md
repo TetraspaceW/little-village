@@ -165,7 +165,7 @@ client-side either way.
 - **Helper model** — smaller/cheaper, runs everything else: deciding what two
   villagers took away from a conversation, filling in missing furigana,
   deciding whether a villager posts a noticeboard notice. On Logfare, which
-  has no Jev (see below), it also confirms which facts a villager actually
+  has no decision model (see below), it also confirms which facts a villager actually
   revealed, confirms trades, and chooses where each villager goes.
 
 On OpenRouter both the main model and the helper are DeepSeek V4.1 Flash
@@ -182,23 +182,22 @@ Use a fast, non-reasoning model for the helper if you can — see below.
 
 ### The decision model, for what has a fixed set of answers
 
-On OpenRouter, three of the helper model's jobs go to [Liquid AI's d1-ultra](https://openrouter.ai/liquid/d1-ultra)
+On OpenRouter, three of the helper model's jobs go to [Liquid AI's d1-ultra](https://openrouter.ai/~liquid/d1-ultra-latest)
 instead, automatically — there's no setting for it, and no way to turn it off short of
-switching to Logfare. (It replaced TypeSafe's Jev, and the code and the rest of these
-notes still call it "Jev".) Jev doesn't generate text — given a fixed set of typed questions, it
+switching to Logfare. The decision model doesn't generate text — given a fixed set of typed questions, it
 answers each with one of a named list of options and a probability, for $0.042 per
 million input tokens and nothing charged for the answer, which is exactly the shape of
 these three jobs: did this happen, yes or no, or which of these places should a villager
 be.
 
-**Where a villager goes next.** What Jev can't do is say why: the helper model's version
-of this decision comes back with a line of reasoning, logged to the console; Jev's
+**Where a villager goes next.** What the decision model can't do is say why: the helper model's version
+of this decision comes back with a line of reasoning, logged to the console; the decision model's
 doesn't, because there's no text to write one in.
 
 **Whether a trade actually completed**, and **whether a line actually stated a fact
 outright** — both a yes/no choice rather than a written answer. The helper model's
 version of the fact check writes a note in the player's language when it confirms one;
-Jev can't, so a fact it confirms is recorded under the line as spoken instead.
+The decision model can't, so a fact it confirms is recorded under the line as spoken instead.
 
 ### Cost
 

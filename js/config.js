@@ -45,8 +45,8 @@ LG.config = (function () {
     settings.apiKey = settings.keys[settings.provider] || '';
     /* Settings that are no longer choices: villagers always gossip,
        translations always start blurred, voices are always cast from the
-       curated library at a pace set by difficulty, and Jev is always used
-       on OpenRouter. Dropped from an older browser's stored settings. */
+       curated library at a pace set by difficulty, and the decision model
+       is always used on OpenRouter (the last two keys are from an older version). Dropped from an older browser's stored settings. */
     ['npcChatter', 'showTranslation', 'voiceQuality', 'voiceSpeed', 'jevMovement', 'jevValidation']
       .forEach(k => { delete settings[k]; });
   }

@@ -515,7 +515,7 @@ LG.game = (function () {
   const nearRect = W.nearRect;
 
   /* Where a villager goes is decided from their goal and what they know
-     (Jev or the helper model), not a dice roll; PHASE_TABLE in npc.js is
+     (the decision model or the helper model), not a dice roll; PHASE_TABLE in npc.js is
      the fallback. Asked at most once per DECIDE_COOL seconds. */
   const DECIDE_COOL = 25;
 

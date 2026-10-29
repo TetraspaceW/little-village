@@ -53,7 +53,7 @@ LG.actors = (function () {
   }
 
   /* Notices when a villager should decide where to be, asks, and walks them
-     there. The decision is Jev's or the helper model's (LG.llm.intent),
+     there. The decision is the decision model's or the helper model's (LG.llm.intent),
      passed in as `decide` so this module doesn't depend on the API. It's
      asked only when their situation changes, so an idle villager costs
      nothing; PHASE_TABLE is the fallback with no key or a failed call. */

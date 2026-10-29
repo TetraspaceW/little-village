@@ -18,7 +18,10 @@ LG.llm = (function () {
      in as a custom model id. */
   const AUTO_MODEL = "openrouter/auto";
 
-  /* Jev (TypeSafe AI) is a "System One" model: given free-text `state`
+  /* The decision model -- Liquid AI's d1-ultra, which replaced TypeSafe's
+     Jev; the code still calls this path "Jev" (askJev, decideByJev, the
+     jevMovement/jevValidation settings) after the model it was built for.
+     It is a "System One" model: given free-text `state`
      and a set of typed `questions`, it returns a typed choice with a
      probability attached -- no generated prose, no JSON-in-a-chat-reply
      to parse. That's a different shape from every other call in this
@@ -31,7 +34,7 @@ LG.llm = (function () {
      is: movement decisions, and the bookkeeping checks (a trade
      completing, a fact actually stated) the helper model otherwise makes
      (see DESIGN.md). No setting turns it off. */
-  const JEV_MODEL = "~typesafe/jev-latest";
+  const JEV_MODEL = "liquid/d1-ultra";
   const DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions";
 
   /* One offered model per role on OpenRouter; anything else goes in the

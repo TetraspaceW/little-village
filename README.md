@@ -180,11 +180,12 @@ doesn't lose the other one.
 
 Use a fast, non-reasoning model for the helper if you can — see below.
 
-### Jev, for what has a fixed set of answers
+### The decision model, for what has a fixed set of answers
 
-On OpenRouter, three of the helper model's jobs go to [TypeSafe's Jev](https://openrouter.ai/~typesafe/jev-latest)
+On OpenRouter, three of the helper model's jobs go to [Liquid AI's d1-ultra](https://openrouter.ai/liquid/d1-ultra)
 instead, automatically — there's no setting for it, and no way to turn it off short of
-switching to Logfare. Jev doesn't generate text — given a fixed set of typed questions, it
+switching to Logfare. (It replaced TypeSafe's Jev, and the code and the rest of these
+notes still call it "Jev".) Jev doesn't generate text — given a fixed set of typed questions, it
 answers each with one of a named list of options and a probability, for $0.042 per
 million input tokens and nothing charged for the answer, which is exactly the shape of
 these three jobs: did this happen, yes or no, or which of these places should a villager

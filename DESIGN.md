@@ -62,7 +62,9 @@ the game made of it, or in a prompt sentence that did something other than what 
 
 ## Jev: fixed-choice questions (OpenRouter only)
 
-TypeSafe's Jev (`~typesafe/jev-latest`, which OpenRouter redirects to the newest Jev) takes `{state, questions}` and returns one named
+"Jev" is the name this path kept from TypeSafe's Jev, the model it was built for; the
+model it calls now is Liquid AI's d1-ultra (`liquid/d1-ultra`, `JEV_MODEL` in
+`js/llm.js`), which speaks the same decisions API. It takes `{state, questions}` and returns one named
 option per question, with a probability. It's billed on input tokens only. It uses
 OpenRouter's decisions endpoint (`decisionPost`/`askJev` in `js/llm.js`), not
 `/chat/completions`, so it can't be offered as a main or helper model.

@@ -1563,7 +1563,7 @@ async function jevPicksThePlace() {
     { provider: 'openrouter', apiKey: 'k', model: 'deepseek/deepseek-v4.1-flash' }, opts);
   const jev = sent.filter(r => r.url.indexOf('/alpha/decisions') !== -1);
   const chat = sent.filter(r => r.url.indexOf('/chat/completions') !== -1);
-  ok(jev.length === 1 && jev[0].body.model === '~typesafe/jev-latest' && chat.length === 0,
+  ok(jev.length === 1 && jev[0].body.model === 'liquid/d1-ultra' && chat.length === 0,
      'with no setting turned on, the call goes to Jev and not the helper model');
   ok(!!onOR && onOR.go === 'the bakery' && !onOR.why, 'and comes back as a place, with no reason');
 
@@ -1603,7 +1603,7 @@ async function jevPicksThePlace() {
     () => L.recall(or, { transcript: [], a: { name: 'Mira', facts: [] }, b: { name: 'Olo', facts: [] } }),
     'recall', 'Mira & Olo');
   await logged('a notice', () => L.notice(or, { me: opts.me, langName: 'Russian' }), 'notice', 'Petra');
-  ok(L.transcript.filter(e => e.model === 'typesafe/jev-1.13').every(e => e.system === null),
+  ok(L.transcript.filter(e => e.model === 'liquid/d1-ultra').every(e => e.system === null),
      'and a Jev call, which takes no system prompt, is logged without an invented one');
 }
 
